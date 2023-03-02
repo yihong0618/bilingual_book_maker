@@ -1,2 +1,45 @@
 # bilingual_book_maker
 Make bilingual epub books Using AI translate
+
+
+## 准备
+
+1. ChatGPT or OpenAI token
+2. epub books
+3. 能正常联网的环境或 proxy
+4. python3.8+
+
+
+## 使用
+
+1. pip install -r requirements.txt
+2. openapi token
+3. 本地放了一个 animal_farm.epub 给大家测试
+4. 默认用了 ChatGPT 模型，用 `--model gpt3` 来使用 gpt3 模型
+5. 加了 `--test` 命令如果大家没付费可以加上这个先看看效果（有 limit 稍微有些慢）
+
+e.g.
+```shell
+# 如果你想快速测一下
+python3 make.py - --book_name animal_farm.epub --openai_key ${openai_key} --no_limit --test
+# or do it
+python3 make.py - --book_name animal_farm.epub --openai_key ${openai_key}
+# or 用 gpt3 模型
+export OPENAI_API_KEY=${your_api_key}
+python3 make.py --book_name animal_farm.epub --model gpt3 --no_limit
+
+## 注意
+
+1. 有 limit 如果想要速度可以付费
+2. 现在是 demo 版本有很多工作要做 PR welcome
+3. 尤其是 batch translat 做完效果会好很多
+4. DeepL 模型稍后更新
+
+
+# 感谢
+
+- @[yetone](https://github.com/yetone)
+
+## 赞赏
+
+谢谢就够了
