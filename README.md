@@ -1,6 +1,8 @@
 # bilingual_book_maker
 Make bilingual epub books Using AI translate
 
+![image](https://user-images.githubusercontent.com/15976103/222317531-a05317c5-4eee-49de-95cd-04063d9539d9.png)
+
 
 ## 准备
 
