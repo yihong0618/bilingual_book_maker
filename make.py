@@ -9,6 +9,7 @@ import requests
 from bs4 import BeautifulSoup as bs
 from ebooklib import epub
 from rich import print
+import multiprocessing as mp
 
 NO_LIMIT = False
 IS_TEST = False
@@ -116,7 +117,6 @@ class ChatGPT(Base):
 class BEPUB:
     def __init__(self, epub_name, model, key):
         self.epub_name = epub_name
-        self.new_epub = epub.EpubBook()
         self.translate_model = model(key)
         self.origin_book = epub.read_epub(self.epub_name)
 
@@ -125,29 +125,41 @@ class BEPUB:
         new_book.metadata = self.origin_book.metadata
         new_book.spine = self.origin_book.spine
         new_book.toc = self.origin_book.toc
-        all_items = list(self.origin_book.get_items())
-        # we just translate tag p
-        all_p_length = sum(
-            [len(bs(i.content, "html.parser").findAll("p")) for i in all_items]
-        )
-        print("TODO need process bar here: " + str(all_p_length))
+        
+        # we just translate tag 
+        with mp.Pool() as pool:
+            translated_p_list = pool.map(
+                lambda x: (x[0], self.translate_model.translate(x[1])),
+                [(i, p.string) for i in self.origin_book.get_items()
+                    if i.get_type() == 9
+                    for p in bs(i.content, "html.parser").findAll("p")
+                    if p.string and not p.string.isdigit()]
+                )
+        print("TODO need process bar here: " + len(translated_p_list))
+        
+         # Update the "p" tags with their translations
         index = 0
-        for i in self.origin_book.get_items():
-            if i.get_type() == 9:
-                soup = bs(i.content, "html.parser")
-                p_list = soup.findAll("p")
-                is_test_done = IS_TEST and index > 20
-                for p in p_list:
-                    if not is_test_done:
-                        if p.string and not p.string.isdigit():
-                            new_p = copy(p)
-                            # TODO banch of p to translate then combine
-                            # PR welcome here
-                            new_p.string = self.translate_model.translate(p.string)
-                            p.insert_after(new_p)
-                            index += 1
-                i.content = soup.prettify().encode()
+        for i, translated_p in translated_p_list:
+            soup = bs(i.content, "html.parser")
+            p_list = soup.findAll("p")
+            for j, p in enumerate(p_list):
+                if p.string == translated_p[j][0]:
+                    new_p = copy(p)
+                    new_p.string = translated_p[j][1]
+                    p.insert_after(new_p)
+                    index += 1
+                    if IS_TEST and index > 20:
+                        break
+            i.content = soup.prettify().encode()
             new_book.add_item(i)
+            if IS_TEST and index > 20:
+                break
+
+        # Add remaining items to the new book
+        for i in self.origin_book.get_items():
+            if i.get_type() != 9:
+                new_book.add_item(i)
+        
         name = self.epub_name.split(".")[0]
         epub.write_epub(f"{name}_bilingual.epub", new_book, {})
 
