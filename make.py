@@ -150,12 +150,13 @@ class BEPUB:
         )
         print("TODO need process bar here: " + str(all_p_length))
         pool = mp.Pool()
+        # use mul pool to translate
         processed_items = pool.map(self.translate_item, all_items)
         pool.close()
         pool.join()
         for item in processed_items:
             new_book.add_item(item)
-
+        # in order to make epub valid
         for item in new_book.spine:
             new_item = new_book.get_item_with_href(item.href)
             new_book.add_item(new_item)
@@ -164,51 +165,6 @@ class BEPUB:
 
         name = self.epub_name.split(".")[0]
         epub.write_epub(f"{name}_bilingual.epub", new_book, {})
-
-    def make_bilingual_book(self):
-        new_book = epub.EpubBook()
-        new_book.metadata = self.origin_book.metadata
-        new_book.spine = self.origin_book.spine
-        new_book.toc = self.origin_book.toc
-        
-        self.origin_book.spine
-        # we just translate tag 
-        with mp.Pool() as pool:
-            translated_p_list = pool.map(
-                lambda x: (x[0], self.translate_model.translate(x[1])),
-                [(i, p.string) for i in self.origin_book.get_items()
-                    if i.get_type() == 9
-                    for p in bs(i.content, "html.parser").findAll("p")
-                    if p.string and not p.string.isdigit()]
-                )
-        print("TODO need process bar here: " + len(translated_p_list))
-        
-         # Update the "p" tags with their translations
-        index = 0
-        for i, translated_p in translated_p_list:
-            soup = bs(i.content, "html.parser")
-            p_list = soup.findAll("p")
-            for j, p in enumerate(p_list):
-                if p.string == translated_p[j][0]:
-                    new_p = copy(p)
-                    new_p.string = translated_p[j][1]
-                    p.insert_after(new_p)
-                    index += 1
-                    if IS_TEST and index > 20:
-                        break
-            i.content = soup.prettify().encode()
-            new_book.add_item(i)
-            if IS_TEST and index > 20:
-                break
-
-        # Add remaining items to the new book
-        for i in self.origin_book.get_items():
-            if i.get_type() != 9:
-                new_book.add_item(i)
-        
-        name = self.epub_name.split(".")[0]
-        epub.write_epub(f"{name}_bilingual.epub", new_book, {})
-
 
 if __name__ == "__main__":
     MODEL_DICT = {"gpt3": GPT3, "chatgpt": ChatGPT}
