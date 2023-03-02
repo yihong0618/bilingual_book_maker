@@ -122,9 +122,9 @@ class BEPUB:
         self.test_limit_index = 0
     
     def translate_p(self, p):
-        if p.string and not p.string.isdigit():
+        if p.text and not p.text.isdigit():
             new_p = copy(p)
-            new_p.string = self.translate_model.translate(p.string)
+            new_p.string = self.translate_model.translate(p.text)
             p.insert_after(new_p)
     
     def translate_item(self, item):
