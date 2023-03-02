@@ -46,3 +46,5 @@ python3 make.py --book_name animal_farm.epub --model gpt3 --no_limit
 ## 赞赏
 
 谢谢就够了
+
+![image](https://user-images.githubusercontent.com/15976103/222407199-1ed8930c-13a8-402b-9993-aaac8ee84744.png)
