@@ -27,6 +27,7 @@ python3 make.py - --book_name animal_farm.epub --openai_key ${openai_key}
 # or 用 gpt3 模型
 export OPENAI_API_KEY=${your_api_key}
 python3 make.py --book_name animal_farm.epub --model gpt3 --no_limit
+```
 
 ## 注意
 
