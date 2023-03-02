@@ -154,15 +154,11 @@ class BEPUB:
         processed_items = pool.map(self.translate_item, all_items)
         pool.close()
         pool.join()
-        for item in processed_items:
-            new_book.add_item(item)
         # in order to make epub valid
+        item_map = { item.id: item for item in processed_items}
         for item in new_book.spine:
-            new_item = new_book.get_item_with_href(item.href)
+            new_item = item_map[item[0]]
             new_book.add_item(new_item)
-            new_book.spine.remove(item)
-            new_book.spine.append(new_item)
-
         name = self.epub_name.split(".")[0]
         epub.write_epub(f"{name}_bilingual.epub", new_book, {})
 
