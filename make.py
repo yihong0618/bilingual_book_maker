@@ -139,11 +139,11 @@ class BEPUB:
                 is_test_done = IS_TEST and index > 20
                 for p in p_list:
                     if not is_test_done:
-                        if p.string and not p.string.isdigit():
+                        if p.text and not p.text.isdigit():
                             new_p = copy(p)
                             # TODO banch of p to translate then combine
                             # PR welcome here
-                            new_p.string = self.translate_model.translate(p.string)
+                            new_p.string = self.translate_model.translate(p.text)
                             p.insert_after(new_p)
                             index += 1
                 i.content = soup.prettify().encode()
