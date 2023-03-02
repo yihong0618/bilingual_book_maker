@@ -119,6 +119,51 @@ class BEPUB:
         self.epub_name = epub_name
         self.translate_model = model(key)
         self.origin_book = epub.read_epub(self.epub_name)
+        self.test_limit_index = 0
+    
+    def translate_p(self, p):
+        if p.string and not p.string.isdigit():
+            new_p = copy(p)
+            new_p.string = self.translate_model.translate(p.string)
+            p.insert_after(new_p)
+    
+    def translate_item(self, item):
+        soup = bs(item.content, "html.parser")
+        p_list = soup.findAll("p")
+        is_test_done = IS_TEST and self.test_limit_index > 20
+        for p in p_list:
+            if not is_test_done:
+                self.translate_p(p)
+                self.test_limit_index += 1
+        item.content = soup.prettify().encode()
+        return item
+    
+    def make_bilingual_book(self):
+        new_book = epub.EpubBook()
+        new_book.metadata = self.origin_book.metadata
+        new_book.spine = self.origin_book.spine
+        new_book.toc = self.origin_book.toc
+        all_items = list(self.origin_book.get_items())
+        # we just translate tag p
+        all_p_length = sum(
+            [len(bs(i.content, "html.parser").findAll("p")) for i in all_items]
+        )
+        print("TODO need process bar here: " + str(all_p_length))
+        pool = mp.Pool()
+        processed_items = pool.map(self.translate_item, all_items)
+        pool.close()
+        pool.join()
+        for item in processed_items:
+            new_book.add_item(item)
+
+        for item in new_book.spine:
+            new_item = new_book.get_item_with_href(item.href)
+            new_book.add_item(new_item)
+            new_book.spine.remove(item)
+            new_book.spine.append(new_item)
+
+        name = self.epub_name.split(".")[0]
+        epub.write_epub(f"{name}_bilingual.epub", new_book, {})
 
     def make_bilingual_book(self):
         new_book = epub.EpubBook()
@@ -126,6 +171,7 @@ class BEPUB:
         new_book.spine = self.origin_book.spine
         new_book.toc = self.origin_book.toc
         
+        self.origin_book.spine
         # we just translate tag 
         with mp.Pool() as pool:
             translated_p_list = pool.map(
