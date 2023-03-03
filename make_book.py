@@ -1,4 +1,5 @@
 import argparse
+import random
 import time
 from abc import abstractmethod
 from copy import copy
@@ -18,6 +19,16 @@ class Base:
     def __init__(self, key):
         pass
 
+    @staticmethod
+    def get_key(key):
+        if not key.find(","):
+            return key
+        if key.find(","):
+            key_list = key.split(",")
+            random_number = random.uniform(0, len(key_list))
+            return key_list[int(random_number)]
+        return key
+
     @abstractmethod
     def translate(self, text):
         pass
@@ -29,7 +40,6 @@ class GPT3(Base):
         self.api_url = "https://api.openai.com/v1/completions"
         self.headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
         }
         # TODO support more models here
         self.data = {
@@ -43,6 +53,8 @@ class GPT3(Base):
 
     def translate(self, text):
         print(text)
+        api_key = self.get_key(self.api_key)
+        self.headers["Authorization"] = f"Bearer {self.get_key(api_key)}"
         self.data["prompt"] = f"Please help me to translate，`{text}` to Chinese"
         r = self.session.post(self.api_url, headers=self.headers, json=self.data)
         if not r.ok:
@@ -67,7 +79,7 @@ class ChatGPT(Base):
 
     def translate(self, text):
         print(text)
-        openai.api_key = self.key
+        openai.api_key = self.get_key(self.key)
         try:
             completion = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
@@ -165,20 +177,21 @@ if __name__ == "__main__":
         "--book_name",
         dest="book_name",
         type=str,
-        help="your epub book name",
+        help="your epub book file path",
     )
     parser.add_argument(
         "--openai_key",
         dest="openai_key",
         type=str,
         default="",
-        help="openai api key",
+        help="openai api key,if you have more than one key,you can use comma"
+             " to split them and you can break through the limitation",
     )
     parser.add_argument(
         "--no_limit",
         dest="no_limit",
         action="store_true",
-        help="if you pay add it",
+        help="If you are a paying customer you can add it",
     )
     parser.add_argument(
         "--test",
@@ -201,7 +214,7 @@ if __name__ == "__main__":
         type=str,
         default="chatgpt",
         choices=["chatgpt", "gpt3"],  # support DeepL later
-        help="Use which model",
+        help="Which model to use",
     )
     options = parser.parse_args()
     NO_LIMIT = options.no_limit
