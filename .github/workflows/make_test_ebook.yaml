@@ -23,5 +23,7 @@ jobs:
     - name: install python requirements
       run: pip install -r requirements.txt
     - name: make test ebook
-      run: python3 make.py --book_name test_books/animal_farm.epub --no_limit --test
+      env:
+        KEY: ${{ secrets.OPENAI_KEY }}
+      run: python3 make.py --book_name test_books/animal_farm.epub --openai_key $KEY --no_limit --test
     
