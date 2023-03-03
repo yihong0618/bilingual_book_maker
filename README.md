@@ -23,12 +23,12 @@ Make bilingual epub books Using AI translate
 e.g.
 ```shell
 # 如果你想快速测一下
-python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --no_limit --test
+python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --no_limit --test --language zh-hans
 # or do it
-python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key}
+python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --language zh-hans
 # or 用 gpt3 模型
 export OPENAI_API_KEY=${your_api_key}
-python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_limit
+python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_limit --language zh-hans
 ```
 
 ## 注意
