@@ -206,7 +206,6 @@ if __name__ == "__main__":
     options = parser.parse_args()
     NO_LIMIT = options.no_limit
     IS_TEST = options.test
-    print(options.test_num)
     TEST_NUM = options.test_num
     OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
     if not OPENAI_API_KEY:
