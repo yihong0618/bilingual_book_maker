@@ -26,4 +26,4 @@ jobs:
       - name: make test ebook
         env:
           OPENAI_API_KEY=: ${{ secrets.OPENAI_API_KEY }}
-        run: python3 make.py --book_name test_books/animal_farm.epub --no_limit --test --test_num 3
+        run: python3 make.py --book_name test_books/animal_farm.epub --no_limit --test --test_num 2
