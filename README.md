@@ -1,8 +1,8 @@
 # bilingual_book_maker
+
 Make bilingual epub books Using AI translate
 
 ![image](https://user-images.githubusercontent.com/15976103/222317531-a05317c5-4eee-49de-95cd-04063d9539d9.png)
-
 
 ## 准备
 
@@ -10,7 +10,6 @@ Make bilingual epub books Using AI translate
 2. epub books
 3. 能正常联网的环境或 proxy
 4. python3.8+
-
 
 ## 使用
 
@@ -24,6 +23,7 @@ Make bilingual epub books Using AI translate
    Default target language is `"Simplified Chinese"`. Support language list please see the LANGUAGES at [utils.py](./utils.py).
 7. 加了 `--proxy` 参数，方便中国大陆的用户在本地测试时使用代理，传入类似 `http://127.0.0.1:7890` 的字符串
 8. 加入 `--resume` 命令，可以手动中断后，加入命令继续执行。
+9. 加了 `--lang` 参数，设为 `zh-cn` 可翻译为简体中文，设为 `zh-tw` 可翻译为繁体中文
 
 e.g.
 ```shell
@@ -42,7 +42,6 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_l
 2. 现在是 demo 版本有很多工作要做 PR welcome
 3. 尤其是 batch translate 做完效果会好很多
 4. DeepL 模型稍后更新
-
 
 # 感谢
 
