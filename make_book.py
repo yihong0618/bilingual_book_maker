@@ -150,7 +150,7 @@ class BEPUB:
                 if i.get_type() == 9:
                     soup = bs(i.content, "html.parser")
                     p_list = soup.findAll("p")
-                    is_test_done = IS_TEST and index > TEST_NUM 
+                    is_test_done = IS_TEST and index > TEST_NUM
                     for p in p_list:
                         if is_test_done or not p.text or self._is_special_text(p.text):
                             continue
