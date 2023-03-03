@@ -11,11 +11,15 @@ jobs:
   testing:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-python@v4
+    - name: install python 3.9 
+      uses: actions/setup-python@v4
       with:
         python-version: '3.9'
         cache: 'pip' # caching pip dependencies
-    - run: pip install -r requirements.txt
-    - run: python3 make.py --book_name test_books/animal_farm.epub --no_limit --test
+    - name: checkout code
+      uses: actions/checkout@v3
+    - name: install python requirements
+      run: pip install -r requirements.txt
+    - name: make test ebook
+      run: python3 make.py --book_name test_books/animal_farm.epub --no_limit --test
     
