@@ -15,6 +15,7 @@ from rich import print
 NO_LIMIT = False
 IS_TEST = False
 RESUME = False
+LANG = "Simplified Chinese"
 
 
 class Base:
@@ -46,7 +47,7 @@ class GPT3(Base):
 
     def translate(self, text):
         print(text)
-        self.data["prompt"] = f"Please help me to translate，`{text}` to Chinese"
+        self.data["prompt"] = f"Please help me to translate，`{text}` to {LANG}"
         r = self.session.post(self.api_url, headers=self.headers, json=self.data)
         if not r.ok:
             return text
@@ -78,7 +79,7 @@ class ChatGPT(Base):
                     {
                         "role": "user",
                         # english prompt here to save tokens
-                        "content": f"Please help me to translate，`{text}` to Chinese, please return only translated content not include the origin text",
+                        "content": f"Please help me to translate，`{text}` to {LANG}, please return only translated content not include the origin text",
                     }
                 ],
             )
@@ -101,7 +102,7 @@ class ChatGPT(Base):
                 messages=[
                     {
                         "role": "user",
-                        "content": f"Please help me to translate，`{text}` to Simplified Chinese, please return only translated content not include the origin text",
+                        "content": f"Please help me to translate，`{text}` to {LANG}, please return only translated content not include the origin text",
                     }
                 ],
             )
@@ -242,10 +243,22 @@ if __name__ == "__main__":
         action="store_true",
         help="if program accidentally stop you can use this to resume",
     )
+    parser.add_argument(
+        "--lang",
+        dest="lang",
+        type=str,
+        default="zh-cn",
+        choices=["zh-cn", "zh-tw"],
+        help="Choose lang for zh-cn (Simplified Chinese) or zh-tw (Traditional Chinese)",
+    )
     options = parser.parse_args()
     NO_LIMIT = options.no_limit
     IS_TEST = options.test
     TEST_NUM = options.test_num
+    if options.lang == "zh-cn":
+        LANG = "Simplified Chinese"
+    elif options.lang == "zh-tw":
+        LANG = "Traditional Chinese"
     OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
     RESUME = options.resume
     if not OPENAI_API_KEY:
