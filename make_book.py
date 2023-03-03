@@ -73,7 +73,6 @@ class ChatGPT(Base):
 
     def translate(self, text):
         print(text)
-        print(self.language, "!!!")
         openai.api_key = self.key
         try:
             completion = openai.ChatCompletion.create(
