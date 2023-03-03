@@ -1,8 +1,10 @@
 import argparse
+import pickle
 import time
 from abc import abstractmethod
 from copy import copy
 from os import environ as env
+from pathlib import Path
 
 import openai
 import requests
@@ -12,6 +14,7 @@ from rich import print
 
 NO_LIMIT = False
 IS_TEST = False
+RESUME = False
 
 
 class Base:
@@ -114,11 +117,16 @@ class ChatGPT(Base):
 
 
 class BEPUB:
-    def __init__(self, epub_name, model, key):
+    def __init__(self, epub_name, model, key, resume):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
         self.translate_model = model(key)
         self.origin_book = epub.read_epub(self.epub_name)
+        self.p_t = []
+        self.resume = resume
+        self.bin_path = f"{Path(epub_name).parent}/.{Path(epub_name).stem}.temp.bin"
+        if self.resume:
+            self.load_state()
 
     def make_bilingual_book(self):
         new_book = epub.EpubBook()
@@ -132,24 +140,58 @@ class BEPUB:
         )
         print("TODO need process bar here: " + str(all_p_length))
         index = 0
-        for i in self.origin_book.get_items():
-            if i.get_type() == 9:
-                soup = bs(i.content, "html.parser")
-                p_list = soup.findAll("p")
-                is_test_done = IS_TEST and index > 20
-                for p in p_list:
-                    if not is_test_done:
-                        if p.text and not p.text.isdigit():
-                            new_p = copy(p)
-                            # TODO banch of p to translate then combine
-                            # PR welcome here
-                            new_p.string = self.translate_model.translate(p.text)
-                            p.insert_after(new_p)
-                            index += 1
-                i.content = soup.prettify().encode()
-            new_book.add_item(i)
-        name = self.epub_name.split(".")[0]
-        epub.write_epub(f"{name}_bilingual.epub", new_book, {})
+        try:
+            for i in self.origin_book.get_items():
+                if i.get_type() == 9:
+                    soup = bs(i.content, "html.parser")
+                    p_list = soup.findAll("p")
+                    is_test_done = IS_TEST and index > 20
+                    for p in p_list:
+                        if not is_test_done:
+                            if p.text and not p.text.isdigit():
+                                if self.resume:
+                                    if index < len(self.p_t):
+                                        # already translated
+                                        new_p = copy(p)
+                                        new_p.string = self.p_t[index]
+                                        p.insert_after(new_p)
+                                        index += 1
+                                        continue
+                                new_p = copy(p)
+                                # TODO banch of p to translate then combine
+                                # PR welcome here
+                                new_p.string = self.translate_model.translate(p.text)
+                                p.insert_after(new_p)
+                                self.p_t.append(new_p.text)
+                                index += 1
+                    i.content = soup.prettify().encode()
+                new_book.add_item(i)
+            name = self.epub_name.split(".")[0]
+            epub.write_epub(f"{name}_bilingual.epub", new_book, {})
+        except KeyboardInterrupt as e:
+            print(e)
+            print("you can resume it next time")
+            self.save_progress()
+            exit(0)
+        except Exception as e:
+            print(e)
+            print("you can resume it next time")
+            self.save_progress()
+            exit(0)
+
+    def load_state(self):
+        try:
+            with open(self.bin_path, "rb") as f:
+                self.p_t = pickle.load(f)
+        except:
+            raise Exception("can not load resume file")
+
+    def save_progress(self):
+        try:
+            with open(self.bin_path, "wb") as f:
+                pickle.dump(self.p_t, f)
+        except:
+            raise Exception("can not save resume file")
 
 
 if __name__ == "__main__":
@@ -189,14 +231,21 @@ if __name__ == "__main__":
         choices=["chatgpt", "gpt3"],  # support DeepL later
         help="Use which model",
     )
+    parser.add_argument(
+        "--resume",
+        dest="resume",
+        action="store_true",
+        help="if program accidentally stop you can use this to resume",
+    )
     options = parser.parse_args()
     NO_LIMIT = options.no_limit
     IS_TEST = options.test
     OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
+    RESUME = options.resume
     if not OPENAI_API_KEY:
         raise Exception("Need openai API key, please google how to")
     if not options.book_name.endswith(".epub"):
         raise Exception("please use epub file")
     model = MODEL_DICT.get(options.model, "chatgpt")
-    e = BEPUB(options.book_name, model, OPENAI_API_KEY)
+    e = BEPUB(options.book_name, model, OPENAI_API_KEY, RESUME)
     e.make_bilingual_book()
