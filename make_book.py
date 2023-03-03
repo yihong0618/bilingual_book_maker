@@ -128,6 +128,10 @@ class BEPUB:
         if self.resume:
             self.load_state()
 
+    @staticmethod
+    def _is_special_text(text):
+        return text.isdigit() or text.isspace()
+
     def make_bilingual_book(self):
         new_book = epub.EpubBook()
         new_book.metadata = self.origin_book.metadata
@@ -146,9 +150,9 @@ class BEPUB:
                 if i.get_type() == 9:
                     soup = bs(i.content, "html.parser")
                     p_list = soup.findAll("p")
-                    is_test_done = IS_TEST and index > 20
+                    is_test_done = IS_TEST and index > TEST_NUM 
                     for p in p_list:
-                        if is_test_done or not p.text or p.text.isdigit():
+                        if is_test_done or not p.text or self._is_special_text(p.text):
                             continue
                         new_p = copy(p)
                         if self.resume and index < p_t_len:
@@ -158,6 +162,8 @@ class BEPUB:
                             self.p_t.append(new_p.text)
                         p.insert_after(new_p)
                         index += 1
+                        if IS_TEST and index > TEST_NUM:
+                            break
                     i.content = soup.prettify().encode()
                 new_book.add_item(i)
             name = self.epub_name.split(".")[0]
@@ -214,8 +220,16 @@ if __name__ == "__main__":
         "--test",
         dest="test",
         action="store_true",
-        help="if test we only translat 20 contents you can easily check",
+        help="if test we only translat 10 contents you can easily check",
     )
+    parser.add_argument(
+        "--test_num",
+        dest="test_num",
+        type=int,
+        default=10,
+        help="test num for the test",
+    )
+
     parser.add_argument(
         "-m",
         "--model",
@@ -234,6 +248,7 @@ if __name__ == "__main__":
     options = parser.parse_args()
     NO_LIMIT = options.no_limit
     IS_TEST = options.test
+    TEST_NUM = options.test_num
     OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
     RESUME = options.resume
     if not OPENAI_API_KEY:
