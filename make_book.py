@@ -247,8 +247,10 @@ if __name__ == "__main__":
         default="zh-hans",
         help="language to translate to",
     )
-    print(sorted(LANGUAGES.values())
-        + sorted([k.title() for k in TO_LANGUAGE_CODE.keys()]))
+    print(
+        sorted(LANGUAGES.values())
+        + sorted([k.title() for k in TO_LANGUAGE_CODE.keys()])
+    )
     parser.add_argument(
         "--resume",
         dest="resume",
