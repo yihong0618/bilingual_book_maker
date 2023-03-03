@@ -186,7 +186,7 @@ if __name__ == "__main__":
         type=str,
         default="",
         help="openai api key,if you have more than one key,you can use comma"
-             " to split them and you can break through the limitation",
+        " to split them and you can break through the limitation",
     )
     parser.add_argument(
         "--no_limit",
@@ -231,9 +231,8 @@ if __name__ == "__main__":
     TEST_NUM = options.test_num
     PROXY = options.proxy
     if PROXY != "":
-        os.environ['http_proxy'] = PROXY
-        os.environ['https_proxy'] = PROXY
-
+        os.environ["http_proxy"] = PROXY
+        os.environ["https_proxy"] = PROXY
 
     OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
     if not OPENAI_API_KEY:
