@@ -73,6 +73,7 @@ class ChatGPT(Base):
 
     def translate(self, text):
         print(text)
+        print(self.language, "!!!")
         openai.api_key = self.key
         try:
             completion = openai.ChatCompletion.create(
@@ -242,14 +243,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--language",
         type=str,
-        choices=sorted(LANGUAGES.values())
+        choices=sorted(LANGUAGES.keys())
         + sorted([k.title() for k in TO_LANGUAGE_CODE.keys()]),
         default="zh-hans",
         help="language to translate to",
-    )
-    print(
-        sorted(LANGUAGES.values())
-        + sorted([k.title() for k in TO_LANGUAGE_CODE.keys()])
     )
     parser.add_argument(
         "--resume",
@@ -268,7 +265,10 @@ if __name__ == "__main__":
     if not options.book_name.endswith(".epub"):
         raise Exception("please use epub file")
     model = MODEL_DICT.get(options.model, "chatgpt")
-    e = BEPUB(
-        options.book_name, model, OPENAI_API_KEY, RESUME, language=options.language
-    )
+    language = options.language
+    if options.language in LANGUAGES:
+        # use the value for prompt
+        language = LANGUAGES.get(language, language)
+
+    e = BEPUB(options.book_name, model, OPENAI_API_KEY, RESUME, language=language)
     e.make_bilingual_book()
