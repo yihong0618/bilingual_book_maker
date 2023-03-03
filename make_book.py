@@ -122,7 +122,7 @@ class BEPUB:
         self.new_epub = epub.EpubBook()
         self.translate_model = model(key)
         self.origin_book = epub.read_epub(self.epub_name)
-        self.p_t = []
+        self.p_to_save = []
         self.resume = resume
         self.bin_path = f"{Path(epub_name).parent}/.{Path(epub_name).stem}.temp.bin"
         if self.resume:
@@ -144,7 +144,7 @@ class BEPUB:
         )
         print("TODO need process bar here: " + str(all_p_length))
         index = 0
-        p_t_len = len(self.p_t)
+        p_to_save_len = len(self.p_to_save)
         try:
             for i in self.origin_book.get_items():
                 if i.get_type() == 9:
@@ -157,11 +157,11 @@ class BEPUB:
                         new_p = copy(p)
                         # TODO banch of p to translate then combine
                         # PR welcome here
-                        if self.resume and index < p_t_len:
-                            new_p.string = self.p_t[index]
+                        if self.resume and index < p_to_save_len:
+                            new_p.string = self.p_to_save[index]
                         else:
                             new_p.string = self.translate_model.translate(p.text)
-                            self.p_t.append(new_p.text)
+                            self.p_to_save.append(new_p.text)
                         p.insert_after(new_p)
                         index += 1
                         if IS_TEST and index > TEST_NUM:
@@ -170,12 +170,7 @@ class BEPUB:
                 new_book.add_item(i)
             name = self.epub_name.split(".")[0]
             epub.write_epub(f"{name}_bilingual.epub", new_book, {})
-        except KeyboardInterrupt as e:
-            print(e)
-            print("you can resume it next time")
-            self.save_progress()
-            exit(0)
-        except Exception as e:
+        except (KeyboardInterrupt, Exception) as e:
             print(e)
             print("you can resume it next time")
             self.save_progress()
@@ -184,14 +179,14 @@ class BEPUB:
     def load_state(self):
         try:
             with open(self.bin_path, "rb") as f:
-                self.p_t = pickle.load(f)
+                self.p_to_save = pickle.load(f)
         except:
             raise Exception("can not load resume file")
 
     def save_progress(self):
         try:
             with open(self.bin_path, "wb") as f:
-                pickle.dump(self.p_t, f)
+                pickle.dump(self.p_to_save, f)
         except:
             raise Exception("can not save resume file")
 
