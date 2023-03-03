@@ -206,7 +206,14 @@ if __name__ == "__main__":
         choices=["chatgpt", "gpt3"],  # support DeepL later
         help="Use which model",
     )
-    parser.add_argument("--language", type=str,choices=sorted(LANGUAGES.keys()) + sorted([k.title() for k in TO_LANGUAGE_CODE.keys()]), default="zh-hans", help="language to translate to")
+    parser.add_argument(
+        "--language",
+        type=str,
+        choices=sorted(LANGUAGES.keys())
+        + sorted([k.title() for k in TO_LANGUAGE_CODE.keys()]),
+        default="zh-hans",
+        help="language to translate to",
+    )
     options = parser.parse_args()
     NO_LIMIT = options.no_limit
     IS_TEST = options.test

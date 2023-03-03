@@ -1,5 +1,3 @@
-
-
 # Borrowed from : https://github.com/openai/whisper
 LANGUAGES = {
     "en": "english",
