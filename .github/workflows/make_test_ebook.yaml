@@ -18,7 +18,9 @@ jobs:
           python-version: '3.9'
           cache: 'pip' # caching pip dependencies
       - name: Check formatting (black)
-        run: black . --check
+        run: |
+            pip install black
+            black . --check
       - name: install python requirements
         run: pip install -r requirements.txt
       - name: make test ebook
