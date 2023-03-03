@@ -19,16 +19,19 @@ Make bilingual epub books Using AI translate
 3. 本地放了一个 animal_farm.epub 给大家测试
 4. 默认用了 ChatGPT 模型，用 `--model gpt3` 来使用 gpt3 模型
 5. 加了 `--test` 命令如果大家没付费可以加上这个先看看效果（有 limit 稍微有些慢）
+6. Set the target language like `--language "Simplified Chinese"`. 
+   Suppot ` "Japanese" / "Traditional Chinese" / "German" / "French" / "Korean"`.
+   Default target language is `"Simplified Chinese"`. Support language list please see the LANGUAGES at [utils.py](./utils.py).
 
 e.g.
 ```shell
 # 如果你想快速测一下
-python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --no_limit --test
+python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --no_limit --test --language "Simplified Chinese"
 # or do it
-python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key}
+python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --language "Simplified Chinese"
 # or 用 gpt3 模型
 export OPENAI_API_KEY=${your_api_key}
-python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_limit
+python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_limit --language "Simplified Chinese"
 ```
 
 ## 注意
