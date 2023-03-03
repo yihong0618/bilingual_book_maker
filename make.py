@@ -120,6 +120,10 @@ class BEPUB:
         self.translate_model = model(key)
         self.origin_book = epub.read_epub(self.epub_name)
 
+    @staticmethod
+    def _is_special_text(text):
+        return text.isdigit() or text.isspace()
+
     def make_bilingual_book(self):
         new_book = epub.EpubBook()
         new_book.metadata = self.origin_book.metadata
@@ -136,16 +140,18 @@ class BEPUB:
             if i.get_type() == 9:
                 soup = bs(i.content, "html.parser")
                 p_list = soup.findAll("p")
-                is_test_done = IS_TEST and index > 20
+                is_test_done = IS_TEST and index > TEST_NUM
                 for p in p_list:
                     if not is_test_done:
-                        if p.text and not p.text.isdigit():
+                        if p.text and not self._is_special_text(p.text):
                             new_p = copy(p)
                             # TODO banch of p to translate then combine
                             # PR welcome here
                             new_p.string = self.translate_model.translate(p.text)
                             p.insert_after(new_p)
                             index += 1
+                            if IS_TEST and index > TEST_NUM:
+                                break
                 i.content = soup.prettify().encode()
             new_book.add_item(i)
         name = self.epub_name.split(".")[0]
@@ -181,6 +187,14 @@ if __name__ == "__main__":
         help="if test we only translat 20 contents you can easily check",
     )
     parser.add_argument(
+        "--test_num",
+        dest="test_num",
+        type=int,
+        default=10,
+        help="test num for the test",
+    )
+
+    parser.add_argument(
         "-m",
         "--model",
         dest="model",
@@ -192,6 +206,8 @@ if __name__ == "__main__":
     options = parser.parse_args()
     NO_LIMIT = options.no_limit
     IS_TEST = options.test
+    print(options.test_num)
+    TEST_NUM = options.test_num
     OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
     if not OPENAI_API_KEY:
         raise Exception("Need openai API key, please google how to")

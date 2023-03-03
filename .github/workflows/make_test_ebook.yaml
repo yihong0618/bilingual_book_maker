@@ -1,4 +1,4 @@
-name: Pull Request
+name: CI 
 on:
   push:
     branches: [ main ]
@@ -11,19 +11,17 @@ jobs:
   testing:
     runs-on: ubuntu-latest
     steps:
-    - name: install python 3.9 
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-        cache: 'pip' # caching pip dependencies
-    - name: checkout code
-      uses: actions/checkout@v3
-    - name: Check formatting (black)
-      run: black . --check
-    - name: install python requirements
-      run: pip install -r requirements.txt
-    - name: make test ebook
-      env:
-        KEY: ${{ secrets.OPENAI_KEY }}
-      run: python3 make.py --book_name test_books/animal_farm.epub --openai_key $KEY --no_limit --test
-    
+      - uses: actions/checkout@v3
+      - name: install python 3.9 
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.9'
+          cache: 'pip' # caching pip dependencies
+      - name: Check formatting (black)
+        run: black . --check
+      - name: install python requirements
+        run: pip install -r requirements.txt
+      - name: make test ebook
+        env:
+          OPENAI_API_KEY=: ${{ secrets.OPENAI_API_KEY }}
+        run: python3 make.py --book_name test_books/animal_farm.epub --no_limit --test --test_num 3
