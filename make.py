@@ -140,6 +140,7 @@ class BEPUB:
         )
         print("TODO need process bar here: " + str(all_p_length))
         index = 0
+        p_t_len = len(self.p_t)
         try:
             for i in self.origin_book.get_items():
                 if i.get_type() == 9:
@@ -147,23 +148,16 @@ class BEPUB:
                     p_list = soup.findAll("p")
                     is_test_done = IS_TEST and index > 20
                     for p in p_list:
-                        if not is_test_done:
-                            if p.text and not p.text.isdigit():
-                                if self.resume:
-                                    if index < len(self.p_t):
-                                        # already translated
-                                        new_p = copy(p)
-                                        new_p.string = self.p_t[index]
-                                        p.insert_after(new_p)
-                                        index += 1
-                                        continue
-                                new_p = copy(p)
-                                # TODO banch of p to translate then combine
-                                # PR welcome here
-                                new_p.string = self.translate_model.translate(p.text)
-                                p.insert_after(new_p)
-                                self.p_t.append(new_p.text)
-                                index += 1
+                        if is_test_done or not p.text or p.text.isdigit():
+                            continue
+                        new_p = copy(p)
+                        if self.resume and index < p_t_len:
+                            new_p.string = self.p_t[index]
+                        else:
+                            new_p.string = self.translate_model.translate(p.text)
+                            self.p_t.append(new_p.text)
+                        p.insert_after(new_p)
+                        index += 1
                     i.content = soup.prettify().encode()
                 new_book.add_item(i)
             name = self.epub_name.split(".")[0]
