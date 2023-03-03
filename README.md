@@ -18,7 +18,8 @@ Make bilingual epub books Using AI translate
 2. openapi token
 3. 本地放了一个 animal_farm.epub 给大家测试
 4. 默认用了 ChatGPT 模型，用 `--model gpt3` 来使用 gpt3 模型
-5. 加了 `--test` 命令如果大家没付费可以加上这个先看看效果（有 limit 稍微有些慢）
+5. 加了 `--test` 参数如果大家没付费可以加上这个先看看效果（有 limit 稍微有些慢）
+6. 加了 `--proxy` 参数，方便中国大陆的用户在本地测试时使用代理，传入类似 `http://127.0.0.1:7890` 的字符串
 
 e.g.
 ```shell

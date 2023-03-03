@@ -1,4 +1,5 @@
 import argparse
+import os
 import random
 import time
 from abc import abstractmethod
@@ -206,7 +207,6 @@ if __name__ == "__main__":
         default=10,
         help="test num for the test",
     )
-
     parser.add_argument(
         "-m",
         "--model",
@@ -216,10 +216,25 @@ if __name__ == "__main__":
         choices=["chatgpt", "gpt3"],  # support DeepL later
         help="Which model to use",
     )
+    parser.add_argument(
+        "-p",
+        "--proxy",
+        dest="proxy",
+        type=str,
+        default="",
+        help="use proxy like http://127.0.0.1:7890",
+    )
+
     options = parser.parse_args()
     NO_LIMIT = options.no_limit
     IS_TEST = options.test
     TEST_NUM = options.test_num
+    PROXY = options.proxy
+    if PROXY != "":
+        os.environ['http_proxy'] = PROXY
+        os.environ['https_proxy'] = PROXY
+
+
     OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
     if not OPENAI_API_KEY:
         raise Exception("Need openai API key, please google how to")
