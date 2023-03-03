@@ -18,6 +18,8 @@ jobs:
         cache: 'pip' # caching pip dependencies
     - name: checkout code
       uses: actions/checkout@v3
+    - name: Check formatting (black)
+      run: black . --check
     - name: install python requirements
       run: pip install -r requirements.txt
     - name: make test ebook
