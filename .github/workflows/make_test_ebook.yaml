@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: install python 3.9 
-        uses: actions/setup-python@v3
+        uses: actions/setup-python@v4
         with:
           python-version: '3.9'
           cache: 'pip' # caching pip dependencies
@@ -26,4 +26,4 @@ jobs:
       - name: make test ebook
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: python3 make.py --book_name test_books/animal_farm.epub --no_limit --test --test_num 2
+        run: python3 make_book.py --book_name test_books/animal_farm.epub --no_limit --test --test_num 2

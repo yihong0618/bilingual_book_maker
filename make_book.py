@@ -184,7 +184,7 @@ if __name__ == "__main__":
         "--test",
         dest="test",
         action="store_true",
-        help="if test we only translat 20 contents you can easily check",
+        help="if test we only translat 10 contents you can easily check",
     )
     parser.add_argument(
         "--test_num",
