@@ -2,6 +2,8 @@ import argparse
 import os
 import pickle
 import time
+import os
+
 from abc import abstractmethod
 from copy import copy
 from os import environ as env
@@ -177,7 +179,8 @@ class BEPUB:
                         if self.resume and index < p_to_save_len:
                             new_p.string = self.p_to_save[index]
                         else:
-                            new_p.string = self.translate_model.translate(p.text)
+                            new_p.string = self.translate_model.translate(
+                                p.text)
                             self.p_to_save.append(new_p.text)
                         p.insert_after(new_p)
                         index += 1
@@ -204,6 +207,76 @@ class BEPUB:
         try:
             with open(self.bin_path, "wb") as f:
                 pickle.dump(self.p_to_save, f)
+        except:
+            raise Exception("can not save resume file")
+
+
+class Text:
+    def __init__(self, book_name, model, key, resume):
+        self.book_name = book_name
+        self.translate_model = model(key)
+        self.origin_book = self.load_file(self.book_name).split("\n")
+        self.p_to_save = []
+        self.resume = resume
+        self.bin_path = f"{os.path.abspath(self.book_name)}.bin.temp"
+        if self.resume:
+            self.load_state()
+
+    @staticmethod
+    def _is_special_text(text):
+        return text.isdigit() or text.isspace()
+
+    def make_bilingual_book(self):
+        new_book = epub.EpubBook()
+        all_p_length = len(self.origin_book)
+        print("TODO need process bar here: " + str(all_p_length))
+        index = 0
+        p_to_save_len = len(self.p_to_save)
+        try:
+            for i in self.origin_book:
+                if self._is_special_text(i):
+                    continue
+                if self.resume and index < p_to_save_len:
+                    pass
+                else:
+                    temp = self.translate_model.translate(i)
+                    self.p_to_save.append(temp)
+                index += 1
+                if IS_TEST and index > TEST_NUM:
+                    break
+            name = self.book_name.split(".")[0]
+            self.save_file(f"{name}_bilingual.txt", self.p_to_save)
+        except (KeyboardInterrupt, Exception) as e:
+            print(e)
+            print("you can resume it next time")
+            self.save_progress()
+            exit(0)
+
+    def load_file(self, book_path):
+        try:
+            with open(book_path, "r", encoding="utf-8") as f:
+                return f.read()
+        except:
+            raise Exception("can not load file")
+    
+    def save_file(self, book_path, content):
+        try:
+            with open(book_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(content))
+        except:
+            raise Exception("can not save file")
+
+    def load_state(self):
+        try:
+            with open(self.bin_path, "r", encoding="utf-8") as f:
+                self.p_to_save = f.read().split("\n")
+        except:
+            raise Exception("can not load resume file")
+
+    def save_progress(self):
+        try:
+            with open(self.bin_path, "w") as f:
+                f.write("\n".join(self.p_to_save))
         except:
             raise Exception("can not save resume file")
 
@@ -280,7 +353,7 @@ if __name__ == "__main__":
         dest="lang",
         type=str,
         default="zh-tw",
-        choices=["zh-cn", "zh-tw"],
+        choices=["zh-cn", "zh-tw", "jp"],
         help="Choose lang for zh-cn (Simplified Chinese) or zh-tw (Traditional Chinese)",
     )
     options = parser.parse_args()
@@ -296,17 +369,16 @@ if __name__ == "__main__":
         LANG = "Simplified Chinese"
     elif options.lang == "zh-tw":
         LANG = "Traditional Chinese"
+    elif options.lang == "jp":
+        LANG = "Japanese"
     OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
     RESUME = options.resume
     if not OPENAI_API_KEY:
         raise Exception("Need openai API key, please google how to")
-    if not options.book_name.endswith(".epub"):
-        raise Exception("please use epub file")
     model = MODEL_DICT.get(options.model, "chatgpt")
-    language = options.language
-    if options.language in LANGUAGES:
-        # use the value for prompt
-        language = LANGUAGES.get(language, language)
-
-    e = BEPUB(options.book_name, model, OPENAI_API_KEY, RESUME, language=language)
-    e.make_bilingual_book()
+    if options.book_name.endswith(".epub"):
+        book = BEPUB(options.book_name, model, OPENAI_API_KEY, RESUME)
+        book.make_bilingual_book()
+    elif options.book_name.endswith(".txt"):
+        book = Text(options.book_name, model, OPENAI_API_KEY, RESUME)
+        book.make_bilingual_book()
