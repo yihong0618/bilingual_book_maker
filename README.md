@@ -4,11 +4,11 @@ Make bilingual epub books Using AI translate
 
 ![image](https://user-images.githubusercontent.com/15976103/222317531-a05317c5-4eee-49de-95cd-04063d9539d9.png)
 
-## 准备
+## 準備
 
 1. ChatGPT or OpenAI token
 2. epub books
-3. 能正常联网的环境或 proxy
+3. 能正常聯網的環境或 proxy
 4. python3.8+
 
 ## 使用
@@ -25,7 +25,6 @@ Make bilingual epub books Using AI translate
 8. 加入 `--resume` 命令，可以手动中断后，加入命令继续执行。
 9. 加了 `--lang` 参数，设为 `zh-cn` 可翻译为简体中文，设为 `zh-tw` 可翻译为繁体中文
 
-e.g.
 ```shell
 # 如果你想快速测一下
 python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --no_limit --test --language "Simplified Chinese"
@@ -43,18 +42,18 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_l
 3. 尤其是 batch translate 做完效果会好很多
 4. DeepL 模型稍后更新
 
-# 感谢
+# 感謝
 
 - @[yetone](https://github.com/yetone)
 
-# 贡献
+# 貢獻
 
-- 任何 issue PR 都欢迎
-- Issue 中有些 TODO 没做的都可以选
-- 提交代码前请先 `black make_book.py`
+- 任何 issue PR 都歡迎
+- Issue 中有些 TODO 沒做的都可以選
+- 提交程式碼前請先 `black make_book.py`
 
-## 赞赏
+## 讚賞
 
-谢谢就够了
+謝謝就夠了
 
 ![image](https://user-images.githubusercontent.com/15976103/222407199-1ed8930c-13a8-402b-9993-aaac8ee84744.png)
