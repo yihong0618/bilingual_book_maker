@@ -13,6 +13,8 @@ from ebooklib import epub
 from rich import print
 from utils import LANGUAGES, TO_LANGUAGE_CODE
 
+from alive_progress import alive_bar
+
 NO_LIMIT = False
 IS_TEST = False
 RESUME = False
@@ -140,37 +142,46 @@ class BEPUB:
         new_book.metadata = self.origin_book.metadata
         new_book.spine = self.origin_book.spine
         new_book.toc = self.origin_book.toc
-        all_items = list(self.origin_book.get_items())
-        # we just translate tag p
-        all_p_length = sum(
-            [len(bs(i.content, "html.parser").findAll("p")) for i in all_items]
-        )
-        print("TODO need process bar here: " + str(all_p_length))
+        # find all p tag
+        all_p_length = 0
+        for i in self.origin_book.get_items():
+            if i.get_type() == 9:
+                soup = bs(i.content, "html.parser")
+                p_list = soup.findAll("p")
+                is_test_done = IS_TEST and index > TEST_NUM
+                for p in p_list:
+                    if is_test_done or not p.text or self._is_special_text(p.text):
+                        continue
+                    all_p_length += 1
         index = 0
         p_to_save_len = len(self.p_to_save)
         try:
-            for i in self.origin_book.get_items():
-                if i.get_type() == 9:
-                    soup = bs(i.content, "html.parser")
-                    p_list = soup.findAll("p")
-                    is_test_done = IS_TEST and index > TEST_NUM
-                    for p in p_list:
-                        if is_test_done or not p.text or self._is_special_text(p.text):
-                            continue
-                        new_p = copy(p)
-                        # TODO banch of p to translate then combine
-                        # PR welcome here
-                        if self.resume and index < p_to_save_len:
-                            new_p.string = self.p_to_save[index]
-                        else:
-                            new_p.string = self.translate_model.translate(p.text)
-                            self.p_to_save.append(new_p.text)
-                        p.insert_after(new_p)
-                        index += 1
-                        if IS_TEST and index > TEST_NUM:
-                            break
-                    i.content = soup.prettify().encode()
-                new_book.add_item(i)
+            with alive_bar(all_p_length) as bar:
+                for i in self.origin_book.get_items():
+                    if i.get_type() == 9:
+                        soup = bs(i.content, "html.parser")
+                        p_list = soup.findAll("p")
+                        is_test_done = IS_TEST and index > TEST_NUM
+                        for p in p_list:
+                            if is_test_done or not p.text or self._is_special_text(p.text):
+                                continue
+                            new_p = copy(p)
+                            # TODO banch of p to translate then combine
+                            # PR welcome here
+                            if self.resume and index < p_to_save_len:
+                                new_p.string = self.p_to_save[index]
+                            else:
+                                new_p.string = self.translate_model.translate(
+                                    p.text)
+                                self.p_to_save.append(new_p.text)
+                            p.insert_after(new_p)
+                            index += 1
+                            # display progress bar
+                            bar()
+                            if IS_TEST and index > TEST_NUM:
+                                break
+                        i.content = soup.prettify().encode()
+                    new_book.add_item(i)
             name = self.epub_name.split(".")[0]
             epub.write_epub(f"{name}_bilingual.epub", new_book, {})
         except (KeyboardInterrupt, Exception) as e:
