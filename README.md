@@ -1,59 +1,62 @@
+**[中文](./README-CN.md) | English**
+
 # bilingual_book_maker
 
 Make bilingual epub books Using AI translate
 
 ![image](https://user-images.githubusercontent.com/15976103/222317531-a05317c5-4eee-49de-95cd-04063d9539d9.png)
 
-## 準備
+
+## Preparation
 
 1. ChatGPT or OpenAI token
-2. epub books
-3. 能正常聯網的環境或 proxy
+2. prepared epub books
+3. Environment with internet access or proxy
 4. python3.8+
 
-## 使用
+
+## Use
 
 1. pip install -r requirements.txt
-2. OpenAI API key，如果有多个可以用英文逗号分隔(xxx,xxx,xxx)，可以减少接口调用次数限制带来的错误
-3. 本地放了一个 animal_farm.epub 给大家测试
-4. 默认用了 ChatGPT 模型，用 `--model gpt3` 来使用 gpt3 模型
-5. 加了 `--test` 命令如果大家没付费可以加上这个先看看效果（有 limit 稍微有些慢）
+2. OpenAI API key. If you have multiple keys, separate them by commas (xxx,xxx,xxx) to reduce errors caused by API call limits.
+3. A sample book, test_books/animal_farm.epub, is provided for testing purposes.
+4. A sample book, animal_farm.epub, is provided for testing purposes.
+5. Use --test command to preview the result if you haven't paid for the service. Note that there is a limit and it may take some time.
 6. Set the target language like `--language "Simplified Chinese"`. 
    Suppot ` "Japanese" / "Traditional Chinese" / "German" / "French" / "Korean"`.
    Default target language is `"Simplified Chinese"`. Support language list please see the LANGUAGES at [utils.py](./utils.py).
-7. 加了 `--proxy` 参数，方便中国大陆的用户在本地测试时使用代理，传入类似 `http://127.0.0.1:7890` 的字符串
-8. 加入 `--resume` 命令，可以手动中断后，加入命令继续执行。
-9. 加了 `--lang` 参数，设为 `zh-cn` 可翻译为简体中文，设为 `zh-tw` 可翻译为繁体中文
+7. Use the --proxy parameter to enable users in mainland China to use a proxy when testing locally. Enter a string such as http://127.0.0.1:7890.
+8. Use the --resume command to manually resume the process after an interruption.
 
 ```shell
-# 如果你想快速测一下
+# Test quickly
 python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --no_limit --test --language "Simplified Chinese"
 # or do it
 python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --language "Simplified Chinese"
-# or 用 gpt3 模型
+# or use the GPT-3 model
 export OPENAI_API_KEY=${your_api_key}
 python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_limit --language "Simplified Chinese"
 ```
 
-## 注意
+## Notes
 
-1. 有 limit 如果想要速度可以付费
-2. 现在是 demo 版本有很多工作要做 PR welcome
-3. 尤其是 batch translate 做完效果会好很多
-4. DeepL 模型稍后更新
+1. here is a limit. If you want to speed up the process, consider paying for the service or use multiple OpenAI tokens
+2. PR welcome
+3. The DeepL model will be updated later.
 
-# 感謝
+
+# Thanks
 
 - @[yetone](https://github.com/yetone)
 
-# 貢獻
+# Contribution
 
-- 任何 issue PR 都歡迎
-- Issue 中有些 TODO 沒做的都可以選
-- 提交程式碼前請先 `black make_book.py`
+- Any issues or PRs are welcome.
+- TODOs in the issue can also be selected.
+- Please run black make_book.py before submitting the code.
 
-## 讚賞
+## Appreciation
 
-謝謝就夠了
+Thank you, that's enough.
 
 ![image](https://user-images.githubusercontent.com/15976103/222407199-1ed8930c-13a8-402b-9993-aaac8ee84744.png)
