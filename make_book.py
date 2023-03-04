@@ -1,6 +1,5 @@
 import argparse
 import os
-import random
 import pickle
 import time
 from abc import abstractmethod
@@ -13,6 +12,7 @@ import requests
 from bs4 import BeautifulSoup as bs
 from ebooklib import epub
 from rich import print
+
 from utils import LANGUAGES, TO_LANGUAGE_CODE
 
 NO_LIMIT = False
@@ -23,7 +23,7 @@ RESUME = False
 class Base:
     def __init__(self, key, language):
         self.key = key
-        self.language =language
+        self.language = language
         self.current_key_index = 0
 
     def get_key(self, key_str):
