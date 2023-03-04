@@ -22,7 +22,7 @@ Make bilingual epub books Using AI translate
 6. Set the target language like `--language "Simplified Chinese"`. 
    Suppot ` "Japanese" / "Traditional Chinese" / "German" / "French" / "Korean"`.
    Default target language is `"Simplified Chinese"`. Support language list please see the LANGUAGES at [utils.py](./utils.py).
-7. 加入 `--resume` 命令可以从上次中断的地方继续
+7. 加入 `--resume` 命令，可以手动中断后，加入命令继续执行。
 
 e.g.
 ```shell
