@@ -60,3 +60,7 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_l
 Thank you, that's enough.
 
 ![image](https://user-images.githubusercontent.com/15976103/222407199-1ed8930c-13a8-402b-9993-aaac8ee84744.png)
+
+<##Show your support
+
+Give a ⭐ if you like this and kindly follow for more!
