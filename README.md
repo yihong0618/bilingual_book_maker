@@ -23,6 +23,7 @@ Make bilingual epub books Using AI translate
    Suppot ` "Japanese" / "Traditional Chinese" / "German" / "French" / "Korean"`.
    Default target language is `"Simplified Chinese"`. Support language list please see the LANGUAGES at [utils.py](./utils.py).
 7. 加了 `--proxy` 参数，方便中国大陆的用户在本地测试时使用代理，传入类似 `http://127.0.0.1:7890` 的字符串
+8. 加入 `--resume` 命令，可以手动中断后，加入命令继续执行。
 
 e.g.
 ```shell
