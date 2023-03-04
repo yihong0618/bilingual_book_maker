@@ -1,23 +1,27 @@
 import argparse
 import os
 import random
+import pickle
 import time
 from abc import abstractmethod
 from copy import copy
 from os import environ as env
+from pathlib import Path
 
 import openai
 import requests
 from bs4 import BeautifulSoup as bs
 from ebooklib import epub
 from rich import print
+from utils import LANGUAGES, TO_LANGUAGE_CODE
 
 NO_LIMIT = False
 IS_TEST = False
+RESUME = False
 
 
 class Base:
-    def __init__(self, key):
+    def __init__(self, key, language):
         pass
 
     @staticmethod
@@ -36,7 +40,7 @@ class Base:
 
 
 class GPT3(Base):
-    def __init__(self, key):
+    def __init__(self, key, language):
         self.api_key = key
         self.api_url = "https://api.openai.com/v1/completions"
         self.headers = {
@@ -51,12 +55,13 @@ class GPT3(Base):
             "top_p": 1,
         }
         self.session = requests.session()
+        self.language = language
 
     def translate(self, text):
         print(text)
         api_key = self.get_key(self.api_key)
         self.headers["Authorization"] = f"Bearer {self.get_key(api_key)}"
-        self.data["prompt"] = f"Please help me to translate，`{text}` to Chinese"
+        self.data["prompt"] = f"Please help me to translate，`{text}` to {self.language}"
         r = self.session.post(self.api_url, headers=self.headers, json=self.data)
         if not r.ok:
             return text
@@ -74,9 +79,10 @@ class DeepL(Base):
 
 
 class ChatGPT(Base):
-    def __init__(self, key):
-        super().__init__(key)
+    def __init__(self, key, language):
+        super().__init__(key, language)
         self.key = key
+        self.language = language
 
     def translate(self, text):
         print(text)
@@ -88,7 +94,7 @@ class ChatGPT(Base):
                     {
                         "role": "user",
                         # english prompt here to save tokens
-                        "content": f"Please help me to translate，`{text}` to Chinese, please return only translated content not include the origin text",
+                        "content": f"Please help me to translate，`{text}` to {self.language}, please return only translated content not include the origin text",
                     }
                 ],
             )
@@ -127,11 +133,16 @@ class ChatGPT(Base):
 
 
 class BEPUB:
-    def __init__(self, epub_name, model, key):
+    def __init__(self, epub_name, model, key, resume, language):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
-        self.translate_model = model(key)
+        self.translate_model = model(key, language)
         self.origin_book = epub.read_epub(self.epub_name)
+        self.p_to_save = []
+        self.resume = resume
+        self.bin_path = f"{Path(epub_name).parent}/.{Path(epub_name).stem}.temp.bin"
+        if self.resume:
+            self.load_state()
 
     @staticmethod
     def _is_special_text(text):
@@ -149,26 +160,51 @@ class BEPUB:
         )
         print("TODO need process bar here: " + str(all_p_length))
         index = 0
-        for i in self.origin_book.get_items():
-            if i.get_type() == 9:
-                soup = bs(i.content, "html.parser")
-                p_list = soup.findAll("p")
-                is_test_done = IS_TEST and index > TEST_NUM
-                for p in p_list:
-                    if not is_test_done:
-                        if p.text and not self._is_special_text(p.text):
-                            new_p = copy(p)
-                            # TODO banch of p to translate then combine
-                            # PR welcome here
+        p_to_save_len = len(self.p_to_save)
+        try:
+            for i in self.origin_book.get_items():
+                if i.get_type() == 9:
+                    soup = bs(i.content, "html.parser")
+                    p_list = soup.findAll("p")
+                    is_test_done = IS_TEST and index > TEST_NUM
+                    for p in p_list:
+                        if is_test_done or not p.text or self._is_special_text(p.text):
+                            continue
+                        new_p = copy(p)
+                        # TODO banch of p to translate then combine
+                        # PR welcome here
+                        if self.resume and index < p_to_save_len:
+                            new_p.string = self.p_to_save[index]
+                        else:
                             new_p.string = self.translate_model.translate(p.text)
-                            p.insert_after(new_p)
-                            index += 1
-                            if IS_TEST and index > TEST_NUM:
-                                break
-                i.content = soup.prettify().encode()
-            new_book.add_item(i)
-        name = self.epub_name.split(".")[0]
-        epub.write_epub(f"{name}_bilingual.epub", new_book, {})
+                            self.p_to_save.append(new_p.text)
+                        p.insert_after(new_p)
+                        index += 1
+                        if IS_TEST and index > TEST_NUM:
+                            break
+                    i.content = soup.prettify().encode()
+                new_book.add_item(i)
+            name = self.epub_name.split(".")[0]
+            epub.write_epub(f"{name}_bilingual.epub", new_book, {})
+        except (KeyboardInterrupt, Exception) as e:
+            print(e)
+            print("you can resume it next time")
+            self.save_progress()
+            exit(0)
+
+    def load_state(self):
+        try:
+            with open(self.bin_path, "rb") as f:
+                self.p_to_save = pickle.load(f)
+        except:
+            raise Exception("can not load resume file")
+
+    def save_progress(self):
+        try:
+            with open(self.bin_path, "wb") as f:
+                pickle.dump(self.p_to_save, f)
+        except:
+            raise Exception("can not save resume file")
 
 
 if __name__ == "__main__":
@@ -217,6 +253,20 @@ if __name__ == "__main__":
         help="Which model to use",
     )
     parser.add_argument(
+        "--language",
+        type=str,
+        choices=sorted(LANGUAGES.keys())
+        + sorted([k.title() for k in TO_LANGUAGE_CODE.keys()]),
+        default="zh-hans",
+        help="language to translate to",
+    )
+    parser.add_argument(
+        "--resume",
+        dest="resume",
+        action="store_true",
+        help="if program accidentally stop you can use this to resume",
+    )
+    parser.add_argument(
         "-p",
         "--proxy",
         dest="proxy",
@@ -235,10 +285,16 @@ if __name__ == "__main__":
         os.environ["https_proxy"] = PROXY
 
     OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
+    RESUME = options.resume
     if not OPENAI_API_KEY:
         raise Exception("Need openai API key, please google how to")
     if not options.book_name.endswith(".epub"):
         raise Exception("please use epub file")
     model = MODEL_DICT.get(options.model, "chatgpt")
-    e = BEPUB(options.book_name, model, OPENAI_API_KEY)
+    language = options.language
+    if options.language in LANGUAGES:
+        # use the value for prompt
+        language = LANGUAGES.get(language, language)
+
+    e = BEPUB(options.book_name, model, OPENAI_API_KEY, RESUME, language=language)
     e.make_bilingual_book()
