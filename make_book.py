@@ -18,7 +18,7 @@ from utils import LANGUAGES, TO_LANGUAGE_CODE
 NO_LIMIT = False
 IS_TEST = False
 RESUME = False
-LANG = "Simplified Chinese"
+LANG = "Traditional Chinese"
 
 
 class Base:
@@ -279,7 +279,7 @@ if __name__ == "__main__":
         "--lang",
         dest="lang",
         type=str,
-        default="zh-cn",
+        default="zh-tw",
         choices=["zh-cn", "zh-tw"],
         help="Choose lang for zh-cn (Simplified Chinese) or zh-tw (Traditional Chinese)",
     )
