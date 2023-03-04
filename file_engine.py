@@ -1,4 +1,3 @@
-
 import os
 import pickle
 
@@ -12,7 +11,14 @@ from abstract import FileEngineBase, TranslateEngineBase
 
 
 class BEPUB(FileEngineBase):
-    def __init__(self, engine: TranslateEngineBase, book_name: str, resume: bool, is_test: bool, test_number: int):
+    def __init__(
+        self,
+        engine: TranslateEngineBase,
+        book_name: str,
+        resume: bool,
+        is_test: bool,
+        test_number: int,
+    ):
         self.is_test = is_test
         self.test_number = test_number
         self.epub_name = book_name
@@ -57,8 +63,7 @@ class BEPUB(FileEngineBase):
                         if self.resume and index < p_to_save_len:
                             new_p.string = self.p_to_save[index]
                         else:
-                            new_p.string = self.translate_model.translate(
-                                p.text)
+                            new_p.string = self.translate_model.translate(p.text)
                             self.p_to_save.append(new_p.text)
                         p.insert_after(new_p)
                         index += 1
@@ -90,7 +95,14 @@ class BEPUB(FileEngineBase):
 
 
 class BText(FileEngineBase):
-    def __init__(self, engine: TranslateEngineBase, book_name: str, resume: bool, is_test: bool, test_number: int):
+    def __init__(
+        self,
+        engine: TranslateEngineBase,
+        book_name: str,
+        resume: bool,
+        is_test: bool,
+        test_number: int,
+    ):
         self.is_test = is_test
         self.test_number = test_number
         self.book_name = book_name

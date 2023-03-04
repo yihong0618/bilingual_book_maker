@@ -1,4 +1,3 @@
-
 import time
 import openai
 import requests
@@ -27,12 +26,10 @@ class GPT3(TranslateEngineBase):
 
     def translate(self, text: str) -> str:
         print(text)
-        self.data["prompt"] = f"Please help me to translate the following text to {self.lang}: \n\n{text}"
-        r = self.session.post(
-            self.api_url,
-            headers=self.headers,
-            json=self.data
-        )
+        self.data[
+            "prompt"
+        ] = f"Please help me to translate the following text to {self.lang}: \n\n{text}"
+        r = self.session.post(self.api_url, headers=self.headers, json=self.data)
         if not r.ok:
             return text
         t_text = r.json().get("choices")[0].get("text", "").strip()

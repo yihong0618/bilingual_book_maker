@@ -6,6 +6,7 @@ from file_engine import BEPUB, BText
 from translate_engine import GPT3, ChatGPT
 from utils import LANGUAGES, TO_LANGUAGE_CODE
 
+
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -78,6 +79,7 @@ def get_parser():
     options = parser.parse_args()
     return options
 
+
 if __name__ == "__main__":
     options = get_parser()
 
@@ -110,6 +112,5 @@ if __name__ == "__main__":
         translate_engine_class = ChatGPT
 
     translate_engine = translate_engine_class(open_ai_api_key, lang, no_limit)
-    book = FileEngine(translate_engine, book_name,
-                      resume, is_test, test_number)
+    book = FileEngine(translate_engine, book_name, resume, is_test, test_number)
     book.make_bilingual_book()
