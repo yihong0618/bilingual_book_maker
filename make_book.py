@@ -165,7 +165,7 @@ class BEPUB:
         p_to_save_len = len(self.p_to_save)
         try:
             for i in self.origin_book.get_items():
-                pbar.update(i / self.origin_book.get_items())
+                pbar.update(index)
                 if i.get_type() == 9:
                     soup = bs(i.content, "html.parser")
                     p_list = soup.findAll("p")
