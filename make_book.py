@@ -22,16 +22,13 @@ RESUME = False
 
 class Base:
     def __init__(self, key, language):
-        pass
+        self.current_key_index = 0
 
-    @staticmethod
-    def get_key(key):
-        if not key.find(","):
-            return key
-        if key.find(","):
-            key_list = key.split(",")
-            random_number = random.uniform(0, len(key_list))
-            return key_list[int(random_number)]
+    def get_key(self, key_str):
+        keys = key_str.split(",")
+        key = keys[self.current_key_index]
+        self.current_key_index = (self.current_key_index + 1) % len(keys)
+        print(f"current key: {key}")
         return key
 
     @abstractmethod
@@ -41,6 +38,7 @@ class Base:
 
 class GPT3(Base):
     def __init__(self, key, language):
+        super().__init__(key, language)
         self.api_key = key
         self.api_url = "https://api.openai.com/v1/completions"
         self.headers = {
@@ -59,8 +57,7 @@ class GPT3(Base):
 
     def translate(self, text):
         print(text)
-        api_key = self.get_key(self.api_key)
-        self.headers["Authorization"] = f"Bearer {self.get_key(api_key)}"
+        self.headers["Authorization"] = f"Bearer {self.get_key(self.api_key)}"
         self.data["prompt"] = f"Please help me to translate，`{text}` to {self.language}"
         r = self.session.post(self.api_url, headers=self.headers, json=self.data)
         if not r.ok:
@@ -109,9 +106,11 @@ class ChatGPT(Base):
                 # for time limit
                 time.sleep(3)
         except Exception as e:
-            print(str(e), "will sleep 60 seconds")
             # TIME LIMIT for open api please pay
-            time.sleep(60)
+            key_len = self.key.count(",") + 1
+            sleep_time = int(60 / key_len)
+            time.sleep(sleep_time)
+            print(str(e), "will sleep  " + str(sleep_time) + " seconds")
             completion = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
                 messages=[
