@@ -22,7 +22,7 @@ Make bilingual epub books Using AI translate
 4. A sample book, animal_farm.epub, is provided for testing purposes.
 5. Use --test command to preview the result if you haven't paid for the service. Note that there is a limit and it may take some time.
 6. Set the target language like `--language "Simplified Chinese"`. 
-   Suppot ` "Japanese" / "Traditional Chinese" / "German" / "French" / "Korean"`.
+   Support ` "Japanese" / "Traditional Chinese" / "German" / "French" / "Korean"`.
    Default target language is `"Simplified Chinese"`. Support language list please see the LANGUAGES at [utils.py](./utils.py).
 7. Use the --proxy parameter to enable users in mainland China to use a proxy when testing locally. Enter a string such as http://127.0.0.1:7890.
 8. Use the --resume command to manually resume the process after an interruption.
