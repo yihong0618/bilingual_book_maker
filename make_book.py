@@ -11,6 +11,7 @@ import requests
 from bs4 import BeautifulSoup as bs
 from ebooklib import epub
 from rich import print
+from utils import LANGUAGES, TO_LANGUAGE_CODE
 
 NO_LIMIT = False
 IS_TEST = False
@@ -18,7 +19,7 @@ RESUME = False
 
 
 class Base:
-    def __init__(self, key):
+    def __init__(self, key, language):
         pass
 
     @abstractmethod
@@ -27,7 +28,7 @@ class Base:
 
 
 class GPT3(Base):
-    def __init__(self, key):
+    def __init__(self, key, language):
         self.api_key = key
         self.api_url = "https://api.openai.com/v1/completions"
         self.headers = {
@@ -43,10 +44,11 @@ class GPT3(Base):
             "top_p": 1,
         }
         self.session = requests.session()
+        self.language = language
 
     def translate(self, text):
         print(text)
-        self.data["prompt"] = f"Please help me to translate，`{text}` to Chinese"
+        self.data["prompt"] = f"Please help me to translate，`{text}` to {self.language}"
         r = self.session.post(self.api_url, headers=self.headers, json=self.data)
         if not r.ok:
             return text
@@ -64,9 +66,10 @@ class DeepL(Base):
 
 
 class ChatGPT(Base):
-    def __init__(self, key):
-        super().__init__(key)
+    def __init__(self, key, language):
+        super().__init__(key, language)
         self.key = key
+        self.language = language
 
     def translate(self, text):
         print(text)
@@ -78,7 +81,7 @@ class ChatGPT(Base):
                     {
                         "role": "user",
                         # english prompt here to save tokens
-                        "content": f"Please help me to translate，`{text}` to Chinese, please return only translated content not include the origin text",
+                        "content": f"Please help me to translate，`{text}` to {self.language}, please return only translated content not include the origin text",
                     }
                 ],
             )
@@ -117,10 +120,10 @@ class ChatGPT(Base):
 
 
 class BEPUB:
-    def __init__(self, epub_name, model, key, resume):
+    def __init__(self, epub_name, model, key, resume, language):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
-        self.translate_model = model(key)
+        self.translate_model = model(key, language)
         self.origin_book = epub.read_epub(self.epub_name)
         self.p_to_save = []
         self.resume = resume
@@ -237,6 +240,14 @@ if __name__ == "__main__":
         help="Use which model",
     )
     parser.add_argument(
+        "--language",
+        type=str,
+        choices=sorted(LANGUAGES.keys())
+        + sorted([k.title() for k in TO_LANGUAGE_CODE.keys()]),
+        default="zh-hans",
+        help="language to translate to",
+    )
+    parser.add_argument(
         "--resume",
         dest="resume",
         action="store_true",
@@ -253,5 +264,10 @@ if __name__ == "__main__":
     if not options.book_name.endswith(".epub"):
         raise Exception("please use epub file")
     model = MODEL_DICT.get(options.model, "chatgpt")
-    e = BEPUB(options.book_name, model, OPENAI_API_KEY, RESUME)
+    language = options.language
+    if options.language in LANGUAGES:
+        # use the value for prompt
+        language = LANGUAGES.get(language, language)
+
+    e = BEPUB(options.book_name, model, OPENAI_API_KEY, RESUME, language=language)
     e.make_bilingual_book()
