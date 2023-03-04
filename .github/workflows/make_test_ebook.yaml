@@ -31,9 +31,7 @@ jobs:
       - name: install python requirements
         run: pip install -r requirements.txt
       - name: make test ebook
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: python3 make_book.py --book_name "test_books/${{ env.EPUB_FILENAME_BASE}}.epub" --no_limit --test --test_num 2 --language zh-hans
+        run: python3 make_book.py --book_name "test_books/${{ env.EPUB_FILENAME_BASE}}.epub" --no_limit --test --test_num 2 --language zh-hans --openai_key ${{secrets.OPENAI_API_KEY }}
       - name: Rename and Upload ePub
         uses: actions/upload-artifact@v2
         with:
