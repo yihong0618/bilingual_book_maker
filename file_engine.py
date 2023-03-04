@@ -98,7 +98,7 @@ class BText(FileEngineBase):
         self.origin_book = self.load_file(self.book_name).split("\n")
         self.p_to_save = []
         self.resume = resume
-        self.bin_path = f"{os.path.abspath(self.book_name)}.bin.temp"
+        self.bin_path = f"{os.path.abspath(self.book_name)}.temp.bin"
         if self.resume:
             self.load_state()
 

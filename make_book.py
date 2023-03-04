@@ -1,12 +1,10 @@
-import argparse
 import os
-import pickle
-import time
+import argparse
 
 from os import environ as env
 from file_engine import BEPUB, BText
 from translate_engine import GPT3, ChatGPT
-
+from utils import LANGUAGES, TO_LANGUAGE_CODE
 
 def get_parser():
     parser = argparse.ArgumentParser()
@@ -77,14 +75,6 @@ def get_parser():
         default="",
         help="use proxy like http://127.0.0.1:7890",
     )
-    parser.add_argument(
-        "--lang",
-        dest="lang",
-        type=str,
-        default="zh-tw",
-        choices=["zh-cn", "zh-tw", "jp"],
-        help="Choose lang for zh-cn (Simplified Chinese) or zh-tw (Traditional Chinese)",
-    )
     options = parser.parse_args()
     return options
 
@@ -97,23 +87,15 @@ if __name__ == "__main__":
     book_name = options.book_name
     resume = options.resume
     proxy = options.proxy
+    lang = options.language
     open_ai_api_key = options.openai_key or env.get("OPENAI_API_KEY")
 
-    if PROXY != "":
-        os.environ["http_proxy"] = PROXY
-        os.environ["https_proxy"] = PROXY
+    if proxy != "":
+        os.environ["http_proxy"] = proxy
+        os.environ["https_proxy"] = proxy
 
     if not open_ai_api_key:
         raise Exception("Need openai API key, please google how to")
-
-    if options.lang == "zh-cn":
-        lang = "Simplified Chinese"
-    elif options.lang == "zh-tw":
-        lang = "Traditional Chinese"
-    elif options.lang == "jp":
-        lang = "Japanese"
-    else:
-        lang = "Traditional Chinese"
 
     if book_name.endswith(".epub"):
         FileEngine = BEPUB

@@ -8,7 +8,7 @@ class TranslateEngineBase(ABC):
         pass
 
     @abstractmethod
-    def translate(self, text) -> str:
+    def translate(self, text: str) -> str:
         pass
 
 
