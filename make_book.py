@@ -22,13 +22,14 @@ RESUME = False
 
 class Base:
     def __init__(self, key, language):
+        self.key = key
+        self.language =language
         self.current_key_index = 0
 
     def get_key(self, key_str):
         keys = key_str.split(",")
         key = keys[self.current_key_index]
         self.current_key_index = (self.current_key_index + 1) % len(keys)
-        print(f"current key: {key}")
         return key
 
     @abstractmethod
@@ -91,7 +92,7 @@ class ChatGPT(Base):
                     {
                         "role": "user",
                         # english prompt here to save tokens
-                        "content": f"Please help me to translate，`{text}` to {self.language}, please return only translated content not include the origin text",
+                        "content": f"Please help me to translate,`{text}` to {self.language}, please return only translated content not include the origin text",
                     }
                 ],
             )
