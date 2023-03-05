@@ -1,4 +1,4 @@
-'''Main code for the application dsdssd'''
+'''Main code for the application'''
 import argparse
 import time
 from abc import abstractmethod
