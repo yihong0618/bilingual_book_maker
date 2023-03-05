@@ -6,11 +6,14 @@ from abstract import TranslateEngineBase
 
 
 class GPT3(TranslateEngineBase):
-    def __init__(self, key: str, lang: str, *args, **kwargs):
+    def __init__(self, key: str, lang: str, api_base: str, *args, **kwargs):
         super().__init__(key, lang)
         self.lang = lang
         self.api_key = key
-        self.api_url = "https://api.openai.com/v1/completions"
+        if not api_base:
+            self.api_url = "https://api.openai.com/v1/completions"
+        else:
+            self.api_url = api_base + "v1/completions"
         self.headers = {
             "Content-Type": "application/json",
         }
@@ -24,8 +27,15 @@ class GPT3(TranslateEngineBase):
         }
         self.session = requests.session()
 
+    def get_key(self, key_str):
+        keys = key_str.split(",")
+        key = keys[self.current_key_index]
+        self.current_key_index = (self.current_key_index + 1) % len(keys)
+        return key
+
     def translate(self, text: str) -> str:
         print(text)
+        self.headers["Authorization"] = f"Bearer {self.get_key(self.api_key)}"
         self.data[
             "prompt"
         ] = f"Please help me to translate the following text to {self.lang}: \n\n{text}"
@@ -46,12 +56,14 @@ class DeepL(TranslateEngineBase):
 
 
 class ChatGPT(TranslateEngineBase):
-    def __init__(self, key: str, lang: str, not_limit: bool = False, *args, **kwargs):
+    def __init__(self, key: str, lang: str, api_base:str, not_limit: bool = False, *args, **kwargs):
         super().__init__(key, lang)
         self.key = key
         self.lang = lang
         self.not_limit = not_limit
         self.current_key_index = 0
+        if api_base:
+            openai.api_base = api_base
 
     def get_key(self, key_str):
         keys = key_str.split(",")
