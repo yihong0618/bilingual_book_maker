@@ -124,7 +124,7 @@ class ChatGPT(Base):
                 messages=[
                     {
                         "role": "user",
-                        "content": f"Please help me to translate,`{text}` to Simplified Chinese, please return only translated content not include the origin text",
+                        "content": f"Please help me to translate,`{text}` to {self.language}, please return only translated content not include the origin text",
                     }
                 ],
             )
