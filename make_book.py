@@ -6,6 +6,7 @@ from abc import abstractmethod
 from copy import copy
 from os import environ as env
 from pathlib import Path
+import asyncio
 
 import openai
 import requests
@@ -88,11 +89,11 @@ class ChatGPT(Base):
         if api_base:
             openai.api_base = api_base
 
-    def translate(self, text):
+    async def translate_async(self, text):
         print(text)
         openai.api_key = self.get_key(self.key)
         try:
-            completion = openai.ChatCompletion.create(
+            completion = await openai.ChatCompletion.acreate(
                 model="gpt-3.5-turbo",
                 messages=[
                     {
@@ -137,6 +138,8 @@ class ChatGPT(Base):
             )
         print(t_text)
         return t_text
+    
+
 
 
 class BEPUB:
@@ -160,44 +163,44 @@ class BEPUB:
         new_book.metadata = self.origin_book.metadata
         new_book.spine = self.origin_book.spine
         new_book.toc = self.origin_book.toc
-        all_items = list(self.origin_book.get_items())
+        all_items = list(self.origin_book.get_items())  # item can be a chapter or a full page of text
         # we just translate tag p
         all_p_length = 0
-        for i in all_items:
-            if i.file_name.endswith(".xhtml"):
-                all_p_length += len(bs(i.content, "html.parser").findAll("p"))
+        for item in all_items:
+            if item.file_name.endswith(".xhtml"):
+                all_p_length += len(bs(item.content, "html.parser").findAll("p"))
             else:
-                all_p_length += len(bs(i.content, "xml").findAll("p"))
+                all_p_length += len(bs(item.content, "xml").findAll("p"))
         if IS_TEST:
             pbar = tqdm(total=TEST_NUM)
         else:
             pbar = tqdm(total=all_p_length)
-        index = 0
+        index = 0  # current iterator of the paragraph to translate
         p_to_save_len = len(self.p_to_save)
         try:
-            for i in self.origin_book.get_items():
+            for item in self.origin_book.get_items():
                 pbar.update(index)
-                if i.get_type() == 9:
-                    soup = bs(i.content, "html.parser")
+                # stop if index reached TEST_NUM in the test mode
+                if IS_TEST and index >= TEST_NUM:
+                    break
+                if item.get_type() == 9:
+                    soup = bs(item.content, "html.parser")
                     p_list = soup.findAll("p")
-                    is_test_done = IS_TEST and index > TEST_NUM
-                    for p in p_list:
-                        if is_test_done or not p.text or self._is_special_text(p.text):
-                            continue
-                        new_p = copy(p)
-                        # TODO banch of p to translate then combine
-                        # PR welcome here
-                        if self.resume and index < p_to_save_len:
-                            new_p.string = self.p_to_save[index]
+                    p_batches = self.create_batches(p_list, BATCH_SIZE)
+                    for p_batch in p_batches:
+                        if self.resume and index + len(p_batch) < p_to_save_len:
+                            # read cached p_list from cache file
+                            p_results = self.p_to_save[index : index + len(p_batch)]
                         else:
-                            new_p.string = self.translate_model.translate(p.text)
-                            self.p_to_save.append(new_p.text)
-                        p.insert_after(new_p)
-                        index += 1
-                        if IS_TEST and index > TEST_NUM:
-                            break
-                    i.content = soup.prettify().encode()
-                new_book.add_item(i)
+                            # p_results is a list of modified p in order
+                            p_results = asyncio.run(self.batch_process(p_batch))
+                            # save p_results to cache file
+                            self.p_to_save.extend(p_results)
+                        index += len(p_batch)  # update index for pbar
+                        print(f"processed {len(p_results)} paragraphs in batch")
+                    item.content = soup.prettify().encode()
+
+                new_book.add_item(item)
             name = self.epub_name.split(".")[0]
             epub.write_epub(f"{name}_bilingual.epub", new_book, {})
             pbar.close()
@@ -220,6 +223,23 @@ class BEPUB:
                 pickle.dump(self.p_to_save, f)
         except:
             raise Exception("can not save resume file")
+
+    def create_batches(self, p_list, batch_size):
+        return [p_list[i : i + batch_size] for i in range(0, len(p_list), batch_size)]
+
+    async def batch_process(self, p_batch):
+        tasks = [self.process(p) for p in p_batch]
+        p_results = await asyncio.gather(*tasks)
+        return p_results
+
+    async def process(self, p):
+        if not p.text or self._is_special_text(p.text):
+            return p 
+        new_p = copy(p) 
+        new_p.string = await self.translate_model.translate_async(p.text)
+        # append translated text after the original text
+        p.insert_after(new_p)
+        return p
 
 
 if __name__ == "__main__":
@@ -249,7 +269,7 @@ if __name__ == "__main__":
         "--test",
         dest="test",
         action="store_true",
-        help="if test we only translat 10 contents you can easily check",
+        help="if test we only translate 10 contents you can easily check",
     )
     parser.add_argument(
         "--test_num",
@@ -296,6 +316,14 @@ if __name__ == "__main__":
         type=str,
         help="replace base url from openapi",
     )
+    parser.add_argument(
+        "-b",
+        "--batch_size",
+        dest="batch_size",
+        type=int,
+        default=1,
+        help="number of paragraph(s) to translate per batch (it will override --no_limit to true if batch_size > 1)",
+    )
 
     options = parser.parse_args()
     NO_LIMIT = options.no_limit
@@ -308,6 +336,9 @@ if __name__ == "__main__":
 
     OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
     RESUME = options.resume
+    BATCH_SIZE = options.batch_size
+    if BATCH_SIZE > 1:
+        NO_LIMIT = True
     if not OPENAI_API_KEY:
         raise Exception("Need openai API key, please google how to")
     if not options.book_name.endswith(".epub"):
