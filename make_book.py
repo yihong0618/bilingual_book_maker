@@ -162,9 +162,12 @@ class BEPUB:
         new_book.toc = self.origin_book.toc
         all_items = list(self.origin_book.get_items())
         # we just translate tag p
-        all_p_length = sum(
-            [len(bs(i.content, "html.parser").findAll("p")) for i in all_items]
-        )
+        all_p_length = 0
+        for i in all_items:
+            if i.file_name.endswith(".xhtml"):
+                all_p_length += len(bs(i.content, "html.parser").findAll("p"))
+            else:
+                all_p_length += len(bs(i.content, "xml").findAll("p"))
         if IS_TEST:
             pbar = tqdm(total=TEST_NUM)
         else:
