@@ -1,6 +1,7 @@
 import os
 import argparse
 
+
 from os import environ as env
 from file_engine import BEPUB, BText
 from translate_engine import GPT3, ChatGPT
@@ -76,6 +77,13 @@ def get_parser():
         default="",
         help="use proxy like http://127.0.0.1:7890",
     )
+    # args to change api_base
+    parser.add_argument(
+        "--api_base",
+        dest="api_base",
+        type=str,
+        help="replace base url from openapi",
+    )
     options = parser.parse_args()
     return options
 
@@ -114,3 +122,4 @@ if __name__ == "__main__":
     translate_engine = translate_engine_class(open_ai_api_key, lang, no_limit)
     book = FileEngine(translate_engine, book_name, resume, is_test, test_number)
     book.make_bilingual_book()
+
