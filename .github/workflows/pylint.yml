@@ -1,9 +1,7 @@
 name: Pylint Workflow
 
-on:
-  push:
-    branches:
-      - "AswahMalik"
+on: push
+ 
 jobs:
   pylint:
     name: Run Pylint
