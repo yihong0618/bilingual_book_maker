@@ -349,7 +349,9 @@ if __name__ == "__main__":
         os.environ["http_proxy"] = PROXY
         os.environ["https_proxy"] = PROXY
 
-    is_use_account = (options.email != "" and options.password != "") | (options.session_token != "")
+    is_use_account = (options.email != "" and options.password != "") | (
+        options.session_token != ""
+    )
 
     if not OPENAI_API_KEY and not is_use_account:
         raise Exception(
