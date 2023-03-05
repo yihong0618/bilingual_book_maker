@@ -4,7 +4,7 @@ from make import GPT3
 class TestGPT3:
     @pytest.fixture
     def gpt3(self):
-        key = "<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>"
+        key = "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"
         return GPT3(key)
     
     def test_translate(self, gpt3):
