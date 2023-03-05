@@ -1,4 +1,4 @@
-# bilingual_book_maker
+tw# bilingual_book_maker
 Make bilingual epub books Using AI translate
 
 ![image](https://user-images.githubusercontent.com/15976103/222317531-a05317c5-4eee-49de-95cd-04063d9539d9.png)
@@ -17,7 +17,7 @@ Make bilingual epub books Using AI translate
 1. pip install -r requirements.txt
 2. OpenAI API key，如果有多个可以用英文逗号分隔(xxx,xxx,xxx)，可以减少接口调用次数限制带来的错误
 3. 本地放了一个 animal_farm.epub 给大家测试
-4. 默认用了 ChatGPT 模型，用 `--model gpt3` 来使用 gpt3 模型
+4. 默认用了 [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis) 模型，也就是 ChatGPT 正在使用的模型，用 `--model gpt3` 来使用 gpt3 模型
 5. 加了 `--test` 命令如果大家没付费可以加上这个先看看效果（有 limit 稍微有些慢）
 6. Set the target language like `--language "Simplified Chinese"`. 
    Suppot ` "Japanese" / "Traditional Chinese" / "German" / "French" / "Korean"`.
