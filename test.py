@@ -1,20 +1,20 @@
 import pytest
-from make import MyClass
+from make import GPT3
 
-class TestMyClass:
+class TestGPT3:
     @pytest.fixture
-    def my_class(self):
-        return MyClass()
+    def gpt3(self):
+        return GPT3()
     
-    def test_translate(self, my_class):
+    def test_translate(self, gpt3):
         text = "Hello"
         expected_output = "你好"
-        assert my_class.translate(text) == expected_output
+        assert gpt3.translate(text) == expected_output
         
         text = "Goodbye"
         expected_output = "再见"
-        assert my_class.translate(text) == expected_output
+        assert gpt3.translate(text) == expected_output
         
         text = ""
         expected_output = ""
-        assert my_class.translate(text) == expected_output
+        assert gpt3.translate(text) == expected_output
