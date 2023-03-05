@@ -6,13 +6,13 @@ from abc import abstractmethod
 from copy import copy
 from os import environ as env
 from pathlib import Path
-from tqdm import tqdm
 
 import openai
 import requests
 from bs4 import BeautifulSoup as bs
 from ebooklib import epub
 from rich import print
+from tqdm import tqdm
 
 from utils import LANGUAGES, TO_LANGUAGE_CODE
 
@@ -22,7 +22,7 @@ RESUME = False
 
 
 class Base:
-    def __init__(self, key, language):
+    def __init__(self, key, language, api_base=None):
         self.key = key
         self.language = language
         self.current_key_index = 0
@@ -39,10 +39,13 @@ class Base:
 
 
 class GPT3(Base):
-    def __init__(self, key, language):
+    def __init__(self, key, language, api_base=None):
         super().__init__(key, language)
         self.api_key = key
-        self.api_url = "https://api.openai.com/v1/completions"
+        if not api_base:
+            self.api_url = "https://api.openai.com/v1/completions"
+        else:
+            self.api_url = api_base + "v1/completions"
         self.headers = {
             "Content-Type": "application/json",
         }
@@ -70,18 +73,20 @@ class GPT3(Base):
 
 
 class DeepL(Base):
-    def __init__(self, session, key):
-        super().__init__(session, key)
+    def __init__(self, session, key, api_base=None):
+        super().__init__(session, key, api_base=api_base)
 
     def translate(self, text):
         return super().translate(text)
 
 
 class ChatGPT(Base):
-    def __init__(self, key, language):
-        super().__init__(key, language)
+    def __init__(self, key, language, api_base=None):
+        super().__init__(key, language, api_base=api_base)
         self.key = key
         self.language = language
+        if api_base:
+            openai.api_base = api_base
 
     def translate(self, text):
         print(text)
@@ -135,10 +140,10 @@ class ChatGPT(Base):
 
 
 class BEPUB:
-    def __init__(self, epub_name, model, key, resume, language):
+    def __init__(self, epub_name, model, key, resume, language, model_api_base=None):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
-        self.translate_model = model(key, language)
+        self.translate_model = model(key, language, model_api_base)
         self.origin_book = epub.read_epub(self.epub_name)
         self.p_to_save = []
         self.resume = resume
@@ -281,6 +286,13 @@ if __name__ == "__main__":
         default="",
         help="use proxy like http://127.0.0.1:7890",
     )
+    # args to change api_base
+    parser.add_argument(
+        "--api_base",
+        dest="api_base",
+        type=str,
+        help="replace base url from openapi",
+    )
 
     options = parser.parse_args()
     NO_LIMIT = options.no_limit
@@ -303,5 +315,14 @@ if __name__ == "__main__":
         # use the value for prompt
         language = LANGUAGES.get(language, language)
 
-    e = BEPUB(options.book_name, model, OPENAI_API_KEY, RESUME, language=language)
+    # change api_base for issue #42
+    model_api_base = options.api_base
+    e = BEPUB(
+        options.book_name,
+        model,
+        OPENAI_API_KEY,
+        RESUME,
+        language=language,
+        model_api_base=model_api_base,
+    )
     e.make_bilingual_book()

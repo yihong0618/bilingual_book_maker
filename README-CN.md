@@ -24,6 +24,7 @@ Make bilingual epub books Using AI translate
    Default target language is `"Simplified Chinese"`. Support language list please see the LANGUAGES at [utils.py](./utils.py).
 7. 加了 `--proxy` 参数，方便中国大陆的用户在本地测试时使用代理，传入类似 `http://127.0.0.1:7890` 的字符串
 8. 加入 `--resume` 命令，可以手动中断后，加入命令继续执行。
+9. 如果你遇到了墙需要用 Cloudflare Workers 替换 api_base 请使用 `--api_base ${url}` 来替换
 
 e.g.
 ```shell
