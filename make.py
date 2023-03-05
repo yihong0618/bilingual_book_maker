@@ -85,24 +85,18 @@ class ChatGPT(Base):
         print(text)
         openai.api_key = self.key
         try:
-            completion = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "user",
-                        # english prompt here to save tokens
-                        "content": f'''Please help me to translate，`{text}` to Chinese,
-                          please return only translated content not include the origin text''',
-                    }
-                ],
+            completion = openai.Completion.create(
+                engine="text-davinci-002",
+                prompt=f"Please help me to translate，`{text}` to Chinese",
+                max_tokens=1024,
+                temperature=0.5,
+                n=1,
+                stop=None,
+                frequency_penalty=0,
+                presence_penalty=0
             )
-            t_text = (
-                completion["choices"][0]
-                .get("message")
-                .get("content")
-                .encode("utf8")
-                .decode()
-            )
+            t_text = completion.choices[0].text
+            t_text = t_text.strip().replace('\n', '')
             if not NO_LIMIT:
                 # for time limit
                 time.sleep(3)
@@ -110,26 +104,20 @@ class ChatGPT(Base):
             print(str(alle), "will sleep 60 seconds")
             # TIME LIMIT for open api please pay
             time.sleep(60)
-            completion = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f'''Please help me to translate，`{text}` to Simplified Chinese,
-                          please return only translated content not include the origin text''',
-                    }
-                ],
+            completion = openai.Completion.create(
+                engine="text-davinci-002",
+                prompt=f"Please help me to translate，`{text}` to Simplified Chinese",
+                max_tokens=1024,
+                temperature=0.5,
+                n=1,
+                stop=None,
+                frequency_penalty=0,
+                presence_penalty=0
             )
-            t_text = (
-                completion["choices"][0]
-                .get("message")
-                .get("content")
-                .encode("utf8")
-                .decode()
-            )
+            t_text = completion.choices[0].text
+            t_text = t_text.strip().replace('\n', '')
         print(t_text)
         return t_text
-
 
 class BEPUB:
     def __init__(self, epub_name, model, key):
