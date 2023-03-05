@@ -24,7 +24,7 @@ Make bilingual epub books Using AI translate
    Default target language is `"Simplified Chinese"`. Support language list please see the LANGUAGES at [utils.py](./utils.py).
 7. 加了 `--proxy` 参数，方便中国大陆的用户在本地测试时使用代理，传入类似 `http://127.0.0.1:7890` 的字符串
 8. 加入 `--resume` 命令，可以手动中断后，加入命令继续执行。
-9. 如果你遇到了墙需要用 Cloudflare Workers 替换 api_base 请使用 `--api_base ${url}` 来替换
+9. 如果你遇到了墙需要用 Cloudflare Workers 替换 api_base 请使用 `--api_base ${url}` 来替换。**请注意，此处你输入的api应该是"`https://xxxx/v1`"的字样，域名需要用引号包裹**
 
 e.g.
 ```shell
@@ -35,6 +35,13 @@ python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${open
 # or 用 gpt3 模型
 export OPENAI_API_KEY=${your_api_key}
 python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_limit --language "Simplified Chinese"
+```
+
+更加小白的示例
+```shell
+python3 make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_base 'https://xxxxx/v1'
+# 有可能你不需要python3 而是python
+python make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_base 'https://xxxxx/v1'
 ```
 
 ## 注意

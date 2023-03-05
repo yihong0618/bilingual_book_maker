@@ -26,7 +26,7 @@ Make bilingual epub books Using AI translate
    Default target language is `"Simplified Chinese"`. Support language list please see the LANGUAGES at [utils.py](./utils.py).
 7. Use the --proxy parameter to enable users in mainland China to use a proxy when testing locally. Enter a string such as http://127.0.0.1:7890.
 8. Use the --resume command to manually resume the process after an interruption.
-9. If you want to change api_base like using Cloudflare Workers Use --api_base ${url} to support it.
+9. If you want to change api_base like using Cloudflare Workers Use --api_base ${url} to support it. **Note: the api url you input should be `https://xxxx/v1', and quotation marks are required. **
 
 e.g.
 ```shell
@@ -37,6 +37,12 @@ python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${open
 # or use the GPT-3 model
 export OPENAI_API_KEY=${your_api_key}
 python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_limit --language "Simplified Chinese"
+```
+More understandable example
+```
+python3 make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_base 'https://xxxxx/v1'
+# or
+python make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_base 'https://xxxxx/v1'
 ```
 
 ## Notes
