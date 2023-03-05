@@ -119,7 +119,7 @@ class ChatGPT(Base):
                 messages=[
                     {
                         "role": "user",
-                        "content": f"Please help me to translate，`{text}` to Simplified Chinese, please return only translated content not include the origin text",
+                        "content": f"Please help me to translate,`{text}` to Simplified Chinese, please return only translated content not include the origin text",
                     }
                 ],
             )
@@ -160,7 +160,10 @@ class BEPUB:
         all_p_length = sum(
             [len(bs(i.content, "html.parser").findAll("p")) for i in all_items]
         )
-        pbar = tqdm(total=all_p_length)
+        if IS_TEST:
+            pbar = tqdm(total=TEST_NUM)
+        else:
+            pbar = tqdm(total=all_p_length)
         index = 0
         p_to_save_len = len(self.p_to_save)
         try:
