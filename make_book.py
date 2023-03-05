@@ -138,8 +138,6 @@ class ChatGPT(Base):
             )
         print(t_text)
         return t_text
-    
-
 
 
 class BEPUB:
@@ -163,7 +161,9 @@ class BEPUB:
         new_book.metadata = self.origin_book.metadata
         new_book.spine = self.origin_book.spine
         new_book.toc = self.origin_book.toc
-        all_items = list(self.origin_book.get_items())  # item can be a chapter or a full page of text
+        all_items = list(
+            self.origin_book.get_items()
+        )  # item can be a chapter or a full page of text
         # we just translate tag p
         all_p_length = 0
         for item in all_items:
@@ -234,8 +234,8 @@ class BEPUB:
 
     async def process(self, p):
         if not p.text or self._is_special_text(p.text):
-            return p 
-        new_p = copy(p) 
+            return p
+        new_p = copy(p)
         new_p.string = await self.translate_model.translate_async(p.text)
         # append translated text after the original text
         p.insert_after(new_p)
