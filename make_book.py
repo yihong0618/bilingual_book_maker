@@ -98,6 +98,7 @@ if __name__ == "__main__":
     resume = options.resume
     proxy = options.proxy
     lang = options.language
+    api_base = options.api_base
     open_ai_api_key = options.openai_key or env.get("OPENAI_API_KEY")
 
     if proxy != "":
@@ -119,7 +120,6 @@ if __name__ == "__main__":
     else:
         translate_engine_class = ChatGPT
 
-    translate_engine = translate_engine_class(open_ai_api_key, lang, no_limit)
+    translate_engine = translate_engine_class(open_ai_api_key, lang, api_base, no_limit)
     book = FileEngine(translate_engine, book_name, resume, is_test, test_number)
     book.make_bilingual_book()
-

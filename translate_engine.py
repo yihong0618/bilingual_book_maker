@@ -56,7 +56,15 @@ class DeepL(TranslateEngineBase):
 
 
 class ChatGPT(TranslateEngineBase):
-    def __init__(self, key: str, lang: str, api_base:str, not_limit: bool = False, *args, **kwargs):
+    def __init__(
+        self,
+        key: str,
+        lang: str,
+        api_base: str,
+        not_limit: bool = False,
+        *args,
+        **kwargs,
+    ):
         super().__init__(key, lang)
         self.key = key
         self.lang = lang
