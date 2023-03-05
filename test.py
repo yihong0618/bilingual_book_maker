@@ -7,7 +7,7 @@ class TestGPT3:
         key = "<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>"
         return GPT3(key)
     
-      def test_translate(self, gpt3):
+    def test_translate(self, gpt3):
         text = "Hello"
         expected_output = "你好"
         assert gpt3.translate(text) == expected_output
