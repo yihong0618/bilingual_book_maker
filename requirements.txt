@@ -4,4 +4,3 @@ requests
 ebooklib
 rich
 tqdm
-lxml
