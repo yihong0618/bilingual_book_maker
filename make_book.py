@@ -8,7 +8,6 @@ from os import environ as env
 from pathlib import Path
 
 from revChatGPT.V1 import Chatbot
-from tqdm import tqdm
 
 import openai
 import requests
@@ -48,7 +47,8 @@ class GPT3(Base):
         if not option.api_base:
             self.api_url = "https://api.openai.com/v1/completions"
         else:
-            self.api_url = option.api_base + "v1/completions"        self.headers = {
+            self.api_url = option.api_base + "v1/completions"
+        self.headers = {
             "Content-Type": "application/json",
         }
         # TODO support more models here
@@ -89,6 +89,7 @@ class ChatGPT(Base):
         self.language = option.language
         if option.api_base:
             openai.api_base = option.api_base
+
     def translate(self, text):
         print(text)
         openai.api_key = self.get_key(self.key)
