@@ -40,6 +40,8 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_l
 更加小白的示例
 ```shell
 python3 make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_base 'https://xxxxx/v1'
+# 有可能你不需要python3 而是python
+python make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_base 'https://xxxxx/v1'
 ```
 
 ## 注意
