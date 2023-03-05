@@ -25,7 +25,6 @@ Make bilingual epub books Using AI translate
 7. 加了 `--proxy` 参数，方便中国大陆的用户在本地测试时使用代理，传入类似 `http://127.0.0.1:7890` 的字符串
 8. 加入 `--resume` 命令，可以手动中断后，加入命令继续执行。
 9. 如果你遇到了墙需要用 Cloudflare Workers 替换 api_base 请使用 `--api_base ${url}` 来替换。**请注意，此处你输入的api应该是"`https://xxxx/v1`"的字样，域名需要用引号包裹**
-10. 如果你发现自己的 ePub 电子书是使用 xhtml 格式编写的，那么可以尝试使用 `--xhtml` 使用 xml parser
 
 e.g.
 ```shell
