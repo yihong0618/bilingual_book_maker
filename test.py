@@ -19,3 +19,7 @@ class TestGPT3:
         text = ""
         expected_output = ""
         assert gpt3.translate(text) == expected_output
+        
+        text = "This is a test sentence."
+        expected_output = "这是一个测试句子。"
+        assert gpt3.translate(text) == expected_output
