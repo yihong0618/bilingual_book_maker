@@ -15,6 +15,7 @@ import requests
 from bs4 import BeautifulSoup as bs
 from ebooklib import epub
 from rich import print
+from tqdm import tqdm
 
 from utils import LANGUAGES, TO_LANGUAGE_CODE
 
@@ -44,8 +45,10 @@ class GPT3(Base):
     def __init__(self, option):
         super().__init__(option)
         self.api_key = option.openai_key
-        self.api_url = "https://api.openai.com/v1/completions"
-        self.headers = {
+        if not option.api_base:
+            self.api_url = "https://api.openai.com/v1/completions"
+        else:
+            self.api_url = option.api_base + "v1/completions"        self.headers = {
             "Content-Type": "application/json",
         }
         # TODO support more models here
@@ -84,7 +87,8 @@ class ChatGPT(Base):
         super().__init__(option)
         self.key = option.openai_key
         self.language = option.language
-
+        if option.api_base:
+            openai.api_base = option.api_base
     def translate(self, text):
         print(text)
         openai.api_key = self.get_key(self.key)
@@ -336,6 +340,14 @@ if __name__ == "__main__":
         default="",
         help="session_token for ChatGPT",
     )
+    # args to change api_base
+    parser.add_argument(
+        "--api_base",
+        dest="api_base",
+        type=str,
+        help="replace base url from openapi",
+    )
+
     options = parser.parse_args()
     NO_LIMIT = options.no_limit
     IS_TEST = options.test

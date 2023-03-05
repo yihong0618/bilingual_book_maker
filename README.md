@@ -26,7 +26,8 @@ Make bilingual epub books Using AI translate
    Default target language is `"Simplified Chinese"`. Support language list please see the LANGUAGES at [utils.py](./utils.py).
 7. Use the --proxy parameter to enable users in mainland China to use a proxy when testing locally. Enter a string such as http://127.0.0.1:7890.
 8. Use the --resume command to manually resume the process after an interruption.
-9. Add the '--email', '--password', '--session_token' arguments, passing in the account password or token will translate with your ChatGPT account, no need to provide an API KEY, Suitable for ChatGPT Plus account users.
+9. If you want to change api_base like using Cloudflare Workers Use --api_base ${url} to support it.
+10. Add the '--email', '--password', '--session_token' arguments, passing in the account password or token will translate with your ChatGPT account, no need to provide an API KEY, Suitable for ChatGPT Plus account users.
 
 e.g.
 ```shell
