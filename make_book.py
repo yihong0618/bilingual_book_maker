@@ -6,6 +6,8 @@ from abc import abstractmethod
 from copy import copy
 from os import environ as env
 from pathlib import Path
+
+from revChatGPT.V1 import Chatbot
 from tqdm import tqdm
 
 import openai
@@ -22,9 +24,9 @@ RESUME = False
 
 
 class Base:
-    def __init__(self, key, language):
-        self.key = key
-        self.language = language
+    def __init__(self, option):
+        self.key = option.openai_key
+        self.language = option.language
         self.current_key_index = 0
 
     def get_key(self, key_str):
@@ -39,9 +41,9 @@ class Base:
 
 
 class GPT3(Base):
-    def __init__(self, key, language):
-        super().__init__(key, language)
-        self.api_key = key
+    def __init__(self, option):
+        super().__init__(option)
+        self.api_key = option.openai_key
         self.api_url = "https://api.openai.com/v1/completions"
         self.headers = {
             "Content-Type": "application/json",
@@ -55,7 +57,7 @@ class GPT3(Base):
             "top_p": 1,
         }
         self.session = requests.session()
-        self.language = language
+        self.language = option.language
 
     def translate(self, text):
         print(text)
@@ -70,18 +72,18 @@ class GPT3(Base):
 
 
 class DeepL(Base):
-    def __init__(self, session, key):
-        super().__init__(session, key)
+    def __init__(self, option):
+        super().__init__(option)
 
     def translate(self, text):
         return super().translate(text)
 
 
 class ChatGPT(Base):
-    def __init__(self, key, language):
-        super().__init__(key, language)
-        self.key = key
-        self.language = language
+    def __init__(self, option):
+        super().__init__(option)
+        self.key = option.openai_key
+        self.language = option.language
 
     def translate(self, text):
         print(text)
@@ -119,7 +121,7 @@ class ChatGPT(Base):
                 messages=[
                     {
                         "role": "user",
-                        "content": f"Please help me to translate,`{text}` to Simplified Chinese, please return only translated content not include the origin text",
+                        "content": f"Please help me to translate,`{text}` to {self.language}, please return only translated content not include the origin text",
                     }
                 ],
             )
@@ -134,15 +136,45 @@ class ChatGPT(Base):
         return t_text
 
 
+class ChatGPTAccount(Base):
+    def __init__(self, option):
+        super().__init__(option)
+        self.key = option.openai_key
+        self.language = option.language
+        self.email = option.email
+        self.password = option.password
+        self.session_token = option.session_token
+
+    def translate(self, text):
+        print(text)
+        chatbot = Chatbot(
+            config={
+                "email": self.email,
+                "password": self.password,
+                "session_token": self.session_token,
+            }
+        )
+        prompt = f"Please help me to translate,`{text}` to {self.language}, please return only translated content not include the origin text"
+        response = ""
+
+        for data in chatbot.ask(prompt):
+            response = data["message"].encode("utf8").decode()
+
+        print(response)
+        return response
+
+
 class BEPUB:
-    def __init__(self, epub_name, model, key, resume, language):
-        self.epub_name = epub_name
+    def __init__(self, option, model):
+        self.epub_name = options.book_name
         self.new_epub = epub.EpubBook()
-        self.translate_model = model(key, language)
+        self.translate_model = model(option)
         self.origin_book = epub.read_epub(self.epub_name)
         self.p_to_save = []
-        self.resume = resume
-        self.bin_path = f"{Path(epub_name).parent}/.{Path(epub_name).stem}.temp.bin"
+        self.resume = option.resume
+        self.bin_path = (
+            f"{Path(options.book_name).parent}/.{Path(options.book_name).stem}.temp.bin"
+        )
         if self.resume:
             self.load_state()
 
@@ -215,7 +247,6 @@ class BEPUB:
 
 
 if __name__ == "__main__":
-    MODEL_DICT = {"gpt3": GPT3, "chatgpt": ChatGPT}
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--book_name",
@@ -256,7 +287,7 @@ if __name__ == "__main__":
         dest="model",
         type=str,
         default="chatgpt",
-        choices=["chatgpt", "gpt3"],  # support DeepL later
+        choices=["chatgpt", "gpt3", "chatgptAccount"],  # support DeepL later
         help="Which model to use",
     )
     parser.add_argument(
@@ -281,27 +312,56 @@ if __name__ == "__main__":
         default="",
         help="use proxy like http://127.0.0.1:7890",
     )
-
+    parser.add_argument(
+        "-email",
+        "--email",
+        dest="email",
+        type=str,
+        default="",
+        help="email for ChatGPT",
+    )
+    parser.add_argument(
+        "-password",
+        "--password",
+        dest="password",
+        type=str,
+        default="",
+        help="password for ChatGPT",
+    )
+    parser.add_argument(
+        "-session_token",
+        "--session_token",
+        dest="session_token",
+        type=str,
+        default="",
+        help="session_token for ChatGPT",
+    )
     options = parser.parse_args()
     NO_LIMIT = options.no_limit
     IS_TEST = options.test
     TEST_NUM = options.test_num
     PROXY = options.proxy
+    OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
+    options.openai_key = OPENAI_API_KEY
+    RESUME = options.resume
+    language = options.language
     if PROXY != "":
         os.environ["http_proxy"] = PROXY
         os.environ["https_proxy"] = PROXY
 
-    OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
-    RESUME = options.resume
-    if not OPENAI_API_KEY:
-        raise Exception("Need openai API key, please google how to")
+    is_use_account = (options.email != "" and options.password != "") | (options.session_token != "")
+
+    if not OPENAI_API_KEY and not is_use_account:
+        raise Exception(
+            "Need openai API key or account info, please use google how to get it"
+        )
     if not options.book_name.endswith(".epub"):
         raise Exception("please use epub file")
+    MODEL_DICT = {"gpt3": GPT3, "chatgpt": ChatGPT, "chatgptAccount": ChatGPTAccount}
     model = MODEL_DICT.get(options.model, "chatgpt")
-    language = options.language
     if options.language in LANGUAGES:
         # use the value for prompt
         language = LANGUAGES.get(language, language)
 
-    e = BEPUB(options.book_name, model, OPENAI_API_KEY, RESUME, language=language)
+    e = BEPUB(options, model)
     e.make_bilingual_book()
