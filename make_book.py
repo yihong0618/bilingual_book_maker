@@ -19,6 +19,7 @@ from utils import LANGUAGES, TO_LANGUAGE_CODE
 NO_LIMIT = False
 IS_TEST = False
 RESUME = False
+XHTML = False
 
 
 class Base:
@@ -162,9 +163,14 @@ class BEPUB:
         new_book.toc = self.origin_book.toc
         all_items = list(self.origin_book.get_items())
         # we just translate tag p
-        all_p_length = sum(
-            [len(bs(i.content, "html.parser").findAll("p")) for i in all_items]
-        )
+        if XHTML:
+            all_p_length = sum(
+                [len(bs(i.content, "xml").findAll("p")) for i in all_items]
+            )
+        else:
+            all_p_length = sum(
+                [len(bs(i.content, "html.parser").findAll("p")) for i in all_items]
+            )
         if IS_TEST:
             pbar = tqdm(total=TEST_NUM)
         else:
@@ -293,11 +299,19 @@ if __name__ == "__main__":
         type=str,
         help="replace base url from openapi",
     )
+    # args to use xml parser
+    parser.add_argument(
+        "--xhtml",
+        dest="xhtml",
+        action="store_true",
+        help="use xmlparser to parse epub",
+    )
 
     options = parser.parse_args()
     NO_LIMIT = options.no_limit
     IS_TEST = options.test
     TEST_NUM = options.test_num
+    XHTML = options.xhtml
     PROXY = options.proxy
     if PROXY != "":
         os.environ["http_proxy"] = PROXY

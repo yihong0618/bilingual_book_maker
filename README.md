@@ -27,6 +27,7 @@ Make bilingual epub books Using AI translate
 7. Use the --proxy parameter to enable users in mainland China to use a proxy when testing locally. Enter a string such as http://127.0.0.1:7890.
 8. Use the --resume command to manually resume the process after an interruption.
 9. If you want to change api_base like using Cloudflare Workers Use --api_base ${url} to support it. **Note: the api url you input should be `https://xxxx/v1', and quotation marks are required. **
+10. If you find that your ePub ebook is written in the XHTML format, you can try using --xhtml to use the XML parser.
 
 e.g.
 ```shell
