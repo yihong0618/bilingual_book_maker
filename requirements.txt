@@ -3,3 +3,4 @@ openai
 requests
 ebooklib
 rich
+tqdm

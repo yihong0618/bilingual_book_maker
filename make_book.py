@@ -6,6 +6,7 @@ from abc import abstractmethod
 from copy import copy
 from os import environ as env
 from pathlib import Path
+from tqdm import tqdm
 
 import openai
 import requests
@@ -118,7 +119,7 @@ class ChatGPT(Base):
                 messages=[
                     {
                         "role": "user",
-                        "content": f"Please help me to translate，`{text}` to Simplified Chinese, please return only translated content not include the origin text",
+                        "content": f"Please help me to translate,`{text}` to Simplified Chinese, please return only translated content not include the origin text",
                     }
                 ],
             )
@@ -159,11 +160,15 @@ class BEPUB:
         all_p_length = sum(
             [len(bs(i.content, "html.parser").findAll("p")) for i in all_items]
         )
-        print("TODO need process bar here: " + str(all_p_length))
+        if IS_TEST:
+            pbar = tqdm(total=TEST_NUM)
+        else:
+            pbar = tqdm(total=all_p_length)
         index = 0
         p_to_save_len = len(self.p_to_save)
         try:
             for i in self.origin_book.get_items():
+                pbar.update(index)
                 if i.get_type() == 9:
                     soup = bs(i.content, "html.parser")
                     p_list = soup.findAll("p")
@@ -187,6 +192,7 @@ class BEPUB:
                 new_book.add_item(i)
             name = self.epub_name.split(".")[0]
             epub.write_epub(f"{name}_bilingual.epub", new_book, {})
+            pbar.close()
         except (KeyboardInterrupt, Exception) as e:
             print(e)
             print("you can resume it next time")
