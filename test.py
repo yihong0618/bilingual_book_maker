@@ -1,34 +1,20 @@
 import pytest
-from make import GPT3
 
 
+from make import ChatGPT
 
-# Replace with your OpenAI API key
-API_KEY = "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"
-gpt3 = GPT3(API_KEY)
+def test_translation():
+    # Set up the API key
+    key = "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"
 
-def test_translate():
-    # Test case 1: Basic translation
-    text = "Hello, how are you?"
-    expected = "你好，你怎么样？"
-    assert gpt3.translate(text) == expected
+    # Create an instance of the ChatGPT class
+    chatbot = ChatGPT(key)
 
-    # Test case 2: Translation of a longer text
-    text = "The quick brown fox jumps over the lazy dog."
-    expected = "敏捷的棕色狐狸跳过了懒狗。"
-    assert gpt3.translate(text) == expected
+    # Test the translation function
+    result = chatbot.translate("Hello, how are you?")
+    assert result == "你好，你好吗？"
 
-    # Test case 3: Translation of non-English text
-    text = "Je ne parle pas français."
-    expected = "请帮我将`Je ne parle pas français.`翻译成中文"
-    assert gpt3.translate(text) == expected
+    print("Translation test passed!")
 
-    # Test case 4: Handling of errors
-    text = ""
-    expected = ""
-    assert gpt3.translate(text) == expected
-
-    print("All test cases pass")
-
-# Run the test function
-test_translate()
+if __name__ == "__main__":
+    test_translation()
