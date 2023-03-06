@@ -19,9 +19,9 @@ Make bilingual epub books Using AI translate
 1. pip install -r requirements.txt
 2. OpenAI API key. If you have multiple keys, separate them by commas (xxx,xxx,xxx) to reduce errors caused by API call limits.
 3. A sample book, test_books/animal_farm.epub, is provided for testing purposes.
-4. A sample book, animal_farm.epub, is provided for testing purposes.
+4. The default underlying model is [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis) ，which is used by ChatGPT currently. Use `--model gpt3` to change the underlying model to `GPT3`
 5. Use --test command to preview the result if you haven't paid for the service. Note that there is a limit and it may take some time.
-6. Set the target language like `--language "Simplified Chinese"`. 
+6. Set the target language like `--language "Simplified Chinese"`.
    Support ` "Japanese" / "Traditional Chinese" / "German" / "French" / "Korean"`.
    Default target language is `"Simplified Chinese"`. Support language list please see the LANGUAGES at [utils.py](./utils.py).
 7. Use the --proxy parameter to enable users in mainland China to use a proxy when testing locally. Enter a string such as http://127.0.0.1:7890.
