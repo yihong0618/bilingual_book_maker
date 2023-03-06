@@ -5,7 +5,7 @@ from make import ChatGPT
 
 def test_translation():
     # Set up the API key
-    key = "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"
+    key = "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"
 
     # Create an instance of the ChatGPT class
     chatbot = ChatGPT(key)
