@@ -27,11 +27,19 @@ class Base:
         self.key = key
         self.language = language
         self.current_key_index = 0
+        self.key_lock = asyncio.Lock()
 
     def get_key(self, key_str):
         keys = key_str.split(",")
         key = keys[self.current_key_index]
         self.current_key_index = (self.current_key_index + 1) % len(keys)
+        return key
+
+    async def get_key_async(self, key_str):
+        async with self.key_lock:
+            keys = key_str.split(",")
+            key = keys[self.current_key_index]
+            self.current_key_index = (self.current_key_index + 1) % len(keys)
         return key
 
     @abstractmethod
@@ -91,51 +99,36 @@ class ChatGPT(Base):
 
     async def translate_async(self, text):
         print(text)
-        openai.api_key = self.get_key(self.key)
-        try:
-            completion = await openai.ChatCompletion.acreate(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "user",
-                        # english prompt here to save tokens
-                        "content": f"Please help me to translate,`{text}` to {self.language}, please return only translated content not include the origin text",
-                    }
-                ],
-            )
-            t_text = (
-                completion["choices"][0]
-                .get("message")
-                .get("content")
-                .encode("utf8")
-                .decode()
-            )
-            if not NO_LIMIT:
-                # for time limit
-                await asyncio.sleep(3)
-        except Exception as e:
-            # TIME LIMIT for open api please pay
-            key_len = self.key.count(",") + 1
-            sleep_time = int(60 / key_len)
-            asyncio.sleep(sleep_time)
-            print(str(e), "will sleep  " + str(sleep_time) + " seconds")
-            openai.api_key = self.get_key(self.key)
-            completion = await openai.ChatCompletion.acreate(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"Please help me to translate,`{text}` to {self.language}, please return only translated content not include the origin text",
-                    }
-                ],
-            )
-            t_text = (
-                completion["choices"][0]
-                .get("message")
-                .get("content")
-                .encode("utf8")
-                .decode()
-            )
+        retry = 5
+        t_text = None
+        while retry > 0 and not t_text:
+            openai.api_key = await self.get_key_async(self.key)
+            try:
+                completion = await openai.ChatCompletion.acreate(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {
+                            "role": "user",
+                            # english prompt here to save tokens
+                            "content": f"Please help me to translate,`{text}` to {self.language}, please return only translated content not include the origin text",
+                        }
+                    ],
+                )
+                t_text = (
+                    completion["choices"][0]
+                    .get("message")
+                    .get("content")
+                    .encode("utf8")
+                    .decode()
+                )
+                if not NO_LIMIT:
+                    # for time limit
+                    await asyncio.sleep(3)
+            except Exception as e:
+                sleep_time = 2 ** (5 - retry)
+                print(str(e), "will sleep", sleep_time, "seconds")
+                await asyncio.sleep(sleep_time)
+                retry -= 1
         print(t_text)
         return t_text
 
@@ -195,6 +188,7 @@ class BEPUB:
                             # p_results is a list of modified p in order
                             p_results = asyncio.run(self.batch_process(p_batch))
                             # save p_results to cache file
+                            # TODO check p_results
                             self.p_to_save.extend(p_results)
                         index += len(p_batch)  # update index for pbar
                         print(f"processed {len(p_results)} paragraphs in batch")
