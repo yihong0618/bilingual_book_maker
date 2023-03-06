@@ -265,7 +265,8 @@ if __name__ == "__main__":
         type=str,
         default="chatgpt",
         choices=["chatgpt", "gpt3"],  # support DeepL later
-        help="Which model to use",
+        metavar="MODEL",
+        help="Which model to use, available: {%(choices)s}",
     )
     parser.add_argument(
         "--language",
