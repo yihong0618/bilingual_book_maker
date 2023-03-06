@@ -275,7 +275,7 @@ if __name__ == "__main__":
         + sorted([k.title() for k in TO_LANGUAGE_CODE.keys()]),
         default="zh-hans",
         metavar="LANGUAGE",
-        help='language to translate to, available: {%(choices)s}'
+        help="language to translate to, available: {%(choices)s}",
     )
     parser.add_argument(
         "--resume",
