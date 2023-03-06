@@ -4,8 +4,10 @@ RUN apt-get update
 
 WORKDIR /app
 
-COPY . .
+COPY requirements.txt .
 
 RUN pip install -r /app/requirements.txt
+
+COPY . .
 
 ENTRYPOINT ["python3", "make_book.py"]
