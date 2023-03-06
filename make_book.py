@@ -120,7 +120,7 @@ class ChatGPT(Base):
             asyncio.sleep(sleep_time)
             print(str(e), "will sleep  " + str(sleep_time) + " seconds")
             openai.api_key = self.get_key(self.key)
-            completion = openai.ChatCompletion.create(
+            completion = await openai.ChatCompletion.acreate(
                 model="gpt-3.5-turbo",
                 messages=[
                     {
