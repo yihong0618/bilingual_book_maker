@@ -112,12 +112,12 @@ class ChatGPT(Base):
             )
             if not NO_LIMIT:
                 # for time limit
-                time.sleep(3)
+                await asyncio.sleep(3)
         except Exception as e:
             # TIME LIMIT for open api please pay
             key_len = self.key.count(",") + 1
             sleep_time = int(60 / key_len)
-            time.sleep(sleep_time)
+            asyncio.sleep(sleep_time)
             print(str(e), "will sleep  " + str(sleep_time) + " seconds")
             openai.api_key = self.get_key(self.key)
             completion = openai.ChatCompletion.create(
