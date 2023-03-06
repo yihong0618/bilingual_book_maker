@@ -1,3 +1,4 @@
+'''Main code for the application'''
 import argparse
 import time
 from abc import abstractmethod
@@ -8,18 +9,34 @@ import openai
 import requests
 from bs4 import BeautifulSoup as bs
 from ebooklib import epub
-from rich import print
+# pylint: disable=R0903
+# pylint: disable=W0246
+# pylint: disable=W0718
+# pylint: disable=W0719
+# pylint: disable=C0115
+# pylint: disable=W0246
+# pylint: disable=W0107
+# pylint: disable=W0621
+# pylint: disable=E1121
+# pylint: disable=R1728
+# pylint: disable=E1101
+# pylint: disable=C0116
+
+
+
 
 NO_LIMIT = False
 IS_TEST = False
 
 
 class Base:
+    '''Base class for gpt3 api'''
     def __init__(self, key):
         pass
 
     @abstractmethod
     def translate(self, text):
+        '''demo Translates '''
         pass
 
 
@@ -31,7 +48,6 @@ class GPT3(Base):
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}",
         }
-        # TODO support more models here
         self.data = {
             "prompt": "",
             "model": "text-davinci-003",
@@ -44,10 +60,10 @@ class GPT3(Base):
     def translate(self, text):
         print(text)
         self.data["prompt"] = f"Please help me to translate，`{text}` to Chinese"
-        r = self.session.post(self.api_url, headers=self.headers, json=self.data)
-        if not r.ok:
+        allr = self.session.post(self.api_url, headers=self.headers, json=self.data)
+        if not allr.ok:
             return text
-        t_text = r.json().get("choices")[0].get("text", "").strip()
+        t_text = allr.json().get("choices")[0].get("text", "").strip()
         print(t_text)
         return t_text
 
@@ -69,49 +85,39 @@ class ChatGPT(Base):
         print(text)
         openai.api_key = self.key
         try:
-            completion = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "user",
-                        # english prompt here to save tokens
-                        "content": f"Please help me to translate，`{text}` to Chinese, please return only translated content not include the origin text",
-                    }
-                ],
+            completion = openai.Completion.create(
+                engine="text-davinci-002",
+                prompt=f"Please help me to translate，`{text}` to Chinese",
+                max_tokens=1024,
+                temperature=0.5,
+                n=1,
+                stop=None,
+                frequency_penalty=0,
+                presence_penalty=0
             )
-            t_text = (
-                completion["choices"][0]
-                .get("message")
-                .get("content")
-                .encode("utf8")
-                .decode()
-            )
+            t_text = completion.choices[0].text
+            t_text = t_text.strip().replace('\n', '')
             if not NO_LIMIT:
                 # for time limit
                 time.sleep(3)
-        except Exception as e:
-            print(str(e), "will sleep 60 seconds")
+        except Exception as alle:
+            print(str(alle), "will sleep 60 seconds")
             # TIME LIMIT for open api please pay
             time.sleep(60)
-            completion = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"Please help me to translate，`{text}` to Simplified Chinese, please return only translated content not include the origin text",
-                    }
-                ],
+            completion = openai.Completion.create(
+                engine="text-davinci-002",
+                prompt=f"Please help me to translate，`{text}` to Simplified Chinese",
+                max_tokens=1024,
+                temperature=0.5,
+                n=1,
+                stop=None,
+                frequency_penalty=0,
+                presence_penalty=0
             )
-            t_text = (
-                completion["choices"][0]
-                .get("message")
-                .get("content")
-                .encode("utf8")
-                .decode()
-            )
+            t_text = completion.choices[0].text
+            t_text = t_text.strip().replace('\n', '')
         print(t_text)
         return t_text
-
 
 class BEPUB:
     def __init__(self, epub_name, model, key):
@@ -137,14 +143,14 @@ class BEPUB:
                 soup = bs(i.content, "html.parser")
                 p_list = soup.findAll("p")
                 is_test_done = IS_TEST and index > 20
-                for p in p_list:
+                for allp in p_list:
                     if not is_test_done:
-                        if p.text and not p.text.isdigit():
-                            new_p = copy(p)
-                            # TODO banch of p to translate then combine
+                        if allp.text and not allp.text.isdigit():
+                            new_p = copy(allp)
+                            # banch of p to translate then combine
                             # PR welcome here
-                            new_p.string = self.translate_model.translate(p.text)
-                            p.insert_after(new_p)
+                            new_p.string = self.translate_model.translate(allp.text)
+                            allp.insert_after(new_p)
                             index += 1
                 i.content = soup.prettify().encode()
             new_book.add_item(i)
