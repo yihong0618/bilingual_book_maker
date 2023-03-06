@@ -194,6 +194,8 @@ class BEPUB:
                             self.p_to_save.append(new_p.text)
                         p.insert_after(new_p)
                         index += 1
+                        if index % 50 == 0:
+                            self.save_progress()
                         if IS_TEST and index > TEST_NUM:
                             break
                     i.content = soup.prettify().encode()
