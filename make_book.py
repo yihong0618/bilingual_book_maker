@@ -265,7 +265,8 @@ if __name__ == "__main__":
         type=str,
         default="chatgpt",
         choices=["chatgpt", "gpt3"],  # support DeepL later
-        help="Which model to use",
+        metavar="MODEL",
+        help="Which model to use, available: {%(choices)s}",
     )
     parser.add_argument(
         "--language",
@@ -273,7 +274,8 @@ if __name__ == "__main__":
         choices=sorted(LANGUAGES.keys())
         + sorted([k.title() for k in TO_LANGUAGE_CODE.keys()]),
         default="zh-hans",
-        help="language to translate to",
+        metavar="LANGUAGE",
+        help="language to translate to, available: {%(choices)s}",
     )
     parser.add_argument(
         "--resume",
