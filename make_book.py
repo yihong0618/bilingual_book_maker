@@ -1,6 +1,7 @@
 import argparse
 import os
 import pickle
+import sys
 import time
 from abc import abstractmethod
 from copy import copy
@@ -42,10 +43,11 @@ class GPT3(Base):
     def __init__(self, key, language, api_base=None):
         super().__init__(key, language)
         self.api_key = key
-        if not api_base:
-            self.api_url = "https://api.openai.com/v1/completions"
-        else:
-            self.api_url = api_base + "v1/completions"
+        self.api_url = (
+            f"{api_base}v1/completions"
+            if api_base
+            else "https://api.openai.com/v1/completions"
+        )
         self.headers = {
             "Content-Type": "application/json",
         }
@@ -117,7 +119,7 @@ class ChatGPT(Base):
             key_len = self.key.count(",") + 1
             sleep_time = int(60 / key_len)
             time.sleep(sleep_time)
-            print(str(e), "will sleep  " + str(sleep_time) + " seconds")
+            print(e, f"will sleep  {sleep_time} seconds")
             openai.api_key = self.get_key(self.key)
             completion = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
@@ -161,17 +163,13 @@ class BEPUB:
         new_book.spine = self.origin_book.spine
         new_book.toc = self.origin_book.toc
         all_items = list(self.origin_book.get_items())
-        # we just translate tag p
-        all_p_length = 0
-        for i in all_items:
-            if i.file_name.endswith(".xhtml"):
-                all_p_length += len(bs(i.content, "html.parser").findAll("p"))
-            else:
-                all_p_length += len(bs(i.content, "xml").findAll("p"))
-        if IS_TEST:
-            pbar = tqdm(total=TEST_NUM)
-        else:
-            pbar = tqdm(total=all_p_length)
+        all_p_length = sum(
+            len(bs(i.content, "html.parser").findAll("p"))
+            if i.file_name.endswith(".xhtml")
+            else len(bs(i.content, "xml").findAll("p"))
+            for i in all_items
+        )
+        pbar = tqdm(total=TEST_NUM) if IS_TEST else tqdm(total=all_p_length)
         index = 0
         p_to_save_len = len(self.p_to_save)
         try:
@@ -205,7 +203,7 @@ class BEPUB:
             print(e)
             print("you can resume it next time")
             self.save_progress()
-            exit(0)
+            sys.exit(0)
 
     def load_state(self):
         try:
