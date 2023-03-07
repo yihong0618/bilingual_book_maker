@@ -27,6 +27,8 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 7. Use the --proxy parameter to enable users in mainland China to use a proxy when testing locally. Enter a string such as http://127.0.0.1:7890.
 8. Use the --resume command to manually resume the process after an interruption.
 9. If you want to change api_base like using Cloudflare Workers Use --api_base ${url} to support it. **Note: the api url you input should be `https://xxxx/v1', and quotation marks are required. **
+10. Once the translation is complete, a bilingual book named ${book_name}_bilingual.epub will be generated.
+11. If there are any errors or you wish to interrupt the translation using CTRL+C and do not want to continue further, a book named ${book_name}_bilingual_temp.epub will be generated. You can simply rename it to the desired name.
 
 e.g.
 ```shell
