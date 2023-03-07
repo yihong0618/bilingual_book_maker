@@ -186,9 +186,9 @@ class BEPUB:
         new_book = self._make_new_book(self.origin_book)
         all_items = list(self.origin_book.get_items())
         all_p_length = sum(
-            len(bs(i.content, "html.parser").findAll("p"))
-            if i.file_name.endswith(".xhtml")
-            else len(bs(i.content, "xml").findAll("p"))
+            0
+            if i.get_type() != ITEM_DOCUMENT
+            else len(bs(i.content, "html.parser").findAll("p"))
             for i in all_items
         )
         pbar = tqdm(total=TEST_NUM) if IS_TEST else tqdm(total=all_p_length)
@@ -217,7 +217,7 @@ class BEPUB:
                             self._save_progress()
                         # pbar.update(delta) not pbar.update(index)?
                         pbar.update(1)
-                        if IS_TEST and index > TEST_NUM:
+                        if IS_TEST and index >= TEST_NUM:
                             break
                     item.content = soup.prettify().encode()
                 new_book.add_item(item)
