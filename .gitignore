@@ -130,3 +130,5 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+/test_books/*.epub
