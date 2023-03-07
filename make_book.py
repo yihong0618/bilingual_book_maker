@@ -174,7 +174,6 @@ class BEPUB:
         p_to_save_len = len(self.p_to_save)
         try:
             for i in self.origin_book.get_items():
-                pbar.update(index)
                 if i.get_type() == ITEM_DOCUMENT:
                     if i.file_name.endswith(".xhtml"):
                         soup = bs(i.content, "xml")
@@ -197,7 +196,9 @@ class BEPUB:
                         index += 1
                         if index % 50 == 0:
                             self.save_progress()
-                        if IS_TEST and index > TEST_NUM:
+                        # pbar.update(delta) not pbar.update(index)?
+                        pbar.update(1)
+                        if IS_TEST and index >= TEST_NUM:
                             break
                     i.content = soup.prettify().encode()
                 new_book.add_item(i)
