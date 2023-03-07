@@ -41,10 +41,41 @@ export OPENAI_API_KEY=${your_api_key}
 python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_limit --language "Simplified Chinese"
 ```
 More understandable example
-```
+```shell
 python3 make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_base 'https://xxxxx/v1'
 # or
 python make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_base 'https://xxxxx/v1'
+```
+
+## Docker
+You can use [Docker](https://www.docker.com/) if you don't want to deal with setting up the environment.
+```shell
+# build image
+docker build --tag bilingual_book_maker .
+
+# run container
+# "$folder_path" represents the folder where your book file is located. Also, it is where the processed file will be stored.
+
+# Windows PowerShell
+$folder_path=your_folder_path # $folder_path="C:\Users\user\mybook\"
+$book_name=your_book_name # $book_name="animal_farm.epub"
+$openai_key=your_api_key # $openai_key="sk-xxx"
+$language=your_language # see utils.py
+
+docker run --rm --name bilingual_book_maker --mount type=bind,source=$folder_path,target='/app/test_books' bilingual_book_maker --book_name "/app/test_books/$book_name" --openai_key $openai_key --no_limit --language $language
+
+# linux
+export folder_path=${your_folder_path}
+export book_name=${your_book_name}
+export openai_key=${your_api_key}
+export language=${your_language}
+
+docker container run --rm --name bilingual_book_maker --mount type=bind,source=${folder_path},target='/app/test_books' bilingual_book_maker --book_name "/app/test_books/${book_name}" --openai_key ${openai_key} --no_limit --language "${language}"
+```
+for example,
+```shell
+# linux
+docker container run --rm --name bilingual_book_maker --mount type=bind,source=/home/user/my_books,target='/app/test_books' bilingual_book_maker --book_name /app/test_books/animal_farm.epub --openai_key sk-XXX --no_limit --test --test_num 1 --language zh-hant
 ```
 
 ## Notes
