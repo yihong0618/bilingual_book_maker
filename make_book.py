@@ -119,7 +119,7 @@ class ChatGPT(Base):
             key_len = self.key.count(",") + 1
             sleep_time = int(60 / key_len)
             time.sleep(sleep_time)
-            print(e, f"will sleep  {sleep_time} seconds")
+            print(e, f"will sleep for {sleep_time} seconds")
             openai.api_key = self.get_key(self.key)
             completion = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
@@ -274,27 +274,27 @@ if __name__ == "__main__":
         "--book_name",
         dest="book_name",
         type=str,
-        help="your epub book file path",
+        help="path of the epub file to be translated",
     )
     parser.add_argument(
         "--openai_key",
         dest="openai_key",
         type=str,
         default="",
-        help="openai api key,if you have more than one key,you can use comma"
-        " to split them and you can break through the limitation",
+        help="OpenAI api key,if you have more than one key, please use comma"
+        " to split them to go beyond the rate limits",
     )
     parser.add_argument(
         "--no_limit",
         dest="no_limit",
         action="store_true",
-        help="If you are a paying customer you can add it",
+        help="with a paid account, you can specify this option",
     )
     parser.add_argument(
         "--test",
         dest="test",
         action="store_true",
-        help="if test we only translat 10 contents you can easily check",
+        help="only the first 10 paragraphs will be translated, for testing",
     )
     parser.add_argument(
         "--test_num",
@@ -311,7 +311,7 @@ if __name__ == "__main__":
         default="chatgpt",
         choices=["chatgpt", "gpt3"],  # support DeepL later
         metavar="MODEL",
-        help="Which model to use, available: {%(choices)s}",
+        help="the model to use, available: {%(choices)s}",
     )
     parser.add_argument(
         "--language",
@@ -326,7 +326,7 @@ if __name__ == "__main__":
         "--resume",
         dest="resume",
         action="store_true",
-        help="if program accidentally stop you can use this to resume",
+        help="if program stop unexpected you can use this to resume",
     )
     parser.add_argument(
         "-p",
@@ -341,7 +341,7 @@ if __name__ == "__main__":
         "--api_base",
         dest="api_base",
         type=str,
-        help="replace base url from openapi",
+        help="specify base url other than the OpenAI's official API address",
     )
 
     options = parser.parse_args()
@@ -356,9 +356,9 @@ if __name__ == "__main__":
     OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
     RESUME = options.resume
     if not OPENAI_API_KEY:
-        raise Exception("Need openai API key, please google how to")
+        raise Exception("OpenAI API key not provided, please google how to")
     if not options.book_name.lower().endswith(".epub"):
-        raise Exception("please use epub file")
+        raise Exception("Only .epub files are supported")
     model = MODEL_DICT.get(options.model, "chatgpt")
     language = options.language
     if options.language in LANGUAGES:
