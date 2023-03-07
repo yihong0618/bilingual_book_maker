@@ -49,18 +49,18 @@ python make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_b
 You can use [Docker](https://www.docker.com/) if you don't want to deal with setting up the environment.
 ```shell
 # build image
-docker image build --tag bilingual_book_maker .
+docker build --tag bilingual_book_maker .
 
 # run container
 # "$folder_path" represents the folder where your book file is located. Also, it is where the processed file will be stored.
 
 # Windows PowerShell
-$folder_path=your_folder_path
-$book_name=your_book_name
-$openai_key=your_api_key
-$language=your_language
+$folder_path=your_folder_path # $folder_path="C:\Users\user\mybook\"
+$book_name=your_book_name # $book_name="animal_farm.epub"
+$openai_key=your_api_key # $openai_key="sk-xxx"
+$language=your_language # see utils.py
 
-docker container run --rm --name bilingual_book_maker --mount type=bind,source=$folder_path,target='/app/test_books' bilingual_book_maker --book_name "/app/test_books/$book_name" --openai_key $openai_key --no_limit --language $language
+docker run --rm --name bilingual_book_maker --mount type=bind,source=$folder_path,target='/app/test_books' bilingual_book_maker --book_name "/app/test_books/$book_name" --openai_key $openai_key --no_limit --language $language
 
 # linux
 export folder_path=${your_folder_path}
