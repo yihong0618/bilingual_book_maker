@@ -176,7 +176,10 @@ class BEPUB:
             for i in self.origin_book.get_items():
                 pbar.update(index)
                 if i.get_type() == ITEM_DOCUMENT:
-                    soup = bs(i.content, "html.parser")
+                    if i.file_name.endswith(".xhtml"):
+                        soup = bs(i.content, "xml")
+                    else:
+                        soup = bs(i.content, "html.parser")
                     p_list = soup.findAll("p")
                     is_test_done = IS_TEST and index > TEST_NUM
                     for p in p_list:
