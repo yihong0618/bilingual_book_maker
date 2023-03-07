@@ -22,6 +22,18 @@ IS_TEST = False
 RESUME = False
 
 
+def load_key_file(key_file_path):
+    """Load key file (one key per line).
+    Return Comma-separated string of multiple keys.
+    """
+    if not os.path.isfile(key_file_path):
+        raise Exception(f"File '{key_file_path}' doesn't exist")
+    keys = []
+    with open(key_file_path, "r", encoding="utf-8") as fp:
+        keys.extend(line.strip() for line in fp)
+    return ",".join(keys)
+
+
 class Base:
     def __init__(self, key, language, api_base=None):
         self.key = key
@@ -303,6 +315,13 @@ if __name__ == "__main__":
         " to split them and you can break through the limitation",
     )
     parser.add_argument(
+        "--openai_key_file",
+        dest="openai_key_file",
+        type=str,
+        default="",
+        help="The file contains openai api keys (each key per line).",
+    )
+    parser.add_argument(
         "--no_limit",
         dest="no_limit",
         action="store_true",
@@ -370,8 +389,11 @@ if __name__ == "__main__":
     if PROXY != "":
         os.environ["http_proxy"] = PROXY
         os.environ["https_proxy"] = PROXY
-
     OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
+    OPENAI_KEY_FILE = options.openai_key_file
+    if not OPENAI_API_KEY:
+        if OPENAI_KEY_FILE:
+            OPENAI_API_KEY = load_key_file(OPENAI_KEY_FILE)
     RESUME = options.resume
     if not OPENAI_API_KEY:
         raise Exception("Need openai API key, please google how to")
