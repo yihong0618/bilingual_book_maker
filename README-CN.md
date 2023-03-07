@@ -1,5 +1,6 @@
-tw# bilingual_book_maker
-Make bilingual epub books Using AI translate
+# bilingual_book_maker
+
+bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制作多语言版本的 epub 文件和图书。该工具仅适用于翻译进入公共版权领域的 epub 图书，不适用于有版权的书籍。请在使用之前阅读项目的 **[免责声明](./disclaimer.md)**。
 
 ![image](https://user-images.githubusercontent.com/15976103/222317531-a05317c5-4eee-49de-95cd-04063d9539d9.png)
 
@@ -19,7 +20,7 @@ Make bilingual epub books Using AI translate
 3. 本地放了一个 animal_farm.epub 给大家测试
 4. 默认用了 [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis) 模型，也就是 ChatGPT 正在使用的模型，用 `--model gpt3` 来使用 gpt3 模型
 5. 加了 `--test` 命令如果大家没付费可以加上这个先看看效果（有 limit 稍微有些慢）
-6. Set the target language like `--language "Simplified Chinese"`. 
+6. Set the target language like `--language "Simplified Chinese"`.
    Suppot ` "Japanese" / "Traditional Chinese" / "German" / "French" / "Korean"`.
    Default target language is `"Simplified Chinese"`. Support language list please see the LANGUAGES at [utils.py](./utils.py).
 7. 加了 `--proxy` 参数，方便中国大陆的用户在本地测试时使用代理，传入类似 `http://127.0.0.1:7890` 的字符串
