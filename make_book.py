@@ -146,7 +146,25 @@ class BEPUB:
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
         self.translate_model = model(key, language, model_api_base)
-        self.origin_book = epub.read_epub(self.epub_name)
+
+        try:
+            self.origin_book = epub.read_epub(self.epub_name)
+        except:
+            # tricky for #71 if you don't know why please check the issue and ignore this
+            # when upstream change will TODO fix this
+            def _load_spine(self):
+                spine = self.container.find(
+                    "{%s}%s" % (epub.NAMESPACES["OPF"], "spine")
+                )
+
+                self.book.spine = [
+                    (t.get("idref"), t.get("linear", "yes")) for t in spine
+                ]
+                self.book.set_direction(spine.get("page-progression-direction", None))
+
+            epub.EpubReader._load_spine = _load_spine
+            self.origin_book = epub.read_epub(self.epub_name)
+
         self.p_to_save = []
         self.resume = resume
         self.bin_path = f"{Path(epub_name).parent}/.{Path(epub_name).stem}.temp.bin"
