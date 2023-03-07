@@ -212,6 +212,8 @@ class BEPUB:
                             new_p.string = self.translate_model.translate(p.text)
                             self.p_to_save.append(new_p.text)
                         p.insert_after(new_p)
+                        if TRANSLATION_ONLY:
+                            p.extract()
                         index += 1
                         if index % 50 == 0:
                             self._save_progress()
@@ -341,6 +343,12 @@ if __name__ == "__main__":
         help="language to translate to, available: {%(choices)s}",
     )
     parser.add_argument(
+        "--translation-only",
+        dest="translation_only",
+        action="store_false",
+        help="remove original paragraphs, and keep translation only",
+    )
+    parser.add_argument(
         "--resume",
         dest="resume",
         action="store_true",
@@ -373,6 +381,7 @@ if __name__ == "__main__":
 
     OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
     RESUME = options.resume
+    TRANSLATION_ONLY = options.translation_only
     if not OPENAI_API_KEY:
         raise Exception("Need openai API key, please google how to")
     if not options.book_name.lower().endswith(".epub"):
