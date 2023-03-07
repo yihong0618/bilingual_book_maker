@@ -10,7 +10,7 @@ from pathlib import Path
 import openai
 import requests
 from bs4 import BeautifulSoup as bs
-from ebooklib import epub
+from ebooklib import epub, ITEM_DOCUMENT
 from rich import print
 from tqdm import tqdm
 
@@ -177,7 +177,7 @@ class BEPUB:
         try:
             for i in self.origin_book.get_items():
                 pbar.update(index)
-                if i.get_type() == 9:
+                if i.get_type() == ITEM_DOCUMENT:
                     soup = bs(i.content, "html.parser")
                     p_list = soup.findAll("p")
                     is_test_done = IS_TEST and index > TEST_NUM
