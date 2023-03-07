@@ -11,7 +11,7 @@ from pathlib import Path
 import openai
 import requests
 from bs4 import BeautifulSoup as bs
-from ebooklib import epub
+from ebooklib import epub, ITEM_DOCUMENT
 from rich import print
 from tqdm import tqdm
 
@@ -175,7 +175,7 @@ class BEPUB:
         try:
             for i in self.origin_book.get_items():
                 pbar.update(index)
-                if i.get_type() == 9:
+                if i.get_type() == ITEM_DOCUMENT:
                     soup = bs(i.content, "html.parser")
                     p_list = soup.findAll("p")
                     is_test_done = IS_TEST and index > TEST_NUM
@@ -192,11 +192,13 @@ class BEPUB:
                             self.p_to_save.append(new_p.text)
                         p.insert_after(new_p)
                         index += 1
+                        if index % 50 == 0:
+                            self.save_progress()
                         if IS_TEST and index > TEST_NUM:
                             break
                     i.content = soup.prettify().encode()
                 new_book.add_item(i)
-            name = self.epub_name.split(".")[0]
+            name, _ = os.path.splitext(self.epub_name)
             epub.write_epub(f"{name}_bilingual.epub", new_book, {})
             pbar.close()
         except (KeyboardInterrupt, Exception) as e:
@@ -310,7 +312,7 @@ if __name__ == "__main__":
     RESUME = options.resume
     if not OPENAI_API_KEY:
         raise Exception("Need openai API key, please google how to")
-    if not options.book_name.endswith(".epub"):
+    if not options.book_name.lower().endswith(".epub"):
         raise Exception("please use epub file")
     model = MODEL_DICT.get(options.model, "chatgpt")
     language = options.language
