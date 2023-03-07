@@ -198,7 +198,7 @@ class BEPUB:
                             break
                     i.content = soup.prettify().encode()
                 new_book.add_item(i)
-            name = self.epub_name.split(".")[0]
+            name, _ = os.path.splitext(self.epub_name)
             epub.write_epub(f"{name}_bilingual.epub", new_book, {})
             pbar.close()
         except (KeyboardInterrupt, Exception) as e:
@@ -310,7 +310,7 @@ if __name__ == "__main__":
     RESUME = options.resume
     if not OPENAI_API_KEY:
         raise Exception("Need openai API key, please google how to")
-    if not options.book_name.endswith(".epub"):
+    if not options.book_name.lower().endswith(".epub"):
         raise Exception("please use epub file")
     model = MODEL_DICT.get(options.model, "chatgpt")
     language = options.language
