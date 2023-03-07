@@ -33,12 +33,12 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 e.g.
 ```shell
 # Test quickly
-python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --no_limit --test --language "Simplified Chinese"
+python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --no_limit --test --language zh-hans
 # or do it
-python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --language "Simplified Chinese"
-# or use the GPT-3 model
+python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --language zh-hans
+# or use the GPT-3 model with Japanese
 export OPENAI_API_KEY=${your_api_key}
-python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_limit --language "Simplified Chinese"
+python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_limit --language ja
 ```
 More understandable example
 ```shell
