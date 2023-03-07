@@ -178,7 +178,6 @@ class BEPUB:
         p_to_save_len = len(self.p_to_save)
         try:
             for item in self.origin_book.get_items():
-                pbar.update(index)
                 if item.get_type() == ITEM_DOCUMENT:
                     soup = bs(item.content, "html.parser")
                     p_list = soup.findAll("p")
@@ -198,6 +197,8 @@ class BEPUB:
                         index += 1
                         if index % 50 == 0:
                             self._save_progress()
+                        # pbar.update(delta) not pbar.update(index)?
+                        pbar.update(1)
                         if IS_TEST and index > TEST_NUM:
                             break
                     item.content = soup.prettify().encode()
@@ -230,7 +231,11 @@ class BEPUB:
         try:
             for item in self.origin_book.get_items():
                 if item.get_type() == ITEM_DOCUMENT:
-                    soup = bs(item.content, "html.parser")
+                    soup = (
+                        bs(item.content, "xml")
+                        if item.file_name.endswith(".xhtml")
+                        else bs(item.content, "html.parser")
+                    )
                     p_list = soup.findAll("p")
                     for p in p_list:
                         if not p.text or self._is_special_text(p.text):
