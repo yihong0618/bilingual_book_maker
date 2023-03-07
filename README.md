@@ -27,22 +27,55 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 7. Use the --proxy parameter to enable users in mainland China to use a proxy when testing locally. Enter a string such as http://127.0.0.1:7890.
 8. Use the --resume command to manually resume the process after an interruption.
 9. If you want to change api_base like using Cloudflare Workers Use --api_base ${url} to support it. **Note: the api url you input should be `https://xxxx/v1', and quotation marks are required. **
+10. Once the translation is complete, a bilingual book named ${book_name}_bilingual.epub will be generated.
+11. If there are any errors or you wish to interrupt the translation using CTRL+C and do not want to continue further, a book named ${book_name}_bilingual_temp.epub will be generated. You can simply rename it to the desired name.
 
 e.g.
 ```shell
 # Test quickly
-python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --no_limit --test --language "Simplified Chinese"
+python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --no_limit --test --language zh-hans
 # or do it
-python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --language "Simplified Chinese"
-# or use the GPT-3 model
+python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --language zh-hans
+# or use the GPT-3 model with Japanese
 export OPENAI_API_KEY=${your_api_key}
-python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_limit --language "Simplified Chinese"
+python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_limit --language ja
 ```
 More understandable example
-```
+```shell
 python3 make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_base 'https://xxxxx/v1'
 # or
 python make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_base 'https://xxxxx/v1'
+```
+
+## Docker
+You can use [Docker](https://www.docker.com/) if you don't want to deal with setting up the environment.
+```shell
+# build image
+docker build --tag bilingual_book_maker .
+
+# run container
+# "$folder_path" represents the folder where your book file is located. Also, it is where the processed file will be stored.
+
+# Windows PowerShell
+$folder_path=your_folder_path # $folder_path="C:\Users\user\mybook\"
+$book_name=your_book_name # $book_name="animal_farm.epub"
+$openai_key=your_api_key # $openai_key="sk-xxx"
+$language=your_language # see utils.py
+
+docker run --rm --name bilingual_book_maker --mount type=bind,source=$folder_path,target='/app/test_books' bilingual_book_maker --book_name "/app/test_books/$book_name" --openai_key $openai_key --no_limit --language $language
+
+# linux
+export folder_path=${your_folder_path}
+export book_name=${your_book_name}
+export openai_key=${your_api_key}
+export language=${your_language}
+
+docker container run --rm --name bilingual_book_maker --mount type=bind,source=${folder_path},target='/app/test_books' bilingual_book_maker --book_name "/app/test_books/${book_name}" --openai_key ${openai_key} --no_limit --language "${language}"
+```
+for example,
+```shell
+# linux
+docker container run --rm --name bilingual_book_maker --mount type=bind,source=/home/user/my_books,target='/app/test_books' bilingual_book_maker --book_name /app/test_books/animal_farm.epub --openai_key sk-XXX --no_limit --test --test_num 1 --language zh-hant
 ```
 
 ## Notes

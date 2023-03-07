@@ -26,16 +26,18 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 7. 加了 `--proxy` 参数，方便中国大陆的用户在本地测试时使用代理，传入类似 `http://127.0.0.1:7890` 的字符串
 8. 加入 `--resume` 命令，可以手动中断后，加入命令继续执行。
 9. 如果你遇到了墙需要用 Cloudflare Workers 替换 api_base 请使用 `--api_base ${url}` 来替换。**请注意，此处你输入的api应该是"`https://xxxx/v1`"的字样，域名需要用引号包裹**
+10. 翻译完会生成一本 ${book_name}_bilingual.epub 的双语书
+10. 如果出现了错误或 CTRL + C 中断，不想接下来继续翻译了，会生成一本 ${book_name}_bilingual_temp.epub 的书，直接改成你想要的名字就可以了
 
 e.g.
 ```shell
 # 如果你想快速测一下
-python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --no_limit --test --language "Simplified Chinese"
-# or do it
-python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --language "Simplified Chinese"
+python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --no_limit --test
+# or do it # Chinese
+python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --language zh-hans
 # or 用 gpt3 模型
 export OPENAI_API_KEY=${your_api_key}
-python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_limit --language "Simplified Chinese"
+python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_limit --language ja
 ```
 
 更加小白的示例
