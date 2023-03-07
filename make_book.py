@@ -157,11 +157,15 @@ class BEPUB:
     def _is_special_text(text):
         return text.isdigit() or text.isspace()
 
-    def make_bilingual_book(self):
+    def _make_new_book(self, book):
         new_book = epub.EpubBook()
-        new_book.metadata = self.origin_book.metadata
-        new_book.spine = self.origin_book.spine
-        new_book.toc = self.origin_book.toc
+        new_book.metadata = book.metadata
+        new_book.spine = book.spine
+        new_book.toc = book.toc
+        return new_book
+
+    def make_bilingual_book(self):
+        new_book = self._make_new_book(self.origin_book)
         all_items = list(self.origin_book.get_items())
         all_p_length = sum(
             len(bs(i.content, "html.parser").findAll("p"))
@@ -173,10 +177,10 @@ class BEPUB:
         index = 0
         p_to_save_len = len(self.p_to_save)
         try:
-            for i in self.origin_book.get_items():
+            for item in self.origin_book.get_items():
                 pbar.update(index)
-                if i.get_type() == ITEM_DOCUMENT:
-                    soup = bs(i.content, "html.parser")
+                if item.get_type() == ITEM_DOCUMENT:
+                    soup = bs(item.content, "html.parser")
                     p_list = soup.findAll("p")
                     is_test_done = IS_TEST and index > TEST_NUM
                     for p in p_list:
@@ -193,18 +197,19 @@ class BEPUB:
                         p.insert_after(new_p)
                         index += 1
                         if index % 50 == 0:
-                            self.save_progress()
+                            self._save_progress()
                         if IS_TEST and index > TEST_NUM:
                             break
-                    i.content = soup.prettify().encode()
-                new_book.add_item(i)
+                    item.content = soup.prettify().encode()
+                new_book.add_item(item)
             name, _ = os.path.splitext(self.epub_name)
             epub.write_epub(f"{name}_bilingual.epub", new_book, {})
             pbar.close()
         except (KeyboardInterrupt, Exception) as e:
             print(e)
             print("you can resume it next time")
-            self.save_progress()
+            self._save_progress()
+            self._save_temp_book()
             sys.exit(0)
 
     def load_state(self):
@@ -214,7 +219,42 @@ class BEPUB:
         except:
             raise Exception("can not load resume file")
 
-    def save_progress(self):
+    def _save_temp_book(self):
+        origin_book_temp = epub.read_epub(
+            self.epub_name
+        )  # we need a new instance for temp save
+        new_temp_book = self._make_new_book(origin_book_temp)
+        p_to_save_len = len(self.p_to_save)
+        index = 0
+        # items clear
+        try:
+            for item in self.origin_book.get_items():
+                if item.get_type() == ITEM_DOCUMENT:
+                    soup = bs(item.content, "html.parser")
+                    p_list = soup.findAll("p")
+                    for p in p_list:
+                        if not p.text or self._is_special_text(p.text):
+                            continue
+                        # TODO banch of p to translate then combine
+                        # PR welcome here
+                        if index < p_to_save_len:
+                            new_p = copy(p)
+                            new_p.string = self.p_to_save[index]
+                            print(new_p.string)
+                            p.insert_after(new_p)
+                            index += 1
+                        else:
+                            break
+                    # for save temp book
+                    item.content = soup.prettify().encode()
+                new_temp_book.add_item(item)
+            name, _ = os.path.splitext(self.epub_name)
+            epub.write_epub(f"{name}_bilingual_temp.epub", new_temp_book, {})
+        except Exception as e:
+            # TODO handle it
+            print(e)
+
+    def _save_progress(self):
         try:
             with open(self.bin_path, "wb") as f:
                 pickle.dump(self.p_to_save, f)
