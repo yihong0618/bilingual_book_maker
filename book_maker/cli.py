@@ -21,7 +21,7 @@ def main():
         type=str,
         default="",
         help="OpenAI api key,if you have more than one key, please use comma"
-        " to split them to go beyond the rate limits"
+        " to split them to go beyond the rate limits",
     )
     parser.add_argument(
         "--no_limit",
@@ -96,7 +96,9 @@ def main():
     book_type = options.book_name.split(".")[-1]
     support_type_list = list(BOOK_LOADER_DICT.keys())
     if book_type not in support_type_list:
-        raise Exception(f"now only support files of these formats: {','.join(support_type_list)}")
+        raise Exception(
+            f"now only support files of these formats: {','.join(support_type_list)}"
+        )
     translate_model = MODEL_DICT.get(options.model)
     assert translate_model is not None, "unsupported model"
 
