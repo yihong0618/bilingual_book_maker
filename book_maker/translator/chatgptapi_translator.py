@@ -8,7 +8,7 @@ from .base_translator import Base
 class ChatGPTAPI(Base):
     def __init__(self, key, language, api_base=None):
         super().__init__(key, language)
-        self.ken_len = len(key.split(","))
+        self.key_len = len(key.split(","))
         if api_base:
             openai.api_base = api_base
 
