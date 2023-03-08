@@ -1,5 +1,3 @@
-import argparse
-import logging
 import os
 import pickle
 import sys
@@ -85,7 +83,7 @@ class EPUBBookLoader(BaseBookLoader):
         all_length = all_p_length if all_div_length<=all_p_length else all_div_length
         tag = "p" if all_div_length<=all_p_length else "div"
         if not all_length:
-            print('No available contexts found in your original book,translate terminated!')
+            print('no available contexts found in your original book,translate terminated!')
             return
         pbar = tqdm(total=self.test_num) if self.is_test else tqdm(total=all_length)
         index = 0
