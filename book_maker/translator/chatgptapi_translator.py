@@ -12,9 +12,12 @@ class ChatGPTAPI(Base):
         if api_base:
             openai.api_base = api_base
 
+    def rotate_key(self):
+        openai.api_key = next(self.keys)
+
     def translate(self, text):
         print(text)
-        openai.api_key = self.get_key()
+        self.rotate_key()
         try:
             completion = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
@@ -38,7 +41,7 @@ class ChatGPTAPI(Base):
             sleep_time = int(60 / self.key_len)
             time.sleep(sleep_time)
             print(e, f"will sleep  {sleep_time} seconds")
-            openai.api_key = self.get_key()
+            self.rotate_key()
             completion = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
                 messages=[

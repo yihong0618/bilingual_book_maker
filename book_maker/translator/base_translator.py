@@ -7,8 +7,9 @@ class Base(ABC):
         self.keys = itertools.cycle(key.split(","))
         self.language = language
 
-    def get_key(self):
-        return next(self.keys)
+    @abstractmethod
+    def rotate_key(self):
+        pass
 
     @abstractmethod
     def translate(self, text):
