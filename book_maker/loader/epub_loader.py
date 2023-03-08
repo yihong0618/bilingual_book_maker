@@ -1,4 +1,3 @@
-import argparse
 import os
 import pickle
 import sys
@@ -33,7 +32,7 @@ class EPUBBookLoader(BaseBookLoader):
 
         try:
             self.origin_book = epub.read_epub(self.epub_name)
-        except:
+        except Exception:
             # tricky for #71 if you don't know why please check the issue and ignore this
             # when upstream change will TODO fix this
             def _load_spine(self):
@@ -119,7 +118,7 @@ class EPUBBookLoader(BaseBookLoader):
         try:
             with open(self.bin_path, "rb") as f:
                 self.p_to_save = pickle.load(f)
-        except:
+        except Exception:
             raise Exception("can not load resume file")
 
     def _save_temp_book(self):
@@ -164,5 +163,5 @@ class EPUBBookLoader(BaseBookLoader):
         try:
             with open(self.bin_path, "wb") as f:
                 pickle.dump(self.p_to_save, f)
-        except:
+        except Exception:
             raise Exception("can not save resume file")
