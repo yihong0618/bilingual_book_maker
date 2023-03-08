@@ -82,6 +82,13 @@ def main():
         type=str,
         help="replace base url from openapi",
     )
+    parser.add_argument(
+        "--translate-tags",
+        dest="translate_tags",
+        type=str,
+        default="p",
+        help="example --translate-tags p,blockquote",
+    )
 
     options = parser.parse_args()
     PROXY = options.proxy
@@ -119,6 +126,7 @@ def main():
         model_api_base=model_api_base,
         is_test=options.test,
         test_num=options.test_num,
+        translate_tags=options.translate_tags,
     )
     e.make_bilingual_book()
 
