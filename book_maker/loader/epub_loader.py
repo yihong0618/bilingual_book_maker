@@ -23,12 +23,14 @@ class EPUBBookLoader(BaseBookLoader):
         model_api_base=None,
         is_test=False,
         test_num=5,
+        translate_tags="p",
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
         self.translate_model = model(key, language, model_api_base)
         self.is_test = is_test
         self.test_num = test_num
+        self.translate_tags = translate_tags
 
         try:
             self.origin_book = epub.read_epub(self.epub_name)
@@ -68,10 +70,11 @@ class EPUBBookLoader(BaseBookLoader):
     def make_bilingual_book(self):
         new_book = self._make_new_book(self.origin_book)
         all_items = list(self.origin_book.get_items())
+        trans_taglist = self.translate_tags.split(",")
         all_p_length = sum(
             0
             if i.get_type() != ITEM_DOCUMENT
-            else len(bs(i.content, "html.parser").findAll("p"))
+            else len(bs(i.content, "html.parser").findAll(trans_taglist))
             for i in all_items
         )
         pbar = tqdm(total=self.test_num) if self.is_test else tqdm(total=all_p_length)
@@ -81,7 +84,7 @@ class EPUBBookLoader(BaseBookLoader):
             for item in self.origin_book.get_items():
                 if item.get_type() == ITEM_DOCUMENT:
                     soup = bs(item.content, "html.parser")
-                    p_list = soup.findAll("p")
+                    p_list = soup.findAll(trans_taglist)
                     is_test_done = self.is_test and index > self.test_num
                     for p in p_list:
                         if is_test_done or not p.text or self._is_special_text(p.text):
