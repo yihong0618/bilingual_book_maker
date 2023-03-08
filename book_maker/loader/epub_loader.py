@@ -14,15 +14,15 @@ from .base_loader import BaseBookLoader
 
 class EPUBBookLoader(BaseBookLoader):
     def __init__(
-        self,
-        epub_name,
-        model,
-        key,
-        resume,
-        language,
-        model_api_base=None,
-        is_test=False,
-        test_num=5,
+            self,
+            epub_name,
+            model,
+            key,
+            resume,
+            language,
+            model_api_base=None,
+            is_test=False,
+            test_num=5,
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
@@ -80,8 +80,8 @@ class EPUBBookLoader(BaseBookLoader):
             else len(bs(i.content, "html.parser").findAll("p"))
             for i in all_items
         )
-        all_length = all_p_length if all_div_length<=all_p_length else all_div_length
-        tag = "p" if all_div_length<=all_p_length else "div"
+        all_length = all_p_length if all_div_length <= all_p_length else all_div_length
+        tag = "p" if all_div_length <= all_p_length else "div"
         if not all_length:
             print('no available contexts found in your original book,translate terminated!')
             return
