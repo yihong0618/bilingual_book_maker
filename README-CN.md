@@ -1,5 +1,6 @@
 # bilingual_book_maker
-Make bilingual epub books Using AI translate
+
+bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制作多语言版本的 epub 文件和图书。该工具仅适用于翻译进入公共版权领域的 epub 图书，不适用于有版权的书籍。请在使用之前阅读项目的 **[免责声明](./disclaimer.md)**。
 
 ![image](https://user-images.githubusercontent.com/15976103/222317531-a05317c5-4eee-49de-95cd-04063d9539d9.png)
 
@@ -17,25 +18,27 @@ Make bilingual epub books Using AI translate
 1. pip install -r requirements.txt
 2. OpenAI API key，如果有多个可以用英文逗号分隔(xxx,xxx,xxx)，可以减少接口调用次数限制带来的错误
 3. 本地放了一个 animal_farm.epub 给大家测试
-4. 默认用了 ChatGPT 模型，用 `--model gpt3` 来使用 gpt3 模型
+4. 默认用了 [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis) 模型，也就是 ChatGPT 正在使用的模型，用 `--model gpt3` 来使用 gpt3 模型
 5. 加了 `--test` 命令如果大家没付费可以加上这个先看看效果（有 limit 稍微有些慢）
-6. Set the target language like `--language "Simplified Chinese"`. 
+6. Set the target language like `--language "Simplified Chinese"`.
    Suppot ` "Japanese" / "Traditional Chinese" / "German" / "French" / "Korean"`.
    Default target language is `"Simplified Chinese"`. Support language list please see the LANGUAGES at [utils.py](./utils.py).
 7. 加了 `--proxy` 参数，方便中国大陆的用户在本地测试时使用代理，传入类似 `http://127.0.0.1:7890` 的字符串
 8. 加入 `--resume` 命令，可以手动中断后，加入命令继续执行。
 9. 如果你遇到了墙需要用 Cloudflare Workers 替换 api_base 请使用 `--api_base ${url}` 来替换。**请注意，此处你输入的api应该是"`https://xxxx/v1`"的字样，域名需要用引号包裹**
-10. 加入 `--email`、`--password`、`--session_token` 参数，传入账号密码或 token 时将用你的 ChatGPT 账号进行翻译，不需要再提供 API KEY，适合有ChatGPT Plus 账号的用户使用。
+10. 翻译完会生成一本 ${book_name}_bilingual.epub 的双语书
+11. 如果出现了错误或 CTRL + C 中断，不想接下来继续翻译了，会生成一本 ${book_name}_bilingual_temp.epub 的书，直接改成你想要的名字就可以了
+12. 加入 `--email`、`--password`、`--session_token` 参数，传入账号密码或 token 时将用你的 ChatGPT 账号进行翻译，不需要再提供 API KEY，适合有ChatGPT Plus 账号的用户使用。
 
 e.g.
 ```shell
 # 如果你想快速测一下
-python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --no_limit --test --language "Simplified Chinese"
-# or do it
-python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --language "Simplified Chinese"
+python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --no_limit --test
+# or do it # Chinese
+python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --language zh-hans
 # or 用 gpt3 模型
 export OPENAI_API_KEY=${your_api_key}
-python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_limit --language "Simplified Chinese"
+python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_limit --language ja
 ```
 
 更加小白的示例
