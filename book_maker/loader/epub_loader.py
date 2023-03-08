@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import pickle
 import sys
@@ -69,20 +70,31 @@ class EPUBBookLoader(BaseBookLoader):
     def make_bilingual_book(self):
         new_book = self._make_new_book(self.origin_book)
         all_items = list(self.origin_book.get_items())
+        all_div_length = sum(
+            0
+            if i.get_type() != ITEM_DOCUMENT
+            else len(bs(i.content, "html.parser").findAll("div"))
+            for i in all_items
+        )
         all_p_length = sum(
             0
             if i.get_type() != ITEM_DOCUMENT
             else len(bs(i.content, "html.parser").findAll("p"))
             for i in all_items
         )
-        pbar = tqdm(total=self.test_num) if self.is_test else tqdm(total=all_p_length)
+        all_length = all_p_length if all_div_length<=all_p_length else all_div_length
+        tag = "p" if all_div_length<=all_p_length else "div"
+        if not all_length:
+            print('No available contexts found in your original book,translate terminated!')
+            return
+        pbar = tqdm(total=self.test_num) if self.is_test else tqdm(total=all_length)
         index = 0
         p_to_save_len = len(self.p_to_save)
         try:
             for item in self.origin_book.get_items():
                 if item.get_type() == ITEM_DOCUMENT:
                     soup = bs(item.content, "html.parser")
-                    p_list = soup.findAll("p")
+                    p_list = soup.findAll(tag)
                     is_test_done = self.is_test and index > self.test_num
                     for p in p_list:
                         if is_test_done or not p.text or self._is_special_text(p.text):
