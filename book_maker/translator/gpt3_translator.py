@@ -7,7 +7,6 @@ from .base_translator import Base
 class GPT3(Base):
     def __init__(self, key, language, api_base=None):
         super().__init__(key, language)
-        self.api_key = key
         self.api_url = (
             f"{api_base}v1/completions"
             if api_base
@@ -29,7 +28,7 @@ class GPT3(Base):
 
     def translate(self, text):
         print(text)
-        self.headers["Authorization"] = f"Bearer {self.get_key(self.api_key)}"
+        self.headers["Authorization"] = f"Bearer {self.get_key()}"
         self.data["prompt"] = f"Please help me to translate，`{text}` to {self.language}"
         r = self.session.post(self.api_url, headers=self.headers, json=self.data)
         if not r.ok:

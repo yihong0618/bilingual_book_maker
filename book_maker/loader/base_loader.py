@@ -1,20 +1,7 @@
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 
 
-class BaseBookLoader:
-    def __init__(
-        self,
-        epub_name,
-        model,
-        key,
-        resume,
-        language,
-        model_api_base=None,
-        is_test=False,
-        test_num=5,
-    ):
-        pass
-
+class BaseBookLoader(ABC):
     @staticmethod
     def _is_special_text(text):
         return text.isdigit() or text.isspace()

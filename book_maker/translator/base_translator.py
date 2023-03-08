@@ -1,17 +1,14 @@
-from abc import abstractmethod
+import itertools
+from abc import ABC, abstractmethod
 
 
-class Base:
-    def __init__(self, key, language, api_base=None):
-        self.key = key
+class Base(ABC):
+    def __init__(self, key, language):
+        self.keys = itertools.cycle(key.split(","))
         self.language = language
-        self.current_key_index = 0
 
-    def get_key(self, key_str):
-        keys = key_str.split(",")
-        key = keys[self.current_key_index]
-        self.current_key_index = (self.current_key_index + 1) % len(keys)
-        return key
+    def get_key(self):
+        return next(self.keys)
 
     @abstractmethod
     def translate(self, text):
