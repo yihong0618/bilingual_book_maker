@@ -1,6 +1,7 @@
 import time
 
 import openai
+from ..utils import num_tokens_from_messages
 from os import environ
 
 from .base_translator import Base
