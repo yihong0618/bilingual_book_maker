@@ -59,7 +59,22 @@ class ChatGPTAPI(Base):
                     text=text, language=self.language
                 ),
             }
-        )
+        ]
+        count_tokens = num_tokens_from_messages(message_log)
+        consumed_tokens = 0
+        t_text = ""
+        if count_tokens > 4000:
+            print("too long!")
+
+            splits = count_tokens // 4000 + 1
+
+            text_list = text.split(".")
+            sub_text = ""
+            t_sub_text = ""
+            for n in range(splits):
+                text_segment = text_list[n * splits : (n + 1) * splits]
+                sub_text = ".".join(text_segment)
+                print(sub_text)
 
         completion = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
@@ -73,24 +88,58 @@ class ChatGPTAPI(Base):
             .decode()
         )
         return t_text
+                consumed_tokens += completion["usage"]["prompt_tokens"]
 
     def translate(self, text):
         # todo: Determine whether to print according to the cli option
         print(text)
 
-        try:
-            t_text = self.get_translation(text)
-        except Exception as e:
-            # todo: better sleep time? why sleep alawys about key_len
-            # 1. openai server error or own network interruption, sleep for a fixed time
-            # 2. an apikey has no money or reach limit, don’t sleep, just replace it with another apikey
-            # 3. all apikey reach limit, then use current sleep
-            sleep_time = int(60 / self.key_len)
-            print(e, f"will sleep {sleep_time} seconds")
-            time.sleep(sleep_time)
+            else:
+                try:
+                    completion = openai.ChatCompletion.create(
+                        model="gpt-3.5-turbo",
+                        messages=[
+                            {
+                                "role": "user",
+                                # english prompt here to save tokens
+                                "content": f"Please help me to translate,`{text}` to {self.language}, please return only translated content not include the origin text",
+                            }
+                        ],
+                    )
+                    t_text = (
+                        completion["choices"][0]
+                        .get("message")
+                        .get("content")
+                        .encode("utf8")
+                        .decode()
+                    )
+                    consumed_tokens += completion["usage"]["prompt_tokens"]
 
-            t_text = self.get_translation(text)
+                except Exception as e:
+                    # TIME LIMIT for open api please pay
+                    key_len = self.key.count(",") + 1
+                    sleep_time = int(60 / key_len)
+                    time.sleep(sleep_time)
+                    print(e, f"will sleep  {sleep_time} seconds")
+                    self.rotate_key()
+                    completion = openai.ChatCompletion.create(
+                        model="gpt-3.5-turbo",
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": f"Please help me to translate,`{text}` to {self.language}, please return only translated content not include the origin text",
+                            }
+                        ],
+                    )
+                    t_text = (
+                        completion["choices"][0]
+                        .get("message")
+                        .get("content")
+                        .encode("utf8")
+                        .decode()
+                    )
+                    consumed_tokens += completion["usage"]["prompt_tokens"]
 
-        # todo: Determine whether to print according to the cli option
-        print(t_text.strip())
+        print(t_text)
+        print(f"{consumed_tokens} prompt tokens used.")
         return t_text
