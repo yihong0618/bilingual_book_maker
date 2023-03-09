@@ -17,7 +17,7 @@ class ChatGPTAPI(Base):
     def rotate_key(self):
         openai.api_key = next(self.keys)
 
-    def translate(self, text,terminology):
+    def translate(self, text):
         print(text)
         self.rotate_key()
         try:

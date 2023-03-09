@@ -92,7 +92,7 @@ def main():
         "--terminology",
         dest="terminology_filename",
         type=str,
-        default="terminology.txt",
+        default="",
         help="terminology file name",
     )
 

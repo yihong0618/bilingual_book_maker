@@ -4,6 +4,8 @@ from openai.embeddings_utils import get_embedding
 import os
 
 def read_terminology(terminology_filename):
+    if not os.path.exists(terminology_filename):
+        return None
     with open(terminology_filename, 'r', encoding='utf-8') as f:
         terminology_list=f.readlines()
     # 如果terminology_list为空，则返回None
@@ -15,17 +17,11 @@ def read_terminology(terminology_filename):
 def get_embedding_from_terminology(terminology_filename,
                                 embedding_model = "text-embedding-ada-002"):
     df=read_terminology(terminology_filename)
+    if df is None:
+        return None
     df["embedding"]=df["term"].apply(lambda x: get_embedding(x,embedding_model))
     return df
 
-# def save_terminology(terminology_path, 
-#                      terminology_df,
-#                      terminology_filaname="terminology.pkl"
-#                      ):
-#     terminology_df.to_pickle(os.path.join(terminology_path,terminology_filaname))
-
-# def load_terminology(terminology_path,terminology_filaname="terminology.pkl"):
-#     return pd.read_pickle(os.path.join(terminology_path,terminology_filaname))
 
 def build_terminology(terminology_filename,
                       embedding_model = "text-embedding-ada-002",
@@ -45,5 +41,5 @@ def terminology_prompt(text, terminology,
     results = terminology.sort_values("similarity", ascending=False, ignore_index=True)
     results = results["term"].head(term_candidate_n)
     terminology_list=", ".join(results.to_list())
-    terminology_promt=f"and use the following terminology list if necessary: [{terminology_list}]. "
+    terminology_promt=f"and use the following terminology list if necessary: [{terminology_list}], but please do NOT show the terminology directly in the results. "
     return terminology_promt
