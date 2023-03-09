@@ -125,21 +125,16 @@ class EPUBBookLoader(BaseBookLoader):
             raise Exception("can not load resume file")
 
     def _save_temp_book(self):
-        origin_book_temp = epub.read_epub(
-            self.epub_name
-        )  # we need a new instance for temp save
+        origin_book_temp = epub.read_epub(self.epub_name)
         new_temp_book = self._make_new_book(origin_book_temp)
         p_to_save_len = len(self.p_to_save)
+        trans_taglist = self.translate_tags.split(",")
         index = 0
         try:
-            for item in self.origin_book.get_items():
+            for item in origin_book_temp.get_items():
                 if item.get_type() == ITEM_DOCUMENT:
-                    soup = (
-                        bs(item.content, "xml")
-                        if item.file_name.endswith(".xhtml")
-                        else bs(item.content, "html.parser")
-                    )
-                    p_list = soup.findAll("p")
+                    soup = bs(item.content, "html.parser")
+                    p_list = soup.findAll(trans_taglist)
                     for p in p_list:
                         if not p.text or self._is_special_text(p.text):
                             continue
