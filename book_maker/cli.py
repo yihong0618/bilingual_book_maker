@@ -48,7 +48,7 @@ def main():
         dest="model",
         type=str,
         default="chatgptapi",
-        choices=["chatgptapi", "gpt3"],  # support DeepL later
+        choices=["chatgptapi", "gpt3", "google"],  # support DeepL later
         metavar="MODEL",
         help="model to use, available: {%(choices)s}",
     )
