@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 
 # data
-*.pkl
+terminology/
 
 # C extensions
 *.so
