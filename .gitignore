@@ -130,5 +130,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+.chatgpt_cache.json
 
 /test_books/*.epub

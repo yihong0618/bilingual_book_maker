@@ -28,6 +28,7 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 9. If you want to change api_base like using Cloudflare Workers Use --api_base ${url} to support it. **Note: the api url you input should be `https://xxxx/v1', and quotation marks are required.**
 10. Once the translation is complete, a bilingual book named ${book_name}_bilingual.epub will be generated.
 11. If there are any errors or you wish to interrupt the translation using CTRL+C and do not want to continue further, a book named ${book_name}_bilingual_temp.epub will be generated. You can simply rename it to the desired name.
+12. Add the '--email', '--password', '--session_token' arguments, passing in the account password or token will translate with your ChatGPT account, no need to provide an API KEY, Suitable for ChatGPT Plus account users.
 
 e.g.
 ```shell
