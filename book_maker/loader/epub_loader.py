@@ -23,13 +23,13 @@ class EPUBBookLoader(BaseBookLoader):
         is_test=False,
         test_num=5,
         translate_tags="p",
-        terminology_path="terminology",
+        terminology_filename="terminology.txt",
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
 
-        self.terminology_path=terminology_path
-        self.translate_model = model(key, language, model_api_base)
+        self.terminology_filename=terminology_filename
+        self.translate_model = model(key, language, terminology_filename, model_api_base)
         self.is_test = is_test
         self.test_num = test_num
         self.translate_tags = translate_tags

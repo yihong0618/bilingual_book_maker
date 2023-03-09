@@ -7,12 +7,12 @@ from .base_translator import Base
 from .terminology_translator import build_terminology, terminology_prompt
 
 class ChatGPTAPI(Base):
-    def __init__(self, key, language, api_base=None, terminology_path="terminology"):
-        super().__init__(key, language)
+    def __init__(self, key, language, terminology_filename, api_base=None):
+        super().__init__(key, language, terminology_filename)
         self.key_len = len(key.split(","))
         if api_base:
             openai.api_base = api_base
-        self.terminology=build_terminology(terminology_path)
+        self.terminology=build_terminology(self.terminology_filename)
 
     def rotate_key(self):
         openai.api_key = next(self.keys)

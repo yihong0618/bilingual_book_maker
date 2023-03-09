@@ -89,11 +89,11 @@ def main():
         help="example --translate-tags p,blockquote",
     )
     parser.add_argument(
-        "--terminology_path",
-        dest="terminology_path",
+        "--terminology",
+        dest="terminology_filename",
         type=str,
-        default="terminology",
-        help="path to the terminology file",
+        default="terminology.txt",
+        help="terminology file name",
     )
 
     options = parser.parse_args()
@@ -135,7 +135,7 @@ def main():
         is_test=options.test,
         test_num=options.test_num,
         translate_tags=options.translate_tags,
-        terminology_path=options.terminology_path,
+        terminology_filename=options.terminology_filename,
     )
     e.make_bilingual_book()
 
