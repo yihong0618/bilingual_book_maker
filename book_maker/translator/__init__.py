@@ -5,6 +5,6 @@ from book_maker.translator.google_translator import Google
 MODEL_DICT = {
     "chatgptapi": ChatGPTAPI,
     "gpt3": GPT3,
-    "google":Google
+    "google": Google
     # add more here
 }
