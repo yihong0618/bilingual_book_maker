@@ -17,7 +17,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 
 1. `pip install -r requirements.txt`
 2. 使用 `--openai_key` 指定 OpenAI API key，如果有多个可以用英文逗号分隔(xxx,xxx,xxx)，可以减少接口调用次数限制带来的错误。  
-   或者，指定环境变数 `OPENAI_API_KEY` 来略过这个选项。
+   或者，指定环境变量 `OPENAI_API_KEY` 来略过这个选项。
 3. 本地放了一个 `test_books/animal_farm.epub` 给大家测试
 4. 默认用了 [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis) 模型，也就是 ChatGPT 正在使用的模型，用 `--model gpt3` 来使用 gpt3 模型
 5. 使用 `--test` 命令如果大家没付费可以加上这个先看看效果（有 limit 稍微有些慢）
@@ -41,7 +41,7 @@ python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${open
 # 或翻译完整本书
 python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --language zh-hans
 
-# 指定环境变数来略过 --openai_key
+# 指定环境变量来略过 --openai_key
 export OPENAI_API_KEY=${your_api_key}
 
 # 或使用 gpt3 模型
@@ -75,7 +75,7 @@ python make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_b
 
 - 任何 issue PR 都欢迎
 - Issue 中有些 TODO 没做的都可以选
-- 提交代码前请先執行 `black make_book.py` [^black]
+- 提交代码前请先执行 `black make_book.py` [^black]
 
 ## 赞赏
 
