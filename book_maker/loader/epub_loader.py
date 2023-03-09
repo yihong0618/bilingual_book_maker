@@ -80,7 +80,9 @@ class EPUBBookLoader(BaseBookLoader):
             for i in all_items
         )
         all_p_length += self.allow_navigable_strings * sum(
-            0 if i.get_type() != ITEM_DOCUMENT else len(bs(i.content, "html.parser").findAll(text=True))
+            0
+            if i.get_type() != ITEM_DOCUMENT
+            else len(bs(i.content, "html.parser").findAll(text=True))
             for i in all_items
         )
         pbar = tqdm(total=self.test_num) if self.is_test else tqdm(total=all_p_length)
