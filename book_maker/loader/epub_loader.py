@@ -24,6 +24,7 @@ class EPUBBookLoader(BaseBookLoader):
         is_test=False,
         test_num=5,
         translate_tags="p",
+        allow_navigable_strings=False,
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
@@ -31,6 +32,7 @@ class EPUBBookLoader(BaseBookLoader):
         self.is_test = is_test
         self.test_num = test_num
         self.translate_tags = translate_tags
+        self.allow_navigable_strings = allow_navigable_strings
 
         try:
             self.origin_book = epub.read_epub(self.epub_name)
@@ -77,6 +79,10 @@ class EPUBBookLoader(BaseBookLoader):
             else len(bs(i.content, "html.parser").findAll(trans_taglist))
             for i in all_items
         )
+        all_p_length += self.allow_navigable_strings * sum(
+            0 if i.get_type() != ITEM_DOCUMENT else len(bs(i.content, "html.parser").findAll(text=True))
+            for i in all_items
+        )
         pbar = tqdm(total=self.test_num) if self.is_test else tqdm(total=all_p_length)
         index = 0
         p_to_save_len = len(self.p_to_save)
@@ -85,6 +91,8 @@ class EPUBBookLoader(BaseBookLoader):
                 if item.get_type() == ITEM_DOCUMENT:
                     soup = bs(item.content, "html.parser")
                     p_list = soup.findAll(trans_taglist)
+                    if self.allow_navigable_strings:
+                        p_list.extend(soup.findAll(text=True))
                     is_test_done = self.is_test and index > self.test_num
                     for p in p_list:
                         if is_test_done or not p.text or self._is_special_text(p.text):

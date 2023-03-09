@@ -89,6 +89,13 @@ def main():
         default="p",
         help="example --translate-tags p,blockquote",
     )
+    parser.add_argument(
+        "--allow_navigable_strings",
+        dest="allow_navigable_strings",
+        action="store_true",
+        default=False,
+        help="allow NavigableStrings to be translated",
+    )
 
     options = parser.parse_args()
     PROXY = options.proxy
@@ -129,6 +136,7 @@ def main():
         is_test=options.test,
         test_num=options.test_num,
         translate_tags=options.translate_tags,
+        allow_navigable_strings=options.allow_navigable_strings,
     )
     e.make_bilingual_book()
 
