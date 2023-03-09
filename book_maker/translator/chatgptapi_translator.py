@@ -28,7 +28,7 @@ class ChatGPTAPI(Base):
                     {
                         "role": "user",
                         # english prompt here to save tokens
-                        "content": f"Please help me to translate,`{text}` to {self.language}, {term_prompt} please return only translated content not include the origin text",
+                        "content": f"Please help me to translate,`{text}` to {self.language}, {term_prompt}, Please do not translate numbers and abbreviations. please return only translated content not include the origin text",
                     }
                 ],
             )
@@ -51,7 +51,7 @@ class ChatGPTAPI(Base):
                 messages=[
                     {
                         "role": "user",
-                        "content": f"Please help me to translate,`{text}` to {self.language}, {term_prompt} please return only translated content not include the origin text",
+                        "content": f"Please help me to translate,`{text}` to {self.language}, {term_prompt}, Please do not translate numbers and abbreviations.  please return only translated content not include the origin text",
                     }
                 ],
             )
