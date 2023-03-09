@@ -28,6 +28,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 9. 如果你遇到了墙需要用 Cloudflare Workers 替换 api_base 请使用 `--api_base ${url}` 来替换。**请注意，此处你输入的api应该是"`https://xxxx/v1`"的字样，域名需要用引号包裹**
 10. 翻译完会生成一本 ${book_name}_bilingual.epub 的双语书
 10. 如果出现了错误或 CTRL + C 中断，不想接下来继续翻译了，会生成一本 ${book_name}_bilingual_temp.epub 的书，直接改成你想要的名字就可以了
+12. 如果你想要翻译电子书中的无标签字符串，可以使用 `--allow_navigable_strings` 参数，会将可遍历字符串加入翻译队列，**注意，在条件允许情况下，请寻找更规范的电子书**
 
 e.g.
 ```shell
