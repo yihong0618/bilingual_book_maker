@@ -125,13 +125,15 @@ class EPUBBookLoader(BaseBookLoader):
         p_to_save_len = len(self.p_to_save)
 
         if self.max_procs > 1:
+            allList = []
             successList = []
             items = self.origin_book.get_items()
-            print("List of documents to be translated")
-            print("=====================================")
             for i in items:
                 if i.get_type() == ITEM_DOCUMENT:
-                    print(i.file_name)
+                    allList.append(i.file_name)
+            print("List of documents to be translated")
+            print("=====================================")
+            print(allList)
             print("=====================================")
             try:
                 with concurrent.futures.ThreadPoolExecutor(
@@ -147,7 +149,10 @@ class EPUBBookLoader(BaseBookLoader):
                             new_item = future.result()
                             if new_item.get_type() == ITEM_DOCUMENT:
                                 successList.append(new_item.file_name)
-                                print("{} successed".format(successList))
+                                while new_item.file_name in allList:
+                                    allList.remove(new_item.file_name)
+                                print("success:\n{}".format(successList))
+                                print("remain:\n{}".format(allList))
                             new_book.add_item(new_item)
                         except Exception as e:
                             print(e)
