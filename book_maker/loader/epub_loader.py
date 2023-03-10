@@ -1,6 +1,7 @@
 import os
 import pickle
 import sys
+import concurrent.futures
 from copy import copy
 from pathlib import Path
 
@@ -25,6 +26,7 @@ class EPUBBookLoader(BaseBookLoader):
         test_num=5,
         translate_tags="p",
         allow_navigable_strings=False,
+        max_procs=1,
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
@@ -33,6 +35,7 @@ class EPUBBookLoader(BaseBookLoader):
         self.test_num = test_num
         self.translate_tags = translate_tags
         self.allow_navigable_strings = allow_navigable_strings
+        self.max_procs = max_procs
 
         try:
             self.origin_book = epub.read_epub(self.epub_name)
@@ -69,6 +72,38 @@ class EPUBBookLoader(BaseBookLoader):
         new_book.toc = book.toc
         return new_book
 
+    def process_item(self, item):
+        if item.get_type() == ITEM_DOCUMENT:
+            print("dealing {} ...".format(item.file_name))
+            soup = bs(item.content, "html.parser")
+            p_list = soup.findAll(self.translate_tags.split(","))
+
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=self.max_procs
+            ) as executor:
+                p_chunks = [
+                    p_list[i : i + self.max_procs]
+                    for i in range(0, len(p_list), self.max_procs)
+                ]
+                translated_chunks = executor.map(
+                    lambda chunk: [
+                        self.translate_model.translate(p.text, True) for p in chunk
+                    ],
+                    p_chunks,
+                )
+
+            for p_chunk, translated_chunk in zip(p_chunks, translated_chunks):
+                for p, translated_text in zip(p_chunk, translated_chunk):
+                    if self._is_special_text(p.text):
+                        continue
+                    new_p = copy(p)
+                    new_p.string = translated_text
+                    p.insert_after(new_p)
+
+            item.content = soup.prettify().encode()
+
+        return item
+
     def make_bilingual_book(self):
         new_book = self._make_new_book(self.origin_book)
         all_items = list(self.origin_book.get_items())
@@ -88,6 +123,41 @@ class EPUBBookLoader(BaseBookLoader):
         pbar = tqdm(total=self.test_num) if self.is_test else tqdm(total=all_p_length)
         index = 0
         p_to_save_len = len(self.p_to_save)
+
+        if self.max_procs > 1:
+            items = self.origin_book.get_items()
+            print("List of documents to be translated")
+            print("=====================================")
+            for i in items:
+                if i.get_type() == ITEM_DOCUMENT:
+                    print(i.file_name)
+            print("=====================================")
+            try:
+                with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=self.max_procs
+                ) as executor:
+                    items = self.origin_book.get_items()
+                    futures = [
+                        executor.submit(self.process_item, item) for item in items
+                    ]
+
+                    for future in concurrent.futures.as_completed(futures):
+                        try:
+                            new_item = future.result()
+                            if new_item.get_type() == ITEM_DOCUMENT:
+                                print("{} success".format(new_item.file_name))
+                            new_book.add_item(new_item)
+                        except Exception as e:
+                            print(e)
+
+                name, _ = os.path.splitext(self.epub_name)
+                epub.write_epub(f"{name}_bilingual.epub", new_book, {})
+            except (KeyboardInterrupt, Exception) as e:
+                print(e)
+                sys.exit(0)
+
+            sys.exit(0)
+
         try:
             for item in self.origin_book.get_items():
                 if item.get_type() == ITEM_DOCUMENT:

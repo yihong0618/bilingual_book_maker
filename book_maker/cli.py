@@ -96,6 +96,15 @@ def main():
         default=False,
         help="allow NavigableStrings to be translated",
     )
+    parser.add_argument(
+        "--max_procs",
+        dest="max_procs",
+        type=int,
+        default=1,
+        help="--max_procs\n"
+        "Don't set it too big, if you have 30 keys, I think --max_procs 5 will do, 10 may be too big\n"
+        "can't resume, and may not work well when server500, ctrl-c... Please be careful with it",
+    )
 
     options = parser.parse_args()
     PROXY = options.proxy
@@ -142,8 +151,10 @@ def main():
         test_num=options.test_num,
         translate_tags=options.translate_tags,
         allow_navigable_strings=options.allow_navigable_strings,
+        max_procs=options.max_procs,
     )
-    e.make_bilingual_book()
+    print(OPENAI_API_KEY)
+    # e.make_bilingual_book()
 
 
 if __name__ == "__main__":

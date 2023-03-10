@@ -1,5 +1,4 @@
 import time
-
 import openai
 
 from .base_translator import Base
@@ -14,49 +13,47 @@ class ChatGPTAPI(Base):
 
     def rotate_key(self):
         openai.api_key = next(self.keys)
+        print(openai.api_key)
 
-    def translate(self, text):
-        print(text)
+    def get_translation(self, text):
         self.rotate_key()
+        completion = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Please help me to translate,`{text}` to {self.language}, please return only translated content not include the origin text",
+                }
+            ],
+        )
+        t_text = (
+            completion["choices"][0]
+            .get("message")
+            .get("content")
+            .encode("utf8")
+            .decode()
+        )
+        return t_text
+
+    def translate(self, text, noprint=False):
+        # todo: Determine whether to print according to the cli option
+        if not noprint:
+            print(text)
+
         try:
-            completion = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "user",
-                        # english prompt here to save tokens
-                        "content": f"Please help me to translate,`{text}` to {self.language}, please return only translated content not include the origin text",
-                    }
-                ],
-            )
-            t_text = (
-                completion["choices"][0]
-                .get("message")
-                .get("content")
-                .encode("utf8")
-                .decode()
-            )
+            t_text = self.get_translation(text)
         except Exception as e:
-            # TIME LIMIT for open api please pay
+            # todo: better sleep time? why sleep alawys about key_len
+            # 1. openai server error or own network interruption, sleep for a fixed time
+            # 2. an apikey has no money or reach limit, don’t sleep, just replace it with another apikey
+            # 3. all apikey reach limit, then use current sleep
             sleep_time = int(60 / self.key_len)
             time.sleep(sleep_time)
             print(e, f"will sleep  {sleep_time} seconds")
-            self.rotate_key()
-            completion = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"Please help me to translate,`{text}` to {self.language}, please return only translated content not include the origin text",
-                    }
-                ],
-            )
-            t_text = (
-                completion["choices"][0]
-                .get("message")
-                .get("content")
-                .encode("utf8")
-                .decode()
-            )
-        print(t_text)
+
+            t_text = self.get_translation(text)
+
+        # todo: Determine whether to print according to the cli option
+        if not noprint:
+            print(t_text)
         return t_text
