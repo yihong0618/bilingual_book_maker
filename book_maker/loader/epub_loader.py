@@ -125,6 +125,7 @@ class EPUBBookLoader(BaseBookLoader):
         p_to_save_len = len(self.p_to_save)
 
         if self.max_procs > 1:
+            successList = []
             items = self.origin_book.get_items()
             print("List of documents to be translated")
             print("=====================================")
@@ -145,7 +146,8 @@ class EPUBBookLoader(BaseBookLoader):
                         try:
                             new_item = future.result()
                             if new_item.get_type() == ITEM_DOCUMENT:
-                                print("{} success".format(new_item.file_name))
+                                successList.append(new_item.file_name)
+                                print("{} successed".format(successList))
                             new_book.add_item(new_item)
                         except Exception as e:
                             print(e)
