@@ -1,3 +1,7 @@
+This forked added Google Translate support, only supported translate to `zh-CN`.
+Usage: make sure to add `--model google` in the command.
+
+
 **[中文](./README-CN.md) | English**
 
 # bilingual_book_maker
@@ -32,12 +36,13 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
    **Note: the api url should be '`https://xxxx/v1`'. Quotation marks are required.**
 11. Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated.
 12. If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`. A book named `${book_name}_bilingual_temp.epub` would be generated. You can simply rename it to any desired name.
+13. If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue. **Note that it's best to look for e-books that are more standardized if possible.**
 
 ### Eamples
 
 ```shell
 # Test quickly
-python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --no_limit --test --language zh-hans
+python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key}  --test --language zh-hans
 
 # Or translate the whole book
 python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --language zh-hans
@@ -46,7 +51,7 @@ python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${open
 export OPENAI_API_KEY=${your_api_key}
 
 # Use the GPT-3 model with Japanese
-python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_limit --language ja
+python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --language ja
 
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p
@@ -77,7 +82,7 @@ $book_name=your_book_name # $book_name="animal_farm.epub"
 $openai_key=your_api_key # $openai_key="sk-xxx"
 $language=your_language # see utils.py
 
-docker run --rm --name bilingual_book_maker --mount type=bind,source=$folder_path,target='/app/test_books' bilingual_book_maker --book_name "/app/test_books/$book_name" --openai_key $openai_key --no_limit --language $language
+docker run --rm --name bilingual_book_maker --mount type=bind,source=$folder_path,target='/app/test_books' bilingual_book_maker --book_name "/app/test_books/$book_name" --openai_key $openai_key --language $language
 
 # Linux
 export folder_path=${your_folder_path}
@@ -85,14 +90,14 @@ export book_name=${your_book_name}
 export openai_key=${your_api_key}
 export language=${your_language}
 
-docker run --rm --name bilingual_book_maker --mount type=bind,source=${folder_path},target='/app/test_books' bilingual_book_maker --book_name "/app/test_books/${book_name}" --openai_key ${openai_key} --no_limit --language "${language}"
+docker run --rm --name bilingual_book_maker --mount type=bind,source=${folder_path},target='/app/test_books' bilingual_book_maker --book_name "/app/test_books/${book_name}" --openai_key ${openai_key} --language "${language}"
 ```
 
 For example:
 
 ```shell
 # Linux
-docker run --rm --name bilingual_book_maker --mount type=bind,source=/home/user/my_books,target='/app/test_books' bilingual_book_maker --book_name /app/test_books/animal_farm.epub --openai_key sk-XXX --no_limit --test --test_num 1 --language zh-hant
+docker run --rm --name bilingual_book_maker --mount type=bind,source=/home/user/my_books,target='/app/test_books' bilingual_book_maker --book_name /app/test_books/animal_farm.epub --openai_key sk-XXX --test --test_num 1 --language zh-hant
 ```
 
 ## Notes
