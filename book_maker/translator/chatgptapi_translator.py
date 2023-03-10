@@ -13,7 +13,8 @@ class ChatGPTAPI(Base):
 
     def rotate_key(self):
         openai.api_key = next(self.keys)
-        print(openai.api_key)
+        n = len(openai.api_key)
+        print(openai.api_key[: n // 4] + "*" * (n // 2) + openai.api_key[n * 3 // 4 :])
 
     def get_translation(self, text):
         self.rotate_key()
