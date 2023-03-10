@@ -6,7 +6,6 @@ from book_maker.loader import BOOK_LOADER_DICT
 from book_maker.translator import MODEL_DICT
 from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE
 
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -89,6 +88,21 @@ def main():
         default="p",
         help="example --translate-tags p,blockquote",
     )
+    parser.add_argument(
+        "--terminology",
+        dest="terminology_filename",
+        type=str,
+        default="",
+        help="terminology file name",
+    )
+
+    parser.add_argument(
+        "--professional_field",
+        dest="professional_field",
+        type=str,
+        default="",
+        help="professional field",
+    )
 
     options = parser.parse_args()
     PROXY = options.proxy
@@ -129,6 +143,8 @@ def main():
         is_test=options.test,
         test_num=options.test_num,
         translate_tags=options.translate_tags,
+        terminology_filename=options.terminology_filename,
+        Professional_field=options.professional_field,
     )
     e.make_bilingual_book()
 
