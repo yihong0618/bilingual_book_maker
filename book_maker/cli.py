@@ -105,7 +105,7 @@ def main():
 
     translate_model = MODEL_DICT.get(options.model)
     assert translate_model is not None, "unsupported model"
-    if translate_model in ["gpt3", "chatgptapi"]:
+    if options.model in ["gpt3", "chatgptapi"]:
         OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
         if not OPENAI_API_KEY:
             raise Exception(
