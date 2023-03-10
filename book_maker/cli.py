@@ -89,6 +89,13 @@ def main():
         default="p",
         help="example --translate-tags p,blockquote",
     )
+    parser.add_argument(
+        "--allow_navigable_strings",
+        dest="allow_navigable_strings",
+        action="store_true",
+        default=False,
+        help="allow NavigableStrings to be translated",
+    )
 
     options = parser.parse_args()
     PROXY = options.proxy
@@ -96,9 +103,16 @@ def main():
         os.environ["http_proxy"] = PROXY
         os.environ["https_proxy"] = PROXY
 
-    OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
-    if not OPENAI_API_KEY:
-        raise Exception("OpenAI API key not provided, please google how to obtain it")
+    translate_model = MODEL_DICT.get(options.model)
+    assert translate_model is not None, "unsupported model"
+    if translate_model in ["gpt3", "chatgptapi"]:
+        OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
+        if not OPENAI_API_KEY:
+            raise Exception(
+                "OpenAI API key not provided, please google how to obtain it"
+            )
+    else:
+        OPENAI_API_KEY = ""
 
     book_type = options.book_name.split(".")[-1]
     support_type_list = list(BOOK_LOADER_DICT.keys())
@@ -106,8 +120,6 @@ def main():
         raise Exception(
             f"now only support files of these formats: {','.join(support_type_list)}"
         )
-    translate_model = MODEL_DICT.get(options.model)
-    assert translate_model is not None, "unsupported model"
 
     book_loader = BOOK_LOADER_DICT.get(book_type)
     assert book_loader is not None, "unsupported loader"
@@ -129,6 +141,7 @@ def main():
         is_test=options.test,
         test_num=options.test_num,
         translate_tags=options.translate_tags,
+        allow_navigable_strings=options.allow_navigable_strings,
     )
     e.make_bilingual_book()
 
