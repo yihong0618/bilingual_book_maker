@@ -14,9 +14,34 @@ def read_terminology(terminology_filename):
     df=pd.DataFrame(terminology_list,columns=["term"])
     return df
 
+def read_reference_abstract(ref_filename):
+    # CNKI，搜关键词，以“被引次数”排序，全选-导出文献-知网研学-复制到剪贴板，粘贴到文本文件中。
+    with open(ref_filename, 'r', encoding='utf-8') as f:
+        reference_list=f.readlines()
+    # 仅仅保留开头为“Title-题名”,“Keyword-关键词”,“Summary-摘要”这三个的行
+    reference_filtered = [x for x in reference_list if x.startswith("Title-题名") or x.startswith("Summary-摘要")] 
+    reference_filtered = [x.replace("Title-题名: ","").replace("Summary-摘要: ","").replace("\n","") for x in reference_filtered]
+    reference_filtered = [x.replace("目的","").replace("方法","").replace("结果","").replace("结论","").replace(":","").replace(" ","").replace("\n","").replace("\u3000","") for x in reference_filtered]
+    reference_filtered = [x.split("。") for x in reference_filtered]
+    reference_filtered = [item for sublist in reference_filtered for item in sublist]
+    reference_filtered = set(reference_filtered)
+    reference_filtered = [x for x in reference_filtered if x != ""]
+    df=pd.DataFrame(reference_filtered,columns=["term"])
+    return df 
+
+def read_reference(ref_filename):
+    with open(ref_filename, 'r', encoding='utf-8') as f:
+        reference_list=f.readlines()
+    reference_filtered = [x.replace("Title-题名: ","").replace("Summary-摘要: ","").replace("\n","") for x in reference_list]
+    reference_filtered = [x.split("。") for x in reference_filtered]
+    df=pd.DataFrame(reference_filtered,columns=["term"])
+    return df 
+
 def get_embedding_from_terminology(terminology_filename,
                                 embedding_model = "text-embedding-ada-002"):
     df=read_terminology(terminology_filename)
+    # df=read_reference_abstract(terminology_filename)
+    # print(df.head())
     if df is None:
         return None
     df["embedding"]=df["term"].apply(lambda x: get_embedding(x,embedding_model))
@@ -29,6 +54,8 @@ def build_terminology(terminology_filename,
     # 不管有没有都重建一次好了，估计不费事
     df=get_embedding_from_terminology(terminology_filename,embedding_model)
     return df
+
+
 
 def terminology_prompt(text, terminology,
                     term_candidate_n=5,

@@ -24,6 +24,7 @@ class EPUBBookLoader(BaseBookLoader):
         test_num=5,
         translate_tags="p",
         terminology_filename="terminology.txt",
+        Professional_field="",
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()

@@ -96,6 +96,14 @@ def main():
         help="terminology file name",
     )
 
+    parser.add_argument(
+        "--professional_field",
+        dest="professional_field",
+        type=str,
+        default="",
+        help="professional field",
+    )
+
     options = parser.parse_args()
     PROXY = options.proxy
     if PROXY != "":
@@ -136,6 +144,7 @@ def main():
         test_num=options.test_num,
         translate_tags=options.translate_tags,
         terminology_filename=options.terminology_filename,
+        Professional_field=options.professional_field,
     )
     e.make_bilingual_book()
 
