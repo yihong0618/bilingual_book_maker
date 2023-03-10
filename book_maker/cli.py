@@ -13,34 +13,34 @@ def main():
         "--book_name",
         dest="book_name",
         type=str,
-        help="your epub book file path",
+        help="path of the epub file to be translated",
     )
     parser.add_argument(
         "--openai_key",
         dest="openai_key",
         type=str,
         default="",
-        help="openai api key,if you have more than one key,you can use comma"
-        " to split them and you can break through the limitation",
+        help="OpenAI api key,if you have more than one key, please use comma"
+        " to split them to go beyond the rate limits",
     )
     parser.add_argument(
         "--no_limit",
         dest="no_limit",
         action="store_true",
-        help="If you are a paying customer you can add it",
+        help="with a paid account, you can specify this option",
     )
     parser.add_argument(
         "--test",
         dest="test",
         action="store_true",
-        help="if test we only translat 10 contents you can easily check",
+        help="only the first 10 paragraphs will be translated, for testing",
     )
     parser.add_argument(
         "--test_num",
         dest="test_num",
         type=int,
         default=10,
-        help="test num for the test",
+        help="how many paragraphs will be translated for testing",
     )
     parser.add_argument(
         "-m",
@@ -48,9 +48,9 @@ def main():
         dest="model",
         type=str,
         default="chatgptapi",
-        choices=["chatgptapi", "gpt3"],  # support DeepL later
+        choices=["chatgptapi", "gpt3", "google"],  # support DeepL later
         metavar="MODEL",
-        help="Which model to use, available: {%(choices)s}",
+        help="model to use, available: {%(choices)s}",
     )
     parser.add_argument(
         "--language",
@@ -65,7 +65,7 @@ def main():
         "--resume",
         dest="resume",
         action="store_true",
-        help="if program accidentally stop you can use this to resume",
+        help="if program stop unexpected you can use this to resume",
     )
     parser.add_argument(
         "-p",
@@ -80,7 +80,14 @@ def main():
         "--api_base",
         dest="api_base",
         type=str,
-        help="replace base url from openapi",
+        help="specify base url other than the OpenAI's official API address",
+    )
+    parser.add_argument(
+        "--translate-tags",
+        dest="translate_tags",
+        type=str,
+        default="p",
+        help="example --translate-tags p,blockquote",
     )
     parser.add_argument(
         "--translate-tags",
@@ -98,17 +105,19 @@ def main():
 
     OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
     if not OPENAI_API_KEY:
-        raise Exception("Need openai API key, please google how to")
+        raise Exception("OpenAI API key not provided, please google how to obtain it")
 
     book_type = options.book_name.split(".")[-1]
     support_type_list = list(BOOK_LOADER_DICT.keys())
     if book_type not in support_type_list:
-        raise Exception(f"now only support {','.join(support_type_list)} files")
+        raise Exception(
+            f"now only support files of these formats: {','.join(support_type_list)}"
+        )
     translate_model = MODEL_DICT.get(options.model)
-    assert translate_model is not None, "Not support model"
+    assert translate_model is not None, "unsupported model"
 
     book_loader = BOOK_LOADER_DICT.get(book_type)
-    assert book_loader is not None, "Not support loader"
+    assert book_loader is not None, "unsupported loader"
     language = options.language
     if options.language in LANGUAGES:
         # use the value for prompt
