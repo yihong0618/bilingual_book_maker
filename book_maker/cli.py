@@ -129,14 +129,13 @@ def main():
     else:
         OPENAI_API_KEY = ""
 
-    match options.book_from:
-        case "kobo":
-            device_path = options.device_path
-            if device_path == None:
-                raise Exception(
-                    "Device path is not given, please specify the path by --device_path <DEVICE_PATH>"
-                )
-            options.book_name = obok.cli_main(device_path)
+    if options.book_from == "kobo":
+        device_path = options.device_path
+        if device_path == None:
+            raise Exception(
+                "Device path is not given, please specify the path by --device_path <DEVICE_PATH>"
+            )
+        options.book_name = obok.cli_main(device_path)
 
     book_type = options.book_name.split(".")[-1]
     support_type_list = list(BOOK_LOADER_DICT.keys())
