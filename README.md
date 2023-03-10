@@ -1,3 +1,7 @@
+This forked added Google Translate support, only supported translate to `zh-CN`.
+Usage: make sure to add `--model google` in the command.
+
+
 **[中文](./README-CN.md) | English**
 
 # bilingual_book_maker
