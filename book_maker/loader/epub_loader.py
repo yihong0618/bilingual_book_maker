@@ -73,35 +73,36 @@ class EPUBBookLoader(BaseBookLoader):
         return new_book
 
     def process_item(self, item):
-        if item.get_type() == ITEM_DOCUMENT:
-            print("dealing {} ...".format(item.file_name))
-            soup = bs(item.content, "html.parser")
-            p_list = soup.findAll(self.translate_tags.split(","))
+        if item.get_type() != ITEM_DOCUMENT:
+            return item
 
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=self.max_procs
-            ) as executor:
-                p_chunks = [
-                    p_list[i : i + self.max_procs]
-                    for i in range(0, len(p_list), self.max_procs)
-                ]
-                translated_chunks = executor.map(
-                    lambda chunk: [
-                        self.translate_model.translate(p.text, True) for p in chunk
-                    ],
-                    p_chunks,
-                )
+        print(f"dealing {item.file_name} ...")
+        soup = bs(item.content, "html.parser")
+        p_list = soup.findAll(self.translate_tags.split(","))
 
-            for p_chunk, translated_chunk in zip(p_chunks, translated_chunks):
-                for p, translated_text in zip(p_chunk, translated_chunk):
-                    if self._is_special_text(p.text):
-                        continue
-                    new_p = copy(p)
-                    new_p.string = translated_text
-                    p.insert_after(new_p)
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=self.max_procs
+        ) as executor:
+            p_chunks = [
+                p_list[i : i + self.max_procs]
+                for i in range(0, len(p_list), self.max_procs)
+            ]
+            translated_chunks = executor.map(
+                lambda chunk: [
+                    self.translate_model.translate(p.text, True) for p in chunk
+                ],
+                p_chunks,
+            )
 
-            item.content = soup.prettify().encode()
+        for p_chunk, translated_chunk in zip(p_chunks, translated_chunks):
+            for p, translated_text in zip(p_chunk, translated_chunk):
+                if not p.text or self._is_special_text(p.text):
+                    continue
+                new_p = copy(p)
+                new_p.string = translated_text
+                p.insert_after(new_p)
 
+        item.content = soup.prettify().encode()
         return item
 
     def make_bilingual_book(self):
@@ -125,12 +126,10 @@ class EPUBBookLoader(BaseBookLoader):
         p_to_save_len = len(self.p_to_save)
 
         if self.max_procs > 1:
-            allList = []
+            allList = [
+                i.file_name for i in self.origin_book.get_items_of_type(ITEM_DOCUMENT)
+            ]
             successList = []
-            items = self.origin_book.get_items()
-            for i in items:
-                if i.get_type() == ITEM_DOCUMENT:
-                    allList.append(i.file_name)
             print("List of documents to be translated")
             print("=====================================")
             print(allList)
@@ -151,18 +150,17 @@ class EPUBBookLoader(BaseBookLoader):
                                 successList.append(new_item.file_name)
                                 while new_item.file_name in allList:
                                     allList.remove(new_item.file_name)
-                                print("success:\n{}".format(successList))
-                                print("remain:\n{}".format(allList))
+                                print(f"success:\n{successList}")
+                                print(f"remain:\n{allList}")
                             new_book.add_item(new_item)
                         except Exception as e:
                             print(e)
 
-                name, _ = os.path.splitext(self.epub_name)
-                epub.write_epub(f"{name}_bilingual.epub", new_book, {})
             except (KeyboardInterrupt, Exception) as e:
                 print(e)
-                sys.exit(0)
 
+            name, _ = os.path.splitext(self.epub_name)
+            epub.write_epub(f"{name}_bilingual.epub", new_book, {})
             sys.exit(0)
 
         try:
