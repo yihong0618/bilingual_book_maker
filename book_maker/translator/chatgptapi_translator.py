@@ -47,8 +47,8 @@ class ChatGPTAPI(Base):
             # 2. an apikey has no money or reach limit, don’t sleep, just replace it with another apikey
             # 3. all apikey reach limit, then use current sleep
             sleep_time = int(60 / self.key_len)
+            print(e, f"will sleep {sleep_time} seconds")
             time.sleep(sleep_time)
-            print(e, f"will sleep  {sleep_time} seconds")
 
             t_text = self.get_translation(text)
 
