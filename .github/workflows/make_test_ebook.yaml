@@ -16,10 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Get epub filename
-        run: |
-           EPUB_FILENAME_BASE=$(git log --diff-filter=A --name-only --pretty=format:  | grep -E "^test_books/.*\.epub$" | head -n 1 | xargs -0 -I {} basename "{}" |  sed 's/\.epub//')
-           echo "EPUB_FILENAME_BASE=$EPUB_FILENAME_BASE" >> $GITHUB_ENV
       - name: install python 3.9 
         uses: actions/setup-python@v4
         with:
@@ -40,8 +36,8 @@ jobs:
       - name: make openai key ebook test
         if: env.OPENAI_API_KEY != null
         run: |
-            python3 make_book.py --book_name "test_books/${{ env.EPUB_FILENAME_BASE}}.epub" --no_limit --test --test_num 5 --language zh-hans
-            python3 make_book.py --book_name "test_books/${{ env.EPUB_FILENAME_BASE}}.epub" --no_limit --test --test_num 5 --language ja --model gpt3
+            python3 make_book.py --book_name "test_books/lemo.epub" --no_limit --test --test_num 5 --language zh-hans
+            python3 make_book.py --book_name "test_books/animal_farm.epub" --no_limit --test --test_num 5 --language ja --model gpt3
             
             
       - name: Rename and Upload ePub
@@ -49,4 +45,5 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: epub_output
-          path: "test_books/${{ env.EPUB_FILENAME_BASE }}_bilingual.epub"
+          path: "test_books/lemo_bilingual.epub"
+
