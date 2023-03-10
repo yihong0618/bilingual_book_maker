@@ -46,4 +46,3 @@ jobs:
         with:
           name: epub_output
           path: "test_books/lemo_bilingual.epub"
-
