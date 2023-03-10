@@ -32,11 +32,12 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
    **请注意，此处你输入的api应该是'`https://xxxx/v1`'的字样，域名需要用引号包裹**
 11. 翻译完会生成一本 ${book_name}_bilingual.epub 的双语书
 12. 如果出现了错误或使用 `CTRL+C` 中断命令，不想接下来继续翻译了，会生成一本 ${book_name}_bilingual_temp.epub 的书，直接改成你想要的名字就可以了
+13. 如果你想要翻译电子书中的无标签字符串，可以使用 `--allow_navigable_strings` 参数，会将可遍历字符串加入翻译队列，**注意，在条件允许情况下，请寻找更规范的电子书**
 
 e.g.
 ```shell
 # 如果你想快速测一下
-python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --no_limit --test
+python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 
 # 或翻译完整本书
 python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --language zh-hans
@@ -45,7 +46,7 @@ python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${open
 export OPENAI_API_KEY=${your_api_key}
 
 # 或使用 gpt3 模型
-python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_limit --language ja
+python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --language ja
 
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p

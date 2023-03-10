@@ -1,5 +1,6 @@
-from .base_translator import Base
 import requests
+
+from .base_translator import Base
 
 
 class Google(Base):
