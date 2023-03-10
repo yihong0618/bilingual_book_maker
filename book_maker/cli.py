@@ -24,12 +24,6 @@ def main():
         " to split them to go beyond the rate limits",
     )
     parser.add_argument(
-        "--no_limit",
-        dest="no_limit",
-        action="store_true",
-        help="with a paid account, you can specify this option",
-    )
-    parser.add_argument(
         "--test",
         dest="test",
         action="store_true",
