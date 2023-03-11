@@ -1,5 +1,4 @@
 import time
-
 import openai
 from os import environ
 
@@ -15,6 +14,8 @@ class ChatGPTAPI(Base):
 
     def rotate_key(self):
         openai.api_key = next(self.keys)
+        n = len(openai.api_key)
+        print(openai.api_key[: n // 4] + "*" * (n // 2) + openai.api_key[n * 3 // 4 :])
 
     def get_translation(self, text):
         self.rotate_key()
@@ -40,9 +41,10 @@ class ChatGPTAPI(Base):
         )
         return t_text
 
-    def translate(self, text):
+    def translate(self, text, noprint=False):
         # todo: Determine whether to print according to the cli option
-        print(text)
+        if not noprint:
+            print(text)
 
         try:
             t_text = self.get_translation(text)
@@ -58,5 +60,6 @@ class ChatGPTAPI(Base):
             t_text = self.get_translation(text)
 
         # todo: Determine whether to print according to the cli option
-        print(t_text)
+        if not noprint:
+            print(t_text)
         return t_text
