@@ -1,4 +1,5 @@
 import time
+import re
 
 import openai
 from os import environ
@@ -48,7 +49,7 @@ class ChatGPTAPI(Base):
 
     def translate(self, text):
         # todo: Determine whether to print according to the cli option
-        print(text)
+        print(re.sub("\n{3,}", "\n\n", text))
 
         try:
             t_text = self.get_translation(text)
@@ -64,7 +65,7 @@ class ChatGPTAPI(Base):
             t_text = self.get_translation(text)
 
         # todo: Determine whether to print according to the cli option
-        print(t_text.strip())
+        print(re.sub("\n{3,}", "\n\n", t_text))
         return t_text
 
     def translate_list(self, plist):

@@ -129,6 +129,9 @@ class EPUBBookLoader(BaseBookLoader):
 
                 send_num = self.accumulated_num
                 if send_num > 1:
+                    print("------------------------------------------------------")
+                    print(f"dealing {item.file_name} ...")
+                    print("------------------------------------------------------")
                     count = 0
                     wait_p_list = []
                     for i in range(0, len(p_list)):
@@ -177,14 +180,16 @@ class EPUBBookLoader(BaseBookLoader):
 
                 item.content = soup.prettify().encode()
                 new_book.add_item(item)
-            name, _ = os.path.splitext(self.epub_name)
-            epub.write_epub(f"{name}_bilingual.epub", new_book, {})
-            pbar.close()
+                name, _ = os.path.splitext(self.epub_name)
+                epub.write_epub(f"{name}_bilingual.epub", new_book, {})
+            if self.accumulated_num == 1:
+                pbar.close()
         except (KeyboardInterrupt, Exception) as e:
             print(e)
-            print("you can resume it next time")
-            self._save_progress()
-            self._save_temp_book()
+            if self.accumulated_num == 1:
+                print("you can resume it next time")
+                self._save_progress()
+                self._save_temp_book()
             sys.exit(0)
 
     def load_state(self):
