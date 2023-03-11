@@ -1,7 +1,7 @@
 import sys
+from pathlib import Path
 
 from .base_loader import BaseBookLoader
-from pathlib import Path
 
 
 class TXTBookLoader(BaseBookLoader):
@@ -23,6 +23,7 @@ class TXTBookLoader(BaseBookLoader):
         self.is_test = is_test
         self.p_to_save = []
         self.bilingual_result = []
+        self.bilingual_temp_result = []
         self.test_num = test_num
 
         try:
@@ -76,9 +77,19 @@ class TXTBookLoader(BaseBookLoader):
             sys.exit(0)
 
     def _save_temp_book(self):
-        """
-        TODO
-        """
+        index = 0
+        for i in range(0, len(self.origin_book)):
+            self.bilingual_temp_result.append(self.origin_book[i])
+            if self._is_special_text(self.origin_book[i]):
+                continue
+            if index < len(self.p_to_save):
+                self.bilingual_temp_result.append(self.p_to_save[index])
+            index += 1
+
+        self.save_file(
+            f"{Path(self.txt_name).parent}/{Path(self.txt_name).stem}_bilingual_temp.txt",
+            self.bilingual_temp_result,
+        )
 
     def _save_progress(self):
         try:
