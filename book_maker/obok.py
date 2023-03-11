@@ -1,5 +1,6 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+# The original code comes from:
+# https://github.com/apprenticeharper/DeDRM_tools
+
 # Version 4.1.1 March 2023
 # Make obok.py works as file selector
 
