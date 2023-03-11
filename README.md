@@ -32,11 +32,12 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 9. epub is made of html files. By default, we only translate contents in `<p>`.
    Use `--translate-tags` to specify tags need for translation. Use comma to seperate multiple tags. For example:
    `--translate-tags h1,h2,h3,p,div`
-10. If you want to change api_base like using Cloudflare Workers, use `--api_base <URL>` to support it.  
+10. Use `--book_from` option to specify e-reader type (Now only `kobo` is available), and use `--device_path` to specify the mounting point.
+11. If you want to change api_base like using Cloudflare Workers, use `--api_base <URL>` to support it.  
    **Note: the api url should be '`https://xxxx/v1`'. Quotation marks are required.**
-11. Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated.
-12. If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`. A book named `${book_name}_bilingual_temp.epub` would be generated. You can simply rename it to any desired name.
-13. If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue. **Note that it's best to look for e-books that are more standardized if possible.**
+12. Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated.
+13. If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`. A book named `${book_name}_bilingual_temp.epub` would be generated. You can simply rename it to any desired name.
+14. If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue. **Note that it's best to look for e-books that are more standardized if possible.**
 
 ### Eamples
 
@@ -56,8 +57,11 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --lang
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p
 
+# Translate books download from Rakuten Kobo on kobo e-reader
+python3 make_book.py --book_from kobo --device_path /tmp/kobo
+
 # translate txt file
-python3 make_book.py --book_name test_books/the_little_prince.txt -openai_key ${openai_key} --test --language zh-hans
+python3 make_book.py --book_name test_books/the_little_prince.txt --test --language zh-hans
 ```
 
 More understandable example
