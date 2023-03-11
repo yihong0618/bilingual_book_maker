@@ -1,6 +1,6 @@
 # bilingual_book_maker
 
-bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制作多语言版本的 epub 文件和图书。该工具仅适用于翻译进入公共版权领域的 epub 图书，不适用于有版权的书籍。请在使用之前阅读项目的 **[免责声明](./disclaimer.md)**。
+bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制作多语言版本的 epub/txt 文件和图书。该工具仅适用于翻译进入公共版权领域的 epub/txt 图书，不适用于有版权的书籍。请在使用之前阅读项目的 **[免责声明](./disclaimer.md)**。
 
 ![image](https://user-images.githubusercontent.com/15976103/222317531-a05317c5-4eee-49de-95cd-04063d9539d9.png)
 
@@ -8,7 +8,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 ## 准备
 
 1. ChatGPT or OpenAI token [^token]
-2. epub books
+2. epub/txt books
 3. 能正常联网的环境或 proxy
 4. python3.8+
 
@@ -38,7 +38,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 e.g.
 ```shell
 # 如果你想快速测一下
-python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --no_limit --test
+python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 
 # 或翻译完整本书
 python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --language zh-hans
@@ -47,13 +47,16 @@ python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${open
 export OPENAI_API_KEY=${your_api_key}
 
 # 或使用 gpt3 模型
-python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --no_limit --language ja
+python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --language ja
 
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p
 
 # 翻译 kobo e-reader 中，來自 Rakuten Kobo 的书籍
 python3 make_book.py --book_from kobo --device_path /tmp/kobo
+
+# 翻译 txt 文件
+python3 make_book.py --book_name test_books/the_little_prince.txt --test 
 ```
 
 更加小白的示例
