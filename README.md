@@ -5,7 +5,7 @@ Usage: make sure to add `--model google` in the command.
 **[中文](./README-CN.md) | English**
 
 # bilingual_book_maker
-The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist users in creating multi-language versions of epub files and books. This tool is exclusively designed for translating epub books that have entered the public domain and is not intended for copyrighted works. Before using this tool, please review the project's **[disclaimer](./disclaimer.md)**.
+The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist users in creating multi-language versions of epub/txt files and books. This tool is exclusively designed for translating epub books that have entered the public domain and is not intended for copyrighted works. Before using this tool, please review the project's **[disclaimer](./disclaimer.md)**.
 
 ![image](https://user-images.githubusercontent.com/15976103/222317531-a05317c5-4eee-49de-95cd-04063d9539d9.png)
 
@@ -13,7 +13,7 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 ## Preparation
 
 1. ChatGPT or OpenAI token [^token]
-2. epub books
+2. epub/txt books
 3. Environment with internet access or proxy
 4. Python 3.8+
 
@@ -55,6 +55,9 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --lang
 
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p
+
+# translate txt file
+python3 make_book.py --book_name test_books/the_little_prince.txt -openai_key ${openai_key} --test --language zh-hans
 ```
 
 More understandable example
