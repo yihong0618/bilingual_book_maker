@@ -1,6 +1,7 @@
 import time
 
 import openai
+from os import environ
 
 from .base_translator import Base
 
@@ -25,11 +26,15 @@ class ChatGPTAPI(Base):
             model="gpt-3.5-turbo",
             messages=[
                 {
+                    "role": "system",
+                    "content": environ.get("OPENAI_API_SYS_MSG"),
+                },
+                {
                     "role": "user",
                     "content": self.prompt_template.format(
                         text=text, language=self.language
                     ),
-                }
+                },
             ],
         )
         t_text = (

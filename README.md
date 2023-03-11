@@ -5,7 +5,7 @@ Usage: make sure to add `--model google` in the command.
 **[中文](./README-CN.md) | English**
 
 # bilingual_book_maker
-The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist users in creating multi-language versions of epub files and books. This tool is exclusively designed for translating epub books that have entered the public domain and is not intended for copyrighted works. Before using this tool, please review the project's **[disclaimer](./disclaimer.md)**.
+The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist users in creating multi-language versions of epub/txt files and books. This tool is exclusively designed for translating epub books that have entered the public domain and is not intended for copyrighted works. Before using this tool, please review the project's **[disclaimer](./disclaimer.md)**.
 
 ![image](https://user-images.githubusercontent.com/15976103/222317531-a05317c5-4eee-49de-95cd-04063d9539d9.png)
 
@@ -13,7 +13,7 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 ## Preparation
 
 1. ChatGPT or OpenAI token [^token]
-2. epub books
+2. epub/txt books
 3. Environment with internet access or proxy
 4. Python 3.8+
 
@@ -32,13 +32,17 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 9. epub is made of html files. By default, we only translate contents in `<p>`.
    Use `--translate-tags` to specify tags need for translation. Use comma to seperate multiple tags. For example:
    `--translate-tags h1,h2,h3,p,div`
-10. If you want to change api_base like using Cloudflare Workers, use `--api_base <URL>` to support it.  
+10. Use `--book_from` option to specify e-reader type (Now only `kobo` is available), and use `--device_path` to specify the mounting point.
+11. If you want to change api_base like using Cloudflare Workers, use `--api_base <URL>` to support it.  
    **Note: the api url should be '`https://xxxx/v1`'. Quotation marks are required.**
 11. Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated.
 12. If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`. A book named `${book_name}_bilingual_temp.epub` would be generated. You can simply rename it to any desired name.
 13. If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue. **Note that it's best to look for e-books that are more standardized if possible.**
 14. To tweak the prompt, use the `--prompt` parameter. The parameter can be a prompt template string or a path to the template `.txt` file. Valid placeholders for the template include `{text}` and `{language}`.
 
+15. Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated.
+16. If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`. A book named `${book_name}_bilingual_temp.epub` would be generated. You can simply rename it to any desired name.
+17. If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue. **Note that it's best to look for e-books that are more standardized if possible.**
 
 ### Eamples
 
@@ -62,6 +66,11 @@ python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags di
 python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template_sample.txt
 # or
 python3 make_book.py --book_name test_books/animal_farm.epub --prompt "Please translate \`{text}\` to {language}"
+# Translate books download from Rakuten Kobo on kobo e-reader
+python3 make_book.py --book_from kobo --device_path /tmp/kobo
+
+# translate txt file
+python3 make_book.py --book_name test_books/the_little_prince.txt --test --language zh-hans
 ```
 
 More understandable example
