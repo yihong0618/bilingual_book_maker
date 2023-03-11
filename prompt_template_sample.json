@@ -1,0 +1,4 @@
+{
+  "system": "You are a professional translator.", 
+  "user": "Translate `{text}` to {language}"
+}
