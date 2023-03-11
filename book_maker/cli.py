@@ -48,6 +48,7 @@ def parse_prompt_arg(prompt_arg):
     if (prompt.keys() - {"user", "system"}) != set():
         raise ValueError("prompt can only contain the keys of `user` and `system`")
 
+    print("prompt config:", prompt)
     return prompt
 
 
