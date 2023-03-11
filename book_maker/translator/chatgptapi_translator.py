@@ -11,7 +11,10 @@ class ChatGPTAPI(Base):
         self.key_len = len(key.split(","))
         if api_base:
             openai.api_base = api_base
-        self.prompt_template = prompt_template or "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text"
+        self.prompt_template = (
+            prompt_template
+            or "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text"
+        )
 
     def rotate_key(self):
         openai.api_key = next(self.keys)
@@ -23,7 +26,9 @@ class ChatGPTAPI(Base):
             messages=[
                 {
                     "role": "user",
-                    "content": self.prompt_template.format(text=text, language=self.language)
+                    "content": self.prompt_template.format(
+                        text=text, language=self.language
+                    ),
                 }
             ],
         )

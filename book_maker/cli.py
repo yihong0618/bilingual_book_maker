@@ -6,6 +6,7 @@ from book_maker.loader import BOOK_LOADER_DICT
 from book_maker.translator import MODEL_DICT
 from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE
 
+
 def parse_prompt_arg(prompt_arg):
     prompt = None
     if prompt_arg is None:
@@ -18,8 +19,7 @@ def parse_prompt_arg(prompt_arg):
                 prompt = f.read()
         else:
             raise FileNotFoundError(f"{prompt_arg} not found")
-    if (prompt is None or 
-        not(all(c in prompt for c in ["{text}", "{language}"]))):
+    if prompt is None or not (all(c in prompt for c in ["{text}", "{language}"])):
         raise ValueError("prompt must contain `{text}` and `{language}`")
     return prompt
 
@@ -160,7 +160,7 @@ def main():
         test_num=options.test_num,
         translate_tags=options.translate_tags,
         allow_navigable_strings=options.allow_navigable_strings,
-        prompt_template=parse_prompt_arg(options.prompt_template)
+        prompt_template=parse_prompt_arg(options.prompt_template),
     )
     e.make_bilingual_book()
 

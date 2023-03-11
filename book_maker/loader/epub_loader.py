@@ -29,7 +29,9 @@ class EPUBBookLoader(BaseBookLoader):
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
-        self.translate_model = model(key, language, model_api_base, prompt_template=prompt_template)
+        self.translate_model = model(
+            key, language, model_api_base, prompt_template=prompt_template
+        )
         self.is_test = is_test
         self.test_num = test_num
         self.translate_tags = translate_tags
