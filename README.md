@@ -37,6 +37,8 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 11. Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated.
 12. If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`. A book named `${book_name}_bilingual_temp.epub` would be generated. You can simply rename it to any desired name.
 13. If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue. **Note that it's best to look for e-books that are more standardized if possible.**
+14. To tweak the prompt, use the `--prompt` parameter. The parameter can be a prompt template string or a path to the template `.txt` file. Valid placeholders for the template include `{text}` and `{language}`.
+
 
 ### Eamples
 
@@ -55,6 +57,11 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --lang
 
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p
+
+# Tweaking the prompt
+python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template_sample.txt
+# or
+python3 make_book.py --book_name test_books/animal_farm.epub --prompt "Please translate \`{text}\` to {language}"
 ```
 
 More understandable example

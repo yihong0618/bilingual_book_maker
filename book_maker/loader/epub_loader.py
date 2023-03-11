@@ -25,10 +25,11 @@ class EPUBBookLoader(BaseBookLoader):
         test_num=5,
         translate_tags="p",
         allow_navigable_strings=False,
+        prompt_template=None,
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
-        self.translate_model = model(key, language, model_api_base)
+        self.translate_model = model(key, language, model_api_base, prompt_template=prompt_template)
         self.is_test = is_test
         self.test_num = test_num
         self.translate_tags = translate_tags
