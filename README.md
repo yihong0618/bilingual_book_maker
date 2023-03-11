@@ -35,14 +35,14 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 10. Use `--book_from` option to specify e-reader type (Now only `kobo` is available), and use `--device_path` to specify the mounting point.
 11. If you want to change api_base like using Cloudflare Workers, use `--api_base <URL>` to support it.  
    **Note: the api url should be '`https://xxxx/v1`'. Quotation marks are required.**
-11. Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated.
-12. If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`. A book named `${book_name}_bilingual_temp.epub` would be generated. You can simply rename it to any desired name.
-13. If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue. **Note that it's best to look for e-books that are more standardized if possible.**
-14. To tweak the prompt, use the `--prompt` parameter. The parameter can be a prompt template string or a path to the template `.txt` file. Valid placeholders for the template include `{text}` and `{language}`.
+12. Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated.
+13. If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`. A book named `${book_name}_bilingual_temp.epub` would be generated. You can simply rename it to any desired name.
+14. If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue. **Note that it's best to look for e-books that are more standardized if possible.**
+15. To tweak the prompt, use the `--prompt` parameter. The parameter can be a prompt template string or a path to the template `.txt` file. Valid placeholders for the template include `{text}` and `{language}`.
 
-15. Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated.
-16. If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`. A book named `${book_name}_bilingual_temp.epub` would be generated. You can simply rename it to any desired name.
-17. If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue. **Note that it's best to look for e-books that are more standardized if possible.**
+16. Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated.
+17. If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`. A book named `${book_name}_bilingual_temp.epub` would be generated. You can simply rename it to any desired name.
+18. If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue. **Note that it's best to look for e-books that are more standardized if possible.**
 
 ### Eamples
 
