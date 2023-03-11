@@ -5,6 +5,7 @@ from os import environ as env
 from book_maker.loader import BOOK_LOADER_DICT
 from book_maker.translator import MODEL_DICT
 from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE
+import book_maker.obok as obok
 
 
 def main():
@@ -14,6 +15,20 @@ def main():
         dest="book_name",
         type=str,
         help="path of the epub file to be translated",
+    )
+    parser.add_argument(
+        "--book_from",
+        dest="book_from",
+        type=str,
+        choices=["kobo"],  # support kindle later
+        metavar="E-READER",
+        help="e-reader type, available: {%(choices)s}",
+    )
+    parser.add_argument(
+        "--device_path",
+        dest="device_path",
+        type=str,
+        help="Path of e-reader device",
     )
     parser.add_argument(
         "--openai_key",
@@ -114,6 +129,14 @@ def main():
             )
     else:
         OPENAI_API_KEY = ""
+
+    if options.book_from == "kobo":
+        device_path = options.device_path
+        if device_path is None:
+            raise Exception(
+                "Device path is not given, please specify the path by --device_path <DEVICE_PATH>"
+            )
+        options.book_name = obok.cli_main(device_path)
 
     book_type = options.book_name.split(".")[-1]
     support_type_list = list(BOOK_LOADER_DICT.keys())

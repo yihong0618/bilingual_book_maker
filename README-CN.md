@@ -28,11 +28,12 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 9. epub 由 html 文件组成。默认情况下，我们只翻译 `<p>` 中的内容。
    使用 `--translate-tags` 指定需要翻译的标签。使用逗号分隔多个标签。例如：
    `--translate-tags h1,h2,h3,p,div`
-10. 如果你遇到了墙需要用 Cloudflare Workers 替换 api_base 请使用 `--api_base ${url}` 来替换。  
+10. 请使用 --book_from 选项指定电子阅读器类型（现在只有 kobo 可用），并使用 --device_path 指定挂载点。
+11. 如果你遇到了墙需要用 Cloudflare Workers 替换 api_base 请使用 `--api_base ${url}` 来替换。  
    **请注意，此处你输入的api应该是'`https://xxxx/v1`'的字样，域名需要用引号包裹**
-11. 翻译完会生成一本 ${book_name}_bilingual.epub 的双语书
-12. 如果出现了错误或使用 `CTRL+C` 中断命令，不想接下来继续翻译了，会生成一本 ${book_name}_bilingual_temp.epub 的书，直接改成你想要的名字就可以了
-13. 如果你想要翻译电子书中的无标签字符串，可以使用 `--allow_navigable_strings` 参数，会将可遍历字符串加入翻译队列，**注意，在条件允许情况下，请寻找更规范的电子书**
+12. 翻译完会生成一本 ${book_name}_bilingual.epub 的双语书
+13. 如果出现了错误或使用 `CTRL+C` 中断命令，不想接下来继续翻译了，会生成一本 ${book_name}_bilingual_temp.epub 的书，直接改成你想要的名字就可以了
+14. 如果你想要翻译电子书中的无标签字符串，可以使用 `--allow_navigable_strings` 参数，会将可遍历字符串加入翻译队列，**注意，在条件允许情况下，请寻找更规范的电子书**
 
 e.g.
 ```shell
@@ -51,8 +52,11 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --lang
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p
 
+# 翻译 kobo e-reader 中，來自 Rakuten Kobo 的书籍
+python3 make_book.py --book_from kobo --device_path /tmp/kobo
+
 # 翻译 txt 文件
-python3 make_book.py --book_name test_books/the_little_prince.txt -openai_key ${openai_key} --test 
+python3 make_book.py --book_name test_books/the_little_prince.txt --test 
 ```
 
 更加小白的示例
