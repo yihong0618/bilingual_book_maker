@@ -33,6 +33,11 @@ jobs:
             python3 make_book.py --book_name "test_books/Liber_Esther.epub" --test --test_num 10 --model google --translate-tags div,p
             python3 make_book.py --book_name "test_books/Liber_Esther.epub" --test --test_num 20 --model google
 
+      - name: make txt book test using google translate
+        run: |
+          python3 make_book.py --book_name "test_books/the_little_prince.txt" --test --test_num 20 --model google
+
+
       - name: make openai key ebook test
         if: env.OPENAI_API_KEY != null
         run: |
