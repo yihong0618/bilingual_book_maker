@@ -6,17 +6,17 @@ from pathlib import Path
 
 class TXTBookLoader(BaseBookLoader):
     def __init__(
-            self,
-            txt_name,
-            model,
-            key,
-            resume,
-            language,
-            translate_tags,
-            allow_navigable_strings,
-            model_api_base=None,
-            is_test=False,
-            test_num=5,
+        self,
+        txt_name,
+        model,
+        key,
+        resume,
+        language,
+        translate_tags,
+        allow_navigable_strings,
+        model_api_base=None,
+        is_test=False,
+        test_num=5,
     ):
         self.txt_name = txt_name
         self.translate_model = model(key, language, model_api_base)
@@ -27,7 +27,7 @@ class TXTBookLoader(BaseBookLoader):
 
         try:
             with open(f"{txt_name}", "r", encoding="utf-8") as f:
-                self.origin_book = f.read().split('\n')
+                self.origin_book = f.read().split("\n")
 
         except Exception:
             raise Exception("can not load file")
@@ -63,8 +63,10 @@ class TXTBookLoader(BaseBookLoader):
                 if self.is_test and index > self.test_num:
                     break
 
-            self.save_file(f"{Path(self.txt_name).parent}/{Path(self.txt_name).stem}_bilingual.txt",
-                           self.bilingual_result)
+            self.save_file(
+                f"{Path(self.txt_name).parent}/{Path(self.txt_name).stem}_bilingual.txt",
+                self.bilingual_result,
+            )
 
         except (KeyboardInterrupt, Exception) as e:
             print(e)

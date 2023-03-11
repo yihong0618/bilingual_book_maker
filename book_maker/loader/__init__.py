@@ -5,5 +5,5 @@ from book_maker.loader.txt_loader import TXTBookLoader
 BOOK_LOADER_DICT = {
     "epub": EPUBBookLoader,
     "txt": TXTBookLoader
-     # TODO add more here
+    # TODO add more here
 }
