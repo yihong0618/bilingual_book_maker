@@ -131,7 +131,7 @@ def main():
 
     if options.book_from == "kobo":
         device_path = options.device_path
-        if device_path == None:
+        if device_path is None:
             raise Exception(
                 "Device path is not given, please specify the path by --device_path <DEVICE_PATH>"
             )

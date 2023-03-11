@@ -240,11 +240,7 @@ def _load_crypto_libcrypto():
     class AES(object):
         def __init__(self, userkey):
             self._blocksize = len(userkey)
-            if (
-                (self._blocksize != 16)
-                and (self._blocksize != 24)
-                and (self._blocksize != 32)
-            ):
+            if self._blocksize not in [16, 24, 32]:
                 raise ENCRYPTIONError(_("AES improper key used"))
                 return
             key = self._key = AES_KEY()
@@ -300,7 +296,7 @@ class SafeUnbuffered:
     def __init__(self, stream):
         self.stream = stream
         self.encoding = stream.encoding
-        if self.encoding == None:
+        if self.encoding is None:
             self.encoding = "utf-8"
 
     def write(self, data):
@@ -320,7 +316,9 @@ class KoboLibrary(object):
     written by the Kobo Desktop Edition application, including the list
     of books, their titles, and the user's encryption key(s)."""
 
-    def __init__(self, serials=[], device_path=None, desktopkobodir=""):
+    def __init__(self, serials=None, device_path=None, desktopkobodir=""):
+        if serials is None:
+            serials = []
         print(__about__)
         self.kobodir = ""
         kobodb = ""
@@ -347,32 +345,31 @@ class KoboLibrary(object):
                 self.kobodir = ""
                 kobodb = ""
 
-        if self.kobodir:
-            # step 3. we found a device but didn't get serials, try to get them
-            if len(serials) == 0:
-                # we got a device path but no saved serial
-                # try to get the serial from the device
-                # print "get_device_settings - device_path = {0}".format(device_path)
-                # get serial from device_path/.adobe-digital-editions/device.xml
-                if can_parse_xml:
-                    devicexml = os.path.join(
-                        device_path, ".adobe-digital-editions", "device.xml"
-                    )
-                    # print "trying to load {0}".format(devicexml)
-                    if os.path.exists(devicexml):
-                        # print "trying to parse {0}".format(devicexml)
-                        xmltree = ET.parse(devicexml)
-                        for node in xmltree.iter():
-                            if "deviceSerial" in node.tag:
-                                serial = node.text
-                                # print "found serial {0}".format(serial)
-                                serials.append(serial)
-                                break
-                    else:
-                        # print "cannot get serials from device."
-                        device_path = ""
-                        self.kobodir = ""
-                        kobodb = ""
+        # step 3. we found a device but didn't get serials, try to get them
+        #
+        # we got a device path but no saved serial
+        # try to get the serial from the device
+        # get serial from device_path/.adobe-digital-editions/device.xml
+        if self.kobodir and len(serials) == 0 and can_parse_xml:
+            # print "get_device_settings - device_path = {0}".format(device_path)
+            devicexml = os.path.join(
+                device_path, ".adobe-digital-editions", "device.xml"
+            )
+            # print "trying to load {0}".format(devicexml)
+            if os.path.exists(devicexml):
+                # print "trying to parse {0}".format(devicexml)
+                xmltree = ET.parse(devicexml)
+                for node in xmltree.iter():
+                    if "deviceSerial" in node.tag:
+                        serial = node.text
+                        # print "found serial {0}".format(serial)
+                        serials.append(serial)
+                        break
+            else:
+                # print "cannot get serials from device."
+                device_path = ""
+                self.kobodir = ""
+                kobodb = ""
 
         if self.kobodir == "":
             # step 4. we haven't found a device with serials, so try desktop apps
@@ -383,20 +380,19 @@ class KoboLibrary(object):
                 if sys.platform.startswith("win"):
                     import winreg
 
-                    if sys.getwindowsversion().major > 5:
-                        if "LOCALAPPDATA" in os.environ.keys():
-                            # Python 2.x does not return unicode env. Use Python 3.x
-                            self.kobodir = winreg.ExpandEnvironmentStrings(
-                                "%LOCALAPPDATA%"
-                            )
-                    if self.kobodir == "":
-                        if "USERPROFILE" in os.environ.keys():
-                            # Python 2.x does not return unicode env. Use Python 3.x
-                            self.kobodir = os.path.join(
-                                winreg.ExpandEnvironmentStrings("%USERPROFILE%"),
-                                "Local Settings",
-                                "Application Data",
-                            )
+                    if (
+                        sys.getwindowsversion().major > 5
+                        and "LOCALAPPDATA" in os.environ.keys()
+                    ):
+                        # Python 2.x does not return unicode env. Use Python 3.x
+                        self.kobodir = winreg.ExpandEnvironmentStrings("%LOCALAPPDATA%")
+                    if self.kobodir == "" and "USERPROFILE" in os.environ.keys():
+                        # Python 2.x does not return unicode env. Use Python 3.x
+                        self.kobodir = os.path.join(
+                            winreg.ExpandEnvironmentStrings("%USERPROFILE%"),
+                            "Local Settings",
+                            "Application Data",
+                        )
                     self.kobodir = os.path.join(
                         self.kobodir, "Kobo", "Kobo Desktop Edition"
                     )
@@ -417,7 +413,7 @@ class KoboLibrary(object):
                         os.mkdir(kobodir_cache_dir)
 
                     # appends the name of the file we're storing the kobodir location info to the above path
-                    kobodir_cache_file = str(kobodir_cache_dir) + "/" + "kobo_location"
+                    kobodir_cache_file = f"{str(kobodir_cache_dir)}/kobo_location"
 
                     """if the above file does not exist, recursively searches from the root
                     of the filesystem until kobodir is found and stores the location of kobodir
@@ -547,9 +543,8 @@ class KoboLibrary(object):
                 text=True,
             ).stdout
             for line in output:
-                m = c.search(line)
-                if m:
-                    macaddrs.append(re.sub("-", ":", m.group(1)).upper())
+                if m := c.search(line):
+                    macaddrs.append(re.sub("-", ":", m[1]).upper())
         elif sys.platform.startswith("darwin"):
             c = re.compile(
                 "\s(" + "[0-9a-f]{2}:" * 5 + "[0-9a-f]{2})(\s|$)", re.IGNORECASE
@@ -558,9 +553,7 @@ class KoboLibrary(object):
                 "/sbin/ifconfig -a", shell=True, encoding="utf-8"
             )
             matches = c.findall(output)
-            for m in matches:
-                # print "m:{0}".format(m[0])
-                macaddrs.append(m[0].upper())
+            macaddrs.extend(m[0].upper() for m in matches)
         else:
             # probably linux
 
@@ -569,18 +562,16 @@ class KoboLibrary(object):
                 "\s(" + "[0-9a-f]{2}:" * 5 + "[0-9a-f]{2})(\s|$)", re.IGNORECASE
             )
             for line in os.popen("ip -br link"):
-                m = c.search(line)
-                if m:
-                    macaddrs.append(m.group(1).upper())
+                if m := c.search(line):
+                    macaddrs.append(m[1].upper())
 
             # let's try ipconfig under wine
             c = re.compile(
                 "\s(" + "[0-9a-f]{2}-" * 5 + "[0-9a-f]{2})(\s|$)", re.IGNORECASE
             )
             for line in os.popen("ipconfig /all"):
-                m = c.search(line)
-                if m:
-                    macaddrs.append(re.sub("-", ":", m.group(1)).upper())
+                if m := c.search(line):
+                    macaddrs.append(re.sub("-", ":", m[1]).upper())
 
         # extend the list of macaddrs in any case with the serials
         # cannot hurt ;-)
@@ -596,7 +587,7 @@ class KoboLibrary(object):
             try:
                 userid = row[0]
                 userids.append(userid)
-            except:
+            except Exception:
                 pass
             row = cursor.fetchone()
         return userids
@@ -674,8 +665,6 @@ class KoboBook(object):
 
         c = re.compile("/")
         for item in opf.findall(".//opf:item", xmlns):
-            mimetype = item.attrib["media-type"]
-
             # Convert relative URIs
             href = item.attrib["href"]
             if not c.match(href):
@@ -683,12 +672,13 @@ class KoboBook(object):
 
             # Update books we've found from the DB.
             if href in self._encryptedfiles:
+                mimetype = item.attrib["media-type"]
                 self._encryptedfiles[href].mimetype = mimetype
         return self._encryptedfiles
 
     @property
     def has_drm(self):
-        return not self.type == "drm-free"
+        return self.type != "drm-free"
 
 
 class KoboFile(object):
@@ -785,12 +775,11 @@ class KoboFile(object):
             else:
                 print("Bad XML: {0}".format(contents[:8]))
                 raise ValueError
-        elif self.mimetype == "image/jpeg":
+        if self.mimetype == "image/jpeg":
             if contents[:3] == b"\xff\xd8\xff":
                 return True
-            else:
-                print("Bad JPEG: {0}".format(contents[:3].hex()))
-                raise ValueError()
+            print("Bad JPEG: {0}".format(contents[:3].hex()))
+            raise ValueError()
         return False
 
     def __removeaespadding(self, contents):
@@ -803,7 +792,7 @@ class KoboFile(object):
         if strlen == 1:
             return contents[:-1]
         if strlen < 16:
-            for i in range(strlen):
+            for _ in range(strlen):
                 testchar = binascii.b2a_hex(contents[-strlen : -(strlen - 1)])
                 if testchar != lastchar:
                     padding = 0
