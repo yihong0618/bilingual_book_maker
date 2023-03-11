@@ -1,6 +1,7 @@
 import time
 
 import openai
+from os import environ
 
 from .base_translator import Base
 
@@ -21,9 +22,13 @@ class ChatGPTAPI(Base):
             model="gpt-3.5-turbo",
             messages=[
                 {
+                    "role": "system",
+                    "content": environ.get("OPENAI_API_SYS_MSG"),
+                },
+                {
                     "role": "user",
                     "content": f"Please help me to translate,`{text}` to {self.language}, please return only translated content not include the origin text",
-                }
+                },
             ],
         )
         t_text = (
