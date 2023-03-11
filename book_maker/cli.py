@@ -8,6 +8,23 @@ from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE
 import book_maker.obok as obok
 
 
+def parse_prompt_arg(prompt_arg):
+    prompt = None
+    if prompt_arg is None:
+        return prompt
+    if not prompt_arg.endswith(".txt"):
+        prompt = prompt_arg
+    else:
+        if os.path.exists(prompt_arg):
+            with open(prompt_arg, "r") as f:
+                prompt = f.read()
+        else:
+            raise FileNotFoundError(f"{prompt_arg} not found")
+    if prompt is None or not (all(c in prompt for c in ["{text}", "{language}"])):
+        raise ValueError("prompt must contain `{text}` and `{language}`")
+    return prompt
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -105,6 +122,13 @@ def main():
         default=False,
         help="allow NavigableStrings to be translated",
     )
+    parser.add_argument(
+        "--prompt",
+        dest="prompt_template",
+        type=str,
+        metavar="PROMPT_TEMPLATE",
+        help="used for customizing the prompt. It can be the prompt template string, or a path to the template file. The valid placeholders are `{text}` and `{language}`.",
+    )
 
     options = parser.parse_args()
     PROXY = options.proxy
@@ -159,6 +183,7 @@ def main():
         test_num=options.test_num,
         translate_tags=options.translate_tags,
         allow_navigable_strings=options.allow_navigable_strings,
+        prompt_template=parse_prompt_arg(options.prompt_template),
     )
     e.make_bilingual_book()
 

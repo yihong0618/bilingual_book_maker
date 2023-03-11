@@ -5,7 +5,7 @@ from .base_translator import Base
 
 
 class GPT3(Base):
-    def __init__(self, key, language, api_base=None):
+    def __init__(self, key, language, api_base=None, prompt_template=None):
         super().__init__(key, language)
         self.api_url = (
             f"{api_base}v1/completions"
@@ -25,6 +25,9 @@ class GPT3(Base):
         }
         self.session = requests.session()
         self.language = language
+        self.prompt_template = (
+            prompt_template or "Please help me to translate, `{text}` to {language}"
+        )
 
     def rotate_key(self):
         self.headers["Authorization"] = f"Bearer {next(self.keys)}"
@@ -32,7 +35,9 @@ class GPT3(Base):
     def translate(self, text):
         print(text)
         self.rotate_key()
-        self.data["prompt"] = f"Please help me to translate，`{text}` to {self.language}"
+        self.data["prompt"] = self.prompt_template.format(
+            text=text, language=self.language
+        )
         r = self.session.post(self.api_url, headers=self.headers, json=self.data)
         if not r.ok:
             return text
