@@ -23,7 +23,7 @@ class ChatGPTAPI(Base):
             messages=[
                 {
                     "role": "system",
-                    "content": environ.get("OPENAI_API_SYS_MSG"),
+                    "content": environ.get("OPENAI_API_SYS_MSG") or "",
                 },
                 {
                     "role": "user",
