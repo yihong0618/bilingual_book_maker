@@ -75,24 +75,24 @@ class EPUBBookLoader(BaseBookLoader):
         return new_book
 
     def make_bilingual_book(self):
-        def deal_new(p, waitPList):
-            ret = deal_old(waitPList)
+        def deal_new(p, wait_p_list):
+            ret = deal_old(wait_p_list)
             new_p = copy(p)
             new_p.string = self.translate_model.translate(p.text)
             p.insert_after(new_p)
             return ret
 
-        def deal_old(waitPList):
-            if len(waitPList) == 0:
+        def deal_old(wait_p_list):
+            if len(wait_p_list) == 0:
                 return []
 
-            resultTxtList = self.translate_model.translate_list(waitPList)
+            result_txt_list = self.translate_model.translate_list(wait_p_list)
 
-            for i in range(0, len(waitPList)):
-                if i < len(resultTxtList):
-                    p = waitPList[i]
+            for i in range(0, len(wait_p_list)):
+                if i < len(result_txt_list):
+                    p = wait_p_list[i]
                     new_p = copy(p)
-                    new_p.string = resultTxtList[i]
+                    new_p.string = result_txt_list[i]
                     p.insert_after(new_p)
 
             return []
@@ -127,31 +127,31 @@ class EPUBBookLoader(BaseBookLoader):
                 if self.allow_navigable_strings:
                     p_list.extend(soup.findAll(text=True))
 
-                sendNum = self.accumulated_num
-                if sendNum > 1:
+                send_num = self.accumulated_num
+                if send_num > 1:
                     count = 0
-                    waitPList = []
+                    wait_p_list = []
                     for i in range(0, len(p_list)):
                         p = p_list[i]
                         if not p.text or self._is_special_text(p.text):
                             continue
                         length = len(p.text)
-                        if length > sendNum:
-                            waitPList = deal_new(p, waitPList)
+                        if length > send_num:
+                            wait_p_list = deal_new(p, wait_p_list)
                             continue
                         if i == len(p_list) - 1:
-                            if count + length < sendNum:
-                                waitPList.append(p)
-                                waitPList = deal_old(waitPList)
+                            if count + length < send_num:
+                                wait_p_list.append(p)
+                                wait_p_list = deal_old(wait_p_list)
                             else:
-                                waitPList = deal_new(p, waitPList)
+                                wait_p_list = deal_new(p, wait_p_list)
                             break
-                        if count + length < sendNum:
+                        if count + length < send_num:
                             count += length
-                            waitPList.append(p)
+                            wait_p_list.append(p)
                         else:
-                            waitPList = deal_old(waitPList)
-                            waitPList.append(p)
+                            wait_p_list = deal_old(wait_p_list)
+                            wait_p_list.append(p)
                             count = len(p.text)
                 else:
                     is_test_done = self.is_test and index > self.test_num

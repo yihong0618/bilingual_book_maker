@@ -70,9 +70,9 @@ class ChatGPTAPI(Base):
     def translate_list(self, plist):
         sep = "\n\n\n\n\n"
         new_str = sep.join([item.text for item in plist])
-        resultStr = self.translate(new_str)
+        result_str = self.translate(new_str)
 
-        lines = resultStr.split("\n")
+        lines = result_str.split("\n")
         lines = [line.strip() for line in lines if line.strip() != ""]
 
         return lines

@@ -129,6 +129,13 @@ def main():
         metavar="PROMPT_TEMPLATE",
         help="used for customizing the prompt. It can be the prompt template string, or a path to the template file. The valid placeholders are `{text}` and `{language}`.",
     )
+    parser.add_argument(
+        "--accumulated_num",
+        dest="accumulated_num",
+        type=int,
+        default=1,
+        help="Wait for how many characters have been accumulated before starting the translation",
+    )
 
     options = parser.parse_args()
     PROXY = options.proxy
