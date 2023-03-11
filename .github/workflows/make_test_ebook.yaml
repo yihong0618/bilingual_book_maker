@@ -33,11 +33,16 @@ jobs:
             python3 make_book.py --book_name "test_books/Liber_Esther.epub" --test --test_num 10 --model google --translate-tags div,p
             python3 make_book.py --book_name "test_books/Liber_Esther.epub" --test --test_num 20 --model google
 
+      - name: make txt book test using google translate
+        run: |
+          python3 make_book.py --book_name "test_books/the_little_prince.txt" --test --test_num 20 --model google
+
+
       - name: make openai key ebook test
         if: env.OPENAI_API_KEY != null
         run: |
             python3 make_book.py --book_name "test_books/lemo.epub" --test --test_num 5 --language zh-hans
-            python3 make_book.py --book_name "test_books/animal_farm.epub" --test --test_num 5 --language ja --model gpt3
+            python3 make_book.py --book_name "test_books/animal_farm.epub" --test --test_num 5 --language ja --model gpt3 --prompt prompt_template_sample.txt
             
             
       - name: Rename and Upload ePub

@@ -8,7 +8,7 @@ class Google(Base):
     google translate
     """
 
-    def __init__(self, key, language, api_base=None):
+    def __init__(self, key, language, api_base=None, prompt_template=None):
         super().__init__(key, language)
         self.api_url = "https://translate.google.com/translate_a/single?client=it&dt=qca&dt=t&dt=rmt&dt=bd&dt=rms&dt=sos&dt=md&dt=gt&dt=ld&dt=ss&dt=ex&otf=2&dj=1&hl=en&ie=UTF-8&oe=UTF-8&sl=auto&tl=zh-CN"
         self.headers = {

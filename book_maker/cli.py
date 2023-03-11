@@ -5,6 +5,24 @@ from os import environ as env
 from book_maker.loader import BOOK_LOADER_DICT
 from book_maker.translator import MODEL_DICT
 from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE
+import book_maker.obok as obok
+
+
+def parse_prompt_arg(prompt_arg):
+    prompt = None
+    if prompt_arg is None:
+        return prompt
+    if not prompt_arg.endswith(".txt"):
+        prompt = prompt_arg
+    else:
+        if os.path.exists(prompt_arg):
+            with open(prompt_arg, "r") as f:
+                prompt = f.read()
+        else:
+            raise FileNotFoundError(f"{prompt_arg} not found")
+    if prompt is None or not (all(c in prompt for c in ["{text}", "{language}"])):
+        raise ValueError("prompt must contain `{text}` and `{language}`")
+    return prompt
 
 
 def main():
@@ -14,6 +32,20 @@ def main():
         dest="book_name",
         type=str,
         help="path of the epub file to be translated",
+    )
+    parser.add_argument(
+        "--book_from",
+        dest="book_from",
+        type=str,
+        choices=["kobo"],  # support kindle later
+        metavar="E-READER",
+        help="e-reader type, available: {%(choices)s}",
+    )
+    parser.add_argument(
+        "--device_path",
+        dest="device_path",
+        type=str,
+        help="Path of e-reader device",
     )
     parser.add_argument(
         "--openai_key",
@@ -90,6 +122,13 @@ def main():
         default=False,
         help="allow NavigableStrings to be translated",
     )
+    parser.add_argument(
+        "--prompt",
+        dest="prompt_template",
+        type=str,
+        metavar="PROMPT_TEMPLATE",
+        help="used for customizing the prompt. It can be the prompt template string, or a path to the template file. The valid placeholders are `{text}` and `{language}`.",
+    )
 
     options = parser.parse_args()
     PROXY = options.proxy
@@ -107,6 +146,14 @@ def main():
             )
     else:
         OPENAI_API_KEY = ""
+
+    if options.book_from == "kobo":
+        device_path = options.device_path
+        if device_path is None:
+            raise Exception(
+                "Device path is not given, please specify the path by --device_path <DEVICE_PATH>"
+            )
+        options.book_name = obok.cli_main(device_path)
 
     book_type = options.book_name.split(".")[-1]
     support_type_list = list(BOOK_LOADER_DICT.keys())
@@ -136,6 +183,7 @@ def main():
         test_num=options.test_num,
         translate_tags=options.translate_tags,
         allow_navigable_strings=options.allow_navigable_strings,
+        prompt_template=parse_prompt_arg(options.prompt_template),
     )
     e.make_bilingual_book()
 

@@ -1,16 +1,21 @@
 import time
 
 import openai
+from os import environ
 
 from .base_translator import Base
 
 
 class ChatGPTAPI(Base):
-    def __init__(self, key, language, api_base=None):
+    def __init__(self, key, language, api_base=None, prompt_template=None):
         super().__init__(key, language)
         self.key_len = len(key.split(","))
         if api_base:
             openai.api_base = api_base
+        self.prompt_template = (
+            prompt_template
+            or "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text"
+        )
 
     def rotate_key(self):
         openai.api_key = next(self.keys)
@@ -21,9 +26,15 @@ class ChatGPTAPI(Base):
             model="gpt-3.5-turbo",
             messages=[
                 {
+                    "role": "system",
+                    "content": environ.get("OPENAI_API_SYS_MSG"),
+                },
+                {
                     "role": "user",
-                    "content": f"Please help me to translate,`{text}` to {self.language}, please return only translated content not include the origin text",
-                }
+                    "content": self.prompt_template.format(
+                        text=text, language=self.language
+                    ),
+                },
             ],
         )
         t_text = (
@@ -53,5 +64,5 @@ class ChatGPTAPI(Base):
             t_text = self.get_translation(text)
 
         # todo: Determine whether to print according to the cli option
-        print(t_text)
+        print(t_text.strip())
         return t_text

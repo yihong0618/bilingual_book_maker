@@ -1,6 +1,6 @@
 # bilingual_book_maker
 
-bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制作多语言版本的 epub 文件和图书。该工具仅适用于翻译进入公共版权领域的 epub 图书，不适用于有版权的书籍。请在使用之前阅读项目的 **[免责声明](./disclaimer.md)**。
+bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制作多语言版本的 epub/txt 文件和图书。该工具仅适用于翻译进入公共版权领域的 epub/txt 图书，不适用于有版权的书籍。请在使用之前阅读项目的 **[免责声明](./disclaimer.md)**。
 
 ![image](https://user-images.githubusercontent.com/15976103/222317531-a05317c5-4eee-49de-95cd-04063d9539d9.png)
 
@@ -8,7 +8,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 ## 准备
 
 1. ChatGPT or OpenAI token [^token]
-2. epub books
+2. epub/txt books
 3. 能正常联网的环境或 proxy
 4. python3.8+
 
@@ -28,11 +28,16 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 9. epub 由 html 文件组成。默认情况下，我们只翻译 `<p>` 中的内容。
    使用 `--translate-tags` 指定需要翻译的标签。使用逗号分隔多个标签。例如：
    `--translate-tags h1,h2,h3,p,div`
-10. 如果你遇到了墙需要用 Cloudflare Workers 替换 api_base 请使用 `--api_base ${url}` 来替换。  
+10. 请使用 --book_from 选项指定电子阅读器类型（现在只有 kobo 可用），并使用 --device_path 指定挂载点。
+11. 如果你遇到了墙需要用 Cloudflare Workers 替换 api_base 请使用 `--api_base ${url}` 来替换。  
    **请注意，此处你输入的api应该是'`https://xxxx/v1`'的字样，域名需要用引号包裹**
 11. 翻译完会生成一本 ${book_name}_bilingual.epub 的双语书
 12. 如果出现了错误或使用 `CTRL+C` 中断命令，不想接下来继续翻译了，会生成一本 ${book_name}_bilingual_temp.epub 的书，直接改成你想要的名字就可以了
 13. 如果你想要翻译电子书中的无标签字符串，可以使用 `--allow_navigable_strings` 参数，会将可遍历字符串加入翻译队列，**注意，在条件允许情况下，请寻找更规范的电子书**
+14. 如果你想调整 prompt，你可以使用 `--prompt` 参数。该参数可以是提示模板字符串，也可以是模板 `.txt` 文件的路径。有效的占位符包括 `{text}` 和 `{language}`。
+15. 翻译完会生成一本 ${book_name}_bilingual.epub 的双语书
+16. 如果出现了错误或使用 `CTRL+C` 中断命令，不想接下来继续翻译了，会生成一本 ${book_name}_bilingual_temp.epub 的书，直接改成你想要的名字就可以了
+17. 如果你想要翻译电子书中的无标签字符串，可以使用 `--allow_navigable_strings` 参数，会将可遍历字符串加入翻译队列，**注意，在条件允许情况下，请寻找更规范的电子书**
 
 e.g.
 ```shell
@@ -50,6 +55,16 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --lang
 
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p
+
+# 修改prompt
+python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template_sample.txt
+# 或者
+python3 make_book.py --book_name test_books/animal_farm.epub --prompt "Please translate \`{text}\` to {language}"
+# 翻译 kobo e-reader 中，來自 Rakuten Kobo 的书籍
+python3 make_book.py --book_from kobo --device_path /tmp/kobo
+
+# 翻译 txt 文件
+python3 make_book.py --book_name test_books/the_little_prince.txt --test 
 ```
 
 更加小白的示例
