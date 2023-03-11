@@ -90,6 +90,13 @@ def main():
         default=False,
         help="allow NavigableStrings to be translated",
     )
+    parser.add_argument(
+        "--accumulated_num",
+        dest="accumulated_num",
+        type=int,
+        default=1,
+        help="Wait for how many characters have been accumulated before starting the translation",
+    )
 
     options = parser.parse_args()
     PROXY = options.proxy
@@ -136,6 +143,7 @@ def main():
         test_num=options.test_num,
         translate_tags=options.translate_tags,
         allow_navigable_strings=options.allow_navigable_strings,
+        accumulated_num=options.accumulated_num,
     )
     e.make_bilingual_book()
 

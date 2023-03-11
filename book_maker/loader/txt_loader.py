@@ -17,6 +17,7 @@ class TXTBookLoader(BaseBookLoader):
         model_api_base=None,
         is_test=False,
         test_num=5,
+        accumulated_num=1,
     ):
         self.txt_name = txt_name
         self.translate_model = model(key, language, model_api_base)

@@ -60,3 +60,13 @@ class ChatGPTAPI(Base):
         # todo: Determine whether to print according to the cli option
         print(t_text)
         return t_text
+
+    def translate_list(self, plist):
+        sep = "\n\n\n\n\n"
+        new_str = sep.join([item.text for item in plist])
+        resultStr = self.translate(new_str)
+
+        lines = resultStr.split("\n")
+        lines = [line.strip() for line in lines if line.strip() != ""]
+
+        return lines
