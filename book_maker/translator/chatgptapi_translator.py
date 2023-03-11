@@ -54,5 +54,5 @@ class ChatGPTAPI(Base):
             t_text = self.get_translation(text)
 
         # todo: Determine whether to print according to the cli option
-        print(t_text)
+        print(t_text.strip())
         return t_text
