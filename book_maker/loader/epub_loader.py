@@ -131,7 +131,6 @@ class EPUBBookLoader(BaseBookLoader):
                 if send_num > 1:
                     print("------------------------------------------------------")
                     print(f"dealing {item.file_name} ...")
-                    print("------------------------------------------------------")
                     count = 0
                     wait_p_list = []
                     for i in range(0, len(p_list)):
