@@ -110,21 +110,19 @@ class ChatGPTAPI(Base):
 [Insert third paragraph here]"""
 
         retry_count = 0
+        sleep_dur = 6
         result_list = self.translate_and_split_lines(new_str)
 
         while len(result_list) != plist_len and retry_count < 3:
             print(
                 f"bug: {plist_len} -> {len(result_list)} : Number of paragraphs before and after translation"
             )
-            sleep_dur = 6
             print(f"sleep for {sleep_dur}s and retry {retry_count+1} ...")
             time.sleep(sleep_dur)
             result_list = self.translate_and_split_lines(new_str)
             retry_count += 1
 
-        state = "success"
-        if len(result_list) != plist_len:
-            state = "fail"
+        state = "fail" if len(result_list) != plist_len else "success"
 
         if retry_count > 0:
             print(f"retry {state}")

@@ -92,26 +92,25 @@ class EPUBBookLoader(BaseBookLoader):
 
     def make_bilingual_book(self):
         def deal_new(p, wait_p_list):
-            ret = deal_old(wait_p_list)
+            deal_old(wait_p_list)
             new_p = copy(p)
             new_p.string = self.translate_model.translate(p.text)
             p.insert_after(new_p)
-            return ret
 
         def deal_old(wait_p_list):
             if len(wait_p_list) == 0:
-                return []
+                return
 
             result_txt_list = self.translate_model.translate_list(wait_p_list)
 
-            for i in range(0, len(wait_p_list)):
+            for i in range(len(wait_p_list)):
                 if i < len(result_txt_list):
                     p = wait_p_list[i]
                     new_p = copy(p)
                     new_p.string = result_txt_list[i]
                     p.insert_after(new_p)
 
-            return []
+            wait_p_list.clear()
 
         new_book = self._make_new_book(self.origin_book)
         all_items = list(self.origin_book.get_items())
@@ -152,7 +151,7 @@ class EPUBBookLoader(BaseBookLoader):
                     print(f"dealing {item.file_name} ...")
                     count = 0
                     wait_p_list = []
-                    for i in range(0, len(p_list)):
+                    for i in range(len(p_list)):
                         p = p_list[i]
                         temp_p = copy(p)
                         for sup in temp_p.find_all("sup"):
@@ -165,20 +164,20 @@ class EPUBBookLoader(BaseBookLoader):
                             continue
                         length = len(p.text)
                         if length > send_num:
-                            wait_p_list = deal_new(p, wait_p_list)
+                            deal_new(p, wait_p_list)
                             continue
                         if i == len(p_list) - 1:
                             if count + length < send_num:
                                 wait_p_list.append(p)
-                                wait_p_list = deal_old(wait_p_list)
+                                deal_old(wait_p_list)
                             else:
-                                wait_p_list = deal_new(p, wait_p_list)
+                                deal_new(p, wait_p_list)
                             break
                         if count + length < send_num:
                             count += length
                             wait_p_list.append(p)
                         else:
-                            wait_p_list = deal_old(wait_p_list)
+                            deal_old(wait_p_list)
                             wait_p_list.append(p)
                             count = len(p.text)
                 else:

@@ -80,7 +80,7 @@ class TXTBookLoader(BaseBookLoader):
 
     def _save_temp_book(self):
         index = 0
-        for i in range(0, len(self.origin_book)):
+        for i in range(len(self.origin_book)):
             self.bilingual_temp_result.append(self.origin_book[i])
             if self._is_special_text(self.origin_book[i]):
                 continue
