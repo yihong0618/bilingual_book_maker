@@ -15,7 +15,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 
 ## 使用
 
-1. `pip install -r requirements.txt`
+1. `pip install -r requirements.txt` 或 `pip install -U bbook_maker`
 2. 使用 `--openai_key` 指定 OpenAI API key，如果有多个可以用英文逗号分隔(xxx,xxx,xxx)，可以减少接口调用次数限制带来的错误。  
    或者，指定环境变量 `BMM_OPENAI_API_KEY` 来略过这个选项。
 3. 本地放了一个 `test_books/animal_farm.epub` 给大家测试
@@ -44,6 +44,8 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 18. 如果你想要翻译电子书中的无标签字符串，可以使用 `--allow_navigable_strings` 参数，会将可遍历字符串加入翻译队列，**注意，在条件允许情况下，请寻找更规范的电子书**
 
 ### 示范用例
+
+**如果使用 `pip install bbook_maker` 以下命令都可以改成 `bbook args`**
 
 ```shell
 # 如果你想快速测一下

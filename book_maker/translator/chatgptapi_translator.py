@@ -1,10 +1,9 @@
 import time
-
-import openai
 from os import environ
 
-from .base_translator import Base
+import openai
 
+from .base_translator import Base
 
 PROMPT_ENV_MAP = {
     "user": "BBM_CHATGPTAPI_USER_MSG_TEMPLATE",
