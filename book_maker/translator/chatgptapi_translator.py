@@ -110,7 +110,7 @@ class ChatGPTAPI(Base):
         completion = openai.ChatCompletion.create(
             model="gpt-3.5-turbo", messages=message_log
         )
-        t_sub_text = (
+        t_text = (
             completion["choices"][0]
             .get("message")
             .get("content")
@@ -118,7 +118,7 @@ class ChatGPTAPI(Base):
             .decode()
         )
 
-        return t_sub_text, completion
+        return t_text, completion
 
     def translate(self, text):
         # todo: Determine whether to print according to the cli option
