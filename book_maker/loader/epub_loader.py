@@ -28,6 +28,11 @@ def isSourceLink(text):
     )
 
 
+def isList(text, num=80):
+    text = text.strip()
+    return re.match(r"^Listing\s*\d+", text) and len(text) < num
+
+
 class EPUBBookLoader(BaseBookLoader):
     def __init__(
         self,
@@ -160,6 +165,7 @@ class EPUBBookLoader(BaseBookLoader):
                             not p.text
                             or self._is_special_text(temp_p.text)
                             or isSourceLink(temp_p.text)
+                            or isList(temp_p.text)
                         ):
                             continue
                         length = len(p.text)

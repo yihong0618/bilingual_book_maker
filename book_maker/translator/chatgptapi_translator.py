@@ -49,12 +49,18 @@ class ChatGPTAPI(Base):
             .decode()
         )
         print("=================================================")
-        self.max_num_token = max(
-            self.max_num_token, int(completion["usage"]["total_tokens"])
-        )
-        print(
-            f"{completion['usage']['total_tokens']} {completion['usage']['prompt_tokens']} {completion['usage']['completion_tokens']} {self.max_num_token} (total_token, prompt_token, completion_tokens, max_history_total_token)"
-        )
+        if int(completion["usage"]["total_tokens"]) > self.max_num_token:
+            self.max_num_token = int(completion["usage"]["total_tokens"])
+            print(
+                f"The current largest total number of tokens update: {self.max_num_token}"
+            )
+
+        # self.max_num_token = max(
+        #     self.max_num_token, int(completion["usage"]["total_tokens"])
+        # )
+        # print(
+        #     f"{completion['usage']['total_tokens']} {completion['usage']['prompt_tokens']} {completion['usage']['completion_tokens']} {self.max_num_token} (total_token, prompt_token, completion_tokens, max_history_total_token)"
+        # )
         return t_text
 
     def translate(self, text, needprint=True):
@@ -101,19 +107,24 @@ class ChatGPTAPI(Base):
             new_str = new_str[: -len(sep)]
 
         plist_len = len(plist)
-        self.system_content += f"""Please translate the following paragraphs individually while preserving their original structure(This time it should be exactly {plist_len} paragraphs, no more or less). Only translate the paragraphs provided below:
+        always_trans = """[If there are any links, images, figure, listing or other content that cannot be translated, please leave them in the original language. If you cannot translate the content, please include it in brackets like this]:
+[Insert Original Content Here]
+        """
+
+        self.system_content += f"""Please translate the following paragraphs individually while preserving their original structure(This time it should be exactly {plist_len} paragraphs, no more or less). {always_trans}. Only translate the paragraphs provided below:
 
 [Insert first paragraph here]
 
 [Insert second paragraph here]
 
-[Insert third paragraph here]"""
+[Insert third paragraph here]
+"""
 
         retry_count = 0
         sleep_dur = 6
         result_list = self.translate_and_split_lines(new_str)
 
-        while len(result_list) != plist_len and retry_count < 3:
+        while len(result_list) != plist_len and retry_count < 5:
             print(
                 f"bug: {plist_len} -> {len(result_list)} : Number of paragraphs before and after translation"
             )
@@ -133,8 +144,10 @@ class ChatGPTAPI(Base):
                 )
 
         if len(result_list) != plist_len:
+            # todo: select best
             newlist = new_str.split(sep)
             with open("buglog.txt", "a") as f:
+                print(f"problem size: {plist_len - len(result_list)}", file=f)
                 for i in range(0, len(newlist)):
                     print(newlist[i], file=f)
                     print(file=f)
