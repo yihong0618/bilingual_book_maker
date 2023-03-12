@@ -1,12 +1,12 @@
 import argparse
+import json
 import os
 from os import environ as env
-import json
 
+import book_maker.obok as obok
 from book_maker.loader import BOOK_LOADER_DICT
 from book_maker.translator import MODEL_DICT
 from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE
-import book_maker.obok as obok
 
 
 def parse_prompt_arg(prompt_arg):

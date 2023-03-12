@@ -1,8 +1,9 @@
 import sys
 from pathlib import Path
 
-from .base_loader import BaseBookLoader
 from book_maker.utils import prompt_config_to_kwargs
+
+from .base_loader import BaseBookLoader
 
 
 class TXTBookLoader(BaseBookLoader):

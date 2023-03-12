@@ -164,19 +164,19 @@ from __future__ import print_function
 __version__ = "4.0.0"
 __about__ = "Obok v{0}\nCopyright © 2012-2020 Physisticated et al.".format(__version__)
 
-import sys
-import os
-import subprocess
-import sqlite3
 import base64
 import binascii
-import re
-import zipfile
 import hashlib
-import xml.etree.ElementTree as ET
-import string
+import os
+import re
 import shutil
+import sqlite3
+import string
+import subprocess
+import sys
 import tempfile
+import xml.etree.ElementTree as ET
+import zipfile
 
 can_parse_xml = True
 try:
@@ -196,18 +196,8 @@ class ENCRYPTIONError(Exception):
 
 
 def _load_crypto_libcrypto():
-    from ctypes import (
-        CDLL,
-        POINTER,
-        c_void_p,
-        c_char_p,
-        c_int,
-        c_long,
-        Structure,
-        c_ulong,
-        create_string_buffer,
-        cast,
-    )
+    from ctypes import (CDLL, POINTER, Structure, c_char_p, c_int, c_long,
+                        c_ulong, c_void_p, cast, create_string_buffer)
     from ctypes.util import find_library
 
     if sys.platform.startswith("win"):
