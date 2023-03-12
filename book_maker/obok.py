@@ -196,8 +196,18 @@ class ENCRYPTIONError(Exception):
 
 
 def _load_crypto_libcrypto():
-    from ctypes import (CDLL, POINTER, Structure, c_char_p, c_int, c_long,
-                        c_ulong, c_void_p, cast, create_string_buffer)
+    from ctypes import (
+        CDLL,
+        POINTER,
+        Structure,
+        c_char_p,
+        c_int,
+        c_long,
+        c_ulong,
+        c_void_p,
+        cast,
+        create_string_buffer,
+    )
     from ctypes.util import find_library
 
     if sys.platform.startswith("win"):
