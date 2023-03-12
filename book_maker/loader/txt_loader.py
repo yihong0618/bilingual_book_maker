@@ -12,6 +12,7 @@ class TXTBookLoader(BaseBookLoader):
         key,
         resume,
         language,
+        batch_size,
         translate_tags,
         allow_navigable_strings,
         model_api_base=None,
@@ -26,6 +27,7 @@ class TXTBookLoader(BaseBookLoader):
         self.bilingual_result = []
         self.bilingual_temp_result = []
         self.test_num = test_num
+        self.batch_size = batch_size
 
         try:
             with open(f"{txt_name}", "r", encoding="utf-8") as f:
@@ -52,8 +54,8 @@ class TXTBookLoader(BaseBookLoader):
 
         try:
             sliced_list = [
-                self.origin_book[i : i + 10]
-                for i in range(0, len(self.origin_book), 10)
+                self.origin_book[i : i + self.batch_size]
+                for i in range(0, len(self.origin_book), self.batch_size)
             ]
             for i in sliced_list:
                 batch_text = "".join(i)
@@ -66,7 +68,7 @@ class TXTBookLoader(BaseBookLoader):
                     self.p_to_save.append(temp)
                     self.bilingual_result.append(batch_text)
                     self.bilingual_result.append(temp)
-                index += 10
+                index += self.batch_size
                 if self.is_test and index > self.test_num:
                     break
 
@@ -85,7 +87,8 @@ class TXTBookLoader(BaseBookLoader):
     def _save_temp_book(self):
         index = 0
         sliced_list = [
-            self.origin_book[i : i + 10] for i in range(0, len(self.origin_book), 10)
+            self.origin_book[i : i + self.batch_size]
+            for i in range(0, len(self.origin_book), self.batch_size)
         ]
 
         for i in range(0, len(sliced_list)):
