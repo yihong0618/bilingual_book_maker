@@ -21,7 +21,7 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 
 1. `pip install -r requirements.txt`
 2. Use `--openai_key` option to specify OpenAI API key. If you have multiple keys, separate them by commas (xxx,xxx,xxx) to reduce errors caused by API call limits.  
-   Or, just set environment variable `OPENAI_API_KEY` to ignore this option.
+   Or, just set environment variable `BMM_OPENAI_API_KEY` instead.
 3. A sample book, `test_books/animal_farm.epub`, is provided for testing purposes.
 4. The default underlying model is [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis), which is used by ChatGPT currently. Use `--model gpt3` to change the underlying model to `GPT3`
 5. Use `--test` option to preview the result if you haven't paid for the service. Note that there is a limit and it may take some time.
@@ -34,17 +34,19 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
    `--translate-tags h1,h2,h3,p,div`
 10. Use `--book_from` option to specify e-reader type (Now only `kobo` is available), and use `--device_path` to specify the mounting point.
 11. If you want to change api_base like using Cloudflare Workers, use `--api_base <URL>` to support it.  
-      **Note: the api url should be '`https://xxxx/v1`'. Quotation marks are required.**
-11. Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated.
-12. If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`. A book named `${book_name}_bilingual_temp.epub` would be generated. You can simply rename it to any desired name.
-13. If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue. **Note that it's best to look for e-books that are more standardized if possible.**
-14. To tweak the prompt, use the `--prompt` parameter. The parameter can be a prompt template string or a path to the template `.txt` file. Valid placeholders for the template include `{text}` and `{language}`.
+   **Note: the api url should be '`https://xxxx/v1`'. Quotation marks are required.**
+12. Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated.
+13. If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`. A book named `${book_name}_bilingual_temp.epub` would be generated. You can simply rename it to any desired name.
+14. If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue. **Note that it's best to look for e-books that are more standardized if possible.**
+15. To tweak the prompt, use the `--prompt` parameter. Valid placeholders for the `user` role template include `{text}` and `{language}`. It supports a few ways to configure the prompt: 
+   If you don't need to set the `system` role content, you can simply set it up like this: `--prompt "Translate {text} to {language}."` or `--prompt prompt_template_sample.txt` (example of a text file can be found at [./prompt_template_sample.txt](./prompt_template_sample.txt)). 
+   If you need to set the `system` role content, you can use the following format: `--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'` or `--prompt prompt_template_sample.json` (example of a JSON file can be found at [./prompt_template_sample.json](./prompt_template_sample.json)). 
+   You can also set the `user` and `system` role prompt by setting environment variables: `BBM_CHATGPTAPI_USER_MSG_TEMPLATE` and `BBM_CHATGPTAPI_SYS_MSG`.
+16. Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated.
+17. If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`. A book named `${book_name}_bilingual_temp.epub` would be generated. You can simply rename it to any desired name.
+18. If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue. **Note that it's best to look for e-books that are more standardized if possible.**
 
-15. Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated.
-16. If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`. A book named `${book_name}_bilingual_temp.epub` would be generated. You can simply rename it to any desired name.
-17. If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue. **Note that it's best to look for e-books that are more standardized if possible.**
-18. Use the `--batch_size` parameter to specify the number of lines for batch translation (default is 10, currently only effective for txt files).
-### Eamples
+### Examples
 
 ```shell
 # Test quickly
@@ -65,15 +67,15 @@ python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags di
 # Tweaking the prompt
 python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template_sample.txt
 # or
+python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template_sample.json
+# or
 python3 make_book.py --book_name test_books/animal_farm.epub --prompt "Please translate \`{text}\` to {language}"
+
 # Translate books download from Rakuten Kobo on kobo e-reader
 python3 make_book.py --book_from kobo --device_path /tmp/kobo
 
 # translate txt file
 python3 make_book.py --book_name test_books/the_little_prince.txt --test --language zh-hans
-
-# aggregated translation txt file
-python3 make_book.py --book_name test_books/the_little_prince.txt --test --batch_size 20
 ```
 
 More understandable example

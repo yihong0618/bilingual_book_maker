@@ -47,6 +47,7 @@ jobs:
         run: |
             python3 make_book.py --book_name "test_books/lemo.epub" --test --test_num 5 --language zh-hans
             python3 make_book.py --book_name "test_books/animal_farm.epub" --test --test_num 5 --language ja --model gpt3 --prompt prompt_template_sample.txt
+            python3 make_book.py --book_name "test_books/animal_farm.epub" --test --test_num 5 --language ja --prompt prompt_template_sample.json
             
             
       - name: Rename and Upload ePub

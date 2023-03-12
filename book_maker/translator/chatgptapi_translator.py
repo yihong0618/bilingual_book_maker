@@ -6,15 +6,39 @@ from os import environ
 from .base_translator import Base
 
 
+PROMPT_ENV_MAP = {
+    "user": "BBM_CHATGPTAPI_USER_MSG_TEMPLATE",
+    "system": "BBM_CHATGPTAPI_SYS_MSG",
+}
+
+
 class ChatGPTAPI(Base):
-    def __init__(self, key, language, api_base=None, prompt_template=None):
+    DEFAULT_PROMPT = "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text"
+
+    def __init__(
+        self,
+        key,
+        language,
+        api_base=None,
+        prompt_template=None,
+        prompt_sys_msg=None,
+        **kwargs,
+    ):
         super().__init__(key, language)
         self.key_len = len(key.split(","))
         if api_base:
             openai.api_base = api_base
         self.prompt_template = (
             prompt_template
-            or "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text"
+            or environ.get(PROMPT_ENV_MAP["user"])
+            or self.DEFAULT_PROMPT
+        )
+        self.prompt_sys_msg = (
+            prompt_sys_msg
+            or environ.get(
+                "OPENAI_API_SYS_MSG"
+            )  # XXX: for backward compatability, deprecate soon
+            or environ.get(PROMPT_ENV_MAP["system"])
         )
 
     def rotate_key(self):
@@ -22,20 +46,23 @@ class ChatGPTAPI(Base):
 
     def get_translation(self, text):
         self.rotate_key()
+        messages = []
+        if self.prompt_sys_msg:
+            messages.append(
+                {"role": "system", "content": self.prompt_sys_msg},
+            )
+        messages.append(
+            {
+                "role": "user",
+                "content": self.prompt_template.format(
+                    text=text, language=self.language
+                ),
+            }
+        )
+
         completion = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
-            messages=[
-                {
-                    "role": "system",
-                    "content": environ.get("OPENAI_API_SYS_MSG") or "",
-                },
-                {
-                    "role": "user",
-                    "content": self.prompt_template.format(
-                        text=text, language=self.language
-                    ),
-                },
-            ],
+            messages=messages,
         )
         t_text = (
             completion["choices"][0]

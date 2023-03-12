@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 from .base_loader import BaseBookLoader
+from book_maker.utils import prompt_config_to_kwargs
 
 
 class TXTBookLoader(BaseBookLoader):
@@ -18,10 +19,15 @@ class TXTBookLoader(BaseBookLoader):
         model_api_base=None,
         is_test=False,
         test_num=5,
-        prompt_template=None,
+        prompt_config=None,
     ):
         self.txt_name = txt_name
-        self.translate_model = model(key, language, model_api_base)
+        self.translate_model = model(
+            key,
+            language,
+            api_base=model_api_base,
+            **prompt_config_to_kwargs(prompt_config),
+        )
         self.is_test = is_test
         self.p_to_save = []
         self.bilingual_result = []
