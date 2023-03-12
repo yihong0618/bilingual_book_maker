@@ -9,6 +9,8 @@ from ebooklib import ITEM_DOCUMENT, epub
 from rich import print
 from tqdm import tqdm
 
+from book_maker.utils import prompt_config_to_kwargs
+
 from .base_loader import BaseBookLoader
 
 
@@ -20,17 +22,21 @@ class EPUBBookLoader(BaseBookLoader):
         key,
         resume,
         language,
+        batch_size,
         model_api_base=None,
         is_test=False,
         test_num=5,
         translate_tags="p",
         allow_navigable_strings=False,
-        prompt_template=None,
+        prompt_config=None,
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
         self.translate_model = model(
-            key, language, model_api_base, prompt_template=prompt_template
+            key,
+            language,
+            api_base=model_api_base,
+            **prompt_config_to_kwargs(prompt_config),
         )
         self.is_test = is_test
         self.test_num = test_num

@@ -15,9 +15,9 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 
 ## 使用
 
-1. `pip install -r requirements.txt`
+1. `pip install -r requirements.txt` 或 `pip install -U bbook_maker`
 2. 使用 `--openai_key` 指定 OpenAI API key，如果有多个可以用英文逗号分隔(xxx,xxx,xxx)，可以减少接口调用次数限制带来的错误。  
-   或者，指定环境变量 `OPENAI_API_KEY` 来略过这个选项。
+   或者，指定环境变量 `BMM_OPENAI_API_KEY` 来略过这个选项。
 3. 本地放了一个 `test_books/animal_farm.epub` 给大家测试
 4. 默认用了 [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis) 模型，也就是 ChatGPT 正在使用的模型，用 `--model gpt3` 来使用 gpt3 模型
 5. 使用 `--test` 命令如果大家没付费可以加上这个先看看效果（有 limit 稍微有些慢）
@@ -31,15 +31,22 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 10. 请使用 --book_from 选项指定电子阅读器类型（现在只有 kobo 可用），并使用 --device_path 指定挂载点。
 11. 如果你遇到了墙需要用 Cloudflare Workers 替换 api_base 请使用 `--api_base ${url}` 来替换。  
    **请注意，此处你输入的api应该是'`https://xxxx/v1`'的字样，域名需要用引号包裹**
-11. 翻译完会生成一本 ${book_name}_bilingual.epub 的双语书
-12. 如果出现了错误或使用 `CTRL+C` 中断命令，不想接下来继续翻译了，会生成一本 ${book_name}_bilingual_temp.epub 的书，直接改成你想要的名字就可以了
-13. 如果你想要翻译电子书中的无标签字符串，可以使用 `--allow_navigable_strings` 参数，会将可遍历字符串加入翻译队列，**注意，在条件允许情况下，请寻找更规范的电子书**
-14. 如果你想调整 prompt，你可以使用 `--prompt` 参数。该参数可以是提示模板字符串，也可以是模板 `.txt` 文件的路径。有效的占位符包括 `{text}` 和 `{language}`。
-15. 翻译完会生成一本 ${book_name}_bilingual.epub 的双语书
-16. 如果出现了错误或使用 `CTRL+C` 中断命令，不想接下来继续翻译了，会生成一本 ${book_name}_bilingual_temp.epub 的书，直接改成你想要的名字就可以了
-17. 如果你想要翻译电子书中的无标签字符串，可以使用 `--allow_navigable_strings` 参数，会将可遍历字符串加入翻译队列，**注意，在条件允许情况下，请寻找更规范的电子书**
+12. 翻译完会生成一本 ${book_name}_bilingual.epub 的双语书
+13. 如果出现了错误或使用 `CTRL+C` 中断命令，不想接下来继续翻译了，会生成一本 ${book_name}_bilingual_temp.epub 的书，直接改成你想要的名字就可以了
+14. 如果你想要翻译电子书中的无标签字符串，可以使用 `--allow_navigable_strings` 参数，会将可遍历字符串加入翻译队列，**注意，在条件允许情况下，请寻找更规范的电子书**
+15. 如果你想调整 prompt，你可以使用 `--prompt` 参数。有效的占位符包括 `{text}` 和 `{language}`。你可以用以下方式配置 prompt：
+   如果您不需要设置 `system` 角色，可以这样：`--prompt "Translate {text} to {language}" 或者 `--prompt prompt_template_sample.txt`（示例文本文件可以在 [./prompt_template_sample.txt](./prompt_template_sample.txt) 找到）。
+   如果您需要设置 `system` 角色，可以使用以下方式配置：`--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'`，或者 `--prompt prompt_template_sample.json`（示例 JSON 文件可以在 [./prompt_template_sample.json](./prompt_template_sample.json) 找到）。
+   你也可以用环境以下环境变量来配置 `system` 和 `user` 角色 prompt：`BBM_CHATGPTAPI_USER_MSG_TEMPLATE` 和 `BBM_CHATGPTAPI_SYS_MSG`。
+该参数可以是提示模板字符串，也可以是模板 `.txt` 文件的路径。
+16. 翻译完会生成一本 ${book_name}_bilingual.epub 的双语书
+17. 如果出现了错误或使用 `CTRL+C` 中断命令，不想接下来继续翻译了，会生成一本 ${book_name}_bilingual_temp.epub 的书，直接改成你想要的名字就可以了
+18. 如果你想要翻译电子书中的无标签字符串，可以使用 `--allow_navigable_strings` 参数，会将可遍历字符串加入翻译队列，**注意，在条件允许情况下，请寻找更规范的电子书**
+19. 使用`--batch_size` 参数，指定批量翻译的行数(默认行数为10，目前只对txt生效)
+### 示范用例
 
-e.g.
+**如果使用 `pip install bbook_maker` 以下命令都可以改成 `bbook args`**
+
 ```shell
 # 如果你想快速测一下
 python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
@@ -65,6 +72,9 @@ python3 make_book.py --book_from kobo --device_path /tmp/kobo
 
 # 翻译 txt 文件
 python3 make_book.py --book_name test_books/the_little_prince.txt --test 
+# 聚合多行翻译 txt 文件 
+python3 make_book.py --book_name test_books/the_little_prince.txt --test --batch_size 20
+
 ```
 
 更加小白的示例

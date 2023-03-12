@@ -1,27 +1,54 @@
 import argparse
+import json
 import os
 from os import environ as env
 
+import book_maker.obok as obok
 from book_maker.loader import BOOK_LOADER_DICT
 from book_maker.translator import MODEL_DICT
 from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE
-import book_maker.obok as obok
 
 
 def parse_prompt_arg(prompt_arg):
     prompt = None
     if prompt_arg is None:
         return prompt
-    if not prompt_arg.endswith(".txt"):
-        prompt = prompt_arg
+
+    if not any(prompt_arg.endswith(ext) for ext in [".json", ".txt"]):
+        try:
+            # user can define prompt by passing a json string
+            # eg: --prompt '{"system": "You are a professional translator who translates computer technology books", "user": "Translate \`{text}\` to {language}"}'
+            prompt = json.loads(prompt_arg)
+        except json.JSONDecodeError:
+            # if not a json string, treat it as a template string
+            prompt = {"user": prompt_arg}
+
     else:
         if os.path.exists(prompt_arg):
-            with open(prompt_arg, "r") as f:
-                prompt = f.read()
+            if prompt_arg.endswith(".txt"):
+                # if it's a txt file, treat it as a template string
+                with open(prompt_arg, "r") as f:
+                    prompt = {"user": f.read()}
+            elif prompt_arg.endswith(".json"):
+                # if it's a json file, treat it as a json object
+                # eg: --prompt prompt_template_sample.json
+                with open(prompt_arg, "r") as f:
+                    prompt = json.load(f)
         else:
             raise FileNotFoundError(f"{prompt_arg} not found")
-    if prompt is None or not (all(c in prompt for c in ["{text}", "{language}"])):
+
+    if prompt is None or not (
+        all(c in prompt["user"] for c in ["{text}", "{language}"])
+    ):
         raise ValueError("prompt must contain `{text}` and `{language}`")
+
+    if "user" not in prompt:
+        raise ValueError("prompt must contain the key of `user`")
+
+    if (prompt.keys() - {"user", "system"}) != set():
+        raise ValueError("prompt can only contain the keys of `user` and `system`")
+
+    print("prompt config:", prompt)
     return prompt
 
 
@@ -124,10 +151,17 @@ def main():
     )
     parser.add_argument(
         "--prompt",
-        dest="prompt_template",
+        dest="prompt_arg",
         type=str,
-        metavar="PROMPT_TEMPLATE",
+        metavar="PROMPT_ARG",
         help="used for customizing the prompt. It can be the prompt template string, or a path to the template file. The valid placeholders are `{text}` and `{language}`.",
+    )
+    parser.add_argument(
+        "--batch_size",
+        dest="batch_size",
+        type=int,
+        default=10,
+        help="how many lines will be translated by aggregated translation(This options currently only applies to txt files)",
     )
 
     options = parser.parse_args()
@@ -139,7 +173,15 @@ def main():
     translate_model = MODEL_DICT.get(options.model)
     assert translate_model is not None, "unsupported model"
     if options.model in ["gpt3", "chatgptapi"]:
-        OPENAI_API_KEY = options.openai_key or env.get("OPENAI_API_KEY")
+        OPENAI_API_KEY = (
+            options.openai_key
+            or env.get(
+                "OPENAI_API_KEY"
+            )  # XXX: for backward compatability, deprecate soon
+            or env.get(
+                "BBM_OPENAI_API_KEY"
+            )  # suggest adding `BBM_` prefix for all the bilingual_book_maker ENVs.
+        )
         if not OPENAI_API_KEY:
             raise Exception(
                 "OpenAI API key not provided, please google how to obtain it"
@@ -183,7 +225,8 @@ def main():
         test_num=options.test_num,
         translate_tags=options.translate_tags,
         allow_navigable_strings=options.allow_navigable_strings,
-        prompt_template=parse_prompt_arg(options.prompt_template),
+        prompt_config=parse_prompt_arg(options.prompt_arg),
+        batch_size=options.batch_size,
     )
     e.make_bilingual_book()
 
