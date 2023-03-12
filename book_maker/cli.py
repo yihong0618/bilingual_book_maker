@@ -226,7 +226,6 @@ def main():
         translate_tags=options.translate_tags,
         allow_navigable_strings=options.allow_navigable_strings,
         prompt_config=parse_prompt_arg(options.prompt_arg),
-        prompt_template=parse_prompt_arg(options.prompt_template),
         batch_size=options.batch_size,
     )
     e.make_bilingual_book()
