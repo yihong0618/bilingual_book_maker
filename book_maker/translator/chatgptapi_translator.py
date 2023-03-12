@@ -17,6 +17,7 @@ class ChatGPTAPI(Base):
             prompt_template
             or "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text"
         )
+        self.system_content = environ.get("OPENAI_API_SYS_MSG") or ""
 
     max_num_token = -1
 
@@ -31,7 +32,7 @@ class ChatGPTAPI(Base):
             messages=[
                 {
                     "role": "system",
-                    "content": environ.get("OPENAI_API_SYS_MSG") or "",
+                    "content": self.system_content,
                 },
                 {
                     "role": "user",
@@ -47,11 +48,12 @@ class ChatGPTAPI(Base):
             .decode()
         )
         print("=================================================")
-        print(f'Total tokens used this time: {completion["usage"]["total_tokens"]}')
         self.max_num_token = max(
             self.max_num_token, int(completion["usage"]["total_tokens"])
         )
-        print(f"The maximum number of tokens used at one time: {self.max_num_token}")
+        print(
+            f"{completion['usage']['total_tokens']} {completion['usage']['prompt_tokens']} {completion['usage']['completion_tokens']} {self.max_num_token} (total_token, prompt_token, completion_tokens, max_history_total_token)"
+        )
         return t_text
 
     def translate(self, text, needprint=True):
@@ -85,42 +87,62 @@ class ChatGPTAPI(Base):
 
     def translate_list(self, plist):
         sep = "\n\n\n\n\n"
-        new_str = sep.join([item.text for item in plist])
+        # new_str = sep.join([item.text for item in plist])
+
+        new_str = ""
+        for p in plist:
+            for sup in p.find_all("sup"):
+                sup.extract()  # 提取并删除<sup>标签及其内容, 但不影响p
+            new_str += p.get_text().strip() + "\n\n"
+
+        if new_str.endswith(sep):
+            new_str = new_str[: -len(sep)]
+
+        plist_len = len(plist)
+        self.system_content += f"""Please translate the following paragraphs individually while preserving their original structure(This time it should be exactly {plist_len} paragraphs, no more or less). Only translate the paragraphs provided below:
+
+[Insert first paragraph here]
+
+[Insert second paragraph here]
+
+[Insert third paragraph here]"""
 
         retry_count = 0
-        plist_len = len(plist)
-
-        # supplement_prompt = f"Translated result should have {plist_len} paragraphs"
-        # supplement_prompt = "Each paragraph in the source text should be translated into a separate and complete paragraph, and each paragraph should be separated"
-        supplement_prompt = "Each paragraph in the source text should be translated into a separate and complete paragraph, and each translated paragraph should be separated by a blank line"
-
-        self.prompt_template = (
-            "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text. "
-            + supplement_prompt
-        )
-
         lines = self.translate_and_split_lines(new_str)
 
-        while len(lines) != plist_len and retry_count < 15:
+        while len(lines) != plist_len and retry_count < 3:
             print(
-                f"bug: {plist_len} paragraphs of text translated into {len(lines)} paragraphs"
+                f"bug: {plist_len} -> {len(lines)} : Number of paragraphs before and after translation"
             )
-            num = 6
-            print(f"sleep for {num}s and try again")
-            time.sleep(num)
-            print(f"retry {retry_count+1} ...")
+            sleep_dur = 6
+            print(f"sleep for {sleep_dur}s and retry {retry_count+1} ...")
+            time.sleep(sleep_dur)
             lines = self.translate_and_split_lines(new_str)
             retry_count += 1
-            if len(lines) == plist_len:
-                print("retry success")
+
+        state = "success"
+        if len(lines) != plist_len:
+            state = "fail"
+
+        if retry_count > 0:
+            print(f"retry {state}")
+            with open("buglog.txt", "a") as f:
+                print(
+                    f"retry {state}, count = {retry_count}",
+                    file=f,
+                )
 
         if len(lines) != plist_len:
-            for i in range(0, plist_len):
-                print(plist[i].text)
-                print()
-                if i < len(lines):
-                    print(lines[i])
-                    print()
+            newlist = new_str.split(sep)
+            for i in range(0, len(newlist)):
+                with open("buglog.txt", "a") as f:
+                    print(newlist[i], file=f)
+                    print(file=f)
+                    if i < len(lines):
+                        print(lines[i], file=f)
+                        print(file=f)
+                    print("=============================", file=f)
+            print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
             print(
                 f"bug: {plist_len} paragraphs of text translated into {len(lines)} paragraphs"
