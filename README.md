@@ -42,7 +42,7 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 16. If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`. A book named `${book_name}_bilingual_temp.epub` would be generated. You can simply rename it to any desired name.
 17. If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue. **Note that it's best to look for e-books that are more standardized if possible.**
 
-### Eamples
+### Examples
 
 ```shell
 # Test quickly
