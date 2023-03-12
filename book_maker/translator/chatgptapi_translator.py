@@ -1,5 +1,6 @@
 import time
 import re
+from copy import copy
 
 import openai
 from os import environ
@@ -91,9 +92,10 @@ class ChatGPTAPI(Base):
 
         new_str = ""
         for p in plist:
-            for sup in p.find_all("sup"):
-                sup.extract()  # 提取并删除<sup>标签及其内容, 但不影响p
-            new_str += p.get_text().strip() + "\n\n"
+            temp_p = copy(p)
+            for sup in temp_p.find_all("sup"):
+                sup.extract()
+            new_str += temp_p.get_text().strip() + sep
 
         if new_str.endswith(sep):
             new_str = new_str[: -len(sep)]
@@ -108,20 +110,20 @@ class ChatGPTAPI(Base):
 [Insert third paragraph here]"""
 
         retry_count = 0
-        lines = self.translate_and_split_lines(new_str)
+        result_list = self.translate_and_split_lines(new_str)
 
-        while len(lines) != plist_len and retry_count < 3:
+        while len(result_list) != plist_len and retry_count < 3:
             print(
-                f"bug: {plist_len} -> {len(lines)} : Number of paragraphs before and after translation"
+                f"bug: {plist_len} -> {len(result_list)} : Number of paragraphs before and after translation"
             )
             sleep_dur = 6
             print(f"sleep for {sleep_dur}s and retry {retry_count+1} ...")
             time.sleep(sleep_dur)
-            lines = self.translate_and_split_lines(new_str)
+            result_list = self.translate_and_split_lines(new_str)
             retry_count += 1
 
         state = "success"
-        if len(lines) != plist_len:
+        if len(result_list) != plist_len:
             state = "fail"
 
         if retry_count > 0:
@@ -132,21 +134,21 @@ class ChatGPTAPI(Base):
                     file=f,
                 )
 
-        if len(lines) != plist_len:
+        if len(result_list) != plist_len:
             newlist = new_str.split(sep)
-            for i in range(0, len(newlist)):
-                with open("buglog.txt", "a") as f:
+            with open("buglog.txt", "a") as f:
+                for i in range(0, len(newlist)):
                     print(newlist[i], file=f)
                     print(file=f)
-                    if i < len(lines):
-                        print(lines[i], file=f)
+                    if i < len(result_list):
+                        print(result_list[i], file=f)
                         print(file=f)
                     print("=============================", file=f)
             print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
             print(
-                f"bug: {plist_len} paragraphs of text translated into {len(lines)} paragraphs"
+                f"bug: {plist_len} paragraphs of text translated into {len(result_list)} paragraphs"
             )
             print("continue")
 
-        return lines
+        return result_list

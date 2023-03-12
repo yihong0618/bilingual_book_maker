@@ -1,4 +1,5 @@
 import os
+import re
 import pickle
 import sys
 from copy import copy
@@ -10,6 +11,21 @@ from rich import print
 from tqdm import tqdm
 
 from .base_loader import BaseBookLoader
+
+
+def isLink(text):
+    url_pattern = re.compile(
+        r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"
+    )
+    return bool(url_pattern.match(text.strip()))
+
+
+def isSourceLink(text):
+    text = text.strip()
+    return text.startswith("Source: ") and re.search(
+        r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+",
+        text,
+    )
 
 
 class EPUBBookLoader(BaseBookLoader):
@@ -65,7 +81,7 @@ class EPUBBookLoader(BaseBookLoader):
 
     @staticmethod
     def _is_special_text(text):
-        return text.isdigit() or text.isspace()
+        return text.isdigit() or text.isspace() or isLink(text)
 
     def _make_new_book(self, book):
         new_book = epub.EpubBook()
@@ -138,7 +154,14 @@ class EPUBBookLoader(BaseBookLoader):
                     wait_p_list = []
                     for i in range(0, len(p_list)):
                         p = p_list[i]
-                        if not p.text or self._is_special_text(p.text):
+                        temp_p = copy(p)
+                        for sup in temp_p.find_all("sup"):
+                            sup.extract()
+                        if (
+                            not p.text
+                            or self._is_special_text(temp_p.text)
+                            or isSourceLink(temp_p.text)
+                        ):
                             continue
                         length = len(p.text)
                         if length > send_num:
