@@ -14,6 +14,7 @@ class TXTBookLoader(BaseBookLoader):
         key,
         resume,
         language,
+        batch_size,
         translate_tags,
         allow_navigable_strings,
         model_api_base=None,
@@ -33,6 +34,7 @@ class TXTBookLoader(BaseBookLoader):
         self.bilingual_result = []
         self.bilingual_temp_result = []
         self.test_num = test_num
+        self.batch_size = batch_size
 
         try:
             with open(f"{txt_name}", "r", encoding="utf-8") as f:
@@ -58,17 +60,22 @@ class TXTBookLoader(BaseBookLoader):
         p_to_save_len = len(self.p_to_save)
 
         try:
-            for i in self.origin_book:
-                if self._is_special_text(i):
+            sliced_list = [
+                self.origin_book[i : i + self.batch_size]
+                for i in range(0, len(self.origin_book), self.batch_size)
+            ]
+            for i in sliced_list:
+                batch_text = "".join(i)
+                if self._is_special_text(batch_text):
                     continue
                 if self.resume and index < p_to_save_len:
                     pass
                 else:
-                    temp = self.translate_model.translate(i)
+                    temp = self.translate_model.translate(batch_text)
                     self.p_to_save.append(temp)
-                    self.bilingual_result.append(i)
+                    self.bilingual_result.append(batch_text)
                     self.bilingual_result.append(temp)
-                index += 1
+                index += self.batch_size
                 if self.is_test and index > self.test_num:
                     break
 
@@ -86,8 +93,14 @@ class TXTBookLoader(BaseBookLoader):
 
     def _save_temp_book(self):
         index = 0
-        for i in range(0, len(self.origin_book)):
-            self.bilingual_temp_result.append(self.origin_book[i])
+        sliced_list = [
+            self.origin_book[i : i + self.batch_size]
+            for i in range(0, len(self.origin_book), self.batch_size)
+        ]
+
+        for i in range(0, len(sliced_list)):
+            batch_text = "".join(sliced_list[i])
+            self.bilingual_temp_result.append(batch_text)
             if self._is_special_text(self.origin_book[i]):
                 continue
             if index < len(self.p_to_save):

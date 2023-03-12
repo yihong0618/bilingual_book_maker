@@ -22,6 +22,7 @@ class EPUBBookLoader(BaseBookLoader):
         key,
         resume,
         language,
+        batch_size,
         model_api_base=None,
         is_test=False,
         test_num=5,
