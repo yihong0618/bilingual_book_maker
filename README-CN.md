@@ -33,7 +33,6 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
    **请注意，此处你输入的api应该是'`https://xxxx/v1`'的字样，域名需要用引号包裹**
 11. 翻译完会生成一本 ${book_name}_bilingual.epub 的双语书
 12. 如果出现了错误或使用 `CTRL+C` 中断命令，不想接下来继续翻译了，会生成一本 ${book_name}_bilingual_temp.epub 的书，直接改成你想要的名字就可以了
-13. 如果你想要翻译电子书中的无标签字符串，可以使用 `--allow_navigable_strings` 参数，会将可遍历字符串加入翻译队列，**注意，在条件允许情况下，请寻找更规范的电子书**
 14. 如果你想调整 prompt，你可以使用 `--prompt` 参数。该参数可以是提示模板字符串，也可以是模板 `.txt` 文件的路径。有效的占位符包括 `{text}` 和 `{language}`。
 15. 翻译完会生成一本 ${book_name}_bilingual.epub 的双语书
 16. 如果出现了错误或使用 `CTRL+C` 中断命令，不想接下来继续翻译了，会生成一本 ${book_name}_bilingual_temp.epub 的书，直接改成你想要的名字就可以了
