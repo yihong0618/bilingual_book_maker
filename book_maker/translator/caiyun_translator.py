@@ -15,7 +15,7 @@ class Caiyun(Base):
         self.api_url = "http://api.interpreter.caiyunai.com/v1/translator"
         self.headers = {
             "content-type": "application/json",
-            "x-authorization": "token " + key,
+            "x-authorization": f"token {key}",
         }
         # caiyun api only supports: zh2en, zh2ja, en2zh, ja2zh
         self.translate_type = "auto2zh"

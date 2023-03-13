@@ -63,14 +63,13 @@ class ChatGPTAPI(Base):
             model="gpt-3.5-turbo",
             messages=messages,
         )
-        t_text = (
+        return (
             completion["choices"][0]
             .get("message")
             .get("content")
             .encode("utf8")
             .decode()
         )
-        return t_text
 
     def translate(self, text):
         # todo: Determine whether to print according to the cli option

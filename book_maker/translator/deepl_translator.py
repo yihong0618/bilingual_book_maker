@@ -21,10 +21,7 @@ class DeepL(Base):
             "X-RapidAPI-Host": "deepl-translator.p.rapidapi.com",
         }
         l = None
-        if language in LANGUAGES:
-            l = language
-        else:
-            l = TO_LANGUAGE_CODE.get(language)
+        l = language if language in LANGUAGES else TO_LANGUAGE_CODE.get(language)
         if l not in [
             "bg",
             "zh",
@@ -73,7 +70,7 @@ class DeepL(Base):
                 "POST", self.api_url, data=json.dumps(payload), headers=self.headers
             )
         except Exception as e:
-            print(str(e))
+            print(e)
             time.sleep(30)
             response = requests.request(
                 "POST", self.api_url, data=json.dumps(payload), headers=self.headers
