@@ -115,17 +115,14 @@ The total token is too long and cannot be completely translated\n
             new_str = new_str[: -len(sep)]
 
         plist_len = len(plist)
-        always_trans = """[If there are any links, images, figure, listing or other content that cannot be translated, please leave them in the original language. If you cannot translate the content, please include it in brackets like this]:
-[Insert Original Content Here]
-        """
 
-        self.system_content += f"""Please translate the following paragraphs individually while preserving their original structure(This time it should be exactly {plist_len} paragraphs, no more or less). {always_trans}. Only translate the paragraphs provided below:
+        self.system_content = f"""{environ.get("OPENAI_API_SYS_MSG") or ""}. Please translate the following paragraphs individually while preserving their original structure, do not untranslate or merge any paragraphs, Only translate the paragraphs provided below:
 
-[Insert first paragraph here]
+[Insert first paragraph]
 
-[Insert second paragraph here]
+[Insert next paragraph]
 
-[Insert third paragraph here]
+[Insert next paragraph]
 """
 
         retry_count = 0
