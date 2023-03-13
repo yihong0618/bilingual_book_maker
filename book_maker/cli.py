@@ -134,7 +134,7 @@ def main():
         dest="accumulated_num",
         type=int,
         default=1,
-        help="Wait for how many characters have been accumulated before starting the translation",
+        help="Wait for how many tokens have been accumulated before starting the translation",
     )
 
     options = parser.parse_args()

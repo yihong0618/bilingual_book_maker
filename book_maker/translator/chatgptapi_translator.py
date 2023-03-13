@@ -63,9 +63,10 @@ The total token is too long and cannot be completely translated\n
                 )
 
         usage = completion["usage"]
+        print("=================================================")
+        print(f"total_token: {usage['total_tokens']}")
         if int(usage["total_tokens"]) > self.max_num_token:
             self.max_num_token = int(usage["total_tokens"])
-            print("=================================================")
             print(
                 f"{usage['total_tokens']} {usage['prompt_tokens']} {usage['completion_tokens']} {self.max_num_token} (total_token, prompt_token, completion_tokens, max_history_total_token)"
             )
@@ -153,7 +154,7 @@ The total token is too long and cannot be completely translated\n
             newlist = new_str.split(sep)
             with open("buglog.txt", "a") as f:
                 print(f"problem size: {plist_len - len(result_list)}", file=f)
-                for i in range(0, len(newlist)):
+                for i in range(len(newlist)):
                     print(newlist[i], file=f)
                     print(file=f)
                     if i < len(result_list):
