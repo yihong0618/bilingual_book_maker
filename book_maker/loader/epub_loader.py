@@ -20,12 +20,8 @@ def isLink(text):
     return bool(url_pattern.match(text.strip()))
 
 
-def isSourceLink(text):
-    text = text.strip()
-    return text.startswith("Source: ") and re.search(
-        r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+",
-        text,
-    )
+def isSource(text):
+    return text.strip().startswith("Source: ")
 
 
 def isList(text, num=80):
@@ -164,7 +160,7 @@ class EPUBBookLoader(BaseBookLoader):
                         if (
                             not p.text
                             or self._is_special_text(temp_p.text)
-                            or isSourceLink(temp_p.text)
+                            or isSource(temp_p.text)
                             or isList(temp_p.text)
                         ):
                             continue

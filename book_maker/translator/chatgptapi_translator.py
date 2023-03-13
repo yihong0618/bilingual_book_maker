@@ -28,39 +28,47 @@ class ChatGPTAPI(Base):
     def get_translation(self, text):
         self.rotate_key()
         content = self.prompt_template.format(text=text, language=self.language)
-        completion = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {
-                    "role": "system",
-                    "content": self.system_content,
-                },
-                {
-                    "role": "user",
-                    "content": content,
-                },
-            ],
-        )
-        t_text = (
-            completion["choices"][0]
-            .get("message")
-            .get("content")
-            .encode("utf8")
-            .decode()
-        )
-        print("=================================================")
-        if int(completion["usage"]["total_tokens"]) > self.max_num_token:
-            self.max_num_token = int(completion["usage"]["total_tokens"])
-            print(
-                f"The current largest total number of tokens update: {self.max_num_token}"
-            )
 
-        # self.max_num_token = max(
-        #     self.max_num_token, int(completion["usage"]["total_tokens"])
-        # )
-        # print(
-        #     f"{completion['usage']['total_tokens']} {completion['usage']['prompt_tokens']} {completion['usage']['completion_tokens']} {self.max_num_token} (total_token, prompt_token, completion_tokens, max_history_total_token)"
-        # )
+        completion = {}
+        try:
+            completion = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": self.system_content,
+                    },
+                    {
+                        "role": "user",
+                        "content": content,
+                    },
+                ],
+            )
+        except Exception:
+            if completion["choices"][0]["finish_reason"] != "length":
+                raise
+
+        choice = completion["choices"][0]
+
+        t_text = choice.get("message").get("content").encode("utf8").decode()
+
+        if choice["finish_reason"] == "length":
+            with open("long_text.txt", "a") as f:
+                print(
+                    f"""==================================================
+The total token is too long and cannot be completely translated\n
+{text}
+""",
+                    file=f,
+                )
+
+        usage = completion["usage"]
+        if int(usage["total_tokens"]) > self.max_num_token:
+            self.max_num_token = int(usage["total_tokens"])
+            print("=================================================")
+            print(
+                f"{usage['total_tokens']} {usage['prompt_tokens']} {usage['completion_tokens']} {self.max_num_token} (total_token, prompt_token, completion_tokens, max_history_total_token)"
+            )
         return t_text
 
     def translate(self, text, needprint=True):
