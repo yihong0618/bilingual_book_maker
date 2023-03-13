@@ -140,8 +140,8 @@ class EPUBBookLoader(BaseBookLoader):
         try:
             with open(self.bin_path, "rb") as f:
                 self.p_to_save = pickle.load(f)
-        except Exception:
-            raise Exception("can not load resume file")
+        except Exception as e:
+            raise Exception("can not load resume file") from e
 
     def _save_temp_book(self):
         # TODO refactor this logic
@@ -182,5 +182,5 @@ class EPUBBookLoader(BaseBookLoader):
         try:
             with open(self.bin_path, "wb") as f:
                 pickle.dump(self.p_to_save, f)
-        except Exception:
-            raise Exception("can not save resume file")
+        except Exception as e:
+            raise Exception("can not save resume file") from e

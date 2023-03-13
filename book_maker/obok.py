@@ -174,20 +174,19 @@ import os
 import re
 import shutil
 import sqlite3
-import string
 import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 
-can_parse_xml = True
+CAN_PARSE_XML = True
 try:
     from xml.etree import ElementTree as ET
 
     # print "using xml.etree for xml parsing"
 except ImportError:
-    can_parse_xml = False
+    CAN_PARSE_XML = False
     # print "Cannot find xml.etree, disabling extraction of serial numbers"
 
 # List of all known hash keys
@@ -246,7 +245,6 @@ def _load_crypto_libcrypto():
             self._blocksize = len(userkey)
             if self._blocksize not in [16, 24, 32]:
                 raise ENCRYPTIONError(_("AES improper key used"))
-                return
             key = self._key = AES_KEY()
             rv = AES_set_decrypt_key(userkey, len(userkey) * 8, key)
             if rv < 0:
@@ -343,7 +341,7 @@ class KoboLibrary(object):
             self.kobodir = os.path.join(device_path, ".kobo")
             # devices use KoboReader.sqlite
             kobodb = os.path.join(self.kobodir, "KoboReader.sqlite")
-            if not (os.path.isfile(kobodb)):
+            if not os.path.isfile(kobodb):
                 # device path seems to be wrong, unset it
                 device_path = ""
                 self.kobodir = ""
@@ -354,7 +352,7 @@ class KoboLibrary(object):
         # we got a device path but no saved serial
         # try to get the serial from the device
         # get serial from device_path/.adobe-digital-editions/device.xml
-        if self.kobodir and len(serials) == 0 and can_parse_xml:
+        if self.kobodir and len(serials) == 0 and CAN_PARSE_XML:
             # print "get_device_settings - device_path = {0}".format(device_path)
             devicexml = os.path.join(
                 device_path, ".adobe-digital-editions", "device.xml"
@@ -428,18 +426,20 @@ class KoboLibrary(object):
                             for file in files:
                                 if file == "Kobo.sqlite":
                                     kobo_linux_path = str(root)
-                                    with open(kobodir_cache_file, "w") as f:
+                                    with open(
+                                        kobodir_cache_file, "w", encoding="utf-8"
+                                    ) as f:
                                         sys.stdout = f
                                         print(kobo_linux_path, end="")
                                         sys.stdout = original_stdout
 
-                    f = open(kobodir_cache_file, "r")
+                    f = open(kobodir_cache_file, "r", encoding="utf-8")
                     self.kobodir = f.read()
 
             # desktop versions use Kobo.sqlite
             kobodb = os.path.join(self.kobodir, "Kobo.sqlite")
             # check for existence of file
-            if not (os.path.isfile(kobodb)):
+            if not os.path.isfile(kobodb):
                 # give up here, we haven't found anything useful
                 self.kobodir = ""
                 kobodb = ""
@@ -450,12 +450,11 @@ class KoboLibrary(object):
             # so we can ensure it's not using WAL logging which sqlite3 can't do.
             self.newdb = tempfile.NamedTemporaryFile(mode="wb", delete=False)
             print(self.newdb.name)
-            olddb = open(kobodb, "rb")
-            self.newdb.write(olddb.read(18))
-            self.newdb.write(b"\x01\x01")
-            olddb.read(2)
-            self.newdb.write(olddb.read())
-            olddb.close()
+            with open(kobodb, "rb") as olddb:
+                self.newdb.write(olddb.read(18))
+                self.newdb.write(b"\x01\x01")
+                olddb.read(2)
+                self.newdb.write(olddb.read())
             self.newdb.close()
             self.__sqlite = sqlite3.connect(self.newdb.name)
             self.__cursor = self.__sqlite.cursor()
@@ -749,36 +748,6 @@ class KoboFile(object):
                     raise ValueError
             print("Seems to be good text")
             return True
-            if contents[:5] == b"<?xml" or contents[:8] == b"\xef\xbb\xbf<?xml":
-                # utf-8
-                return True
-            elif contents[:14] == b"\xfe\xff\x00<\x00?\x00x\x00m\x00l":
-                # utf-16BE
-                return True
-            elif contents[:14] == b"\xff\xfe<\x00?\x00x\x00m\x00l\x00":
-                # utf-16LE
-                return True
-            elif (
-                contents[:9] == b"<!DOCTYPE"
-                or contents[:12] == b"\xef\xbb\xbf<!DOCTYPE"
-            ):
-                # utf-8 of weird <!DOCTYPE start
-                return True
-            elif (
-                contents[:22]
-                == b"\xfe\xff\x00<\x00!\x00D\x00O\x00C\x00T\x00Y\x00P\x00E"
-            ):
-                # utf-16BE of weird <!DOCTYPE start
-                return True
-            elif (
-                contents[:22]
-                == b"\xff\xfe<\x00!\x00D\x00O\x00C\x00T\x00Y\x00P\x00E\x00"
-            ):
-                # utf-16LE of weird <!DOCTYPE start
-                return True
-            else:
-                print("Bad XML: {0}".format(contents[:8]))
-                raise ValueError
         if self.mimetype == "image/jpeg":
             if contents[:3] == b"\xff\xd8\xff":
                 return True
