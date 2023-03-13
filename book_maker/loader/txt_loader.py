@@ -68,9 +68,7 @@ class TXTBookLoader(BaseBookLoader):
                 batch_text = "".join(i)
                 if self._is_special_text(batch_text):
                     continue
-                if self.resume and index < p_to_save_len:
-                    pass
-                else:
+                if not self.resume or index >= p_to_save_len:
                     temp = self.translate_model.translate(batch_text)
                     self.p_to_save.append(temp)
                     self.bilingual_result.append(batch_text)
@@ -98,7 +96,7 @@ class TXTBookLoader(BaseBookLoader):
             for i in range(0, len(self.origin_book), self.batch_size)
         ]
 
-        for i in range(0, len(sliced_list)):
+        for i in range(len(sliced_list)):
             batch_text = "".join(sliced_list[i])
             self.bilingual_temp_result.append(batch_text)
             if self._is_special_text(self.origin_book[i]):

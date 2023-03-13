@@ -23,22 +23,21 @@ def parse_prompt_arg(prompt_arg):
             # if not a json string, treat it as a template string
             prompt = {"user": prompt_arg}
 
+    elif os.path.exists(prompt_arg):
+        if prompt_arg.endswith(".txt"):
+            # if it's a txt file, treat it as a template string
+            with open(prompt_arg, "r") as f:
+                prompt = {"user": f.read()}
+        elif prompt_arg.endswith(".json"):
+            # if it's a json file, treat it as a json object
+            # eg: --prompt prompt_template_sample.json
+            with open(prompt_arg, "r") as f:
+                prompt = json.load(f)
     else:
-        if os.path.exists(prompt_arg):
-            if prompt_arg.endswith(".txt"):
-                # if it's a txt file, treat it as a template string
-                with open(prompt_arg, "r") as f:
-                    prompt = {"user": f.read()}
-            elif prompt_arg.endswith(".json"):
-                # if it's a json file, treat it as a json object
-                # eg: --prompt prompt_template_sample.json
-                with open(prompt_arg, "r") as f:
-                    prompt = json.load(f)
-        else:
-            raise FileNotFoundError(f"{prompt_arg} not found")
+        raise FileNotFoundError(f"{prompt_arg} not found")
 
-    if prompt is None or not (
-        all(c in prompt["user"] for c in ["{text}", "{language}"])
+    if prompt is None or any(
+        c not in prompt["user"] for c in ["{text}", "{language}"]
     ):
         raise ValueError("prompt must contain `{text}` and `{language}`")
 
