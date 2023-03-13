@@ -71,7 +71,11 @@ class TXTBookLoader(BaseBookLoader):
                 if self.resume and index < p_to_save_len:
                     pass
                 else:
-                    temp = self.translate_model.translate(batch_text)
+                    try:
+                        temp = self.translate_model.translate(batch_text)
+                    except Exception as e:
+                        print(str(e))
+                        raise Exception("Something is wrong when translate")
                     self.p_to_save.append(temp)
                     self.bilingual_result.append(batch_text)
                     self.bilingual_result.append(temp)

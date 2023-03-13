@@ -2,6 +2,7 @@
 LANGUAGES = {
     "en": "english",
     "zh-hans": "simplified chinese",
+    "zh": "simplified chinese",
     "zh-hant": "traditional chinese",
     "de": "german",
     "es": "spanish",

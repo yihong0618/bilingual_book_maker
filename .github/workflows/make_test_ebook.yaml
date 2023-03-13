@@ -11,6 +11,7 @@ env:
   ACTIONS_ALLOW_UNSECURE_COMMANDS: true
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   BBM_CAIYUN_API_KEY: ${{ secrets.BBM_CAIYUN_API_KEY }}
+  BBM_DEEPL_API_KEY: ${{ secrets.BBM_DEEPL_API_KEY }}
 
 jobs:
   testing:
@@ -51,8 +52,13 @@ jobs:
         run: |
           python3 make_book.py --book_name "test_books/the_little_prince.txt" --test --batch_size 30 --test_num 20 --model caiyun
 
+      - name: make deepl translator test
+        if: env.BBM_CAIYUN_API_KEY != null
+        run: |
+          python3 make_book.py --book_name "test_books/the_little_prince.txt" --test --batch_size 30 --test_num 20 --model deepl
+
       - name: make openai key ebook test
-        if: env.OPENAI_API_KEY != null
+        if: env.BBM_DEEPL_API_KEY != null
         run: |
             python3 make_book.py --book_name "test_books/lemo.epub" --test --test_num 5 --language zh-hans
             python3 make_book.py --book_name "test_books/animal_farm.epub" --test --test_num 5 --language ja --model gpt3 --prompt prompt_template_sample.txt
