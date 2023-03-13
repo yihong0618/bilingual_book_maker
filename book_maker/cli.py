@@ -187,12 +187,7 @@ def main():
                 "OpenAI API key not provided, please google how to obtain it"
             )
     elif options.model == "caiyun":
-        OPENAI_API_KEY = (
-            options.openai_key
-            or env.get(
-                "BBM_CAIYUN_API_KEY"
-            )
-        )
+        OPENAI_API_KEY = options.openai_key or env.get("BBM_CAIYUN_API_KEY")
     else:
         OPENAI_API_KEY = ""
 
