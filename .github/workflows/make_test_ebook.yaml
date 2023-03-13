@@ -10,6 +10,7 @@ on:
 env:
   ACTIONS_ALLOW_UNSECURE_COMMANDS: true
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  BBM_CAIYUN_API_KEY: ${{ secrets.BBM_CAIYUN_API_KEY }}
 
 jobs:
   testing:
@@ -27,11 +28,15 @@ jobs:
             black . --check
       - name: install python requirements
         run: pip install -r requirements.txt
-      
-      - name: make normal ebook test using google translate 
+
+      - name: Test install
         run: |
-            python3 make_book.py --book_name "test_books/Liber_Esther.epub" --test --test_num 10 --model google --translate-tags div,p
-            python3 make_book.py --book_name "test_books/Liber_Esther.epub" --test --test_num 20 --model google
+            pip install .
+
+      - name: make normal ebook test using google translate and cli
+        run: |
+            bbook_maker --book_name "test_books/Liber_Esther.epub" --test --test_num 10 --model google --translate-tags div,p
+            bbook_maker --book_name "test_books/Liber_Esther.epub" --test --test_num 20 --model google
 
       - name: make txt book test using google translate
         run: |
@@ -40,7 +45,11 @@ jobs:
       - name: make txt book test with batch_size
         run: |
           python3 make_book.py --book_name "test_books/the_little_prince.txt" --test --batch_size 30 --test_num 20 --model google
-
+  
+      - name: make caiyun translator test
+        if: env.BBM_CAIYUN_API_KEY != null
+        run: |
+          python3 make_book.py --book_name "test_books/the_little_prince.txt" --test --batch_size 30 --test_num 20 --model caiyun
 
       - name: make openai key ebook test
         if: env.OPENAI_API_KEY != null
@@ -49,10 +58,10 @@ jobs:
             python3 make_book.py --book_name "test_books/animal_farm.epub" --test --test_num 5 --language ja --model gpt3 --prompt prompt_template_sample.txt
             python3 make_book.py --book_name "test_books/animal_farm.epub" --test --test_num 5 --language ja --prompt prompt_template_sample.json
             
-            
       - name: Rename and Upload ePub
         if: env.OPENAI_API_KEY != null
         uses: actions/upload-artifact@v2
         with:
           name: epub_output
           path: "test_books/lemo_bilingual.epub"
+
