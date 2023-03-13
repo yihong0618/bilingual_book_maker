@@ -1,6 +1,9 @@
 # The original code comes from:
 # https://github.com/apprenticeharper/DeDRM_tools
 
+# Version 4.1.2 March 2023
+# Update library for crypto for current Windows
+
 # Version 4.1.1 March 2023
 # Make obok.py works as file selector
 
@@ -161,7 +164,7 @@
 """Manage all Kobo books, either encrypted or DRM-free."""
 from __future__ import print_function
 
-__version__ = "4.0.0"
+__version__ = "4.1.2"
 __about__ = "Obok v{0}\nCopyright © 2012-2020 Physisticated et al.".format(__version__)
 
 import base64
@@ -211,7 +214,7 @@ def _load_crypto_libcrypto():
     from ctypes.util import find_library
 
     if sys.platform.startswith("win"):
-        libcrypto = find_library("libeay32")
+        libcrypto = find_library("libcrypto")
     else:
         libcrypto = find_library("crypto")
 
