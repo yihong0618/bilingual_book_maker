@@ -73,6 +73,7 @@ The total token is too long and cannot be completely translated\n
         return t_text
 
     def translate(self, text, needprint=True):
+        start_time = time.time()
         # todo: Determine whether to print according to the cli option
         if needprint:
             print(re.sub("\n{3,}", "\n\n", text))
@@ -93,6 +94,10 @@ The total token is too long and cannot be completely translated\n
         # todo: Determine whether to print according to the cli option
         if needprint:
             print(re.sub("\n{3,}", "\n\n", t_text))
+
+        elapsed_time = time.time() - start_time
+        print(f"translation time: {elapsed_time:.1f}s")
+
         return t_text
 
     def translate_and_split_lines(self, text):
@@ -117,14 +122,19 @@ The total token is too long and cannot be completely translated\n
 
         plist_len = len(plist)
 
-        self.system_content = f"""{environ.get("OPENAI_API_SYS_MSG") or ""}. Please translate the following paragraphs individually while preserving their original structure, do not untranslate or merge any paragraphs, Only translate the paragraphs provided below:
+        self.system_content = f"""{environ.get("OPENAI_API_SYS_MSG") or ""}
 
-[Insert first paragraph]
+Please translate the following paragraphs individually while preserving their original structure(This time it should be exactly {plist_len} paragraphs, no more or less).
+Only translate the paragraphs provided below:
 
-[Insert next paragraph]
+[Insert first paragraph here]
 
-[Insert next paragraph]
+[Insert second paragraph here]
+
+[Insert ... paragraph here]
 """
+        # print(self.system_content)
+        print(f"plist len = {len(plist)}")
 
         retry_count = 0
         sleep_dur = 6

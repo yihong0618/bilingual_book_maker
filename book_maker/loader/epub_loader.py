@@ -54,6 +54,14 @@ def isLink(text):
     return bool(url_pattern.match(text.strip()))
 
 
+def isTailLink(text, num=100):
+    text = text.strip()
+    url_pattern = re.compile(
+        r".*http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+$"
+    )
+    return bool(url_pattern.match(text)) and len(text) < num
+
+
 def isSource(text):
     return text.strip().startswith("Source: ")
 
@@ -196,6 +204,7 @@ class EPUBBookLoader(BaseBookLoader):
                             or self._is_special_text(temp_p.text)
                             or isSource(temp_p.text)
                             or isList(temp_p.text)
+                            or isTailLink(temp_p.text)
                         ):
                             continue
                         length = num_tokens_from_text(temp_p.text)
@@ -212,6 +221,9 @@ class EPUBBookLoader(BaseBookLoader):
                         if count + length < send_num:
                             count += length
                             wait_p_list.append(p)
+                            if len(wait_p_list) > 15 and count > send_num / 2:
+                                deal_old(wait_p_list)
+                                count = 0
                         else:
                             deal_old(wait_p_list)
                             wait_p_list.append(p)
