@@ -4,7 +4,7 @@ from setuptools import find_packages, setup
 setup(
     name="bbook_maker",
     description="The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist users in creating multi-language versions of epub/txt files and books.",
-    version="0.1.0",
+    version="0.2.0",
     license="MIT",
     author="yihong0618",
     author_email="zouzou0208@gmail.com",

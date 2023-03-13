@@ -51,6 +51,7 @@ def parse_prompt_arg(prompt_arg):
 
 
 def main():
+    translate_model_list = list(MODEL_DICT.keys())
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--book_name",
@@ -72,6 +73,7 @@ def main():
         type=str,
         help="Path of e-reader device",
     )
+    ########## KEYS ##########
     parser.add_argument(
         "--openai_key",
         dest="openai_key",
@@ -80,6 +82,19 @@ def main():
         help="OpenAI api key,if you have more than one key, please use comma"
         " to split them to go beyond the rate limits",
     )
+    parser.add_argument(
+        "--caiyun_key",
+        dest="caiyun_key",
+        type=str,
+        help="you can apply caiyun key from here (https://dashboard.caiyunapp.com/user/sign_in/)",
+    )
+    parser.add_argument(
+        "--deepl_key",
+        dest="deepl_key",
+        type=str,
+        help="you can apply deepl key from here (https://rapidapi.com/splintPRO/api/deepl-translator",
+    )
+
     parser.add_argument(
         "--test",
         dest="test",
@@ -99,7 +114,7 @@ def main():
         dest="model",
         type=str,
         default="chatgptapi",
-        choices=["chatgptapi", "gpt3", "google", "caiyun"],  # support DeepL later
+        choices=translate_model_list,  # support DeepL later
         metavar="MODEL",
         help="model to use, available: {%(choices)s}",
     )
@@ -161,12 +176,6 @@ def main():
         default=10,
         help="how many lines will be translated by aggregated translation(This options currently only applies to txt files)",
     )
-    parser.add_argument(
-        "--caiyun_key",
-        dest="caiyun_key",
-        type=str,
-        help="you can apply caiyun key from here (https://dashboard.caiyunapp.com/user/sign_in/)",
-    )
 
     options = parser.parse_args()
     PROXY = options.proxy
@@ -195,6 +204,10 @@ def main():
         API_KEY = options.caiyun_key or env.get("BBM_CAIYUN_API_KEY")
         if not API_KEY:
             raise Exception("Please provid caiyun key")
+    elif options.model == "deepl":
+        API_KEY = options.deepl_key or env.get("BBM_DEEPL_API_KEY")
+        if not API_KEY:
+            raise Exception("Please provid deepl key")
     else:
         API_KEY = ""
 
