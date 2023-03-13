@@ -195,6 +195,8 @@ def main():
         API_KEY = OPENAI_API_KEY
     elif options.model == "caiyun":
         API_KEY = options.caiyun_key or env.get("BBM_CAIYUN_API_KEY")
+        if not API_KEY:
+            raise Exception("Please provid caiyun key")
     else:
         API_KEY = ""
 

@@ -28,6 +28,7 @@ class Caiyun(Base):
         pass
 
     def translate(self, text):
+        print(text)
         payload = {
             "source": text,
             "trans_type": self.translate_type,
@@ -37,6 +38,6 @@ class Caiyun(Base):
         response = requests.request(
             "POST", self.api_url, data=json.dumps(payload), headers=self.headers
         )
-        target = json.loads(response.text)["target"]
-        print(target)
-        return target
+        t_text = json.loads(response.text)["target"]
+        print(t_text)
+        return t_text
