@@ -1,5 +1,6 @@
 bs4
 openai
+tiktoken
 requests
 ebooklib
 rich
