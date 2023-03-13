@@ -36,7 +36,7 @@ jobs:
       - name: make normal ebook test using google translate and cli
         run: |
             bbook_maker --book_name "test_books/Liber_Esther.epub" --test --test_num 10 --model google --translate-tags div,p
-            bbook_maker--book_name "test_books/Liber_Esther.epub" --test --test_num 20 --model google
+            bbook_maker --book_name "test_books/Liber_Esther.epub" --test --test_num 20 --model google
 
       - name: make txt book test using google translate
         run: |
