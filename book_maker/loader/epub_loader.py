@@ -9,8 +9,9 @@ from ebooklib import ITEM_DOCUMENT, epub
 from rich import print
 from tqdm import tqdm
 
-from .base_loader import BaseBookLoader
 from book_maker.utils import prompt_config_to_kwargs
+
+from .base_loader import BaseBookLoader
 
 
 class EPUBBookLoader(BaseBookLoader):
@@ -21,6 +22,7 @@ class EPUBBookLoader(BaseBookLoader):
         key,
         resume,
         language,
+        batch_size,
         model_api_base=None,
         is_test=False,
         test_num=5,

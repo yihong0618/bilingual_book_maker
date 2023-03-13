@@ -1,11 +1,10 @@
 import time
+from os import environ
 
 import openai
-from os import environ
 
 from .base_translator import Base
 from ..utils import num_tokens_from_messages
-
 
 PROMPT_ENV_MAP = {
     "user": "BBM_CHATGPTAPI_USER_MSG_TEMPLATE",

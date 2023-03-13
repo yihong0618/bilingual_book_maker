@@ -15,7 +15,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 
 ## 使用
 
-1. `pip install -r requirements.txt`
+1. `pip install -r requirements.txt` 或 `pip install -U bbook_maker`
 2. 使用 `--openai_key` 指定 OpenAI API key，如果有多个可以用英文逗号分隔(xxx,xxx,xxx)，可以减少接口调用次数限制带来的错误。  
    或者，指定环境变量 `BMM_OPENAI_API_KEY` 来略过这个选项。
 3. 本地放了一个 `test_books/animal_farm.epub` 给大家测试
@@ -42,8 +42,10 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 16. 翻译完会生成一本 ${book_name}_bilingual.epub 的双语书
 17. 如果出现了错误或使用 `CTRL+C` 中断命令，不想接下来继续翻译了，会生成一本 ${book_name}_bilingual_temp.epub 的书，直接改成你想要的名字就可以了
 18. 如果你想要翻译电子书中的无标签字符串，可以使用 `--allow_navigable_strings` 参数，会将可遍历字符串加入翻译队列，**注意，在条件允许情况下，请寻找更规范的电子书**
-
+19. 使用`--batch_size` 参数，指定批量翻译的行数(默认行数为10，目前只对txt生效)
 ### 示范用例
+
+**如果使用 `pip install bbook_maker` 以下命令都可以改成 `bbook args`**
 
 ```shell
 # 如果你想快速测一下
@@ -70,6 +72,9 @@ python3 make_book.py --book_from kobo --device_path /tmp/kobo
 
 # 翻译 txt 文件
 python3 make_book.py --book_name test_books/the_little_prince.txt --test 
+# 聚合多行翻译 txt 文件 
+python3 make_book.py --book_name test_books/the_little_prince.txt --test --batch_size 20
+
 ```
 
 更加小白的示例

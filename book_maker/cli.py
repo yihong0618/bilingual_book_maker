@@ -1,12 +1,12 @@
 import argparse
+import json
 import os
 from os import environ as env
-import json
 
+import book_maker.obok as obok
 from book_maker.loader import BOOK_LOADER_DICT
 from book_maker.translator import MODEL_DICT
 from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE
-import book_maker.obok as obok
 
 
 def parse_prompt_arg(prompt_arg):
@@ -156,6 +156,13 @@ def main():
         metavar="PROMPT_ARG",
         help="used for customizing the prompt. It can be the prompt template string, or a path to the template file. The valid placeholders are `{text}` and `{language}`.",
     )
+    parser.add_argument(
+        "--batch_size",
+        dest="batch_size",
+        type=int,
+        default=10,
+        help="how many lines will be translated by aggregated translation(This options currently only applies to txt files)",
+    )
 
     options = parser.parse_args()
     PROXY = options.proxy
@@ -219,6 +226,7 @@ def main():
         translate_tags=options.translate_tags,
         allow_navigable_strings=options.allow_navigable_strings,
         prompt_config=parse_prompt_arg(options.prompt_arg),
+        batch_size=options.batch_size,
     )
     e.make_bilingual_book()
 
