@@ -3,7 +3,6 @@ import json
 import os
 from os import environ as env
 
-import book_maker.obok as obok
 from book_maker.loader import BOOK_LOADER_DICT
 from book_maker.translator import MODEL_DICT
 from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE
@@ -190,6 +189,8 @@ def main():
         OPENAI_API_KEY = ""
 
     if options.book_from == "kobo":
+        import book_maker.obok as obok
+
         device_path = options.device_path
         if device_path is None:
             raise Exception(
