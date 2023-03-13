@@ -75,6 +75,15 @@ python3 make_book.py --book_name test_books/the_little_prince.txt --test
 # 聚合多行翻译 txt 文件 
 python3 make_book.py --book_name test_books/the_little_prince.txt --test --batch_size 20
 
+# 使用彩云小译翻译(彩云api目前只支持: 简体中文 <-> 英文， 简体中文 <-> 日语)
+# 彩云提供了测试token（3975l6lr5pcbvidl6jl2）
+# 你可以参考这个教程申请自己的token (https://bobtranslate.com/service/translate/caiyun.html)
+python3 make_book.py --model caiyun --openai_key 3975l6lr5pcbvidl6jl2 --book_name test_books/animal_farm.epub
+# 翻译为中文
+python3 make_book.py --model caiyun --openai_key 3975l6lr5pcbvidl6jl2 --book_name test_books/animal_farm.epub --language en
+# 可以在环境变量中设置BBM_CAIYUN_API_KEY，略过--openai_key
+export BBM_CAIYUN_API_KEY=${your_api_key}
+
 ```
 
 更加小白的示例

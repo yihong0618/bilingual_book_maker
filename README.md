@@ -77,6 +77,15 @@ python3 make_book.py --book_from kobo --device_path /tmp/kobo
 python3 make_book.py --book_name test_books/the_little_prince.txt --test --language zh-hans
 # aggregated translation txt file
 python3 make_book.py --book_name test_books/the_little_prince.txt --test --batch_size 20
+
+# Using Caiyun model to translate
+# (the api currently only support: simplified chinese <-> english, simplified chinese <-> japanese)
+# the official Caiyun has provided a test token (3975l6lr5pcbvidl6jl2)
+# you can apply your own token by following this tutorial(https://bobtranslate.com/service/translate/caiyun.html)
+python3 make_book.py --model caiyun --openai_key 3975l6lr5pcbvidl6jl2 --book_name test_books/animal_farm.epub
+# Set env BBM_CAIYUN_API_KEY to ignore option --openai_key
+export BBM_CAIYUN_API_KEY=${your_api_key}
+
 ```
 
 More understandable example
