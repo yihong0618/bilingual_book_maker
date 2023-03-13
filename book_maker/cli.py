@@ -163,6 +163,12 @@ def main():
         default=10,
         help="how many lines will be translated by aggregated translation(This options currently only applies to txt files)",
     )
+    parser.add_argument(
+        "--caiyun_key",
+        dest="caiyun_key",
+        type=str,
+        help="you can apply caiyun key from here (https://dashboard.caiyunapp.com/user/sign_in/)",
+    )
 
     options = parser.parse_args()
     PROXY = options.proxy
@@ -186,10 +192,11 @@ def main():
             raise Exception(
                 "OpenAI API key not provided, please google how to obtain it"
             )
+        API_KEY = OPENAI_API_KEY
     elif options.model == "caiyun":
-        OPENAI_API_KEY = options.openai_key or env.get("BBM_CAIYUN_API_KEY")
+        API_KEY = options.caiyun_key or env.get("BBM_CAIYUN_API_KEY")
     else:
-        OPENAI_API_KEY = ""
+        API_KEY = ""
 
     if options.book_from == "kobo":
         device_path = options.device_path
@@ -219,7 +226,7 @@ def main():
     e = book_loader(
         options.book_name,
         translate_model,
-        OPENAI_API_KEY,
+        API_KEY,
         options.resume,
         language=language,
         model_api_base=model_api_base,
