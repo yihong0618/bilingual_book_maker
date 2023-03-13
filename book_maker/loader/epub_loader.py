@@ -5,6 +5,7 @@ from copy import copy
 from pathlib import Path
 
 from bs4 import BeautifulSoup as bs
+from bs4.element import NavigableString
 from ebooklib import ITEM_DOCUMENT, epub
 from rich import print
 from tqdm import tqdm
@@ -114,8 +115,12 @@ class EPUBBookLoader(BaseBookLoader):
                         if self.resume and index < p_to_save_len:
                             new_p.string = self.p_to_save[index]
                         else:
-                            new_p.string = self.translate_model.translate(p.text)
-                            self.p_to_save.append(new_p.text)
+                            if type(p) == NavigableString:
+                                new_p = self.translate_model.translate(p.text)
+                                self.p_to_save.append(new_p)
+                            else:
+                                new_p.string = self.translate_model.translate(p.text)
+                                self.p_to_save.append(new_p.text)
                         p.insert_after(new_p)
                         index += 1
                         if index % 20 == 0:
@@ -164,7 +169,10 @@ class EPUBBookLoader(BaseBookLoader):
                         # PR welcome here
                         if index < p_to_save_len:
                             new_p = copy(p)
-                            new_p.string = self.p_to_save[index]
+                            if type(p) == NavigableString:
+                                new_p = self.p_to_save[index]
+                            else:
+                                new_p.string = self.p_to_save[index]
                             p.insert_after(new_p)
                             index += 1
                         else:
