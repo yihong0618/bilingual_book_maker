@@ -171,6 +171,13 @@ def main():
         help="used for customizing the prompt. It can be the prompt template string, or a path to the template file. The valid placeholders are `{text}` and `{language}`.",
     )
     parser.add_argument(
+        "--accumulated_num",
+        dest="accumulated_num",
+        type=int,
+        default=1,
+        help="Wait for how many tokens have been accumulated before starting the translation",
+    )
+    parser.add_argument(
         "--batch_size",
         dest="batch_size",
         type=int,
@@ -250,6 +257,7 @@ def main():
         test_num=options.test_num,
         translate_tags=options.translate_tags,
         allow_navigable_strings=options.allow_navigable_strings,
+        accumulated_num=options.accumulated_num,
         prompt_config=parse_prompt_arg(options.prompt_arg),
         batch_size=options.batch_size,
     )

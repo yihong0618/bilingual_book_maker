@@ -20,6 +20,8 @@ class TXTBookLoader(BaseBookLoader):
         model_api_base=None,
         is_test=False,
         test_num=5,
+        accumulated_num=1,
+        prompt_template=None,
         prompt_config=None,
     ):
         self.txt_name = txt_name
@@ -102,7 +104,7 @@ class TXTBookLoader(BaseBookLoader):
             for i in range(0, len(self.origin_book), self.batch_size)
         ]
 
-        for i in range(0, len(sliced_list)):
+        for i in range(len(sliced_list)):
             batch_text = "".join(sliced_list[i])
             self.bilingual_temp_result.append(batch_text)
             if self._is_special_text(self.origin_book[i]):
