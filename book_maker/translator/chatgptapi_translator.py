@@ -143,6 +143,8 @@ Only translate the paragraphs provided below:
         start_time = time.time()
         end_time = time.time()
 
+        best_result_list = result_list
+
         while len(result_list) != plist_len and retry_count < 15:
             print(
                 f"bug: {plist_len} -> {len(result_list)} : Number of paragraphs before and after translation"
@@ -150,8 +152,22 @@ Only translate the paragraphs provided below:
             print(f"sleep for {sleep_dur}s and retry {retry_count+1} ...")
             time.sleep(sleep_dur)
             result_list = self.translate_and_split_lines(new_str)
+            if (
+                len(result_list) == plist_len
+                or (
+                    len(result_list) > len(best_result_list)
+                    and len(result_list) <= plist_len
+                )
+                or (
+                    len(result_list) < len(best_result_list)
+                    and len(best_result_list) > plist_len
+                )
+            ):
+                best_result_list = result_list
             retry_count += 1
             end_time = time.time()
+
+        result_list = best_result_list
 
         state = "fail" if len(result_list) != plist_len else "success"
 
