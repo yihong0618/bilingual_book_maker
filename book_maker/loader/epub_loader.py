@@ -273,8 +273,11 @@ class EPUBBookLoader(BaseBookLoader):
 
                 item.content = soup.prettify().encode()
                 new_book.add_item(item)
-                name, _ = os.path.splitext(self.epub_name)
-                epub.write_epub(f"{name}_bilingual.epub", new_book, {})
+                if self.accumulated_num > 1:
+                    name, _ = os.path.splitext(self.epub_name)
+                    epub.write_epub(f"{name}_bilingual.epub", new_book, {})
+            name, _ = os.path.splitext(self.epub_name)
+            epub.write_epub(f"{name}_bilingual.epub", new_book, {})
             if self.accumulated_num == 1:
                 pbar.close()
         except (KeyboardInterrupt, Exception) as e:
