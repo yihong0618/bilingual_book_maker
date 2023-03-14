@@ -1,6 +1,9 @@
 # The original code comes from:
 # https://github.com/apprenticeharper/DeDRM_tools
 
+# Version 4.1.2 March 2023
+# Update library for crypto for current Windows
+
 # Version 4.1.1 March 2023
 # Make obok.py works as file selector
 
@@ -161,22 +164,22 @@
 """Manage all Kobo books, either encrypted or DRM-free."""
 from __future__ import print_function
 
-__version__ = "4.0.0"
+__version__ = "4.1.2"
 __about__ = "Obok v{0}\nCopyright © 2012-2020 Physisticated et al.".format(__version__)
 
-import sys
-import os
-import subprocess
-import sqlite3
 import base64
 import binascii
-import re
-import zipfile
 import hashlib
-import xml.etree.ElementTree as ET
-import string
+import os
+import re
 import shutil
+import sqlite3
+import string
+import subprocess
+import sys
 import tempfile
+import xml.etree.ElementTree as ET
+import zipfile
 
 can_parse_xml = True
 try:
@@ -199,19 +202,19 @@ def _load_crypto_libcrypto():
     from ctypes import (
         CDLL,
         POINTER,
-        c_void_p,
+        Structure,
         c_char_p,
         c_int,
         c_long,
-        Structure,
         c_ulong,
-        create_string_buffer,
+        c_void_p,
         cast,
+        create_string_buffer,
     )
     from ctypes.util import find_library
 
     if sys.platform.startswith("win"):
-        libcrypto = find_library("libeay32")
+        libcrypto = find_library("libcrypto")
     else:
         libcrypto = find_library("crypto")
 

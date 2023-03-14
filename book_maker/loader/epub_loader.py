@@ -7,9 +7,12 @@ from copy import copy
 from pathlib import Path
 
 from bs4 import BeautifulSoup as bs
+from bs4.element import NavigableString
 from ebooklib import ITEM_DOCUMENT, epub
 from rich import print
 from tqdm import tqdm
+
+from book_maker.utils import prompt_config_to_kwargs
 
 from .base_loader import BaseBookLoader
 
@@ -47,14 +50,14 @@ def num_tokens_from_text(text, model="gpt-3.5-turbo-0301"):
         )
 
 
-def isLink(text):
+def is_link(text):
     url_pattern = re.compile(
         r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"
     )
     return bool(url_pattern.match(text.strip()))
 
 
-def isTailLink(text, num=100):
+def is_tail_Link(text, num=100):
     text = text.strip()
     url_pattern = re.compile(
         r".*http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+$"
@@ -62,16 +65,16 @@ def isTailLink(text, num=100):
     return bool(url_pattern.match(text)) and len(text) < num
 
 
-def isSource(text):
+def is_source(text):
     return text.strip().startswith("Source: ")
 
 
-def isList(text, num=80):
+def is_list(text, num=80):
     text = text.strip()
     return re.match(r"^Listing\s*\d+", text) and len(text) < num
 
 
-def isFigure(text, num=80):
+def is_figure(text, num=80):
     text = text.strip()
     return re.match(r"^Figure\s*\d+", text) and len(text) < num
 
@@ -84,6 +87,7 @@ class EPUBBookLoader(BaseBookLoader):
         key,
         resume,
         language,
+        batch_size,
         model_api_base=None,
         is_test=False,
         test_num=5,
@@ -91,11 +95,15 @@ class EPUBBookLoader(BaseBookLoader):
         allow_navigable_strings=False,
         accumulated_num=1,
         prompt_template=None,
+        prompt_config=None,
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
         self.translate_model = model(
-            key, language, model_api_base, prompt_template=prompt_template
+            key,
+            language,
+            api_base=model_api_base,
+            **prompt_config_to_kwargs(prompt_config),
         )
         self.is_test = is_test
         self.test_num = test_num
@@ -129,7 +137,7 @@ class EPUBBookLoader(BaseBookLoader):
 
     @staticmethod
     def _is_special_text(text):
-        return text.isdigit() or text.isspace() or isLink(text)
+        return text.isdigit() or text.isspace() or is_link(text)
 
     def _make_new_book(self, book):
         new_book = epub.EpubBook()
@@ -185,9 +193,6 @@ class EPUBBookLoader(BaseBookLoader):
                     new_book.add_item(item)
 
             for item in self.origin_book.get_items_of_type(ITEM_DOCUMENT):
-                with open("buglog.txt", "a") as f:
-                    print(f"------------- {item.file_name} -------------", file=f)
-
                 # if item.file_name != "OEBPS/ch01.xhtml":
                 #     continue
 
@@ -198,6 +203,9 @@ class EPUBBookLoader(BaseBookLoader):
 
                 send_num = self.accumulated_num
                 if send_num > 1:
+                    with open("buglog.txt", "a") as f:
+                        print(f"------------- {item.file_name} -------------", file=f)
+
                     print("------------------------------------------------------")
                     print(f"dealing {item.file_name} ...")
                     count = 0
@@ -210,10 +218,10 @@ class EPUBBookLoader(BaseBookLoader):
                         if (
                             not p.text
                             or self._is_special_text(temp_p.text)
-                            or isSource(temp_p.text)
-                            or isList(temp_p.text)
-                            or isFigure(temp_p.text)
-                            or isTailLink(temp_p.text)
+                            or is_source(temp_p.text)
+                            or is_list(temp_p.text)
+                            or is_figure(temp_p.text)
+                            or is_tail_Link(temp_p.text)
                         ):
                             continue
                         length = num_tokens_from_text(temp_p.text)
@@ -248,8 +256,12 @@ class EPUBBookLoader(BaseBookLoader):
                         if self.resume and index < p_to_save_len:
                             new_p.string = self.p_to_save[index]
                         else:
-                            new_p.string = self.translate_model.translate(p.text)
-                            self.p_to_save.append(new_p.text)
+                            if type(p) == NavigableString:
+                                new_p = self.translate_model.translate(p.text)
+                                self.p_to_save.append(new_p)
+                            else:
+                                new_p.string = self.translate_model.translate(p.text)
+                                self.p_to_save.append(new_p.text)
                         p.insert_after(new_p)
                         index += 1
                         if index % 20 == 0:
@@ -281,6 +293,7 @@ class EPUBBookLoader(BaseBookLoader):
             raise Exception("can not load resume file")
 
     def _save_temp_book(self):
+        # TODO refactor this logic
         origin_book_temp = epub.read_epub(self.epub_name)
         new_temp_book = self._make_new_book(origin_book_temp)
         p_to_save_len = len(self.p_to_save)
@@ -291,6 +304,8 @@ class EPUBBookLoader(BaseBookLoader):
                 if item.get_type() == ITEM_DOCUMENT:
                     soup = bs(item.content, "html.parser")
                     p_list = soup.findAll(trans_taglist)
+                    if self.allow_navigable_strings:
+                        p_list.extend(soup.findAll(text=True))
                     for p in p_list:
                         if not p.text or self._is_special_text(p.text):
                             continue
@@ -298,8 +313,10 @@ class EPUBBookLoader(BaseBookLoader):
                         # PR welcome here
                         if index < p_to_save_len:
                             new_p = copy(p)
-                            new_p.string = self.p_to_save[index]
-                            print(new_p.string)
+                            if type(p) == NavigableString:
+                                new_p = self.p_to_save[index]
+                            else:
+                                new_p.string = self.p_to_save[index]
                             p.insert_after(new_p)
                             index += 1
                         else:

@@ -1,22 +1,46 @@
 import time
 import re
 from copy import copy
+from os import environ
 
 import openai
-from os import environ
 
 from .base_translator import Base
 
+PROMPT_ENV_MAP = {
+    "user": "BBM_CHATGPTAPI_USER_MSG_TEMPLATE",
+    "system": "BBM_CHATGPTAPI_SYS_MSG",
+}
+
 
 class ChatGPTAPI(Base):
-    def __init__(self, key, language, api_base=None, prompt_template=None):
+    DEFAULT_PROMPT = "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text"
+
+    def __init__(
+        self,
+        key,
+        language,
+        api_base=None,
+        prompt_template=None,
+        prompt_sys_msg=None,
+        **kwargs,
+    ):
         super().__init__(key, language)
         self.key_len = len(key.split(","))
         if api_base:
             openai.api_base = api_base
         self.prompt_template = (
             prompt_template
-            or "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text"
+            or environ.get(PROMPT_ENV_MAP["user"])
+            or self.DEFAULT_PROMPT
+        )
+        self.prompt_sys_msg = (
+            prompt_sys_msg
+            or environ.get(
+                "OPENAI_API_SYS_MSG"
+            )  # XXX: for backward compatability, deprecate soon
+            or environ.get(PROMPT_ENV_MAP["system"])
+            or ""
         )
         self.system_content = environ.get("OPENAI_API_SYS_MSG") or ""
 
@@ -28,21 +52,25 @@ class ChatGPTAPI(Base):
     def get_translation(self, text):
         self.rotate_key()
         content = self.prompt_template.format(text=text, language=self.language)
+        sys_content = self.prompt_sys_msg
+        if self.system_content:
+            sys_content = self.system_content
+        messages = []
+        messages.append(
+            {"role": "system", "content": sys_content},
+        )
+        messages.append(
+            {
+                "role": "user",
+                "content": content,
+            }
+        )
 
         completion = {}
         try:
             completion = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": self.system_content,
-                    },
-                    {
-                        "role": "user",
-                        "content": content,
-                    },
-                ],
+                messages=messages,
             )
         except Exception:
             if completion["choices"][0]["finish_reason"] != "length":
@@ -63,7 +91,6 @@ The total token is too long and cannot be completely translated\n
                 )
 
         usage = completion["usage"]
-        print("=================================================")
         print(f"total_token: {usage['total_tokens']}")
         if int(usage["total_tokens"]) > self.max_num_token:
             self.max_num_token = int(usage["total_tokens"])
@@ -73,6 +100,7 @@ The total token is too long and cannot be completely translated\n
         return t_text
 
     def translate(self, text, needprint=True):
+        print("=================================================")
         start_time = time.time()
         # todo: Determine whether to print according to the cli option
         if needprint:

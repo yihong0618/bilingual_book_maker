@@ -5,7 +5,7 @@ from .base_translator import Base
 
 
 class GPT3(Base):
-    def __init__(self, key, language, api_base=None, prompt_template=None):
+    def __init__(self, key, language, api_base=None, prompt_template=None, **kwargs):
         super().__init__(key, language)
         self.api_url = (
             f"{api_base}v1/completions"
