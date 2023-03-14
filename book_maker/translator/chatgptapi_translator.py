@@ -140,7 +140,10 @@ Only translate the paragraphs provided below:
         sleep_dur = 6
         result_list = self.translate_and_split_lines(new_str)
 
-        while len(result_list) != plist_len and retry_count < 5:
+        start_time = time.time()
+        end_time = time.time()
+
+        while len(result_list) != plist_len and retry_count < 15:
             print(
                 f"bug: {plist_len} -> {len(result_list)} : Number of paragraphs before and after translation"
             )
@@ -148,6 +151,7 @@ Only translate the paragraphs provided below:
             time.sleep(sleep_dur)
             result_list = self.translate_and_split_lines(new_str)
             retry_count += 1
+            end_time = time.time()
 
         state = "fail" if len(result_list) != plist_len else "success"
 
@@ -155,7 +159,7 @@ Only translate the paragraphs provided below:
             print(f"retry {state}")
             with open("buglog.txt", "a") as f:
                 print(
-                    f"retry {state}, count = {retry_count}",
+                    f"retry {state}, count = {retry_count}, time = {(end_time-start_time):.1f}s",
                     file=f,
                 )
 

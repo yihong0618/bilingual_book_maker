@@ -71,6 +71,11 @@ def isList(text, num=80):
     return re.match(r"^Listing\s*\d+", text) and len(text) < num
 
 
+def isFigure(text, num=80):
+    text = text.strip()
+    return re.match(r"^Figure\s*\d+", text) and len(text) < num
+
+
 class EPUBBookLoader(BaseBookLoader):
     def __init__(
         self,
@@ -180,6 +185,9 @@ class EPUBBookLoader(BaseBookLoader):
                     new_book.add_item(item)
 
             for item in self.origin_book.get_items_of_type(ITEM_DOCUMENT):
+                with open("buglog.txt", "a") as f:
+                    print(f"------------- {item.file_name} -------------", file=f)
+
                 # if item.file_name != "OEBPS/ch01.xhtml":
                 #     continue
 
@@ -204,6 +212,7 @@ class EPUBBookLoader(BaseBookLoader):
                             or self._is_special_text(temp_p.text)
                             or isSource(temp_p.text)
                             or isList(temp_p.text)
+                            or isFigure(temp_p.text)
                             or isTailLink(temp_p.text)
                         ):
                             continue
