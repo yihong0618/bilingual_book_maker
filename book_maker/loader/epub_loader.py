@@ -5,9 +5,12 @@ from copy import copy
 from pathlib import Path
 
 from bs4 import BeautifulSoup as bs
+from bs4.element import NavigableString
 from ebooklib import ITEM_DOCUMENT, epub
 from rich import print
 from tqdm import tqdm
+
+from book_maker.utils import prompt_config_to_kwargs
 
 from .base_loader import BaseBookLoader
 
@@ -20,17 +23,21 @@ class EPUBBookLoader(BaseBookLoader):
         key,
         resume,
         language,
+        batch_size,
         model_api_base=None,
         is_test=False,
         test_num=5,
         translate_tags="p",
         allow_navigable_strings=False,
-        prompt_template=None,
+        prompt_config=None,
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
         self.translate_model = model(
-            key, language, model_api_base, prompt_template=prompt_template
+            key,
+            language,
+            api_base=model_api_base,
+            **prompt_config_to_kwargs(prompt_config),
         )
         self.is_test = is_test
         self.test_num = test_num
@@ -108,8 +115,12 @@ class EPUBBookLoader(BaseBookLoader):
                         if self.resume and index < p_to_save_len:
                             new_p.string = self.p_to_save[index]
                         else:
-                            new_p.string = self.translate_model.translate(p.text)
-                            self.p_to_save.append(new_p.text)
+                            if type(p) == NavigableString:
+                                new_p = self.translate_model.translate(p.text)
+                                self.p_to_save.append(new_p)
+                            else:
+                                new_p.string = self.translate_model.translate(p.text)
+                                self.p_to_save.append(new_p.text)
                         p.insert_after(new_p)
                         index += 1
                         if index % 20 == 0:
@@ -138,6 +149,7 @@ class EPUBBookLoader(BaseBookLoader):
             raise Exception("can not load resume file")
 
     def _save_temp_book(self):
+        # TODO refactor this logic
         origin_book_temp = epub.read_epub(self.epub_name)
         new_temp_book = self._make_new_book(origin_book_temp)
         p_to_save_len = len(self.p_to_save)
@@ -148,6 +160,8 @@ class EPUBBookLoader(BaseBookLoader):
                 if item.get_type() == ITEM_DOCUMENT:
                     soup = bs(item.content, "html.parser")
                     p_list = soup.findAll(trans_taglist)
+                    if self.allow_navigable_strings:
+                        p_list.extend(soup.findAll(text=True))
                     for p in p_list:
                         if not p.text or self._is_special_text(p.text):
                             continue
@@ -155,8 +169,10 @@ class EPUBBookLoader(BaseBookLoader):
                         # PR welcome here
                         if index < p_to_save_len:
                             new_p = copy(p)
-                            new_p.string = self.p_to_save[index]
-                            print(new_p.string)
+                            if type(p) == NavigableString:
+                                new_p = self.p_to_save[index]
+                            else:
+                                new_p.string = self.p_to_save[index]
                             p.insert_after(new_p)
                             index += 1
                         else:
