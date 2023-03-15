@@ -17,6 +17,33 @@ from book_maker.utils import prompt_config_to_kwargs
 from .base_loader import BaseBookLoader
 
 
+class EPUBBookLoaderHelper:
+    def __init__(self, translate_model, accumulated_num):
+        self.translate_model = translate_model
+        self.accumulated_num = accumulated_num
+
+    def deal_new(self, p, wait_p_list):
+        self.deal_old(wait_p_list)
+        new_p = copy(p)
+        new_p.string = self.translate_model.translate(p.text)
+        p.insert_after(new_p)
+
+    def deal_old(self, wait_p_list):
+        if len(wait_p_list) == 0:
+            return
+
+        result_txt_list = self.translate_model.translate_list(wait_p_list)
+
+        for i in range(len(wait_p_list)):
+            if i < len(result_txt_list):
+                p = wait_p_list[i]
+                new_p = copy(p)
+                new_p.string = result_txt_list[i]
+                p.insert_after(new_p)
+
+        wait_p_list.clear()
+
+
 # ref: https://platform.openai.com/docs/guides/chat/introduction
 def num_tokens_from_text(text, model="gpt-3.5-turbo-0301"):
     messages = (
@@ -110,6 +137,7 @@ class EPUBBookLoader(BaseBookLoader):
         self.translate_tags = translate_tags
         self.allow_navigable_strings = allow_navigable_strings
         self.accumulated_num = accumulated_num
+        self.helper = EPUBBookLoaderHelper(self.translate_model, self.accumulated_num)
 
         try:
             self.origin_book = epub.read_epub(self.epub_name)
@@ -146,28 +174,71 @@ class EPUBBookLoader(BaseBookLoader):
         new_book.toc = book.toc
         return new_book
 
+    def _process_paragraph(self, p, index, p_to_save_len):
+        if not p.text or self._is_special_text(p.text):
+            return index
+
+        new_p = copy(p)
+
+        if self.resume and index < p_to_save_len:
+            new_p.string = self.p_to_save[index]
+        else:
+            if type(p) == NavigableString:
+                new_p = self.translate_model.translate(p.text)
+                self.p_to_save.append(new_p)
+            else:
+                new_p.string = self.translate_model.translate(p.text)
+                self.p_to_save.append(new_p.text)
+
+        p.insert_after(new_p)
+        index += 1
+
+        if index % 20 == 0:
+            self._save_progress()
+
+        return index
+
+    def translate_paragraphs_acc(self, p_list, send_num):
+        count = 0
+        wait_p_list = []
+        for i in range(len(p_list)):
+            p = p_list[i]
+            temp_p = copy(p)
+            for sup in temp_p.find_all("sup"):
+                sup.extract()
+            if (
+                not p.text
+                or self._is_special_text(temp_p.text)
+                or is_source(temp_p.text)
+                or is_list(temp_p.text)
+                or is_figure(temp_p.text)
+                or is_tail_Link(temp_p.text)
+            ):
+                continue
+            length = num_tokens_from_text(temp_p.text)
+            if length > send_num:
+                self.helper.deal_new(p, wait_p_list)
+                continue
+            if i == len(p_list) - 1:
+                if count + length < send_num:
+                    wait_p_list.append(p)
+                    self.helper.deal_old(wait_p_list)
+                else:
+                    self.helper.deal_new(p, wait_p_list)
+                break
+            if count + length < send_num:
+                count += length
+                wait_p_list.append(p)
+                # This is because the more paragraphs, the easier it is possible to translate different numbers of paragraphs, maybe you should find better values than 15 and 2
+                if len(wait_p_list) > 15 and count > send_num / 2:
+                    self.helper.deal_old(wait_p_list)
+                    count = 0
+            else:
+                self.helper.deal_old(wait_p_list)
+                wait_p_list.append(p)
+                count = length
+
     def make_bilingual_book(self):
-        def deal_new(p, wait_p_list):
-            deal_old(wait_p_list)
-            new_p = copy(p)
-            new_p.string = self.translate_model.translate(p.text)
-            p.insert_after(new_p)
-
-        def deal_old(wait_p_list):
-            if len(wait_p_list) == 0:
-                return
-
-            result_txt_list = self.translate_model.translate_list(wait_p_list)
-
-            for i in range(len(wait_p_list)):
-                if i < len(result_txt_list):
-                    p = wait_p_list[i]
-                    new_p = copy(p)
-                    new_p.string = result_txt_list[i]
-                    p.insert_after(new_p)
-
-            wait_p_list.clear()
-
         new_book = self._make_new_book(self.origin_book)
         all_items = list(self.origin_book.get_items())
         trans_taglist = self.translate_tags.split(",")
@@ -210,64 +281,13 @@ class EPUBBookLoader(BaseBookLoader):
 
                     print("------------------------------------------------------")
                     print(f"dealing {item.file_name} ...")
-                    count = 0
-                    wait_p_list = []
-                    for i in range(len(p_list)):
-                        p = p_list[i]
-                        temp_p = copy(p)
-                        for sup in temp_p.find_all("sup"):
-                            sup.extract()
-                        if (
-                            not p.text
-                            or self._is_special_text(temp_p.text)
-                            or is_source(temp_p.text)
-                            or is_list(temp_p.text)
-                            or is_figure(temp_p.text)
-                            or is_tail_Link(temp_p.text)
-                        ):
-                            continue
-                        length = num_tokens_from_text(temp_p.text)
-                        if length > send_num:
-                            deal_new(p, wait_p_list)
-                            continue
-                        if i == len(p_list) - 1:
-                            if count + length < send_num:
-                                wait_p_list.append(p)
-                                deal_old(wait_p_list)
-                            else:
-                                deal_new(p, wait_p_list)
-                            break
-                        if count + length < send_num:
-                            count += length
-                            wait_p_list.append(p)
-                            if len(wait_p_list) > 15 and count > send_num / 2:
-                                deal_old(wait_p_list)
-                                count = 0
-                        else:
-                            deal_old(wait_p_list)
-                            wait_p_list.append(p)
-                            count = length
+                    self.translate_paragraphs_acc(p_list, send_num)
                 else:
                     is_test_done = self.is_test and index > self.test_num
                     for p in p_list:
-                        if is_test_done or not p.text or self._is_special_text(p.text):
-                            continue
-                        new_p = copy(p)
-                        # TODO banch of p to translate then combine
-                        # PR welcome here
-                        if self.resume and index < p_to_save_len:
-                            new_p.string = self.p_to_save[index]
-                        else:
-                            if type(p) == NavigableString:
-                                new_p = self.translate_model.translate(p.text)
-                                self.p_to_save.append(new_p)
-                            else:
-                                new_p.string = self.translate_model.translate(p.text)
-                                self.p_to_save.append(new_p.text)
-                        p.insert_after(new_p)
-                        index += 1
-                        if index % 20 == 0:
-                            self._save_progress()
+                        if is_test_done:
+                            break
+                        index = self._process_paragraph(p, index, p_to_save_len)
                         # pbar.update(delta) not pbar.update(index)?
                         pbar.update(1)
                         if self.is_test and index >= self.test_num:
