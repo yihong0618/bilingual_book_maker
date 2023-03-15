@@ -145,7 +145,7 @@ The total token is too long and cannot be completely translated\n
         best_result_list = result_list
         retry_count = 0
 
-        while retry_count < max_retries:
+        while retry_count < max_retries and len(result_list) != plist_len:
             print(
                 f"bug: {plist_len} -> {len(result_list)} : Number of paragraphs before and after translation"
             )
@@ -163,9 +163,6 @@ The total token is too long and cannot be completely translated\n
             ):
                 best_result_list = result_list
 
-            if len(result_list) == plist_len:
-                break
-
         return best_result_list, retry_count
 
     def log_retry(self, state, retry_count, elapsed_time, log_path="log/buglog.txt"):
@@ -181,7 +178,7 @@ The total token is too long and cannot be completely translated\n
     def log_translation_mismatch(
         self, plist_len, result_list, new_str, sep, log_path="log/buglog.txt"
     ):
-        if len(result_list) != plist_len:
+        if len(result_list) == plist_len:
             return
         newlist = new_str.split(sep)
         with open(log_path, "a") as f:
