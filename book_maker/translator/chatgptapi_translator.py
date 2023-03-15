@@ -49,29 +49,27 @@ class ChatGPTAPI(Base):
     def rotate_key(self):
         openai.api_key = next(self.keys)
 
-    def get_translation(self, text):
-        self.rotate_key()
+    def create_chat_completion(self, text):
         content = self.prompt_template.format(text=text, language=self.language)
         sys_content = self.prompt_sys_msg
         if self.system_content:
             sys_content = self.system_content
-        messages = []
-        messages.append(
+        messages = [
             {"role": "system", "content": sys_content},
+            {"role": "user", "content": content},
+        ]
+
+        return openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
         )
-        messages.append(
-            {
-                "role": "user",
-                "content": content,
-            }
-        )
+
+    def get_translation(self, text):
+        self.rotate_key()
 
         completion = {}
         try:
-            completion = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=messages,
-            )
+            completion = self.create_chat_completion(text)
         except Exception:
             if completion["choices"][0]["finish_reason"] != "length":
                 raise
@@ -117,7 +115,6 @@ The total token is too long and cannot be completely translated\n
             # 1. openai server error or own network interruption, sleep for a fixed time
             # 2. an apikey has no money or reach limit, don’t sleep, just replace it with another apikey
             # 3. all apikey reach limit, then use current sleep
-            print(e)
             sleep_time = int(60 / self.key_len)
             print(e, f"will sleep {sleep_time} seconds")
             time.sleep(sleep_time)
@@ -138,6 +135,70 @@ The total token is too long and cannot be completely translated\n
         lines = result_str.split("\n")
         lines = [line.strip() for line in lines if line.strip() != ""]
         return lines
+
+    def get_best_result_list(
+        self, plist_len, new_str, sleep_dur, result_list, max_retries=15
+    ):
+        if len(result_list) == plist_len:
+            return result_list, 0
+
+        best_result_list = result_list
+        retry_count = 0
+
+        while retry_count < max_retries:
+            print(
+                f"bug: {plist_len} -> {len(result_list)} : Number of paragraphs before and after translation"
+            )
+            print(f"sleep for {sleep_dur}s and retry {retry_count+1} ...")
+            time.sleep(sleep_dur)
+            retry_count += 1
+            result_list = self.translate_and_split_lines(new_str)
+            if (
+                len(result_list) == plist_len
+                or len(best_result_list) < len(result_list) <= plist_len
+                or (
+                    len(result_list) < len(best_result_list)
+                    and len(best_result_list) > plist_len
+                )
+            ):
+                best_result_list = result_list
+
+            if len(result_list) == plist_len:
+                break
+
+        return best_result_list, retry_count
+
+    def log_retry(self, state, retry_count, elapsed_time, log_path="log/buglog.txt"):
+        if retry_count == 0:
+            return
+        print(f"retry {state}")
+        with open(log_path, "a") as f:
+            print(
+                f"retry {state}, count = {retry_count}, time = {elapsed_time:.1f}s",
+                file=f,
+            )
+
+    def log_translation_mismatch(
+        self, plist_len, result_list, new_str, sep, log_path="log/buglog.txt"
+    ):
+        if len(result_list) != plist_len:
+            return
+        newlist = new_str.split(sep)
+        with open(log_path, "a") as f:
+            print(f"problem size: {plist_len - len(result_list)}", file=f)
+            for i in range(len(newlist)):
+                print(newlist[i], file=f)
+                print(file=f)
+                if i < len(result_list):
+                    print(result_list[i], file=f)
+                    print(file=f)
+                print("=============================", file=f)
+        print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+
+        print(
+            f"bug: {plist_len} paragraphs of text translated into {len(result_list)} paragraphs"
+        )
+        print("continue")
 
     def translate_list(self, plist):
         sep = "\n\n\n\n\n"
@@ -169,64 +230,20 @@ Only translate the paragraphs provided below:
         # print(self.system_content)
         print(f"plist len = {len(plist)}")
 
-        retry_count = 0
-        sleep_dur = 6
         result_list = self.translate_and_split_lines(new_str)
 
         start_time = time.time()
+
+        result_list, retry_count = self.get_best_result_list(
+            plist_len, new_str, 6, result_list
+        )
+
         end_time = time.time()
 
-        best_result_list = result_list
-
-        while len(result_list) != plist_len and retry_count < 15:
-            print(
-                f"bug: {plist_len} -> {len(result_list)} : Number of paragraphs before and after translation"
-            )
-            print(f"sleep for {sleep_dur}s and retry {retry_count+1} ...")
-            time.sleep(sleep_dur)
-            result_list = self.translate_and_split_lines(new_str)
-            if (
-                len(result_list) == plist_len
-                or len(best_result_list) < len(result_list) <= plist_len
-                or (
-                    len(result_list) < len(best_result_list)
-                    and len(best_result_list) > plist_len
-                )
-            ):
-                best_result_list = result_list
-            retry_count += 1
-            end_time = time.time()
-
-        result_list = best_result_list
-
         state = "fail" if len(result_list) != plist_len else "success"
-
         log_path = "log/buglog.txt"
 
-        if retry_count > 0:
-            print(f"retry {state}")
-            with open(log_path, "a") as f:
-                print(
-                    f"retry {state}, count = {retry_count}, time = {(end_time-start_time):.1f}s",
-                    file=f,
-                )
-
-        if len(result_list) != plist_len:
-            newlist = new_str.split(sep)
-            with open(log_path, "a") as f:
-                print(f"problem size: {plist_len - len(result_list)}", file=f)
-                for i in range(len(newlist)):
-                    print(newlist[i], file=f)
-                    print(file=f)
-                    if i < len(result_list):
-                        print(result_list[i], file=f)
-                        print(file=f)
-                    print("=============================", file=f)
-            print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-
-            print(
-                f"bug: {plist_len} paragraphs of text translated into {len(result_list)} paragraphs"
-            )
-            print("continue")
+        self.log_retry(state, retry_count, end_time - start_time, log_path)
+        self.log_translation_mismatch(plist_len, result_list, new_str, sep, log_path)
 
         return result_list
