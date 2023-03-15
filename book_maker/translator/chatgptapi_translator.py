@@ -71,13 +71,16 @@ class ChatGPTAPI(Base):
         try:
             completion = self.create_chat_completion(text)
         except Exception:
+            if (
+                not "choices" in completion
+                or not isinstance(completion["choices"], list)
+                or len(completion["choices"]) == 0
+            ):
+                raise
             if completion["choices"][0]["finish_reason"] != "length":
                 raise
 
-        if len(completion["choices"]) == 0:
-            print('len(completion["choices"]) == 0')
-            return 'len(completion["choices"]) == 0'
-
+        # work well or exception finish by length limit
         choice = completion["choices"][0]
 
         t_text = choice.get("message").get("content").encode("utf8").decode()
@@ -108,18 +111,26 @@ The total token is too long and cannot be completely translated\n
         if needprint:
             print(re.sub("\n{3,}", "\n\n", text))
 
-        try:
-            t_text = self.get_translation(text)
-        except Exception as e:
-            # todo: better sleep time? why sleep alawys about key_len
-            # 1. openai server error or own network interruption, sleep for a fixed time
-            # 2. an apikey has no money or reach limit, don’t sleep, just replace it with another apikey
-            # 3. all apikey reach limit, then use current sleep
-            sleep_time = int(60 / self.key_len)
-            print(e, f"will sleep {sleep_time} seconds")
-            time.sleep(sleep_time)
+        attempt_count = 0
+        max_attempts = 3
+        t_text = ""
 
-            t_text = self.get_translation(text)
+        while attempt_count < max_attempts:
+            try:
+                t_text = self.get_translation(text)
+                break
+            except Exception as e:
+                # todo: better sleep time? why sleep alawys about key_len
+                # 1. openai server error or own network interruption, sleep for a fixed time
+                # 2. an apikey has no money or reach limit, don’t sleep, just replace it with another apikey
+                # 3. all apikey reach limit, then use current sleep
+                sleep_time = int(60 / self.key_len)
+                print(e, f"will sleep {sleep_time} seconds")
+                time.sleep(sleep_time)
+                attempt_count += 1
+                if attempt_count == max_attempts:
+                    print(f"Get {attempt_count} consecutive exceptions")
+                    raise
 
         # todo: Determine whether to print according to the cli option
         if needprint:
