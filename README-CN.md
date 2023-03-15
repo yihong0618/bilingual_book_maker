@@ -66,7 +66,7 @@ export OPENAI_API_KEY=${your_api_key}
 python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --language ja
 
 # Use the DeepL model with Japanese
-python3 make_book.py --book_name test_books/animal_farm.epub --model deepl --deepl_token ${deepl_token}--language ja
+python3 make_book.py --book_name test_books/animal_farm.epub --model deepl --deepl_token ${deepl_key}--language ja
 
 
 # Translate contents in <div> and <p>
