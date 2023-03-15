@@ -4,6 +4,7 @@ from os import environ
 import openai
 
 from .base_translator import Base
+from ..utils import num_tokens_from_messages
 
 PROMPT_ENV_MAP = {
     "user": "BBM_CHATGPTAPI_USER_MSG_TEMPLATE",
@@ -59,9 +60,54 @@ class ChatGPTAPI(Base):
             }
         )
 
+        count_tokens = num_tokens_from_messages(messages)
+        consumed_tokens = 0
+        t_text = ""
+        if count_tokens > 4000:
+            print("too long!")
+
+            splits = count_tokens // 4000 + 1
+
+            text_list = text.split(".")
+            sub_text = ""
+            t_sub_text = ""
+            for n in range(splits):
+                text_segment = text_list[n * splits : (n + 1) * splits]
+                sub_text = ".".join(text_segment)
+                print(sub_text)
+                message_log = []
+
+                if self.prompt_sys_msg:
+                    message_log.append(
+                        {"role": "system", "content": self.prompt_sys_msg},
+                    )
+
+                message_log.append(
+                    {
+                        "role": "user",
+                        "content": self.prompt_template.format(
+                            text=sub_text, language=self.language
+                        ),
+                    }
+                )
+
+                t_sub_text, completion = self.call_chatgpt(message_log)
+                print(t_sub_text)
+                consumed_tokens += completion["usage"]["prompt_tokens"]
+
+                t_text = t_text + t_sub_text
+
+        else:
+
+            t_sub_text, completion = self.call_chatgpt(messages)
+            consumed_tokens += completion["usage"]["prompt_tokens"]
+
+        print(f"{consumed_tokens} prompt tokens used.")
+        return t_text
+
+    def call_chatgpt(self, message_log):
         completion = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=messages,
+            model="gpt-3.5-turbo", messages=message_log
         )
         t_text = (
             completion["choices"][0]
@@ -70,7 +116,8 @@ class ChatGPTAPI(Base):
             .encode("utf8")
             .decode()
         )
-        return t_text
+
+        return t_text, completion
 
     def translate(self, text):
         # todo: Determine whether to print according to the cli option
