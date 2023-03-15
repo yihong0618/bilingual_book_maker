@@ -114,13 +114,12 @@ class EPUBBookLoader(BaseBookLoader):
                         # PR welcome here
                         if self.resume and index < p_to_save_len:
                             new_p.string = self.p_to_save[index]
+                        elif type(p) == NavigableString:
+                            new_p = self.translate_model.translate(p.text)
+                            self.p_to_save.append(new_p)
                         else:
-                            if type(p) == NavigableString:
-                                new_p = self.translate_model.translate(p.text)
-                                self.p_to_save.append(new_p)
-                            else:
-                                new_p.string = self.translate_model.translate(p.text)
-                                self.p_to_save.append(new_p.text)
+                            new_p.string = self.translate_model.translate(p.text)
+                            self.p_to_save.append(new_p.text)
                         p.insert_after(new_p)
                         index += 1
                         if index % 20 == 0:
@@ -145,8 +144,8 @@ class EPUBBookLoader(BaseBookLoader):
         try:
             with open(self.bin_path, "rb") as f:
                 self.p_to_save = pickle.load(f)
-        except Exception:
-            raise Exception("can not load resume file")
+        except Exception as e:
+            raise Exception("can not load resume file") from e
 
     def _save_temp_book(self):
         # TODO refactor this logic
@@ -165,18 +164,15 @@ class EPUBBookLoader(BaseBookLoader):
                     for p in p_list:
                         if not p.text or self._is_special_text(p.text):
                             continue
-                        # TODO banch of p to translate then combine
-                        # PR welcome here
-                        if index < p_to_save_len:
-                            new_p = copy(p)
-                            if type(p) == NavigableString:
-                                new_p = self.p_to_save[index]
-                            else:
-                                new_p.string = self.p_to_save[index]
-                            p.insert_after(new_p)
-                            index += 1
-                        else:
+                        if index >= p_to_save_len:
                             break
+                        new_p = copy(p)
+                        if type(p) == NavigableString:
+                            new_p = self.p_to_save[index]
+                        else:
+                            new_p.string = self.p_to_save[index]
+                        p.insert_after(new_p)
+                        index += 1
                     # for save temp book
                     item.content = soup.prettify().encode()
                 new_temp_book.add_item(item)
@@ -190,5 +186,5 @@ class EPUBBookLoader(BaseBookLoader):
         try:
             with open(self.bin_path, "wb") as f:
                 pickle.dump(self.p_to_save, f)
-        except Exception:
-            raise Exception("can not save resume file")
+        except Exception as e:
+            raise Exception("can not save resume file") from e

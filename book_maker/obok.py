@@ -246,7 +246,6 @@ def _load_crypto_libcrypto():
             self._blocksize = len(userkey)
             if self._blocksize not in [16, 24, 32]:
                 raise ENCRYPTIONError(_("AES improper key used"))
-                return
             key = self._key = AES_KEY()
             rv = AES_set_decrypt_key(userkey, len(userkey) * 8, key)
             if rv < 0:
@@ -450,12 +449,11 @@ class KoboLibrary(object):
             # so we can ensure it's not using WAL logging which sqlite3 can't do.
             self.newdb = tempfile.NamedTemporaryFile(mode="wb", delete=False)
             print(self.newdb.name)
-            olddb = open(kobodb, "rb")
-            self.newdb.write(olddb.read(18))
-            self.newdb.write(b"\x01\x01")
-            olddb.read(2)
-            self.newdb.write(olddb.read())
-            olddb.close()
+            with open(kobodb, "rb") as olddb:
+                self.newdb.write(olddb.read(18))
+                self.newdb.write(b"\x01\x01")
+                olddb.read(2)
+                self.newdb.write(olddb.read())
             self.newdb.close()
             self.__sqlite = sqlite3.connect(self.newdb.name)
             self.__cursor = self.__sqlite.cursor()
@@ -749,36 +747,6 @@ class KoboFile(object):
                     raise ValueError
             print("Seems to be good text")
             return True
-            if contents[:5] == b"<?xml" or contents[:8] == b"\xef\xbb\xbf<?xml":
-                # utf-8
-                return True
-            elif contents[:14] == b"\xfe\xff\x00<\x00?\x00x\x00m\x00l":
-                # utf-16BE
-                return True
-            elif contents[:14] == b"\xff\xfe<\x00?\x00x\x00m\x00l\x00":
-                # utf-16LE
-                return True
-            elif (
-                contents[:9] == b"<!DOCTYPE"
-                or contents[:12] == b"\xef\xbb\xbf<!DOCTYPE"
-            ):
-                # utf-8 of weird <!DOCTYPE start
-                return True
-            elif (
-                contents[:22]
-                == b"\xfe\xff\x00<\x00!\x00D\x00O\x00C\x00T\x00Y\x00P\x00E"
-            ):
-                # utf-16BE of weird <!DOCTYPE start
-                return True
-            elif (
-                contents[:22]
-                == b"\xff\xfe<\x00!\x00D\x00O\x00C\x00T\x00Y\x00P\x00E\x00"
-            ):
-                # utf-16LE of weird <!DOCTYPE start
-                return True
-            else:
-                print("Bad XML: {0}".format(contents[:8]))
-                raise ValueError
         if self.mimetype == "image/jpeg":
             if contents[:3] == b"\xff\xd8\xff":
                 return True
