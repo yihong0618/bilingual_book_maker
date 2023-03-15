@@ -76,6 +76,10 @@ class ChatGPTAPI(Base):
             if completion["choices"][0]["finish_reason"] != "length":
                 raise
 
+        if len(completion["choices"]) == 0:
+            print('len(completion["choices"]) == 0')
+            return 'len(completion["choices"]) == 0'
+
         choice = completion["choices"][0]
 
         t_text = choice.get("message").get("content").encode("utf8").decode()
@@ -113,6 +117,7 @@ The total token is too long and cannot be completely translated\n
             # 1. openai server error or own network interruption, sleep for a fixed time
             # 2. an apikey has no money or reach limit, don’t sleep, just replace it with another apikey
             # 3. all apikey reach limit, then use current sleep
+            print(e)
             sleep_time = int(60 / self.key_len)
             print(e, f"will sleep {sleep_time} seconds")
             time.sleep(sleep_time)
@@ -182,10 +187,7 @@ Only translate the paragraphs provided below:
             result_list = self.translate_and_split_lines(new_str)
             if (
                 len(result_list) == plist_len
-                or (
-                    len(result_list) > len(best_result_list)
-                    and len(result_list) <= plist_len
-                )
+                or len(best_result_list) < len(result_list) <= plist_len
                 or (
                     len(result_list) < len(best_result_list)
                     and len(best_result_list) > plist_len
@@ -199,18 +201,19 @@ Only translate the paragraphs provided below:
 
         state = "fail" if len(result_list) != plist_len else "success"
 
+        log_path = "log/buglog.txt"
+
         if retry_count > 0:
             print(f"retry {state}")
-            with open("buglog.txt", "a") as f:
+            with open(log_path, "a") as f:
                 print(
                     f"retry {state}, count = {retry_count}, time = {(end_time-start_time):.1f}s",
                     file=f,
                 )
 
         if len(result_list) != plist_len:
-            # todo: select best
             newlist = new_str.split(sep)
-            with open("buglog.txt", "a") as f:
+            with open(log_path, "a") as f:
                 print(f"problem size: {plist_len - len(result_list)}", file=f)
                 for i in range(len(newlist)):
                     print(newlist[i], file=f)

@@ -195,6 +195,8 @@ class EPUBBookLoader(BaseBookLoader):
             for item in self.origin_book.get_items_of_type(ITEM_DOCUMENT):
                 # if item.file_name != "OEBPS/ch01.xhtml":
                 #     continue
+                if not os.path.exists("log"):
+                    os.makedirs("log")
 
                 soup = bs(item.content, "html.parser")
                 p_list = soup.findAll(trans_taglist)
@@ -203,7 +205,7 @@ class EPUBBookLoader(BaseBookLoader):
 
                 send_num = self.accumulated_num
                 if send_num > 1:
-                    with open("buglog.txt", "a") as f:
+                    with open("log/buglog.txt", "a") as f:
                         print(f"------------- {item.file_name} -------------", file=f)
 
                     print("------------------------------------------------------")
