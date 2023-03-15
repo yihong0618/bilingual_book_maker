@@ -175,7 +175,12 @@ def main():
         dest="accumulated_num",
         type=int,
         default=1,
-        help="Wait for how many tokens have been accumulated before starting the translation",
+        help="""Wait for how many tokens have been accumulated before starting the translation.
+gpt3.5 limits the total_token to 4090.
+For example, if you use --accumulated_num 1600, maybe openai will output 2200 tokens
+and maybe 200 tokens for other messages in the system messages user messages, 1600+2200+200=4000,
+So you are close to reaching the limit. You have to choose your own value, there is no way to know if the limit is reached before sending
+""",
     )
     parser.add_argument(
         "--batch_size",
