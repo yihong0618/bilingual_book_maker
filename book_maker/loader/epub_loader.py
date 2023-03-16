@@ -1,11 +1,11 @@
 import os
-import re
 import pickle
-import tiktoken
+import re
 import sys
 from copy import copy
 from pathlib import Path
 
+import tiktoken
 from bs4 import BeautifulSoup as bs
 from bs4.element import NavigableString
 from ebooklib import ITEM_DOCUMENT, epub
