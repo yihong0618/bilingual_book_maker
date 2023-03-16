@@ -230,9 +230,9 @@ class EPUBBookLoader(BaseBookLoader):
                 count += length
                 wait_p_list.append(p)
                 # This is because the more paragraphs, the easier it is possible to translate different numbers of paragraphs, maybe you should find better values than 15 and 2
-                if len(wait_p_list) > 15 and count > send_num / 2:
-                    self.helper.deal_old(wait_p_list)
-                    count = 0
+                # if len(wait_p_list) > 15 and count > send_num / 2:
+                #     self.helper.deal_old(wait_p_list)
+                #     count = 0
             else:
                 self.helper.deal_old(wait_p_list)
                 wait_p_list.append(p)

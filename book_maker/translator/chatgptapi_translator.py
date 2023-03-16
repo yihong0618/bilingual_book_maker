@@ -213,29 +213,19 @@ The total token is too long and cannot be completely translated\n
         # new_str = sep.join([item.text for item in plist])
 
         new_str = ""
+        i = 1
         for p in plist:
             temp_p = copy(p)
             for sup in temp_p.find_all("sup"):
                 sup.extract()
-            new_str += temp_p.get_text().strip() + sep
+            new_str += f"({i}) " + temp_p.get_text().strip() + sep
+            i = i + 1
 
         if new_str.endswith(sep):
             new_str = new_str[: -len(sep)]
 
         plist_len = len(plist)
 
-        self.system_content = f"""{environ.get("OPENAI_API_SYS_MSG") or ""}
-
-Please translate the following paragraphs individually while preserving their original structure(This time it should be exactly {plist_len} paragraphs, no more or less).
-Only translate the paragraphs provided below:
-
-[Insert first paragraph here]
-
-[Insert second paragraph here]
-
-[Insert ... paragraph here]
-"""
-        # print(self.system_content)
         print(f"plist len = {len(plist)}")
 
         result_list = self.translate_and_split_lines(new_str)
@@ -254,4 +244,6 @@ Only translate the paragraphs provided below:
         self.log_retry(state, retry_count, end_time - start_time, log_path)
         self.log_translation_mismatch(plist_len, result_list, new_str, sep, log_path)
 
+        # del (num), num. sometime (num) will translated to num.
+        result_list = [re.sub(r"^(\(\d+\)|\d+\.)\s*", "", s) for s in result_list]
         return result_list
