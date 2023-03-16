@@ -51,9 +51,7 @@ class ChatGPTAPI(Base):
 
     def create_chat_completion(self, text):
         content = self.prompt_template.format(text=text, language=self.language)
-        sys_content = self.prompt_sys_msg
-        if self.system_content:
-            sys_content = self.system_content
+        sys_content = self.system_content or self.prompt_sys_msg
         messages = [
             {"role": "system", "content": sys_content},
             {"role": "user", "content": content},
@@ -72,7 +70,7 @@ class ChatGPTAPI(Base):
             completion = self.create_chat_completion(text)
         except Exception:
             if (
-                not "choices" in completion
+                "choices" not in completion
                 or not isinstance(completion["choices"], list)
                 or len(completion["choices"]) == 0
             ):
@@ -218,7 +216,7 @@ The total token is too long and cannot be completely translated\n
             temp_p = copy(p)
             for sup in temp_p.find_all("sup"):
                 sup.extract()
-            new_str += f"({i}) " + temp_p.get_text().strip() + sep
+            new_str += f"({i}) {temp_p.get_text().strip()}{sep}"
             i = i + 1
 
         if new_str.endswith(sep):

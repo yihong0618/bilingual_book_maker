@@ -58,23 +58,22 @@ def num_tokens_from_text(text, model="gpt-3.5-turbo-0301"):
         encoding = tiktoken.encoding_for_model(model)
     except KeyError:
         encoding = tiktoken.get_encoding("cl100k_base")
-    if model == "gpt-3.5-turbo-0301":  # note: future models may deviate from this
-        num_tokens = 0
-        for message in messages:
-            num_tokens += (
-                4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
-            )
-            for key, value in message.items():
-                num_tokens += len(encoding.encode(value))
-                if key == "name":  # if there's a name, the role is omitted
-                    num_tokens += -1  # role is always required and always 1 token
-        num_tokens += 2  # every reply is primed with <im_start>assistant
-        return num_tokens
-    else:
+    if model != "gpt-3.5-turbo-0301":
         raise NotImplementedError(
             f"""num_tokens_from_messages() is not presently implemented for model {model}.
   See https://github.com/openai/openai-python/blob/main/chatml.md for information on how messages are converted to tokens."""
         )
+    num_tokens = 0
+    for message in messages:
+        num_tokens += (
+            4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
+        )
+        for key, value in message.items():
+            num_tokens += len(encoding.encode(value))
+            if key == "name":  # if there's a name, the role is omitted
+                num_tokens += -1  # role is always required and always 1 token
+    num_tokens += 2  # every reply is primed with <im_start>assistant
+    return num_tokens
 
 
 def is_link(text):
@@ -182,13 +181,12 @@ class EPUBBookLoader(BaseBookLoader):
 
         if self.resume and index < p_to_save_len:
             new_p.string = self.p_to_save[index]
+        elif isinstance(p, NavigableString):
+            new_p = self.translate_model.translate(p.text)
+            self.p_to_save.append(new_p)
         else:
-            if type(p) == NavigableString:
-                new_p = self.translate_model.translate(p.text)
-                self.p_to_save.append(new_p)
-            else:
-                new_p.string = self.translate_model.translate(p.text)
-                self.p_to_save.append(new_p.text)
+            new_p.string = self.translate_model.translate(p.text)
+            self.p_to_save.append(new_p.text)
 
         p.insert_after(new_p)
         index += 1
@@ -314,8 +312,8 @@ class EPUBBookLoader(BaseBookLoader):
         try:
             with open(self.bin_path, "rb") as f:
                 self.p_to_save = pickle.load(f)
-        except Exception:
-            raise Exception("can not load resume file")
+        except Exception as e:
+            raise Exception("can not load resume file") from e
 
     def _save_temp_book(self):
         # TODO refactor this logic
@@ -336,16 +334,15 @@ class EPUBBookLoader(BaseBookLoader):
                             continue
                         # TODO banch of p to translate then combine
                         # PR welcome here
-                        if index < p_to_save_len:
-                            new_p = copy(p)
-                            if type(p) == NavigableString:
-                                new_p = self.p_to_save[index]
-                            else:
-                                new_p.string = self.p_to_save[index]
-                            p.insert_after(new_p)
-                            index += 1
-                        else:
+                        if index >= p_to_save_len:
                             break
+                        new_p = copy(p)
+                        if isinstance(p, NavigableString):
+                            new_p = self.p_to_save[index]
+                        else:
+                            new_p.string = self.p_to_save[index]
+                        p.insert_after(new_p)
+                        index += 1
                     # for save temp book
                     item.content = soup.prettify().encode()
                 new_temp_book.add_item(item)
@@ -359,5 +356,5 @@ class EPUBBookLoader(BaseBookLoader):
         try:
             with open(self.bin_path, "wb") as f:
                 pickle.dump(self.p_to_save, f)
-        except Exception:
-            raise Exception("can not save resume file")
+        except Exception as e:
+            raise Exception("can not save resume file") from e
