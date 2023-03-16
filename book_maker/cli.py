@@ -171,6 +171,18 @@ def main():
         help="used for customizing the prompt. It can be the prompt template string, or a path to the template file. The valid placeholders are `{text}` and `{language}`.",
     )
     parser.add_argument(
+        "--accumulated_num",
+        dest="accumulated_num",
+        type=int,
+        default=1,
+        help="""Wait for how many tokens have been accumulated before starting the translation.
+gpt3.5 limits the total_token to 4090.
+For example, if you use --accumulated_num 1600, maybe openai will output 2200 tokens
+and maybe 200 tokens for other messages in the system messages user messages, 1600+2200+200=4000,
+So you are close to reaching the limit. You have to choose your own value, there is no way to know if the limit is reached before sending
+""",
+    )
+    parser.add_argument(
         "--batch_size",
         dest="batch_size",
         type=int,
@@ -250,6 +262,7 @@ def main():
         test_num=options.test_num,
         translate_tags=options.translate_tags,
         allow_navigable_strings=options.allow_navigable_strings,
+        accumulated_num=options.accumulated_num,
         prompt_config=parse_prompt_arg(options.prompt_arg),
         batch_size=options.batch_size,
     )

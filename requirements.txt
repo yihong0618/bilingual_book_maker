@@ -4,3 +4,4 @@ requests
 ebooklib
 rich
 tqdm
+tiktoken
