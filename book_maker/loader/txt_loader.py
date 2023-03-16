@@ -20,6 +20,8 @@ class TXTBookLoader(BaseBookLoader):
         model_api_base=None,
         is_test=False,
         test_num=5,
+        accumulated_num=1,
+        prompt_template=None,
         prompt_config=None,
     ):
         self.txt_name = txt_name
