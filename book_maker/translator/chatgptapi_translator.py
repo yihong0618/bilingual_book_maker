@@ -84,7 +84,7 @@ class ChatGPTAPI(Base):
         t_text = choice.get("message").get("content").encode("utf8").decode()
 
         if choice["finish_reason"] == "length":
-            with open("long_text.txt", "a") as f:
+            with open("log/long_text.txt", "a") as f:
                 print(
                     f"""==================================================
 The total token is too long and cannot be completely translated\n
@@ -243,5 +243,5 @@ The total token is too long and cannot be completely translated\n
         self.log_translation_mismatch(plist_len, result_list, new_str, sep, log_path)
 
         # del (num), num. sometime (num) will translated to num.
-        result_list = [re.sub(r"^(\(\d+\)|\d+\.)\s*", "", s) for s in result_list]
+        result_list = [re.sub(r"^(\(\d+\)|\d+\.|（\d+）)\s*", "", s) for s in result_list]
         return result_list
