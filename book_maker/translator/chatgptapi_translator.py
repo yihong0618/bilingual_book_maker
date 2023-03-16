@@ -95,17 +95,17 @@ The total token is too long and cannot be completely translated\n
                     file=f,
                 )
 
-        usage = completion["usage"]
-        print(f"total_token: {usage['total_tokens']}")
-        if int(usage["total_tokens"]) > self.max_num_token:
-            self.max_num_token = int(usage["total_tokens"])
-            print(
-                f"{usage['total_tokens']} {usage['prompt_tokens']} {usage['completion_tokens']} {self.max_num_token} (total_token, prompt_token, completion_tokens, max_history_total_token)"
-            )
+        # usage = completion["usage"]
+        # print(f"total_token: {usage['total_tokens']}")
+        # if int(usage["total_tokens"]) > self.max_num_token:
+        #     self.max_num_token = int(usage["total_tokens"])
+        #     print(
+        #         f"{usage['total_tokens']} {usage['prompt_tokens']} {usage['completion_tokens']} {self.max_num_token} (total_token, prompt_token, completion_tokens, max_history_total_token)"
+        #     )
         return t_text
 
     def translate(self, text, needprint=True):
-        print("=================================================")
+        # print("=================================================")
         start_time = time.time()
         # todo: Determine whether to print according to the cli option
         if needprint:
@@ -137,7 +137,7 @@ The total token is too long and cannot be completely translated\n
             print(re.sub("\n{3,}", "\n\n", t_text))
 
         elapsed_time = time.time() - start_time
-        print(f"translation time: {elapsed_time:.1f}s")
+        # print(f"translation time: {elapsed_time:.1f}s")
 
         return t_text
 
