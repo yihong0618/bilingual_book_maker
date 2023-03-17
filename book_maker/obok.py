@@ -425,7 +425,9 @@ class KoboLibrary(object):
                             for file in files:
                                 if file == "Kobo.sqlite":
                                     kobo_linux_path = str(root)
-                                    with open(kobodir_cache_file, "w", encoding="utf-8") as f:
+                                    with open(
+                                        kobodir_cache_file, "w", encoding="utf-8"
+                                    ) as f:
                                         sys.stdout = f
                                         print(kobo_linux_path, end="")
                                         sys.stdout = original_stdout
@@ -679,7 +681,7 @@ class KoboBook(object):
         return self.type != "drm-free"
 
 
-class KoboFile():
+class KoboFile:
     """An encrypted file in a KoboBook.
 
     Each file has the following instance variables:
