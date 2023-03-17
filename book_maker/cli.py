@@ -186,7 +186,6 @@ So you are close to reaching the limit. You have to choose your own value, there
         "--batch_size",
         dest="batch_size",
         type=int,
-        default=10,
         help="how many lines will be translated by aggregated translation(This options currently only applies to txt files)",
     )
 
@@ -260,12 +259,17 @@ So you are close to reaching the limit. You have to choose your own value, there
         model_api_base=model_api_base,
         is_test=options.test,
         test_num=options.test_num,
-        translate_tags=options.translate_tags,
-        allow_navigable_strings=options.allow_navigable_strings,
-        accumulated_num=options.accumulated_num,
         prompt_config=parse_prompt_arg(options.prompt_arg),
-        batch_size=options.batch_size,
     )
+    # other options
+    if options.allow_navigable_strings:
+        e.allow_navigable_strings = True
+    if options.translate_tags:
+        e.translate_tags = options.translate_tags
+    if options.accumulated_num > 1:
+        e.accumulated_num = options.accumulated_num
+    if options.batch_size:
+        e.batch_size = options.batch_size
     e.make_bilingual_book()
 
 
