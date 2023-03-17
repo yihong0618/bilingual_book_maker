@@ -14,8 +14,14 @@ from tqdm import tqdm
 from book_maker.utils import num_tokens_from_text, prompt_config_to_kwargs
 
 from .base_loader import BaseBookLoader
-from .helper import (EPUBBookLoaderHelper, is_text_figure, is_text_link,
-                     is_text_list, is_text_source, is_text_tail_link)
+from .helper import (
+    EPUBBookLoaderHelper,
+    is_text_figure,
+    is_text_link,
+    is_text_list,
+    is_text_source,
+    is_text_tail_link,
+)
 
 
 class EPUBBookLoader(BaseBookLoader):
