@@ -1,5 +1,5 @@
-import time
 import re
+import time
 from copy import copy
 from os import environ
 

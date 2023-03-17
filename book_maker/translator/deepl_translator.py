@@ -3,7 +3,8 @@ import time
 
 import requests
 
-from book_maker.utils import TO_LANGUAGE_CODE, LANGUAGES
+from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE
+
 from .base_translator import Base
 
 

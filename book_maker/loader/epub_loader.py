@@ -1,7 +1,6 @@
 import os
-import re
 import pickle
-import tiktoken
+import string
 import sys
 from copy import copy
 from pathlib import Path
@@ -12,98 +11,11 @@ from ebooklib import ITEM_DOCUMENT, epub
 from rich import print
 from tqdm import tqdm
 
-from book_maker.utils import prompt_config_to_kwargs
+from book_maker.utils import num_tokens_from_text, prompt_config_to_kwargs
 
 from .base_loader import BaseBookLoader
-
-
-class EPUBBookLoaderHelper:
-    def __init__(self, translate_model, accumulated_num):
-        self.translate_model = translate_model
-        self.accumulated_num = accumulated_num
-
-    def deal_new(self, p, wait_p_list):
-        self.deal_old(wait_p_list)
-        new_p = copy(p)
-        new_p.string = self.translate_model.translate(p.text)
-        p.insert_after(new_p)
-
-    def deal_old(self, wait_p_list):
-        if len(wait_p_list) == 0:
-            return
-
-        result_txt_list = self.translate_model.translate_list(wait_p_list)
-
-        for i in range(len(wait_p_list)):
-            if i < len(result_txt_list):
-                p = wait_p_list[i]
-                new_p = copy(p)
-                new_p.string = result_txt_list[i]
-                p.insert_after(new_p)
-
-        wait_p_list.clear()
-
-
-# ref: https://platform.openai.com/docs/guides/chat/introduction
-def num_tokens_from_text(text, model="gpt-3.5-turbo-0301"):
-    messages = (
-        {
-            "role": "user",
-            "content": text,
-        },
-    )
-
-    """Returns the number of tokens used by a list of messages."""
-    try:
-        encoding = tiktoken.encoding_for_model(model)
-    except KeyError:
-        encoding = tiktoken.get_encoding("cl100k_base")
-    if model == "gpt-3.5-turbo-0301":  # note: future models may deviate from this
-        num_tokens = 0
-        for message in messages:
-            num_tokens += (
-                4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
-            )
-            for key, value in message.items():
-                num_tokens += len(encoding.encode(value))
-                if key == "name":  # if there's a name, the role is omitted
-                    num_tokens += -1  # role is always required and always 1 token
-        num_tokens += 2  # every reply is primed with <im_start>assistant
-        return num_tokens
-    else:
-        raise NotImplementedError(
-            f"""num_tokens_from_messages() is not presently implemented for model {model}.
-  See https://github.com/openai/openai-python/blob/main/chatml.md for information on how messages are converted to tokens."""
-        )
-
-
-def is_link(text):
-    url_pattern = re.compile(
-        r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"
-    )
-    return bool(url_pattern.match(text.strip()))
-
-
-def is_tail_Link(text, num=100):
-    text = text.strip()
-    url_pattern = re.compile(
-        r".*http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+$"
-    )
-    return bool(url_pattern.match(text)) and len(text) < num
-
-
-def is_source(text):
-    return text.strip().startswith("Source: ")
-
-
-def is_list(text, num=80):
-    text = text.strip()
-    return re.match(r"^Listing\s*\d+", text) and len(text) < num
-
-
-def is_figure(text, num=80):
-    text = text.strip()
-    return re.match(r"^Figure\s*\d+", text) and len(text) < num
+from .helper import (EPUBBookLoaderHelper, is_text_figure, is_text_link,
+                     is_text_list, is_text_source, is_text_tail_link)
 
 
 class EPUBBookLoader(BaseBookLoader):
@@ -114,14 +26,9 @@ class EPUBBookLoader(BaseBookLoader):
         key,
         resume,
         language,
-        batch_size,
         model_api_base=None,
         is_test=False,
         test_num=5,
-        translate_tags="p",
-        allow_navigable_strings=False,
-        accumulated_num=1,
-        prompt_template=None,
         prompt_config=None,
     ):
         self.epub_name = epub_name
@@ -134,9 +41,9 @@ class EPUBBookLoader(BaseBookLoader):
         )
         self.is_test = is_test
         self.test_num = test_num
-        self.translate_tags = translate_tags
-        self.allow_navigable_strings = allow_navigable_strings
-        self.accumulated_num = accumulated_num
+        self.translate_tags = "p"
+        self.allow_navigable_strings = False
+        self.accumulated_num = 1
         self.helper = EPUBBookLoaderHelper(self.translate_model, self.accumulated_num)
 
         try:
@@ -165,7 +72,12 @@ class EPUBBookLoader(BaseBookLoader):
 
     @staticmethod
     def _is_special_text(text):
-        return text.isdigit() or text.isspace() or is_link(text)
+        return (
+            text.isdigit()
+            or text.isspace()
+            or is_text_link(text)
+            or all(char in string.punctuation for char in text)
+        )
 
     def _make_new_book(self, book):
         new_book = epub.EpubBook()
@@ -206,13 +118,15 @@ class EPUBBookLoader(BaseBookLoader):
             temp_p = copy(p)
             for sup in temp_p.find_all("sup"):
                 sup.extract()
-            if (
-                not p.text
-                or self._is_special_text(temp_p.text)
-                or is_source(temp_p.text)
-                or is_list(temp_p.text)
-                or is_figure(temp_p.text)
-                or is_tail_Link(temp_p.text)
+            if any(
+                [
+                    not p.text,
+                    self._is_special_text(temp_p.text),
+                    is_text_source(temp_p.text),
+                    is_text_list(temp_p.text),
+                    is_text_figure(temp_p.text),
+                    is_text_tail_link(temp_p.text),
+                ]
             ):
                 if i == len(p_list) - 1:
                     self.helper.deal_old(wait_p_list)
