@@ -214,6 +214,8 @@ class EPUBBookLoader(BaseBookLoader):
                 or is_figure(temp_p.text)
                 or is_tail_Link(temp_p.text)
             ):
+                if i == len(p_list) - 1:
+                    self.helper.deal_old(wait_p_list)
                 continue
             length = num_tokens_from_text(temp_p.text)
             if length > send_num:
