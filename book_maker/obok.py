@@ -169,12 +169,12 @@ __about__ = "Obok v{0}\nCopyright © 2012-2020 Physisticated et al.".format(__ve
 
 import base64
 import binascii
+import contextlib
 import hashlib
 import os
 import re
 import shutil
 import sqlite3
-import string
 import subprocess
 import sys
 import tempfile
@@ -281,11 +281,9 @@ def _load_crypto():
     AES = None
     cryptolist = (_load_crypto_pycrypto, _load_crypto_libcrypto)
     for loader in cryptolist:
-        try:
+        with contextlib.suppress(ImportError, ENCRYPTIONError):
             AES = loader()
             break
-        except (ImportError, ENCRYPTIONError):
-            pass
     return AES
 
 
@@ -586,11 +584,9 @@ class KoboLibrary(object):
         cursor = self.__cursor.execute("SELECT UserID FROM user")
         row = cursor.fetchone()
         while row is not None:
-            try:
+            with contextlib.suppress(Exception):
                 userid = row[0]
                 userids.append(userid)
-            except Exception:
-                pass
             row = cursor.fetchone()
         return userids
 
