@@ -122,7 +122,7 @@ TO_LANGUAGE_CODE = {
 
 def prompt_config_to_kwargs(prompt_config):
     prompt_config = prompt_config or {}
-    return dict(
-        prompt_template=prompt_config.get("user", None),
-        prompt_sys_msg=prompt_config.get("system", None),
-    )
+    return {
+        "prompt_template": prompt_config.get("user", None),
+        "prompt_sys_msg": prompt_config.get("system", None),
+    }

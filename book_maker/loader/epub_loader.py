@@ -276,7 +276,7 @@ class EPUBBookLoader(BaseBookLoader):
 
                 send_num = self.accumulated_num
                 if send_num > 1:
-                    with open("log/buglog.txt", "a") as f:
+                    with open("log/buglog.txt", "a", encoding="utf-8") as f:
                         print(f"------------- {item.file_name} -------------", file=f)
 
                     print("------------------------------------------------------")

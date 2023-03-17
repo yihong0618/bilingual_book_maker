@@ -25,12 +25,12 @@ def parse_prompt_arg(prompt_arg):
     elif os.path.exists(prompt_arg):
         if prompt_arg.endswith(".txt"):
             # if it's a txt file, treat it as a template string
-            with open(prompt_arg, "r") as f:
+            with open(prompt_arg, "r", encoding="utf-8") as f:
                 prompt = {"user": f.read()}
         elif prompt_arg.endswith(".json"):
             # if it's a json file, treat it as a json object
             # eg: --prompt prompt_template_sample.json
-            with open(prompt_arg, "r") as f:
+            with open(prompt_arg, "r", encoding="utf-8") as f:
                 prompt = json.load(f)
     else:
         raise FileNotFoundError(f"{prompt_arg} not found")
@@ -222,7 +222,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         API_KEY = ""
 
     if options.book_from == "kobo":
-        import book_maker.obok as obok
+        from book_maker import obok
 
         device_path = options.device_path
         if device_path is None:

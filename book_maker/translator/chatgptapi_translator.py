@@ -178,7 +178,7 @@ The total token is too long and cannot be completely translated\n
         if retry_count == 0:
             return
         print(f"retry {state}")
-        with open(log_path, "a") as f:
+        with open(log_path, "a", encoding="utf-8") as f:
             print(
                 f"retry {state}, count = {retry_count}, time = {elapsed_time:.1f}s",
                 file=f,
@@ -190,7 +190,7 @@ The total token is too long and cannot be completely translated\n
         if len(result_list) == plist_len:
             return
         newlist = new_str.split(sep)
-        with open(log_path, "a") as f:
+        with open(log_path, "a", encoding="utf-8") as f:
             print(f"problem size: {plist_len - len(result_list)}", file=f)
             for i in range(len(newlist)):
                 print(newlist[i], file=f)
