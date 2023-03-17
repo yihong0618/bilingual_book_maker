@@ -11,7 +11,15 @@ setup(
     packages=find_packages(),
     url="https://github.com/yihong0618/bilingual_book_maker",
     python_requires=">=3.7",
-    install_requires=["bs4", "openai", "requests", "ebooklib", "rich", "tqdm", "tiktoken"],
+    install_requires=[
+        "bs4",
+        "openai",
+        "requests",
+        "ebooklib",
+        "rich",
+        "tqdm",
+        "tiktoken",
+    ],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

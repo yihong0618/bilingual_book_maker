@@ -52,20 +52,39 @@ class EPUBBookLoader(BaseBookLoader):
         self.accumulated_num = 1
         self.helper = EPUBBookLoaderHelper(self.translate_model, self.accumulated_num)
 
+        # monkey pathch for # 173
+        def _write_items_patch(obj):
+            for item in obj.book.get_items():
+                if isinstance(item, epub.EpubNcx):
+                    obj.out.writestr(
+                        "%s/%s" % (obj.book.FOLDER_NAME, item.file_name), obj._get_ncx()
+                    )
+                elif isinstance(item, epub.EpubNav):
+                    obj.out.writestr(
+                        "%s/%s" % (obj.book.FOLDER_NAME, item.file_name),
+                        obj._get_nav(item),
+                    )
+                elif item.manifest:
+                    obj.out.writestr(
+                        "%s/%s" % (obj.book.FOLDER_NAME, item.file_name), item.content
+                    )
+                else:
+                    obj.out.writestr("%s" % item.file_name, item.content)
+
+        epub.EpubWriter._write_items = _write_items_patch
+
         try:
             self.origin_book = epub.read_epub(self.epub_name)
         except Exception:
-            # tricky for #71 if you don't know why please check the issue and ignore this
+            # tricky monkey pathch for #71 if you don't know why please check the issue and ignore this
             # when upstream change will TODO fix this
-            def _load_spine(self):
-                spine = self.container.find(
-                    "{%s}%s" % (epub.NAMESPACES["OPF"], "spine")
-                )
+            def _load_spine(obj):
+                spine = obj.container.find("{%s}%s" % (epub.NAMESPACES["OPF"], "spine"))
 
-                self.book.spine = [
+                obj.book.spine = [
                     (t.get("idref"), t.get("linear", "yes")) for t in spine
                 ]
-                self.book.set_direction(spine.get("page-progression-direction", None))
+                obj.book.set_direction(spine.get("page-progression-direction", None))
 
             epub.EpubReader._load_spine = _load_spine
             self.origin_book = epub.read_epub(self.epub_name)
