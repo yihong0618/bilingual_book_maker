@@ -340,7 +340,7 @@ class KoboLibrary(object):
             self.kobodir = os.path.join(device_path, ".kobo")
             # devices use KoboReader.sqlite
             kobodb = os.path.join(self.kobodir, "KoboReader.sqlite")
-            if not (os.path.isfile(kobodb)):
+            if not os.path.isfile(kobodb):
                 # device path seems to be wrong, unset it
                 device_path = ""
                 self.kobodir = ""
@@ -425,18 +425,18 @@ class KoboLibrary(object):
                             for file in files:
                                 if file == "Kobo.sqlite":
                                     kobo_linux_path = str(root)
-                                    with open(kobodir_cache_file, "w") as f:
+                                    with open(kobodir_cache_file, "w", encoding="utf-8") as f:
                                         sys.stdout = f
                                         print(kobo_linux_path, end="")
                                         sys.stdout = original_stdout
 
-                    f = open(kobodir_cache_file, "r")
+                    f = open(kobodir_cache_file, "r", encoding="utf-8")
                     self.kobodir = f.read()
 
             # desktop versions use Kobo.sqlite
             kobodb = os.path.join(self.kobodir, "Kobo.sqlite")
             # check for existence of file
-            if not (os.path.isfile(kobodb)):
+            if not os.path.isfile(kobodb):
                 # give up here, we haven't found anything useful
                 self.kobodir = ""
                 kobodb = ""
@@ -679,7 +679,7 @@ class KoboBook(object):
         return self.type != "drm-free"
 
 
-class KoboFile(object):
+class KoboFile():
     """An encrypted file in a KoboBook.
 
     Each file has the following instance variables:
