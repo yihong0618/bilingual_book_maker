@@ -14,14 +14,7 @@ from tqdm import tqdm
 from book_maker.utils import num_tokens_from_text, prompt_config_to_kwargs
 
 from .base_loader import BaseBookLoader
-from .helper import (
-    EPUBBookLoaderHelper,
-    is_text_figure,
-    is_text_link,
-    is_text_list,
-    is_text_source,
-    is_text_tail_link,
-)
+from .helper import EPUBBookLoaderHelper, not_trans, is_text_link
 
 
 class EPUBBookLoader(BaseBookLoader):
@@ -144,14 +137,7 @@ class EPUBBookLoader(BaseBookLoader):
             for sup in temp_p.find_all("sup"):
                 sup.extract()
             if any(
-                [
-                    not p.text,
-                    self._is_special_text(temp_p.text),
-                    is_text_source(temp_p.text),
-                    is_text_list(temp_p.text),
-                    is_text_figure(temp_p.text),
-                    is_text_tail_link(temp_p.text),
-                ]
+                [not p.text, self._is_special_text(temp_p.text), not_trans(temp_p.text)]
             ):
                 if i == len(p_list) - 1:
                     self.helper.deal_old(wait_p_list)
