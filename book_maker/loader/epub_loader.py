@@ -50,7 +50,10 @@ class EPUBBookLoader(BaseBookLoader):
         self.translate_tags = "p"
         self.allow_navigable_strings = False
         self.accumulated_num = 1
-        self.helper = EPUBBookLoaderHelper(self.translate_model, self.accumulated_num)
+        self.translation_style = ""
+        self.helper = EPUBBookLoaderHelper(
+            self.translate_model, self.accumulated_num, self.translation_style
+        )
 
         # monkey pathch for # 173
         def _write_items_patch(obj):
@@ -127,7 +130,7 @@ class EPUBBookLoader(BaseBookLoader):
                 new_p.string = self.translate_model.translate(p.text)
                 self.p_to_save.append(new_p.text)
 
-        p.insert_after(new_p)
+        self.helper.insert_with_style(p, new_p.string, self.translation_style)
         index += 1
 
         if index % 20 == 0:
@@ -180,6 +183,9 @@ class EPUBBookLoader(BaseBookLoader):
                 count = length
 
     def make_bilingual_book(self):
+        self.helper = EPUBBookLoaderHelper(
+            self.translate_model, self.accumulated_num, self.translation_style
+        )
         new_book = self._make_new_book(self.origin_book)
         all_items = list(self.origin_book.get_items())
         trans_taglist = self.translate_tags.split(",")
@@ -283,7 +289,9 @@ class EPUBBookLoader(BaseBookLoader):
                                 new_p = self.p_to_save[index]
                             else:
                                 new_p.string = self.p_to_save[index]
-                            p.insert_after(new_p)
+                            self.helper.insert_with_style(
+                                p, new_p.string, self.translation_style
+                            )
                             index += 1
                         else:
                             break

@@ -183,6 +183,13 @@ So you are close to reaching the limit. You have to choose your own value, there
 """,
     )
     parser.add_argument(
+        "--translation_style",
+        dest="translation_style",
+        type=str,
+        default="",
+        help="""ex: --translation_style "color: #808080; font-style: italic;" """,
+    )
+    parser.add_argument(
         "--batch_size",
         dest="batch_size",
         type=int,
@@ -268,6 +275,8 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.translate_tags = options.translate_tags
     if options.accumulated_num > 1:
         e.accumulated_num = options.accumulated_num
+    if options.translation_style != "":
+        e.translation_style = options.translation_style
     if options.batch_size:
         e.batch_size = options.batch_size
     e.make_bilingual_book()
