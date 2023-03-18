@@ -39,7 +39,7 @@ class EPUBBookLoaderHelper:
 
 def is_text_link(text):
     url_pattern = re.compile(
-        r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"
+        r"(http[s]?://|www\.)+(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"
     )
     return bool(url_pattern.match(text.strip()))
 
@@ -64,3 +64,29 @@ def is_text_list(text, num=80):
 def is_text_figure(text, num=80):
     text = text.strip()
     return re.match(r"^Figure\s*\d+", text) and len(text) < num
+
+
+def is_text_digit_and_space(s):
+    for c in s:
+        if not c.isdigit() and not c.isspace():
+            return False
+    return True
+
+
+def is_text_isbn(s):
+    pattern = r"^[Ee]?ISBN\s*\d[\d\s]*$"
+    return bool(re.match(pattern, s))
+
+
+def not_trans(s):
+    return any(
+        [
+            is_text_link(s),
+            is_text_tail_link(s),
+            is_text_source(s),
+            is_text_list(s),
+            is_text_figure(s),
+            is_text_digit_and_space(s),
+            is_text_isbn(s),
+        ]
+    )
