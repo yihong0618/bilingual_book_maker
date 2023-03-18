@@ -198,6 +198,7 @@ The total token is too long and cannot be completely translated\n
                 print(newlist[i], file=f)
                 print(file=f)
                 if i < len(result_list):
+                    print("............................................", file=f)
                     print(result_list[i], file=f)
                     print(file=f)
                 print("=============================", file=f)
@@ -207,6 +208,34 @@ The total token is too long and cannot be completely translated\n
             f"bug: {plist_len} paragraphs of text translated into {len(result_list)} paragraphs"
         )
         print("continue")
+
+    def join_lines(self, text):
+        lines = text.split("\n")
+        new_lines = []
+        temp_line = []
+
+        # join
+        for line in lines:
+            if line.strip():
+                temp_line.append(line.strip())
+            else:
+                if temp_line:
+                    new_lines.append(" ".join(temp_line))
+                    temp_line = []
+                new_lines.append(line)
+
+        if temp_line:
+            new_lines.append(" ".join(temp_line))
+
+        text = "\n".join(new_lines)
+
+        # del ^M
+        text = text.replace("^M", "\r")
+        lines = text.split("\n")
+        filtered_lines = [line for line in lines if line.strip() != "\r"]
+        new_text = "\n".join(filtered_lines)
+
+        return new_text
 
     def translate_list(self, plist):
         sep = "\n\n\n\n\n"
@@ -223,6 +252,8 @@ The total token is too long and cannot be completely translated\n
 
         if new_str.endswith(sep):
             new_str = new_str[: -len(sep)]
+
+        new_str = self.join_lines(new_str)
 
         plist_len = len(plist)
 
