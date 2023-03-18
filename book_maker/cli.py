@@ -25,12 +25,12 @@ def parse_prompt_arg(prompt_arg):
     elif os.path.exists(prompt_arg):
         if prompt_arg.endswith(".txt"):
             # if it's a txt file, treat it as a template string
-            with open(prompt_arg, "r", encoding="utf-8") as f:
+            with open(prompt_arg, encoding="utf-8") as f:
                 prompt = {"user": f.read()}
         elif prompt_arg.endswith(".json"):
             # if it's a json file, treat it as a json object
             # eg: --prompt prompt_template_sample.json
-            with open(prompt_arg, "r", encoding="utf-8") as f:
+            with open(prompt_arg, encoding="utf-8") as f:
                 prompt = json.load(f)
     else:
         raise FileNotFoundError(f"{prompt_arg} not found")
@@ -120,7 +120,7 @@ def main():
         "--language",
         type=str,
         choices=sorted(LANGUAGES.keys())
-        + sorted([k.title() for k in TO_LANGUAGE_CODE.keys()]),
+        + sorted([k.title() for k in TO_LANGUAGE_CODE]),
         default="zh-hans",
         metavar="LANGUAGE",
         help="language to translate to, available: {%(choices)s}",
@@ -199,16 +199,16 @@ So you are close to reaching the limit. You have to choose your own value, there
         if OPENAI_API_KEY := (
             options.openai_key
             or env.get(
-                "OPENAI_API_KEY"
+                "OPENAI_API_KEY",
             )  # XXX: for backward compatability, deprecate soon
             or env.get(
-                "BBM_OPENAI_API_KEY"
+                "BBM_OPENAI_API_KEY",
             )  # suggest adding `BBM_` prefix for all the bilingual_book_maker ENVs.
         ):
             API_KEY = OPENAI_API_KEY
         else:
             raise Exception(
-                "OpenAI API key not provided, please google how to obtain it"
+                "OpenAI API key not provided, please google how to obtain it",
             )
     elif options.model == "caiyun":
         API_KEY = options.caiyun_key or env.get("BBM_CAIYUN_API_KEY")
@@ -227,7 +227,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         device_path = options.device_path
         if device_path is None:
             raise Exception(
-                "Device path is not given, please specify the path by --device_path <DEVICE_PATH>"
+                "Device path is not given, please specify the path by --device_path <DEVICE_PATH>",
             )
         options.book_name = obok.cli_main(device_path)
 
@@ -235,7 +235,7 @@ So you are close to reaching the limit. You have to choose your own value, there
     support_type_list = list(BOOK_LOADER_DICT.keys())
     if book_type not in support_type_list:
         raise Exception(
-            f"now only support files of these formats: {','.join(support_type_list)}"
+            f"now only support files of these formats: {','.join(support_type_list)}",
         )
 
     book_loader = BOOK_LOADER_DICT.get(book_type)

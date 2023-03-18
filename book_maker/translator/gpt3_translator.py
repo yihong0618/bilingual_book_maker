@@ -5,7 +5,9 @@ from .base_translator import Base
 
 
 class GPT3(Base):
-    def __init__(self, key, language, api_base=None, prompt_template=None, **kwargs):
+    def __init__(
+        self, key, language, api_base=None, prompt_template=None, **kwargs
+    ) -> None:
         super().__init__(key, language)
         self.api_url = (
             f"{api_base}v1/completions"
@@ -36,7 +38,8 @@ class GPT3(Base):
         print(text)
         self.rotate_key()
         self.data["prompt"] = self.prompt_template.format(
-            text=text, language=self.language
+            text=text,
+            language=self.language,
         )
         r = self.session.post(self.api_url, headers=self.headers, json=self.data)
         if not r.ok:

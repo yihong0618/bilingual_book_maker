@@ -13,7 +13,7 @@ class DeepL(Base):
     caiyun translator
     """
 
-    def __init__(self, key, language, **kwargs):
+    def __init__(self, key, language, **kwargs) -> None:
         super().__init__(key, language)
         self.api_url = "https://deepl-translator.p.rapidapi.com/translate"
         self.headers = {
@@ -68,13 +68,19 @@ class DeepL(Base):
         payload = {"text": text, "source": "EN", "target": self.language}
         try:
             response = requests.request(
-                "POST", self.api_url, data=json.dumps(payload), headers=self.headers
+                "POST",
+                self.api_url,
+                data=json.dumps(payload),
+                headers=self.headers,
             )
         except Exception as e:
             print(e)
             time.sleep(30)
             response = requests.request(
-                "POST", self.api_url, data=json.dumps(payload), headers=self.headers
+                "POST",
+                self.api_url,
+                data=json.dumps(payload),
+                headers=self.headers,
             )
         t_text = response.json().get("text", "")
         print(t_text)

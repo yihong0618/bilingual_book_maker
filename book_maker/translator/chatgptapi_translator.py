@@ -24,7 +24,7 @@ class ChatGPTAPI(Base):
         prompt_template=None,
         prompt_sys_msg=None,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(key, language)
         self.key_len = len(key.split(","))
         if api_base:
@@ -37,7 +37,7 @@ class ChatGPTAPI(Base):
         self.prompt_sys_msg = (
             prompt_sys_msg
             or environ.get(
-                "OPENAI_API_SYS_MSG"
+                "OPENAI_API_SYS_MSG",
             )  # XXX: for backward compatability, deprecate soon
             or environ.get(PROMPT_ENV_MAP["system"])
             or ""
@@ -120,7 +120,7 @@ The total token is too long and cannot be completely translated\n
             except Exception as e:
                 # todo: better sleep time? why sleep alawys about key_len
                 # 1. openai server error or own network interruption, sleep for a fixed time
-                # 2. an apikey has no money or reach limit, don’t sleep, just replace it with another apikey
+                # 2. an apikey has no money or reach limit, don`t sleep, just replace it with another apikey
                 # 3. all apikey reach limit, then use current sleep
                 sleep_time = int(60 / self.key_len)
                 print(e, f"will sleep {sleep_time} seconds")
@@ -134,7 +134,7 @@ The total token is too long and cannot be completely translated\n
         if needprint:
             print(re.sub("\n{3,}", "\n\n", t_text))
 
-        elapsed_time = time.time() - start_time
+        time.time() - start_time
         # print(f"translation time: {elapsed_time:.1f}s")
 
         return t_text
@@ -146,7 +146,12 @@ The total token is too long and cannot be completely translated\n
         return lines
 
     def get_best_result_list(
-        self, plist_len, new_str, sleep_dur, result_list, max_retries=15
+        self,
+        plist_len,
+        new_str,
+        sleep_dur,
+        result_list,
+        max_retries=15,
     ):
         if len(result_list) == plist_len:
             return result_list, 0
@@ -156,7 +161,7 @@ The total token is too long and cannot be completely translated\n
 
         while retry_count < max_retries and len(result_list) != plist_len:
             print(
-                f"bug: {plist_len} -> {len(result_list)} : Number of paragraphs before and after translation"
+                f"bug: {plist_len} -> {len(result_list)} : Number of paragraphs before and after translation",
             )
             print(f"sleep for {sleep_dur}s and retry {retry_count+1} ...")
             time.sleep(sleep_dur)
@@ -185,7 +190,12 @@ The total token is too long and cannot be completely translated\n
             )
 
     def log_translation_mismatch(
-        self, plist_len, result_list, new_str, sep, log_path="log/buglog.txt"
+        self,
+        plist_len,
+        result_list,
+        new_str,
+        sep,
+        log_path="log/buglog.txt",
     ):
         if len(result_list) == plist_len:
             return
@@ -202,7 +212,7 @@ The total token is too long and cannot be completely translated\n
         print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
         print(
-            f"bug: {plist_len} paragraphs of text translated into {len(result_list)} paragraphs"
+            f"bug: {plist_len} paragraphs of text translated into {len(result_list)} paragraphs",
         )
         print("continue")
 
@@ -231,7 +241,10 @@ The total token is too long and cannot be completely translated\n
         start_time = time.time()
 
         result_list, retry_count = self.get_best_result_list(
-            plist_len, new_str, 6, result_list
+            plist_len,
+            new_str,
+            6,
+            result_list,
         )
 
         end_time = time.time()
@@ -243,5 +256,5 @@ The total token is too long and cannot be completely translated\n
         self.log_translation_mismatch(plist_len, result_list, new_str, sep, log_path)
 
         # del (num), num. sometime (num) will translated to num.
-        result_list = [re.sub(r"^(\(\d+\)|\d+\.|（\d+）)\s*", "", s) for s in result_list]
+        result_list = [re.sub(r"^(\(\d+\)|\d+\.|(\d+))\s*", "", s) for s in result_list]
         return result_list

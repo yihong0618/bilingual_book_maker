@@ -23,7 +23,7 @@ class TXTBookLoader(BaseBookLoader):
         accumulated_num=1,
         prompt_template=None,
         prompt_config=None,
-    ):
+    ) -> None:
         self.txt_name = txt_name
         self.translate_model = model(
             key,
@@ -39,7 +39,7 @@ class TXTBookLoader(BaseBookLoader):
         self.batch_size = batch_size
 
         try:
-            with open(f"{txt_name}", "r", encoding="utf-8") as f:
+            with open(f"{txt_name}", encoding="utf-8") as f:
                 self.origin_book = f.read().split("\n")
 
         except Exception as e:
@@ -125,7 +125,7 @@ class TXTBookLoader(BaseBookLoader):
 
     def load_state(self):
         try:
-            with open(self.bin_path, "r", encoding="utf-8") as f:
+            with open(self.bin_path, encoding="utf-8") as f:
                 self.p_to_save = f.read().split("\n")
         except Exception as e:
             raise Exception("can not load resume file") from e

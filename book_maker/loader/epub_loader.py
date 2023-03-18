@@ -18,7 +18,7 @@ from .base_loader import BaseBookLoader
 
 
 class EPUBBookLoaderHelper:
-    def __init__(self, translate_model, accumulated_num):
+    def __init__(self, translate_model, accumulated_num) -> None:
         self.translate_model = translate_model
         self.accumulated_num = accumulated_num
 
@@ -61,7 +61,7 @@ def num_tokens_from_text(text, model="gpt-3.5-turbo-0301"):
     if model != "gpt-3.5-turbo-0301":
         raise NotImplementedError(
             f"""num_tokens_from_messages() is not presently implemented for model {model}.
-  See https://github.com/openai/openai-python/blob/main/chatml.md for information on how messages are converted to tokens."""
+  See https://github.com/openai/openai-python/blob/main/chatml.md for information on how messages are converted to tokens.""",
         )
     num_tokens = 0
     for message in messages:
@@ -78,7 +78,7 @@ def num_tokens_from_text(text, model="gpt-3.5-turbo-0301"):
 
 def is_link(text):
     url_pattern = re.compile(
-        r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"
+        r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+",
     )
     return bool(url_pattern.match(text.strip()))
 
@@ -86,7 +86,7 @@ def is_link(text):
 def is_tail_Link(text, num=100):
     text = text.strip()
     url_pattern = re.compile(
-        r".*http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+$"
+        r".*http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+$",
     )
     return bool(url_pattern.match(text)) and len(text) < num
 
@@ -122,7 +122,7 @@ class EPUBBookLoader(BaseBookLoader):
         accumulated_num=1,
         prompt_template=None,
         prompt_config=None,
-    ):
+    ) -> None:
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
         self.translate_model = model(
@@ -145,7 +145,7 @@ class EPUBBookLoader(BaseBookLoader):
             # when upstream change will TODO fix this
             def _load_spine(self):
                 spine = self.container.find(
-                    "{%s}%s" % (epub.NAMESPACES["OPF"], "spine")
+                    "{{{}}}{}".format(epub.NAMESPACES["OPF"], "spine"),
                 )
 
                 self.book.spine = [
