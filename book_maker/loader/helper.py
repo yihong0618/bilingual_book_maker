@@ -8,7 +8,7 @@ class EPUBBookLoaderHelper:
         self.accumulated_num = accumulated_num
         self.translation_style = translation_style
 
-    def insert_with_style(self, p, text, translation_style=""):
+    def insert_trans(self, p, text, translation_style=""):
         if p.string is not None and p.string.strip() == text.strip():
             return
         new_p = copy(p)
@@ -19,7 +19,7 @@ class EPUBBookLoaderHelper:
 
     def deal_new(self, p, wait_p_list):
         self.deal_old(wait_p_list)
-        self.insert_with_style(
+        self.insert_trans(
             p, self.translate_model.translate(p.text), self.translation_style
         )
 
@@ -32,7 +32,7 @@ class EPUBBookLoaderHelper:
         for i in range(len(wait_p_list)):
             if i < len(result_txt_list):
                 p = wait_p_list[i]
-                self.insert_with_style(p, result_txt_list[i], self.translation_style)
+                self.insert_trans(p, result_txt_list[i], self.translation_style)
 
         wait_p_list.clear()
 

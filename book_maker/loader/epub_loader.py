@@ -123,7 +123,7 @@ class EPUBBookLoader(BaseBookLoader):
                 new_p.string = self.translate_model.translate(p.text)
                 self.p_to_save.append(new_p.text)
 
-        self.helper.insert_with_style(p, new_p.string, self.translation_style)
+        self.helper.insert_trans(p, new_p.string, self.translation_style)
         index += 1
 
         if index % 20 == 0:
@@ -275,7 +275,7 @@ class EPUBBookLoader(BaseBookLoader):
                                 new_p = self.p_to_save[index]
                             else:
                                 new_p.string = self.p_to_save[index]
-                            self.helper.insert_with_style(
+                            self.helper.insert_trans(
                                 p, new_p.string, self.translation_style
                             )
                             index += 1
