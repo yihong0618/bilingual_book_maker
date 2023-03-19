@@ -6,6 +6,7 @@ LANGUAGES = {
     "zh-hans": "simplified chinese",
     "zh": "simplified chinese",
     "zh-hant": "traditional chinese",
+    "zh-yue": "cantonese",
     "de": "german",
     "es": "spanish",
     "ru": "russian",
