@@ -47,6 +47,7 @@ class EPUBBookLoader(BaseBookLoader):
         self.helper = EPUBBookLoaderHelper(
             self.translate_model, self.accumulated_num, self.translation_style
         )
+        self.retranslate = None
 
         # monkey pathch for # 173
         def _write_items_patch(obj):
@@ -168,6 +169,173 @@ class EPUBBookLoader(BaseBookLoader):
                 wait_p_list.append(p)
                 count = length
 
+    def get_item(self, book, name):
+        for item in book.get_items():
+            if item.file_name == name:
+                return item
+
+    def find_items_containing_string(self, book, search_string):
+        matching_items = []
+
+        for item in book.get_items_of_type(ITEM_DOCUMENT):
+            content = item.get_content().decode("utf-8")
+            if search_string in content:
+                matching_items.append(item)
+
+        return matching_items
+
+    def retranslate_book(self, index, p_to_save_len, pbar, trans_taglist, retranslate):
+        complete_book_name = retranslate[0]
+        fixname = retranslate[1]
+        fixstart = retranslate[2]
+        fixend = retranslate[3]
+
+        if fixend == "":
+            fixend = fixstart
+
+        name_fix = complete_book_name
+
+        complete_book = epub.read_epub(complete_book_name)
+
+        if fixname == "":
+            fixname = self.find_items_containing_string(complete_book, fixstart)[
+                0
+            ].file_name
+            print(f"auto find fixname: {fixname}")
+
+        new_book = self._make_new_book(complete_book)
+
+        complete_item = self.get_item(complete_book, fixname)
+        if complete_item is None:
+            return
+
+        ori_item = self.get_item(self.origin_book, fixname)
+        if ori_item is None:
+            return
+
+        soup_complete = bs(complete_item.content, "html.parser")
+        soup_ori = bs(ori_item.content, "html.parser")
+
+        p_list_complete = soup_complete.findAll(trans_taglist)
+        p_list_ori = soup_ori.findAll(trans_taglist)
+
+        target = None
+        tagl = []
+
+        # extract from range
+        find_end = False
+        find_start = False
+        for tag in p_list_complete:
+            if find_end:
+                tagl.append(tag)
+                break
+
+            if fixend in tag.text:
+                find_end = True
+            if fixstart in tag.text:
+                find_start = True
+
+            if find_start:
+                if not target:
+                    target = tag.previous_sibling
+                tagl.append(tag)
+
+        for t in tagl:
+            t.extract()
+
+        flag = False
+        extract_p_list_ori = []
+        for p in p_list_ori:
+            if fixstart in p.text:
+                flag = True
+            if flag:
+                extract_p_list_ori.append(p)
+            if fixend in p.text:
+                break
+
+        for t in extract_p_list_ori:
+            target.insert_after(t)
+            target = t
+
+        for item in complete_book.get_items():
+            if item.file_name != fixname:
+                new_book.add_item(item)
+
+        complete_item.content = soup_complete.prettify().encode()
+
+        # =================================================
+        index = self.process_item(
+            complete_item,
+            index,
+            p_to_save_len,
+            pbar,
+            new_book,
+            trans_taglist,
+            fixstart,
+            fixend,
+        )
+        epub.write_epub(f"{name_fix}", new_book, {})
+
+    def process_item(
+        self,
+        item,
+        index,
+        p_to_save_len,
+        pbar,
+        new_book,
+        trans_taglist,
+        fixstart=None,
+        fixend=None,
+    ):
+        if not os.path.exists("log"):
+            os.makedirs("log")
+
+        soup = bs(item.content, "html.parser")
+        p_list = soup.findAll(trans_taglist)
+
+        if self.retranslate:
+            new_p_list = []
+
+            if fixstart is None or fixend is None:
+                return
+
+            start_append = False
+            for p in p_list:
+                text = p.get_text()
+                if fixstart in text or fixend in text or start_append:
+                    start_append = True
+                    new_p_list.append(p)
+                if fixend in text:
+                    p_list = new_p_list
+                    break
+
+        if self.allow_navigable_strings:
+            p_list.extend(soup.findAll(text=True))
+
+        send_num = self.accumulated_num
+        if send_num > 1:
+            with open("log/buglog.txt", "a") as f:
+                print(f"------------- {item.file_name} -------------", file=f)
+
+            print("------------------------------------------------------")
+            print(f"dealing {item.file_name} ...")
+            self.translate_paragraphs_acc(p_list, send_num)
+        else:
+            is_test_done = self.is_test and index > self.test_num
+            for p in p_list:
+                if is_test_done:
+                    break
+                index = self._process_paragraph(p, index, p_to_save_len)
+                # pbar.update(delta) not pbar.update(index)?
+                pbar.update(1)
+                if self.is_test and index >= self.test_num:
+                    break
+
+        item.content = soup.prettify().encode()
+        new_book.add_item(item)
+
+        return index
+
     def make_bilingual_book(self):
         self.helper = EPUBBookLoaderHelper(
             self.translate_model, self.accumulated_num, self.translation_style
@@ -191,6 +359,11 @@ class EPUBBookLoader(BaseBookLoader):
         index = 0
         p_to_save_len = len(self.p_to_save)
         try:
+            if self.retranslate:
+                self.retranslate_book(
+                    index, p_to_save_len, pbar, trans_taglist, self.retranslate
+                )
+                exit(0)
             # Add the things that don't need to be translated first, so that you can see the img after the interruption
             for item in self.origin_book.get_items():
                 if item.get_type() != ITEM_DOCUMENT:
@@ -199,35 +372,10 @@ class EPUBBookLoader(BaseBookLoader):
             for item in self.origin_book.get_items_of_type(ITEM_DOCUMENT):
                 # if item.file_name != "OEBPS/ch01.xhtml":
                 #     continue
-                if not os.path.exists("log"):
-                    os.makedirs("log")
+                index = self.process_item(
+                    item, index, p_to_save_len, pbar, new_book, trans_taglist
+                )
 
-                soup = bs(item.content, "html.parser")
-                p_list = soup.findAll(trans_taglist)
-                if self.allow_navigable_strings:
-                    p_list.extend(soup.findAll(text=True))
-
-                send_num = self.accumulated_num
-                if send_num > 1:
-                    with open("log/buglog.txt", "a") as f:
-                        print(f"------------- {item.file_name} -------------", file=f)
-
-                    print("------------------------------------------------------")
-                    print(f"dealing {item.file_name} ...")
-                    self.translate_paragraphs_acc(p_list, send_num)
-                else:
-                    is_test_done = self.is_test and index > self.test_num
-                    for p in p_list:
-                        if is_test_done:
-                            break
-                        index = self._process_paragraph(p, index, p_to_save_len)
-                        # pbar.update(delta) not pbar.update(index)?
-                        pbar.update(1)
-                        if self.is_test and index >= self.test_num:
-                            break
-
-                item.content = soup.prettify().encode()
-                new_book.add_item(item)
                 if self.accumulated_num > 1:
                     name, _ = os.path.splitext(self.epub_name)
                     epub.write_epub(f"{name}_bilingual.epub", new_book, {})
