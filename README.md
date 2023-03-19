@@ -44,6 +44,9 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 output 2200 tokens and maybe 200 tokens for other messages in the system messages user messages, 1600+2200+200=4000, So you are close to reaching the limit. You have to choose your own
 value, there is no way to know if the limit is reached before sending
 - `--translation_style` example: `--translation_style "color: #808080; font-style: italic;"`
+- `--retranslate` `--retranslate "translated book" "filename_in_epub,start(optional),end(optional)"`
+Retranslate the entire file: `--book_name "test_books/animal_farm.epub" --retranslate "test_books/animal_farm_bilingual.epub" "index_split_000.html"`
+Retranslate the matched 1-2 tags: `--book_name "test_books/animal_farm.epub" --retranslate "test_books/animal_farm_bilingual.epub" "index_split_000.html,1,2"`
 
 ### Examples
 

@@ -194,6 +194,16 @@ So you are close to reaching the limit. You have to choose your own value, there
         type=int,
         help="how many lines will be translated by aggregated translation(This options currently only applies to txt files)",
     )
+    parser.add_argument(
+        "--retranslate",
+        dest="retranslate",
+        nargs=2,
+        type=str,
+        help="""--retranslate "translated book" "filename_in_epub,start(optional),end(optional)"
+Retranslate the entire file: --book_name "test_books/animal_farm.epub" --retranslate "test_books/animal_farm_bilingual.epub" "index_split_000.html"
+Retranslate the matched 1-2 tags: --book_name "test_books/animal_farm.epub" --retranslate "test_books/animal_farm_bilingual.epub" "index_split_000.html,1,2"
+""",
+    )
 
     options = parser.parse_args()
 
@@ -283,6 +293,9 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.translation_style = options.translation_style
     if options.batch_size:
         e.batch_size = options.batch_size
+    if options.retranslate:
+        e.retranslate = options.retranslate
+
     e.make_bilingual_book()
 
 
