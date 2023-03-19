@@ -20,7 +20,9 @@ class EPUBBookLoaderHelper:
     def deal_new(self, p, wait_p_list):
         self.deal_old(wait_p_list)
         self.insert_trans(
-            p, self.translate_model.translate(p.text), self.translation_style
+            p,
+            shorter_result_link(self.translate_model.translate(p.text)),
+            self.translation_style,
         )
 
     def deal_old(self, wait_p_list):
@@ -32,24 +34,35 @@ class EPUBBookLoaderHelper:
         for i in range(len(wait_p_list)):
             if i < len(result_txt_list):
                 p = wait_p_list[i]
-                self.insert_trans(p, result_txt_list[i], self.translation_style)
+                self.insert_trans(
+                    p,
+                    shorter_result_link(result_txt_list[i]),
+                    self.translation_style,
+                )
 
         wait_p_list.clear()
 
 
+url_pattern = r"(http[s]?://|www\.)+(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"
+
+
 def is_text_link(text):
-    url_pattern = re.compile(
-        r"(http[s]?://|www\.)+(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"
-    )
-    return bool(url_pattern.match(text.strip()))
+    return bool(re.compile(url_pattern).match(text.strip()))
 
 
-def is_text_tail_link(text, num=100):
+def is_text_tail_link(text, num=80):
     text = text.strip()
-    url_pattern = re.compile(
-        r".*http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+$"
-    )
-    return bool(url_pattern.match(text)) and len(text) < num
+    pattern = r".*" + url_pattern + r"$"
+    return bool(re.compile(pattern).match(text)) and len(text) < num
+
+
+def shorter_result_link(text, num=20):
+    match = re.search(url_pattern, text)
+
+    if not match or len(match.group()) < num:
+        return text
+
+    return re.compile(url_pattern).sub("...", text)
 
 
 def is_text_source(text):
