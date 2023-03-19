@@ -190,6 +190,11 @@ So you are close to reaching the limit. You have to choose your own value, there
     )
 
     options = parser.parse_args()
+
+    if not os.path.isfile(options.book_name):
+        print(f"Error: {options.book_name} does not exist.")
+        exit(1)
+
     PROXY = options.proxy
     if PROXY != "":
         os.environ["http_proxy"] = PROXY
