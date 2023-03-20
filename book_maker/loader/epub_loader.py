@@ -186,6 +186,16 @@ class EPUBBookLoader(BaseBookLoader):
 
         return start_index, end_index
 
+    def find_items_containing_string(self, book, search_string):
+        matching_items = []
+
+        for item in book.get_items_of_type(ITEM_DOCUMENT):
+            content = item.get_content().decode("utf-8")
+            if search_string in content:
+                matching_items.append(item)
+
+        return matching_items
+
     def retranslate_book(self, index, p_to_save_len, pbar, trans_taglist, retranslate):
         complete_book_name = retranslate[0]
         fixname = retranslate[1]
@@ -196,9 +206,16 @@ class EPUBBookLoader(BaseBookLoader):
             fixend = fixstart
 
         name, _ = os.path.splitext(self.epub_name)
-        name_fix = f"{name}_fix.epub"
+        name_fix = complete_book_name
 
         complete_book = epub.read_epub(complete_book_name)
+
+        if fixname == "":
+            fixname = self.find_items_containing_string(complete_book, fixstart)[
+                0
+            ].file_name
+            print(f"auto find fixname: {fixname}")
+
         new_book = self._make_new_book(complete_book)
 
         complete_item = self.get_item(complete_book, fixname)
