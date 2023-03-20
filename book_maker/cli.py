@@ -199,9 +199,11 @@ So you are close to reaching the limit. You have to choose your own value, there
         dest="retranslate",
         nargs=4,
         type=str,
-        help="""--retranslate "translated book" "filename_in_epub,start(optional),end(optional)"
-Retranslate the entire file: --book_name "test_books/animal_farm.epub" --retranslate "test_books/animal_farm_bilingual.epub" "index_split_000.html"
-Retranslate the matched 1-2 tags: --book_name "test_books/animal_farm.epub" --retranslate "test_books/animal_farm_bilingual.epub" "index_split_000.html,1,2"
+        help="""--retranslate "$translated_filepath" "file_name_in_epub" "start_str" "end_str"(optional)
+        Retranslate from start_str to end_str's tag:
+        python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which' 'This kind of thing is not a good symptom. Obviously'
+        Retranslate start_str's tag:
+        python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which'
 """,
     )
 

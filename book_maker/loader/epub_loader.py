@@ -192,6 +192,9 @@ class EPUBBookLoader(BaseBookLoader):
         fixstart = retranslate[2]
         fixend = retranslate[3]
 
+        if fixend == "":
+            fixend = fixstart
+
         name, _ = os.path.splitext(self.epub_name)
         name_fix = f"{name}_fix.epub"
 
@@ -215,9 +218,6 @@ class EPUBBookLoader(BaseBookLoader):
         start_index, end_index = self.get_index(p_list_complete, fixstart, fixend)
         ori_start_index, ori_end_index = self.get_index(p_list_ori, fixstart, fixend)
 
-        print(f"start_index: {start_index}, end_index; {end_index}")
-        print(f"ori_start_index: {ori_start_index}, ori_end_index; {ori_end_index}")
-
         if ori_end_index == None:
             return
 
@@ -226,16 +226,14 @@ class EPUBBookLoader(BaseBookLoader):
         if start_index == None or end_index == None:
             return
 
-        print(f"p_list_complete len = {len(p_list_complete)}")
-
-        # 去掉中间的翻译
+        # remove the middle translation
         i = 0
         for tag in p_list_complete:
             if i >= start_index and i <= end_index + 1:
-                # print(f"extract time; {tag}")
                 tag.extract()
             i = i + 1
 
+        # Add the following original text
         i = 0
         for tag in p_list_complete:
             if i >= start_index - 1:
@@ -279,32 +277,24 @@ class EPUBBookLoader(BaseBookLoader):
         if not os.path.exists("log"):
             os.makedirs("log")
 
-        # print(item.content)
         soup = bs(item.content, "html.parser")
         p_list = soup.findAll(trans_taglist)
-        print(f"plist len = {len(p_list)}")
 
-        new_p_list = []
-        print(f"\nstart str: {fixstart}")
-        print(f"\nend str: {fixend}\n")
+        if self.retranslate:
+            new_p_list = []
 
-        if fixstart is None or fixend is None:
-            return
+            if fixstart is None or fixend is None:
+                return
 
-        start_append = False
-        for p in p_list:
-            text = p.get_text()
-            if fixstart in text or fixend in text or start_append:
-                start_append = True
-                new_p_list.append(p)
-            if fixend in text:
-                p_list = new_p_list
-                break
-
-        print(" ................... need trans ........................")
-        print(f"plist: {p_list}, len = {len(p_list)}")
-        # exit(0)
-        # print("exit")
+            start_append = False
+            for p in p_list:
+                text = p.get_text()
+                if fixstart in text or fixend in text or start_append:
+                    start_append = True
+                    new_p_list.append(p)
+                if fixend in text:
+                    p_list = new_p_list
+                    break
 
         if self.allow_navigable_strings:
             p_list.extend(soup.findAll(text=True))
