@@ -174,18 +174,6 @@ class EPUBBookLoader(BaseBookLoader):
             if item.file_name == name:
                 return item
 
-    def get_index(self, p_list, fixstart, fixend):
-        start_index = None
-        end_index = None
-
-        for index, p in enumerate(p_list):
-            if fixstart in p.get_text():
-                start_index = index
-            if fixend in p.get_text():
-                end_index = index
-
-        return start_index, end_index
-
     def find_items_containing_string(self, book, search_string):
         matching_items = []
 
@@ -205,7 +193,6 @@ class EPUBBookLoader(BaseBookLoader):
         if fixend == "":
             fixend = fixstart
 
-        name, _ = os.path.splitext(self.epub_name)
         name_fix = complete_book_name
 
         complete_book = epub.read_epub(complete_book_name)
@@ -229,37 +216,57 @@ class EPUBBookLoader(BaseBookLoader):
         soup_complete = bs(complete_item.content, "html.parser")
         soup_ori = bs(ori_item.content, "html.parser")
 
-        p_list_complete = soup_complete.findAll()
-        p_list_ori = soup_ori.findAll()
+        p_list_complete = soup_complete.findAll(trans_taglist)
+        p_list_ori = soup_ori.findAll(trans_taglist)
 
-        start_index, end_index = self.get_index(p_list_complete, fixstart, fixend)
-        ori_start_index, ori_end_index = self.get_index(p_list_ori, fixstart, fixend)
+        target = None
+        tagl = []
+        startTag = False
 
-        if ori_end_index == None:
-            return
+        # === extract from range, need refactor ===
 
-        p_list_complete_ori = p_list_ori[ori_start_index : ori_end_index + 1]
-
-        if start_index == None or end_index == None:
-            return
-
-        # remove the middle translation
-        i = 0
         for tag in p_list_complete:
-            if i >= start_index and i <= end_index + 1:
-                tag.extract()
-            i = i + 1
-
-        # Add the following original text
-        i = 0
-        for tag in p_list_complete:
-            if i >= start_index - 1:
-                target_tag = tag
-                for t in p_list_complete_ori:
-                    target_tag.insert_after(t)
-                    target_tag = t
+            if fixend in tag.text:
+                if startTag == False:
+                    target = tag.previous_sibling
                 break
-            i = i + 1
+
+            if fixstart in tag.text:
+                if target == None:
+                    target = tag.previous_sibling
+                startTag = True
+
+            if startTag:
+                tagl.append(tag)
+
+        isfind = False
+        for tag in p_list_complete:
+            if isfind == True:
+                tagl.append(tag)
+                break
+            if fixend not in tag.text:
+                continue
+            tagl.append(tag)
+            isfind = True
+
+        for t in tagl:
+            t.extract()
+
+        # ===========================================
+
+        flag = False
+        extract_p_list_ori = []
+        for p in p_list_ori:
+            if fixstart in p.text:
+                flag = True
+            if flag:
+                extract_p_list_ori.append(p)
+            if fixend in p.text:
+                break
+
+        for t in extract_p_list_ori:
+            target.insert_after(t)
+            target = t
 
         for item in complete_book.get_items():
             if item.file_name != fixname:
