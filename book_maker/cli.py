@@ -197,7 +197,7 @@ So you are close to reaching the limit. You have to choose your own value, there
     parser.add_argument(
         "--retranslate",
         dest="retranslate",
-        nargs=2,
+        nargs=4,
         type=str,
         help="""--retranslate "translated book" "filename_in_epub,start(optional),end(optional)"
 Retranslate the entire file: --book_name "test_books/animal_farm.epub" --retranslate "test_books/animal_farm_bilingual.epub" "index_split_000.html"

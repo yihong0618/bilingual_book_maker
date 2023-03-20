@@ -169,53 +169,92 @@ class EPUBBookLoader(BaseBookLoader):
                 wait_p_list.append(p)
                 count = length
 
-    def retranslate_book(self, index, p_to_save_len, pbar, trans_taglist, retranslate):
-        fixname = None
-        fixstart = None
-        fixend = None
-        if len(retranslate[1].split(",")) == 3:
-            fixname, fixstart, fixend = retranslate[1].split(",")
-        if len(retranslate[1].split(",")) == 1:
-            fixname = retranslate[1]
+    def get_item(self, book, name):
+        for item in book.get_items():
+            if item.file_name == name:
+                return item
 
-        fixstart = int(fixstart) if fixstart else None
-        fixend = int(fixend) if fixend else None
+    def get_index(self, p_list, fixstart, fixend):
+        start_index = None
+        end_index = None
+
+        for index, p in enumerate(p_list):
+            if fixstart in p.get_text():
+                start_index = index
+            if fixend in p.get_text():
+                end_index = index
+
+        return start_index, end_index
+
+    def retranslate_book(self, index, p_to_save_len, pbar, trans_taglist, retranslate):
         complete_book_name = retranslate[0]
+        fixname = retranslate[1]
+        fixstart = retranslate[2]
+        fixend = retranslate[3]
+
         name, _ = os.path.splitext(self.epub_name)
         name_fix = f"{name}_fix.epub"
-        print(fixname, fixstart, fixend, complete_book_name)
 
         complete_book = epub.read_epub(complete_book_name)
         new_book = self._make_new_book(complete_book)
 
-        waititem = None
-        for item in complete_book.get_items():
-            if item.file_name == fixname:
-                waititem = item
-                break
-
-        if waititem is None:
+        complete_item = self.get_item(complete_book, fixname)
+        if complete_item is None:
             return
 
-        soup = bs(waititem.content, "html.parser")
-        p_list = soup.findAll(trans_taglist)
-        if fixstart is not None and fixend is not None:
-            p_list = soup.findAll(trans_taglist)[2 * fixstart - 2 : 2 * fixend]
+        ori_item = self.get_item(self.origin_book, fixname)
+        if ori_item is None:
+            return
 
+        soup_complete = bs(complete_item.content, "html.parser")
+        soup_ori = bs(ori_item.content, "html.parser")
+
+        p_list_complete = soup_complete.findAll()
+        p_list_ori = soup_ori.findAll()
+
+        start_index, end_index = self.get_index(p_list_complete, fixstart, fixend)
+        ori_start_index, ori_end_index = self.get_index(p_list_ori, fixstart, fixend)
+
+        print(f"start_index: {start_index}, end_index; {end_index}")
+        print(f"ori_start_index: {ori_start_index}, ori_end_index; {ori_end_index}")
+
+        if ori_end_index == None:
+            return
+
+        p_list_complete_ori = p_list_ori[ori_start_index : ori_end_index + 1]
+
+        if start_index == None or end_index == None:
+            return
+
+        print(f"p_list_complete len = {len(p_list_complete)}")
+
+        # 去掉中间的翻译
         i = 0
-        for p in p_list:
-            if i % 2 != 0:
-                p.extract()
+        for tag in p_list_complete:
+            if i >= start_index and i <= end_index + 1:
+                # print(f"extract time; {tag}")
+                tag.extract()
             i = i + 1
 
-        waititem.content = soup.prettify().encode()
+        i = 0
+        for tag in p_list_complete:
+            if i >= start_index - 1:
+                target_tag = tag
+                for t in p_list_complete_ori:
+                    target_tag.insert_after(t)
+                    target_tag = t
+                break
+            i = i + 1
 
         for item in complete_book.get_items():
             if item.file_name != fixname:
                 new_book.add_item(item)
+
+        complete_item.content = soup_complete.prettify().encode()
+
         # =================================================
         index = self.process_item(
-            waititem,
+            complete_item,
             index,
             p_to_save_len,
             pbar,
@@ -240,12 +279,32 @@ class EPUBBookLoader(BaseBookLoader):
         if not os.path.exists("log"):
             os.makedirs("log")
 
+        # print(item.content)
         soup = bs(item.content, "html.parser")
         p_list = soup.findAll(trans_taglist)
-        if fixstart is not None and fixend is not None:
-            p_list = soup.findAll(trans_taglist)[
-                2 * fixstart - 2 : fixstart + fixend - 1
-            ]
+        print(f"plist len = {len(p_list)}")
+
+        new_p_list = []
+        print(f"\nstart str: {fixstart}")
+        print(f"\nend str: {fixend}\n")
+
+        if fixstart is None or fixend is None:
+            return
+
+        start_append = False
+        for p in p_list:
+            text = p.get_text()
+            if fixstart in text or fixend in text or start_append:
+                start_append = True
+                new_p_list.append(p)
+            if fixend in text:
+                p_list = new_p_list
+                break
+
+        print(" ................... need trans ........................")
+        print(f"plist: {p_list}, len = {len(p_list)}")
+        # exit(0)
+        # print("exit")
 
         if self.allow_navigable_strings:
             p_list.extend(soup.findAll(text=True))
