@@ -221,38 +221,27 @@ class EPUBBookLoader(BaseBookLoader):
 
         target = None
         tagl = []
-        startTag = False
 
-        # === extract from range, need refactor ===
-
+        # extract from range
+        find_end = False
+        find_start = False
         for tag in p_list_complete:
+            if find_end:
+                tagl.append(tag)
+                break
+
             if fixend in tag.text:
-                if startTag == False:
-                    target = tag.previous_sibling
-                break
-
+                find_end = True
             if fixstart in tag.text:
-                if target == None:
+                find_start = True
+
+            if find_start:
+                if not target:
                     target = tag.previous_sibling
-                startTag = True
-
-            if startTag:
                 tagl.append(tag)
-
-        isfind = False
-        for tag in p_list_complete:
-            if isfind == True:
-                tagl.append(tag)
-                break
-            if fixend not in tag.text:
-                continue
-            tagl.append(tag)
-            isfind = True
 
         for t in tagl:
             t.extract()
-
-        # ===========================================
 
         flag = False
         extract_p_list_ori = []
