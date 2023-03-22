@@ -23,9 +23,9 @@ class ChatGPTAPI(Base):
         # Professional_field="medical"
         Professional_prompt=""
         if self.Professional_field !="":
-            Professional_prompt= f"It is {self.Professional_field} contents, and when translating, attention should be paid to using commonly used {self.Professional_field} professional terms expressions. "
-        nagative_prompt="Please do not translate numbers and abbreviations, such as '123' '4.00' 'ACD' or 'IOL'."
+            Professional_prompt= f"It is {self.Professional_field} contents, and when translating, attention should be paid to using {self.Professional_field} professional terms and expressions. "
         positive_prompt="Keep the meaning same, but make them more literary and easier to understand. "
+        nagative_prompt="Please do not translate numbers and abbreviations, such as '123' '4.00' 'ACD' or 'IOL', If the text is too short, or consists only of numbers or abbreviations that are difficult to translate, then returning the original text is sufficient and there is no need to translate it."
        
         try:
             term_prompt=terminology_prompt(text, self.terminology)
