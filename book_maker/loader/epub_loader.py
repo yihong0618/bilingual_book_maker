@@ -5,7 +5,7 @@ import sys
 from copy import copy
 from pathlib import Path
 
-from bs4 import BeautifulSoup as bs
+from bs4 import BeautifulSoup as bs, Tag
 from bs4.element import NavigableString
 from ebooklib import ITEM_DOCUMENT, epub
 from rich import print
@@ -261,7 +261,7 @@ class EPUBBookLoader(BaseBookLoader):
             if item.file_name != fixname:
                 new_book.add_item(item)
 
-        complete_item.content = soup_complete.prettify().encode()
+        complete_item.content = soup_complete.encode()
 
         # =================================================
         index = self.process_item(
@@ -275,6 +275,19 @@ class EPUBBookLoader(BaseBookLoader):
             fixend,
         )
         epub.write_epub(f"{name_fix}", new_book, {})
+
+    def has_nest_child(self, element, trans_taglist):
+        if isinstance(element, Tag):
+            for child in element.children:
+                if child.name in trans_taglist:
+                    return True
+                if self.has_nest_child(child, trans_taglist):
+                    return True
+        return False
+
+    def filter_nest_list(self, p_list, trans_taglist):
+        filtered_list = [p for p in p_list if not self.has_nest_child(p, trans_taglist)]
+        return filtered_list
 
     def process_item(
         self,
@@ -292,6 +305,8 @@ class EPUBBookLoader(BaseBookLoader):
 
         soup = bs(item.content, "html.parser")
         p_list = soup.findAll(trans_taglist)
+
+        p_list = self.filter_nest_list(p_list, trans_taglist)
 
         if self.retranslate:
             new_p_list = []
@@ -331,7 +346,7 @@ class EPUBBookLoader(BaseBookLoader):
                 if self.is_test and index >= self.test_num:
                     break
 
-        item.content = soup.prettify().encode()
+        item.content = soup.encode()
         new_book.add_item(item)
 
         return index
@@ -430,7 +445,7 @@ class EPUBBookLoader(BaseBookLoader):
                         else:
                             break
                     # for save temp book
-                    item.content = soup.prettify().encode()
+                    item.content = soup.encode()
                 new_temp_book.add_item(item)
             name, _ = os.path.splitext(self.epub_name)
             epub.write_epub(f"{name}_bilingual_temp.epub", new_temp_book, {})

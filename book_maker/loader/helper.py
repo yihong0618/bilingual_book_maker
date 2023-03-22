@@ -9,7 +9,10 @@ class EPUBBookLoaderHelper:
         self.translation_style = translation_style
 
     def insert_trans(self, p, text, translation_style=""):
-        if p.string is not None and p.string.strip() == text.strip():
+        if (
+            p.string is not None
+            and p.string.replace(" ", "").strip() == text.replace(" ", "").strip()
+        ):
             return
         new_p = copy(p)
         new_p.string = text
