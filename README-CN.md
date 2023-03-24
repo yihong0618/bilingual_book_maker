@@ -98,6 +98,9 @@ python3 make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_
 python make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_base 'https://xxxxx/v1'
 ```
 
+[演示见视频第三部分](https://www.bilibili.com/video/BV1xg4y1s7Rk)
+
+
 ## 注意
 
 1. Free trail 的 API token 有所限制，如果想要更快的速度，可以考虑付费方案
