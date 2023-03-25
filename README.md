@@ -49,7 +49,7 @@ Retranslate from start_str to end_str's tag:
 `python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which' 'This kind of thing is not a good symptom. Obviously'`<br>
 Retranslate start_str's tag:
 `python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which'`
-
+- - Add model chatgptaccount, use `--chatgptaccount`, `--chatgptpassword` to pass in ChatGPT account password for translation, no need to pass key.
 ### Examples
 
 **Note if use `pip install bbook_maker` all commands can change to `bbook args`**

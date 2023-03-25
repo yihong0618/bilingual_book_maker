@@ -43,7 +43,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
    你也可以用环境以下环境变量来配置 `system` 和 `user` 角色 prompt：`BBM_CHATGPTAPI_USER_MSG_TEMPLATE` 和 `BBM_CHATGPTAPI_SYS_MSG`。
 该参数可以是提示模板字符串，也可以是模板 `.txt` 文件的路径。
 - 使用`--batch_size` 参数，指定批量翻译的行数(默认行数为10，目前只对txt生效)
-
+- 新增 model chatgptaccount，使用`--chatgptaccount`、`--chatgptpassword`传入 ChatGPT 账号密码进行翻译，不需要传key。
 
 ### 示范用例
 
