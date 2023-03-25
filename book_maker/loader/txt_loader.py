@@ -19,7 +19,7 @@ class TXTBookLoader(BaseBookLoader):
         test_num=5,
         prompt_config=None,
         chatgptaccount=None,
-        chatgptpassword=None
+        chatgptpassword=None,
     ):
         self.txt_name = txt_name
         self.translate_model = model(
