@@ -98,7 +98,7 @@ python3 make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_
 python make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_base 'https://xxxxx/v1'
 ```
 
-[演示见视频第三部分](https://www.bilibili.com/video/BV1xg4y1s7Rk)
+[点此查看演示视频](https://www.bilibili.com/video/BV1XX4y1d75D/?t=0h07m08s)
 
 
 ## 注意
