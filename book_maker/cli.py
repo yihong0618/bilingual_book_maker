@@ -220,8 +220,8 @@ So you are close to reaching the limit. You have to choose your own value, there
         type=str,
         help="your chatgpt password",
     )
-    chatgptaccount = ""
-    chatgptpassword = ""
+    chatgpt_account = ""
+    chatgpt_password = ""
     options = parser.parse_args()
 
     if not os.path.isfile(options.book_name):
@@ -260,10 +260,9 @@ So you are close to reaching the limit. You have to choose your own value, there
         if not API_KEY:
             raise Exception("Please provid deepl key")
     elif options.model == "chatgptaccount":
-        print(options)
-        chatgptaccount = options.chatgptaccount
-        chatgptpassword = options.chatgptpassword
-        if chatgptaccount is None or chatgptpassword is None:
+        chatgpt_account = options.chatgptaccount
+        chatgpt_password = options.chatgptpassword
+        if chatgpt_account is None or chatgpt_password is None:
             raise Exception("Please provid chatgptaccount and chatgptpassword")
     else:
         API_KEY = ""

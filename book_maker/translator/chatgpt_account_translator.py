@@ -8,10 +8,9 @@ from .base_translator import Base
 class ChatGPTAccount(Base):
     def __init__(self, key, language, **kwargs):
         super().__init__(key, language)
-        self.session = requests.session()
         self.language = language
-        self.chatgptaccount = kwargs.get("chatgptaccount")
-        self.chatgptpassword = kwargs.get("chatgptpassword")
+        self.chatgpt_account = kwargs.get("chatgptaccount")
+        self.chatgpt_password = kwargs.get("chatgptpassword")
 
     def rotate_key(self):
         pass
@@ -20,8 +19,8 @@ class ChatGPTAccount(Base):
         print(text)
         chatbot = Chatbot(
             config={
-                "email": self.chatgptaccount,
-                "password": self.chatgptpassword,
+                "email": self.chatgpt_account,
+                "password": self.chatgpt_password,
             }
         )
         prompt = f"Please help me to translate,`{text}` to {self.language}"
