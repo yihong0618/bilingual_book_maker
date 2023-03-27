@@ -180,14 +180,36 @@ So you are close to reaching the limit. You have to choose your own value, there
 """,
     )
     parser.add_argument(
+        "--translation_style",
+        dest="translation_style",
+        type=str,
+        help="""ex: --translation_style "color: #808080; font-style: italic;" """,
+    )
+    parser.add_argument(
         "--batch_size",
         dest="batch_size",
         type=int,
-        default=10,
         help="how many lines will be translated by aggregated translation(This options currently only applies to txt files)",
+    )
+    parser.add_argument(
+        "--retranslate",
+        dest="retranslate",
+        nargs=4,
+        type=str,
+        help="""--retranslate "$translated_filepath" "file_name_in_epub" "start_str" "end_str"(optional)
+        Retranslate from start_str to end_str's tag:
+        python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which' 'This kind of thing is not a good symptom. Obviously'
+        Retranslate start_str's tag:
+        python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which'
+""",
     )
 
     options = parser.parse_args()
+
+    if not os.path.isfile(options.book_name):
+        print(f"Error: {options.book_name} does not exist.")
+        exit(1)
+
     PROXY = options.proxy
     if PROXY != "":
         os.environ["http_proxy"] = PROXY
@@ -257,12 +279,22 @@ So you are close to reaching the limit. You have to choose your own value, there
         model_api_base=model_api_base,
         is_test=options.test,
         test_num=options.test_num,
-        translate_tags=options.translate_tags,
-        allow_navigable_strings=options.allow_navigable_strings,
-        accumulated_num=options.accumulated_num,
         prompt_config=parse_prompt_arg(options.prompt_arg),
-        batch_size=options.batch_size,
     )
+    # other options
+    if options.allow_navigable_strings:
+        e.allow_navigable_strings = True
+    if options.translate_tags:
+        e.translate_tags = options.translate_tags
+    if options.accumulated_num > 1:
+        e.accumulated_num = options.accumulated_num
+    if options.translation_style:
+        e.translation_style = options.translation_style
+    if options.batch_size:
+        e.batch_size = options.batch_size
+    if options.retranslate:
+        e.retranslate = options.retranslate
+
     e.make_bilingual_book()
 
 

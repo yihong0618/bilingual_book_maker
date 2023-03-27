@@ -14,14 +14,9 @@ class TXTBookLoader(BaseBookLoader):
         key,
         resume,
         language,
-        batch_size,
-        translate_tags,
-        allow_navigable_strings,
         model_api_base=None,
         is_test=False,
         test_num=5,
-        accumulated_num=1,
-        prompt_template=None,
         prompt_config=None,
     ) -> None:
         self.txt_name = txt_name
@@ -36,7 +31,7 @@ class TXTBookLoader(BaseBookLoader):
         self.bilingual_result = []
         self.bilingual_temp_result = []
         self.test_num = test_num
-        self.batch_size = batch_size
+        self.batch_size = 10
 
         try:
             with open(f"{txt_name}", encoding="utf-8") as f:
