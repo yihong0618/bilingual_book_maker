@@ -304,8 +304,8 @@ So you are close to reaching the limit. You have to choose your own value, there
         is_test=options.test,
         test_num=options.test_num,
         prompt_config=parse_prompt_arg(options.prompt_arg),
-        chatgptaccount=chatgptaccount,
-        chatgptpassword=chatgptpassword,
+        chatgptaccount=chatgpt_account,
+        chatgptpassword=chatgpt_password,
     )
     # other options
     if options.allow_navigable_strings:
