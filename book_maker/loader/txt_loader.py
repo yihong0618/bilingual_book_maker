@@ -15,6 +15,7 @@ class TXTBookLoader(BaseBookLoader):
         resume,
         language,
         model_api_base=None,
+        deployment_id=None,
         is_test=False,
         test_num=5,
         prompt_config=None,
@@ -24,6 +25,7 @@ class TXTBookLoader(BaseBookLoader):
             key,
             language,
             api_base=model_api_base,
+            deployment_id=deployment_id,
             **prompt_config_to_kwargs(prompt_config),
         )
         self.is_test = is_test

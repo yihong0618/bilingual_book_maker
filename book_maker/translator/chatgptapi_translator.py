@@ -21,12 +21,16 @@ class ChatGPTAPI(Base):
         key,
         language,
         api_base=None,
+        deployment_id=None,
         prompt_template=None,
         prompt_sys_msg=None,
         **kwargs,
     ):
         super().__init__(key, language)
         self.key_len = len(key.split(","))
+        if deployment_id:
+            self.set_deployment_id(deployment_id)
+
         if api_base:
             openai.api_base = api_base
         self.prompt_template = (
@@ -59,10 +63,16 @@ class ChatGPTAPI(Base):
             {"role": "user", "content": content},
         ]
 
-        return openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=messages,
-        )
+        if self.deployment_id:
+            return openai.ChatCompletion.create(
+                engine=self.deployment_id,
+                messages=messages,
+            )
+        else:
+            return openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=messages,
+            )
 
     def get_translation(self, text):
         self.rotate_key()
@@ -278,3 +288,8 @@ The total token is too long and cannot be completely translated\n
         # del (num), num. sometime (num) will translated to num.
         result_list = [re.sub(r"^(\(\d+\)|\d+\.|（\d+）)\s*", "", s) for s in result_list]
         return result_list
+
+    def set_deployment_id(self, deployment_id):
+        openai.api_type = "azure"
+        openai.api_version = "2023-03-15-preview"
+        self.deployment_id = deployment_id

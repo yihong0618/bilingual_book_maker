@@ -25,6 +25,7 @@ class EPUBBookLoader(BaseBookLoader):
         key,
         resume,
         language,
+        deployment_id=None,
         model_api_base=None,
         is_test=False,
         test_num=5,
@@ -36,6 +37,7 @@ class EPUBBookLoader(BaseBookLoader):
             key,
             language,
             api_base=model_api_base,
+            deployment_id=deployment_id,
             **prompt_config_to_kwargs(prompt_config),
         )
         self.is_test = is_test

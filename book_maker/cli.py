@@ -142,6 +142,12 @@ def main():
         default="",
         help="use proxy like http://127.0.0.1:7890",
     )
+    parser.add_argument(
+        "--deployment_id",
+        dest="deployment_id",
+        type=str,
+        help="the deployment name you chose when you deployed the model",
+    )
     # args to change api_base
     parser.add_argument(
         "--api_base",
@@ -280,6 +286,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         options.resume,
         language=language,
         model_api_base=model_api_base,
+        deployment_id=options.deployment_id,
         is_test=options.test,
         test_num=options.test_num,
         prompt_config=parse_prompt_arg(options.prompt_arg),
