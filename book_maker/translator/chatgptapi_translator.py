@@ -24,9 +24,10 @@ class ChatGPTAPI(Base):
         prompt_template=None,
         prompt_sys_msg=None,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(key, language)
         self.key_len = len(key.split(","))
+
         if api_base:
             openai.api_base = api_base
         self.prompt_template = (
@@ -37,27 +38,30 @@ class ChatGPTAPI(Base):
         self.prompt_sys_msg = (
             prompt_sys_msg
             or environ.get(
-                "OPENAI_API_SYS_MSG"
+                "OPENAI_API_SYS_MSG",
             )  # XXX: for backward compatability, deprecate soon
             or environ.get(PROMPT_ENV_MAP["system"])
             or ""
         )
         self.system_content = environ.get("OPENAI_API_SYS_MSG") or ""
-
-    max_num_token = -1
+        self.deployment_id = None
 
     def rotate_key(self):
         openai.api_key = next(self.keys)
 
     def create_chat_completion(self, text):
         content = self.prompt_template.format(text=text, language=self.language)
-        sys_content = self.prompt_sys_msg
-        if self.system_content:
-            sys_content = self.system_content
+        sys_content = self.system_content or self.prompt_sys_msg
         messages = [
             {"role": "system", "content": sys_content},
             {"role": "user", "content": content},
         ]
+
+        if self.deployment_id:
+            return openai.ChatCompletion.create(
+                engine=self.deployment_id,
+                messages=messages,
+            )
 
         return openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
@@ -72,7 +76,7 @@ class ChatGPTAPI(Base):
             completion = self.create_chat_completion(text)
         except Exception:
             if (
-                not "choices" in completion
+                "choices" not in completion
                 or not isinstance(completion["choices"], list)
                 or len(completion["choices"]) == 0
             ):
@@ -95,13 +99,6 @@ The total token is too long and cannot be completely translated\n
                     file=f,
                 )
 
-        # usage = completion["usage"]
-        # print(f"total_token: {usage['total_tokens']}")
-        # if int(usage["total_tokens"]) > self.max_num_token:
-        #     self.max_num_token = int(usage["total_tokens"])
-        #     print(
-        #         f"{usage['total_tokens']} {usage['prompt_tokens']} {usage['completion_tokens']} {self.max_num_token} (total_token, prompt_token, completion_tokens, max_history_total_token)"
-        #     )
         return t_text
 
     def translate(self, text, needprint=True):
@@ -122,7 +119,7 @@ The total token is too long and cannot be completely translated\n
             except Exception as e:
                 # todo: better sleep time? why sleep alawys about key_len
                 # 1. openai server error or own network interruption, sleep for a fixed time
-                # 2. an apikey has no money or reach limit, don’t sleep, just replace it with another apikey
+                # 2. an apikey has no money or reach limit, don`t sleep, just replace it with another apikey
                 # 3. all apikey reach limit, then use current sleep
                 sleep_time = int(60 / self.key_len)
                 print(e, f"will sleep {sleep_time} seconds")
@@ -136,7 +133,7 @@ The total token is too long and cannot be completely translated\n
         if needprint:
             print(re.sub("\n{3,}", "\n\n", t_text))
 
-        elapsed_time = time.time() - start_time
+        time.time() - start_time
         # print(f"translation time: {elapsed_time:.1f}s")
 
         return t_text
@@ -148,7 +145,12 @@ The total token is too long and cannot be completely translated\n
         return lines
 
     def get_best_result_list(
-        self, plist_len, new_str, sleep_dur, result_list, max_retries=15
+        self,
+        plist_len,
+        new_str,
+        sleep_dur,
+        result_list,
+        max_retries=15,
     ):
         if len(result_list) == plist_len:
             return result_list, 0
@@ -158,7 +160,7 @@ The total token is too long and cannot be completely translated\n
 
         while retry_count < max_retries and len(result_list) != plist_len:
             print(
-                f"bug: {plist_len} -> {len(result_list)} : Number of paragraphs before and after translation"
+                f"bug: {plist_len} -> {len(result_list)} : Number of paragraphs before and after translation",
             )
             print(f"sleep for {sleep_dur}s and retry {retry_count+1} ...")
             time.sleep(sleep_dur)
@@ -180,19 +182,24 @@ The total token is too long and cannot be completely translated\n
         if retry_count == 0:
             return
         print(f"retry {state}")
-        with open(log_path, "a") as f:
+        with open(log_path, "a", encoding="utf-8") as f:
             print(
                 f"retry {state}, count = {retry_count}, time = {elapsed_time:.1f}s",
                 file=f,
             )
 
     def log_translation_mismatch(
-        self, plist_len, result_list, new_str, sep, log_path="log/buglog.txt"
+        self,
+        plist_len,
+        result_list,
+        new_str,
+        sep,
+        log_path="log/buglog.txt",
     ):
         if len(result_list) == plist_len:
             return
         newlist = new_str.split(sep)
-        with open(log_path, "a") as f:
+        with open(log_path, "a", encoding="utf-8") as f:
             print(f"problem size: {plist_len - len(result_list)}", file=f)
             for i in range(len(newlist)):
                 print(newlist[i], file=f)
@@ -205,7 +212,7 @@ The total token is too long and cannot be completely translated\n
         print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
         print(
-            f"bug: {plist_len} paragraphs of text translated into {len(result_list)} paragraphs"
+            f"bug: {plist_len} paragraphs of text translated into {len(result_list)} paragraphs",
         )
         print("continue")
 
@@ -247,7 +254,7 @@ The total token is too long and cannot be completely translated\n
             temp_p = copy(p)
             for sup in temp_p.find_all("sup"):
                 sup.extract()
-            new_str += f"({i}) " + temp_p.get_text().strip() + sep
+            new_str += f"({i}) {temp_p.get_text().strip()}{sep}"
             i = i + 1
 
         if new_str.endswith(sep):
@@ -264,7 +271,10 @@ The total token is too long and cannot be completely translated\n
         start_time = time.time()
 
         result_list, retry_count = self.get_best_result_list(
-            plist_len, new_str, 6, result_list
+            plist_len,
+            new_str,
+            6,
+            result_list,
         )
 
         end_time = time.time()
@@ -276,5 +286,10 @@ The total token is too long and cannot be completely translated\n
         self.log_translation_mismatch(plist_len, result_list, new_str, sep, log_path)
 
         # del (num), num. sometime (num) will translated to num.
-        result_list = [re.sub(r"^(\(\d+\)|\d+\.|（\d+）)\s*", "", s) for s in result_list]
+        result_list = [re.sub(r"^(\(\d+\)|\d+\.|(\d+))\s*", "", s) for s in result_list]
         return result_list
+
+    def set_deployment_id(self, deployment_id):
+        openai.api_type = "azure"
+        openai.api_version = "2023-03-15-preview"
+        self.deployment_id = deployment_id

@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 
 
 class Base(ABC):
-    def __init__(self, key, language):
+    def __init__(self, key, language) -> None:
         self.keys = itertools.cycle(key.split(","))
         self.language = language
 
@@ -13,4 +13,7 @@ class Base(ABC):
 
     @abstractmethod
     def translate(self, text):
+        pass
+
+    def set_deployment_id(self, deployment_id):
         pass

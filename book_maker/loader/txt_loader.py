@@ -20,7 +20,7 @@ class TXTBookLoader(BaseBookLoader):
         prompt_config=None,
         chatgptaccount=None,
         chatgptpassword=None,
-    ):
+    ) -> None:
         self.txt_name = txt_name
         self.translate_model = model(
             key,
@@ -38,11 +38,11 @@ class TXTBookLoader(BaseBookLoader):
         self.batch_size = 10
 
         try:
-            with open(f"{txt_name}", "r", encoding="utf-8") as f:
+            with open(f"{txt_name}", encoding="utf-8") as f:
                 self.origin_book = f.read().split("\n")
 
-        except Exception:
-            raise Exception("can not load file")
+        except Exception as e:
+            raise Exception("can not load file") from e
 
         self.resume = resume
         self.bin_path = f"{Path(txt_name).parent}/.{Path(txt_name).stem}.temp.bin"
@@ -69,14 +69,12 @@ class TXTBookLoader(BaseBookLoader):
                 batch_text = "".join(i)
                 if self._is_special_text(batch_text):
                     continue
-                if self.resume and index < p_to_save_len:
-                    pass
-                else:
+                if not self.resume or index >= p_to_save_len:
                     try:
                         temp = self.translate_model.translate(batch_text)
                     except Exception as e:
-                        print(str(e))
-                        raise Exception("Something is wrong when translate")
+                        print(e)
+                        raise Exception("Something is wrong when translate") from e
                     self.p_to_save.append(temp)
                     self.bilingual_result.append(batch_text)
                     self.bilingual_result.append(temp)
@@ -126,10 +124,10 @@ class TXTBookLoader(BaseBookLoader):
 
     def load_state(self):
         try:
-            with open(self.bin_path, "r", encoding="utf-8") as f:
+            with open(self.bin_path, encoding="utf-8") as f:
                 self.p_to_save = f.read().split("\n")
-        except Exception:
-            raise Exception("can not load resume file")
+        except Exception as e:
+            raise Exception("can not load resume file") from e
 
     def save_file(self, book_path, content):
         try:
