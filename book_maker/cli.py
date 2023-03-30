@@ -309,6 +309,8 @@ So you are close to reaching the limit. You have to choose your own value, there
         assert (
             options.model == "chatgptapi"
         ), "only support chatgptapi for deployment_id"
+        if not options.api_base:
+            raise ValueError("`api_base` must be provided when using `deployment_id`")
         e.translate_model.set_deployment_id(options.deployment_id)
 
     e.make_bilingual_book()
