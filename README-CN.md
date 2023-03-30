@@ -98,6 +98,10 @@ python3 make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_
 python make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_base 'https://xxxxx/v1'
 ```
 
+
+[点此查看演示视频](https://www.bilibili.com/video/BV1XX4y1d75D/?t=0h07m08s)
+
+
 使用 Azure OpenAI service
 ```shell
 python3 make_book.py --book_name 'animal_farm.epub' --openai_key XXXXX --api_base 'https://example-endpoint.openai.azure.com' --deployment_id 'deployment-name'
@@ -105,6 +109,7 @@ python3 make_book.py --book_name 'animal_farm.epub' --openai_key XXXXX --api_bas
 # Or python3 is not in your PATH
 python make_book.py --book_name 'animal_farm.epub' --openai_key XXXXX --api_base 'https://example-endpoint.openai.azure.com' --deployment_id 'deployment-name'
 ```
+
 
 
 ## 注意
