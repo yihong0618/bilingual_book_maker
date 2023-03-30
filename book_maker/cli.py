@@ -286,7 +286,6 @@ So you are close to reaching the limit. You have to choose your own value, there
         options.resume,
         language=language,
         model_api_base=model_api_base,
-        deployment_id=options.deployment_id,
         is_test=options.test,
         test_num=options.test_num,
         prompt_config=parse_prompt_arg(options.prompt_arg),
@@ -304,6 +303,13 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.batch_size = options.batch_size
     if options.retranslate:
         e.retranslate = options.retranslate
+    if options.deployment_id:
+        # only work for ChatGPT api for now
+        # later maybe support others
+        assert (
+            options.model == "chatgptapi"
+        ), "only support chatgptapi for deployment_id"
+        e.translate_model.set_deployment_id(options.deployment_id)
 
     e.make_bilingual_book()
 

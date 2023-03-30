@@ -21,15 +21,12 @@ class ChatGPTAPI(Base):
         key,
         language,
         api_base=None,
-        deployment_id=None,
         prompt_template=None,
         prompt_sys_msg=None,
         **kwargs,
     ):
         super().__init__(key, language)
         self.key_len = len(key.split(","))
-        if deployment_id:
-            self.set_deployment_id(deployment_id)
 
         if api_base:
             openai.api_base = api_base
@@ -47,8 +44,7 @@ class ChatGPTAPI(Base):
             or ""
         )
         self.system_content = environ.get("OPENAI_API_SYS_MSG") or ""
-
-    max_num_token = -1
+        self.deployment_id = None
 
     def rotate_key(self):
         openai.api_key = next(self.keys)
@@ -68,11 +64,11 @@ class ChatGPTAPI(Base):
                 engine=self.deployment_id,
                 messages=messages,
             )
-        else:
-            return openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=messages,
-            )
+
+        return openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+        )
 
     def get_translation(self, text):
         self.rotate_key()
@@ -105,13 +101,6 @@ The total token is too long and cannot be completely translated\n
                     file=f,
                 )
 
-        # usage = completion["usage"]
-        # print(f"total_token: {usage['total_tokens']}")
-        # if int(usage["total_tokens"]) > self.max_num_token:
-        #     self.max_num_token = int(usage["total_tokens"])
-        #     print(
-        #         f"{usage['total_tokens']} {usage['prompt_tokens']} {usage['completion_tokens']} {self.max_num_token} (total_token, prompt_token, completion_tokens, max_history_total_token)"
-        #     )
         return t_text
 
     def translate(self, text, needprint=True):
