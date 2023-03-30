@@ -102,7 +102,8 @@ python make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_b
 ```
 
 
-[点此查看演示视频](https://www.bilibili.com/video/BV1XX4y1d75D/?t=0h07m08s)
+[演示视频](https://www.bilibili.com/video/BV1XX4y1d75D/?t=0h07m08s)
+[演示视频2](https://www.bilibili.com/video/BV1T8411c7iU/)
 
 
 使用 Azure OpenAI service
