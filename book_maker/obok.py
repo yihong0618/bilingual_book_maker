@@ -162,19 +162,18 @@
 # after all.
 #
 """Manage all Kobo books, either encrypted or DRM-free."""
-from __future__ import print_function
 
 __version__ = "4.1.2"
-__about__ = "Obok v{0}\nCopyright © 2012-2020 Physisticated et al.".format(__version__)
+__about__ = f"Obok v{__version__}\nCopyright © 2012-2020 Physisticated et al."
 
 import base64
 import binascii
+import contextlib
 import hashlib
 import os
 import re
 import shutil
 import sqlite3
-import string
 import subprocess
 import sys
 import tempfile
@@ -206,9 +205,6 @@ def _load_crypto_libcrypto():
         c_char_p,
         c_int,
         c_long,
-        c_ulong,
-        c_void_p,
-        cast,
         create_string_buffer,
     )
     from ctypes.util import find_library
@@ -224,8 +220,8 @@ def _load_crypto_libcrypto():
 
     AES_MAXNR = 14
 
-    c_char_pp = POINTER(c_char_p)
-    c_int_p = POINTER(c_int)
+    POINTER(c_char_p)
+    POINTER(c_int)
 
     class AES_KEY(Structure):
         _fields_ = [("rd_key", c_long * (4 * (AES_MAXNR + 1))), ("rounds", c_int)]
@@ -241,12 +237,11 @@ def _load_crypto_libcrypto():
     AES_set_decrypt_key = F(c_int, "AES_set_decrypt_key", [c_char_p, c_int, AES_KEY_p])
     AES_ecb_encrypt = F(None, "AES_ecb_encrypt", [c_char_p, c_char_p, AES_KEY_p, c_int])
 
-    class AES(object):
-        def __init__(self, userkey):
+    class AES:
+        def __init__(self, userkey) -> None:
             self._blocksize = len(userkey)
             if self._blocksize not in [16, 24, 32]:
                 raise ENCRYPTIONError(_("AES improper key used"))
-                return
             key = self._key = AES_KEY()
             rv = AES_set_decrypt_key(userkey, len(userkey) * 8, key)
             if rv < 0:
@@ -268,8 +263,8 @@ def _load_crypto_libcrypto():
 def _load_crypto_pycrypto():
     from Crypto.Cipher import AES as _AES
 
-    class AES(object):
-        def __init__(self, key):
+    class AES:
+        def __init__(self, key) -> None:
             self._aes = _AES.new(key, _AES.MODE_ECB)
 
         def decrypt(self, data):
@@ -282,11 +277,9 @@ def _load_crypto():
     AES = None
     cryptolist = (_load_crypto_pycrypto, _load_crypto_libcrypto)
     for loader in cryptolist:
-        try:
+        with contextlib.suppress(ImportError, ENCRYPTIONError):
             AES = loader()
             break
-        except (ImportError, ENCRYPTIONError):
-            pass
     return AES
 
 
@@ -297,7 +290,7 @@ AES = _load_crypto()
 # and also make sure that any unicode strings get
 # encoded using "replace" before writing them.
 class SafeUnbuffered:
-    def __init__(self, stream):
+    def __init__(self, stream) -> None:
         self.stream = stream
         self.encoding = stream.encoding
         if self.encoding is None:
@@ -313,14 +306,14 @@ class SafeUnbuffered:
         return getattr(self.stream, attr)
 
 
-class KoboLibrary(object):
+class KoboLibrary:
     """The Kobo library.
 
     This class represents all the information available from the data
     written by the Kobo Desktop Edition application, including the list
     of books, their titles, and the user's encryption key(s)."""
 
-    def __init__(self, serials=None, device_path=None, desktopkobodir=""):
+    def __init__(self, serials=None, device_path=None, desktopkobodir="") -> None:
         if serials is None:
             serials = []
         print(__about__)
@@ -343,7 +336,7 @@ class KoboLibrary(object):
             self.kobodir = os.path.join(device_path, ".kobo")
             # devices use KoboReader.sqlite
             kobodb = os.path.join(self.kobodir, "KoboReader.sqlite")
-            if not (os.path.isfile(kobodb)):
+            if not os.path.isfile(kobodb):
                 # device path seems to be wrong, unset it
                 device_path = ""
                 self.kobodir = ""
@@ -357,7 +350,9 @@ class KoboLibrary(object):
         if self.kobodir and len(serials) == 0 and can_parse_xml:
             # print "get_device_settings - device_path = {0}".format(device_path)
             devicexml = os.path.join(
-                device_path, ".adobe-digital-editions", "device.xml"
+                device_path,
+                ".adobe-digital-editions",
+                "device.xml",
             )
             # print "trying to load {0}".format(devicexml)
             if os.path.exists(devicexml):
@@ -386,11 +381,11 @@ class KoboLibrary(object):
 
                     if (
                         sys.getwindowsversion().major > 5
-                        and "LOCALAPPDATA" in os.environ.keys()
+                        and "LOCALAPPDATA" in os.environ
                     ):
                         # Python 2.x does not return unicode env. Use Python 3.x
                         self.kobodir = winreg.ExpandEnvironmentStrings("%LOCALAPPDATA%")
-                    if self.kobodir == "" and "USERPROFILE" in os.environ.keys():
+                    if self.kobodir == "" and "USERPROFILE" in os.environ:
                         # Python 2.x does not return unicode env. Use Python 3.x
                         self.kobodir = os.path.join(
                             winreg.ExpandEnvironmentStrings("%USERPROFILE%"),
@@ -398,7 +393,9 @@ class KoboLibrary(object):
                             "Application Data",
                         )
                     self.kobodir = os.path.join(
-                        self.kobodir, "Kobo", "Kobo Desktop Edition"
+                        self.kobodir,
+                        "Kobo",
+                        "Kobo Desktop Edition",
                     )
                 elif sys.platform.startswith("darwin"):
                     self.kobodir = os.path.join(
@@ -411,7 +408,9 @@ class KoboLibrary(object):
                 elif sys.platform.startswith("linux"):
                     # sets ~/.config/calibre as the location to store the kobodir location info file and creates this directory if necessary
                     kobodir_cache_dir = os.path.join(
-                        os.environ["HOME"], ".config", "calibre"
+                        os.environ["HOME"],
+                        ".config",
+                        "calibre",
                     )
                     if not os.path.isdir(kobodir_cache_dir):
                         os.mkdir(kobodir_cache_dir)
@@ -424,22 +423,26 @@ class KoboLibrary(object):
                     in that file so this loop can be skipped in the future"""
                     original_stdout = sys.stdout
                     if not os.path.isfile(kobodir_cache_file):
-                        for root, dirs, files in os.walk("/"):
+                        for root, _dirs, files in os.walk("/"):
                             for file in files:
                                 if file == "Kobo.sqlite":
                                     kobo_linux_path = str(root)
-                                    with open(kobodir_cache_file, "w") as f:
+                                    with open(
+                                        kobodir_cache_file,
+                                        "w",
+                                        encoding="utf-8",
+                                    ) as f:
                                         sys.stdout = f
                                         print(kobo_linux_path, end="")
                                         sys.stdout = original_stdout
 
-                    f = open(kobodir_cache_file, "r")
+                    f = open(kobodir_cache_file, encoding="utf-8")
                     self.kobodir = f.read()
 
             # desktop versions use Kobo.sqlite
             kobodb = os.path.join(self.kobodir, "Kobo.sqlite")
             # check for existence of file
-            if not (os.path.isfile(kobodb)):
+            if not os.path.isfile(kobodb):
                 # give up here, we haven't found anything useful
                 self.kobodir = ""
                 kobodb = ""
@@ -450,12 +453,11 @@ class KoboLibrary(object):
             # so we can ensure it's not using WAL logging which sqlite3 can't do.
             self.newdb = tempfile.NamedTemporaryFile(mode="wb", delete=False)
             print(self.newdb.name)
-            olddb = open(kobodb, "rb")
-            self.newdb.write(olddb.read(18))
-            self.newdb.write(b"\x01\x01")
-            olddb.read(2)
-            self.newdb.write(olddb.read())
-            olddb.close()
+            with open(kobodb, "rb") as olddb:
+                self.newdb.write(olddb.read(18))
+                self.newdb.write(b"\x01\x01")
+                olddb.read(2)
+                self.newdb.write(olddb.read())
             self.newdb.close()
             self.__sqlite = sqlite3.connect(self.newdb.name)
             self.__cursor = self.__sqlite.cursor()
@@ -489,7 +491,7 @@ class KoboLibrary(object):
             return self._books
         """Drm-ed kepub"""
         for row in self.__cursor.execute(
-            "SELECT DISTINCT volumeid, Title, Attribution, Series FROM content_keys, content WHERE contentid = volumeid"
+            "SELECT DISTINCT volumeid, Title, Attribution, Series FROM content_keys, content WHERE contentid = volumeid",
         ):
             self._books.append(
                 KoboBook(
@@ -500,7 +502,7 @@ class KoboLibrary(object):
                     self.__cursor,
                     author=row[2],
                     series=row[3],
-                )
+                ),
             )
             self._volumeID.append(row[0])
         """Drm-free"""
@@ -509,7 +511,7 @@ class KoboLibrary(object):
                 row = self.__cursor.execute(
                     "SELECT Title, Attribution, Series FROM content WHERE ContentID = '"
                     + f
-                    + "'"
+                    + "'",
                 ).fetchone()
                 if row is not None:
                     fTitle = row[0]
@@ -522,7 +524,7 @@ class KoboLibrary(object):
                             self.__cursor,
                             author=row[1],
                             series=row[2],
-                        )
+                        ),
                     )
                     self._volumeID.append(f)
         """Sort"""
@@ -538,7 +540,8 @@ class KoboLibrary(object):
         macaddrs = []
         if sys.platform.startswith("win"):
             c = re.compile(
-                "\s?(" + "[0-9a-f]{2}[:\-]" * 5 + "[0-9a-f]{2})(\s|$)", re.IGNORECASE
+                "\\s?(" + "[0-9a-f]{2}[:\\-]" * 5 + "[0-9a-f]{2})(\\s|$)",
+                re.IGNORECASE,
             )
             output = subprocess.Popen(
                 "wmic nic where PhysicalAdapter=True get MACAddress",
@@ -551,10 +554,13 @@ class KoboLibrary(object):
                     macaddrs.append(re.sub("-", ":", m[1]).upper())
         elif sys.platform.startswith("darwin"):
             c = re.compile(
-                "\s(" + "[0-9a-f]{2}:" * 5 + "[0-9a-f]{2})(\s|$)", re.IGNORECASE
+                "\\s(" + "[0-9a-f]{2}:" * 5 + "[0-9a-f]{2})(\\s|$)",
+                re.IGNORECASE,
             )
             output = subprocess.check_output(
-                "/sbin/ifconfig -a", shell=True, encoding="utf-8"
+                "/sbin/ifconfig -a",
+                shell=True,
+                encoding="utf-8",
             )
             matches = c.findall(output)
             macaddrs.extend(m[0].upper() for m in matches)
@@ -563,7 +569,8 @@ class KoboLibrary(object):
 
             # let's try ip
             c = re.compile(
-                "\s(" + "[0-9a-f]{2}:" * 5 + "[0-9a-f]{2})(\s|$)", re.IGNORECASE
+                "\\s(" + "[0-9a-f]{2}:" * 5 + "[0-9a-f]{2})(\\s|$)",
+                re.IGNORECASE,
             )
             for line in os.popen("ip -br link"):
                 if m := c.search(line):
@@ -571,7 +578,8 @@ class KoboLibrary(object):
 
             # let's try ipconfig under wine
             c = re.compile(
-                "\s(" + "[0-9a-f]{2}-" * 5 + "[0-9a-f]{2})(\s|$)", re.IGNORECASE
+                "\\s(" + "[0-9a-f]{2}-" * 5 + "[0-9a-f]{2})(\\s|$)",
+                re.IGNORECASE,
             )
             for line in os.popen("ipconfig /all"):
                 if m := c.search(line):
@@ -588,11 +596,9 @@ class KoboLibrary(object):
         cursor = self.__cursor.execute("SELECT UserID FROM user")
         row = cursor.fetchone()
         while row is not None:
-            try:
+            with contextlib.suppress(Exception):
                 userid = row[0]
                 userids.append(userid)
-            except Exception:
-                pass
             row = cursor.fetchone()
         return userids
 
@@ -603,13 +609,13 @@ class KoboLibrary(object):
             deviceid = hashlib.sha256((hash + macaddr).encode("ascii")).hexdigest()
             for userid in userids:
                 userkey = hashlib.sha256(
-                    (deviceid + userid).encode("ascii")
+                    (deviceid + userid).encode("ascii"),
                 ).hexdigest()
                 userkeys.append(binascii.a2b_hex(userkey[32:]))
         return userkeys
 
 
-class KoboBook(object):
+class KoboBook:
     """A Kobo book.
 
     A Kobo book contains a number of unencrypted and encrypted files.
@@ -622,8 +628,15 @@ class KoboBook(object):
     type - either kepub or drm-free"""
 
     def __init__(
-        self, volumeid, title, filename, type, cursor, author=None, series=None
-    ):
+        self,
+        volumeid,
+        title,
+        filename,
+        type,
+        cursor,
+        author=None,
+        series=None,
+    ) -> None:
         self.volumeid = volumeid
         self.title = title
         self.author = author
@@ -650,7 +663,9 @@ class KoboBook(object):
             (self.volumeid,),
         ):
             self._encryptedfiles[row[0]] = KoboFile(
-                row[0], None, base64.b64decode(row[1])
+                row[0],
+                None,
+                base64.b64decode(row[1]),
             )
 
         # Read the list of files from the kepub OPF manifest so that
@@ -685,7 +700,7 @@ class KoboBook(object):
         return self.type != "drm-free"
 
 
-class KoboFile(object):
+class KoboFile:
     """An encrypted file in a KoboBook.
 
     Each file has the following instance variables:
@@ -693,7 +708,7 @@ class KoboFile(object):
     mimetype - the file's MIME type, e.g. 'image/jpeg'
     key - the encrypted page key."""
 
-    def __init__(self, filename, mimetype, key):
+    def __init__(self, filename, mimetype, key) -> None:
         self.filename = filename
         self.mimetype = mimetype
         self.key = key
@@ -722,7 +737,7 @@ class KoboFile(object):
             # assume utf-8 with no BOM
             textoffset = 0
             stride = 1
-            print("Checking text:{0}:".format(contents[:10]))
+            print(f"Checking text:{contents[:10]}:")
             # check for byte order mark
             if contents[:3] == b"\xef\xbb\xbf":
                 # seems to be utf-8 with BOM
@@ -745,45 +760,15 @@ class KoboFile(object):
             for i in range(textoffset, textoffset + 5 * stride, stride):
                 if contents[i] < 32 or contents[i] > 127:
                     # Non-ascii, so decryption probably failed
-                    print("Bad character at {0}, value {1}".format(i, contents[i]))
+                    print(f"Bad character at {i}, value {contents[i]}")
                     raise ValueError
             print("Seems to be good text")
             return True
-            if contents[:5] == b"<?xml" or contents[:8] == b"\xef\xbb\xbf<?xml":
-                # utf-8
-                return True
-            elif contents[:14] == b"\xfe\xff\x00<\x00?\x00x\x00m\x00l":
-                # utf-16BE
-                return True
-            elif contents[:14] == b"\xff\xfe<\x00?\x00x\x00m\x00l\x00":
-                # utf-16LE
-                return True
-            elif (
-                contents[:9] == b"<!DOCTYPE"
-                or contents[:12] == b"\xef\xbb\xbf<!DOCTYPE"
-            ):
-                # utf-8 of weird <!DOCTYPE start
-                return True
-            elif (
-                contents[:22]
-                == b"\xfe\xff\x00<\x00!\x00D\x00O\x00C\x00T\x00Y\x00P\x00E"
-            ):
-                # utf-16BE of weird <!DOCTYPE start
-                return True
-            elif (
-                contents[:22]
-                == b"\xff\xfe<\x00!\x00D\x00O\x00C\x00T\x00Y\x00P\x00E\x00"
-            ):
-                # utf-16LE of weird <!DOCTYPE start
-                return True
-            else:
-                print("Bad XML: {0}".format(contents[:8]))
-                raise ValueError
         if self.mimetype == "image/jpeg":
             if contents[:3] == b"\xff\xd8\xff":
                 return True
-            print("Bad JPEG: {0}".format(contents[:3].hex()))
-            raise ValueError()
+            print(f"Bad JPEG: {contents[:3].hex()}")
+            raise ValueError
         return False
 
     def __removeaespadding(self, contents):
@@ -806,18 +791,17 @@ class KoboFile(object):
 
 
 def decrypt_book(book, lib):
-    print("Converting {0}".format(book.title))
+    print(f"Converting {book.title}")
     zin = zipfile.ZipFile(book.filename, "r")
     # make filename out of Unicode alphanumeric and whitespace equivalents from title
-    outname = "{0}.epub".format(re.sub("[^\s\w]", "_", book.title, 0, re.UNICODE))
+    outname = "{}.epub".format(re.sub("[^\\s\\w]", "_", book.title, 0, re.UNICODE))
     if book.type == "drm-free":
         print("DRM-free book, conversion is not needed")
         shutil.copyfile(book.filename, outname)
-        print("Book saved as {0}".format(os.path.join(os.getcwd(), outname)))
+        print(f"Book saved as {os.path.join(os.getcwd(), outname)}")
         return os.path.join(os.getcwd(), outname)
-    result = 1
     for userkey in lib.userkeys:
-        print("Trying key: {0}".format(userkey.hex()))
+        print(f"Trying key: {userkey.hex()}")
         try:
             zout = zipfile.ZipFile(outname, "w", zipfile.ZIP_DEFLATED)
             for filename in zin.namelist():
@@ -830,8 +814,7 @@ def decrypt_book(book, lib):
                 zout.writestr(filename, contents)
             zout.close()
             print("Decryption succeeded.")
-            print("Book saved as {0}".format(os.path.join(os.getcwd(), outname)))
-            result = 0
+            print(f"Book saved as {os.path.join(os.getcwd(), outname)}")
             break
         except ValueError:
             print("Decryption failed.")
@@ -842,13 +825,12 @@ def decrypt_book(book, lib):
 
 
 def cli_main(devicedir):
-    description = __about__
     serials = []
 
     lib = KoboLibrary(serials, devicedir)
 
     for i, book in enumerate(lib.books):
-        print("{0}: {1}".format(i + 1, book.title))
+        print(f"{i + 1}: {book.title}")
 
     choice = input("Convert book number... ")
     try:
@@ -856,7 +838,7 @@ def cli_main(devicedir):
         books = [lib.books[num - 1]]
     except (ValueError, IndexError):
         print("Invalid choice. Exiting...")
-        exit()
+        sys.exit()
 
     results = [decrypt_book(book, lib) for book in books]
     lib.close()
