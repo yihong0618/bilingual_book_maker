@@ -5,3 +5,4 @@ ebooklib
 rich
 tqdm
 tiktoken
+revChatGPT

@@ -49,7 +49,7 @@ Retranslate from start_str to end_str's tag:
 `python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which' 'This kind of thing is not a good symptom. Obviously'`<br>
 Retranslate start_str's tag:
 `python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which'`
-
+- - Add model chatgptaccount, use `--chatgptaccount`, `--chatgptpassword` to pass in ChatGPT PLUS account password for translation, no need to pass key.
 ### Examples
 
 **Note if use `pip install bbook_maker` all commands can change to `bbook args`**
@@ -94,6 +94,11 @@ python3 make_book.py --book_name test_books/the_little_prince.txt --test --batch
 # the official Caiyun has provided a test token (3975l6lr5pcbvidl6jl2)
 # you can apply your own token by following this tutorial(https://bobtranslate.com/service/translate/caiyun.html)
 python3 make_book.py --model caiyun --openai_key 3975l6lr5pcbvidl6jl2 --book_name test_books/animal_farm.epub
+
+#chatgptaccount model translate
+python3 make_book.py --book_name test_books/animal_farm.epub --model chatgptaccount --chatgptaccount=xx--chatgptpassword xx
+
+
 # Set env BBM_CAIYUN_API_KEY to ignore option --openai_key
 export BBM_CAIYUN_API_KEY=${your_api_key}
 

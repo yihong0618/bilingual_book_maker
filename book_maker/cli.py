@@ -210,6 +210,21 @@ So you are close to reaching the limit. You have to choose your own value, there
 """,
     )
 
+    parser.add_argument(
+        "--chatgptaccount",
+        dest="chatgptaccount",
+        type=str,
+        help="your chatgpt account",
+    )
+
+    parser.add_argument(
+        "--chatgptpassword",
+        dest="chatgptpassword",
+        type=str,
+        help="your chatgpt password",
+    )
+    chatgpt_account = ""
+    chatgpt_password = ""
     options = parser.parse_args()
 
     if not os.path.isfile(options.book_name):
@@ -223,6 +238,7 @@ So you are close to reaching the limit. You have to choose your own value, there
 
     translate_model = MODEL_DICT.get(options.model)
     assert translate_model is not None, "unsupported model"
+    API_KEY = ""
     if options.model in ["gpt3", "chatgptapi"]:
         if OPENAI_API_KEY := (
             options.openai_key
@@ -246,6 +262,11 @@ So you are close to reaching the limit. You have to choose your own value, there
         API_KEY = options.deepl_key or env.get("BBM_DEEPL_API_KEY")
         if not API_KEY:
             raise Exception("Please provid deepl key")
+    elif options.model == "chatgptaccount":
+        chatgpt_account = options.chatgptaccount
+        chatgpt_password = options.chatgptpassword
+        if chatgpt_account is None or chatgpt_password is None:
+            raise Exception("Please provid chatgptaccount and chatgptpassword")
     else:
         API_KEY = ""
 
@@ -286,6 +307,8 @@ So you are close to reaching the limit. You have to choose your own value, there
         is_test=options.test,
         test_num=options.test_num,
         prompt_config=parse_prompt_arg(options.prompt_arg),
+        chatgptaccount=chatgpt_account,
+        chatgptpassword=chatgpt_password,
     )
     # other options
     if options.allow_navigable_strings:

@@ -29,6 +29,8 @@ class EPUBBookLoader(BaseBookLoader):
         is_test=False,
         test_num=5,
         prompt_config=None,
+        chatgptaccount=None,
+        chatgptpassword=None,
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
@@ -36,6 +38,8 @@ class EPUBBookLoader(BaseBookLoader):
             key,
             language,
             api_base=model_api_base,
+            chatgptaccount=chatgptaccount,
+            chatgptpassword=chatgptpassword,
             **prompt_config_to_kwargs(prompt_config),
         )
         self.is_test = is_test
