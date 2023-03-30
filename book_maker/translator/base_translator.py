@@ -14,3 +14,6 @@ class Base(ABC):
     @abstractmethod
     def translate(self, text):
         pass
+
+    def set_deployment_id(self, deployment_id):
+        pass

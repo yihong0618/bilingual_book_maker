@@ -49,7 +49,7 @@ class EPUBBookLoader(BaseBookLoader):
         )
         self.retranslate = None
 
-        # monkey pathch for # 173
+        # monkey patch for # 173
         def _write_items_patch(obj):
             for item in obj.book.get_items():
                 if isinstance(item, epub.EpubNcx):
@@ -73,7 +73,7 @@ class EPUBBookLoader(BaseBookLoader):
         try:
             self.origin_book = epub.read_epub(self.epub_name)
         except Exception:
-            # tricky monkey pathch for #71 if you don't know why please check the issue and ignore this
+            # tricky monkey patch for #71 if you don't know why please check the issue and ignore this
             # when upstream change will TODO fix this
             def _load_spine(obj):
                 spine = obj.container.find("{%s}%s" % (epub.NAMESPACES["OPF"], "spine"))

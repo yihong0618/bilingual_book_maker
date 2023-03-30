@@ -107,6 +107,14 @@ python3 make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_
 python make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_base 'https://xxxxx/v1'
 ```
 
+Microsoft Azure Endpoints
+```shell
+python3 make_book.py --book_name 'animal_farm.epub' --openai_key XXXXX --api_base 'https://example-endpoint.openai.azure.com' --deployment_id 'deployment-name'
+
+# Or python3 is not in your PATH
+python make_book.py --book_name 'animal_farm.epub' --openai_key XXXXX --api_base 'https://example-endpoint.openai.azure.com' --deployment_id 'deployment-name'
+```
+
 ## Docker
 
 You can use [Docker](https://www.docker.com/) if you don't want to deal with setting up the environment.

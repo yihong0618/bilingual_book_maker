@@ -27,6 +27,7 @@ class ChatGPTAPI(Base):
     ):
         super().__init__(key, language)
         self.key_len = len(key.split(","))
+
         if api_base:
             openai.api_base = api_base
         self.prompt_template = (
@@ -43,8 +44,7 @@ class ChatGPTAPI(Base):
             or ""
         )
         self.system_content = environ.get("OPENAI_API_SYS_MSG") or ""
-
-    max_num_token = -1
+        self.deployment_id = None
 
     def rotate_key(self):
         openai.api_key = next(self.keys)
@@ -58,6 +58,12 @@ class ChatGPTAPI(Base):
             {"role": "system", "content": sys_content},
             {"role": "user", "content": content},
         ]
+
+        if self.deployment_id:
+            return openai.ChatCompletion.create(
+                engine=self.deployment_id,
+                messages=messages,
+            )
 
         return openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
@@ -95,13 +101,6 @@ The total token is too long and cannot be completely translated\n
                     file=f,
                 )
 
-        # usage = completion["usage"]
-        # print(f"total_token: {usage['total_tokens']}")
-        # if int(usage["total_tokens"]) > self.max_num_token:
-        #     self.max_num_token = int(usage["total_tokens"])
-        #     print(
-        #         f"{usage['total_tokens']} {usage['prompt_tokens']} {usage['completion_tokens']} {self.max_num_token} (total_token, prompt_token, completion_tokens, max_history_total_token)"
-        #     )
         return t_text
 
     def translate(self, text, needprint=True):
@@ -278,3 +277,8 @@ The total token is too long and cannot be completely translated\n
         # del (num), num. sometime (num) will translated to num.
         result_list = [re.sub(r"^(\(\d+\)|\d+\.|（\d+）)\s*", "", s) for s in result_list]
         return result_list
+
+    def set_deployment_id(self, deployment_id):
+        openai.api_type = "azure"
+        openai.api_version = "2023-03-15-preview"
+        self.deployment_id = deployment_id
