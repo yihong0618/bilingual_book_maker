@@ -98,6 +98,15 @@ python3 make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_
 python make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_base 'https://xxxxx/v1'
 ```
 
+使用 Azure OpenAI service
+```shell
+python3 make_book.py --book_name 'animal_farm.epub' --openai_key XXXXX --api_base 'https://example-endpoint.openai.azure.com' --deployment_id 'deployment-name'
+
+# Or python3 is not in your PATH
+python make_book.py --book_name 'animal_farm.epub' --openai_key XXXXX --api_base 'https://example-endpoint.openai.azure.com' --deployment_id 'deployment-name'
+```
+
+
 ## 注意
 
 1. Free trail 的 API token 有所限制，如果想要更快的速度，可以考虑付费方案

@@ -142,6 +142,12 @@ def main():
         default="",
         help="use proxy like http://127.0.0.1:7890",
     )
+    parser.add_argument(
+        "--deployment_id",
+        dest="deployment_id",
+        type=str,
+        help="the deployment name you chose when you deployed the model",
+    )
     # args to change api_base
     parser.add_argument(
         "--api_base",
@@ -297,6 +303,15 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.batch_size = options.batch_size
     if options.retranslate:
         e.retranslate = options.retranslate
+    if options.deployment_id:
+        # only work for ChatGPT api for now
+        # later maybe support others
+        assert (
+            options.model == "chatgptapi"
+        ), "only support chatgptapi for deployment_id"
+        if not options.api_base:
+            raise ValueError("`api_base` must be provided when using `deployment_id`")
+        e.translate_model.set_deployment_id(options.deployment_id)
 
     e.make_bilingual_book()
 
