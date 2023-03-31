@@ -45,6 +45,7 @@ class EPUBBookLoader(BaseBookLoader):
         self.is_test = is_test
         self.test_num = test_num
         self.translate_tags = "p"
+        self.exclude_translate_tags = "sup"
         self.allow_navigable_strings = False
         self.accumulated_num = 1
         self.translation_style = ""
@@ -120,14 +121,18 @@ class EPUBBookLoader(BaseBookLoader):
 
         new_p = copy(p)
 
+        for p_exclude in self.exclude_translate_tags.split(","):
+            for pt in new_p.find_all(p_exclude):
+                pt.extract()
+
         if self.resume and index < p_to_save_len:
             new_p.string = self.p_to_save[index]
         else:
             if type(p) == NavigableString:
-                new_p = self.translate_model.translate(p.text)
+                new_p = self.translate_model.translate(new_p.text)
                 self.p_to_save.append(new_p)
             else:
-                new_p.string = self.translate_model.translate(p.text)
+                new_p.string = self.translate_model.translate(new_p.text)
                 self.p_to_save.append(new_p.text)
 
         self.helper.insert_trans(p, new_p.string, self.translation_style)
@@ -144,8 +149,11 @@ class EPUBBookLoader(BaseBookLoader):
         for i in range(len(p_list)):
             p = p_list[i]
             temp_p = copy(p)
-            for sup in temp_p.find_all("sup"):
-                sup.extract()
+
+            for p_exclude in self.exclude_translate_tags.split(","):
+                for pt in temp_p.find_all(p_exclude):
+                    pt.extract()
+
             if any(
                 [not p.text, self._is_special_text(temp_p.text), not_trans(temp_p.text)]
             ):

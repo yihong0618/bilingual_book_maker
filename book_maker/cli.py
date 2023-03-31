@@ -174,6 +174,13 @@ def main():
         help="example --translate-tags p,blockquote",
     )
     parser.add_argument(
+        "--exclude_translate-tags",
+        dest="exclude_translate_tags",
+        type=str,
+        default="sup",
+        help="example --exclude_translate-tags table,sup",
+    )
+    parser.add_argument(
         "--allow_navigable_strings",
         dest="allow_navigable_strings",
         action="store_true",
@@ -329,6 +336,8 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.allow_navigable_strings = True
     if options.translate_tags:
         e.translate_tags = options.translate_tags
+    if options.exclude_translate_tags:
+        e.exclude_translate_tags = options.exclude_translate_tags
     if options.exclude_filelist:
         e.exclude_filelist = options.exclude_filelist
     if options.only_filelist:
