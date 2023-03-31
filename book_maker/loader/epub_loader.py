@@ -52,6 +52,8 @@ class EPUBBookLoader(BaseBookLoader):
             self.translate_model, self.accumulated_num, self.translation_style
         )
         self.retranslate = None
+        self.exclude_filelist = ""
+        self.only_filelist = ""
 
         # monkey patch for # 173
         def _write_items_patch(obj):
@@ -389,8 +391,16 @@ class EPUBBookLoader(BaseBookLoader):
                     new_book.add_item(item)
 
             for item in self.origin_book.get_items_of_type(ITEM_DOCUMENT):
-                # if item.file_name != "OEBPS/ch01.xhtml":
-                #     continue
+                if (
+                    self.only_filelist != ""
+                    and not item.file_name in self.only_filelist.split(",")
+                ):
+                    continue
+                elif (
+                    self.only_filelist == ""
+                    and item.file_name in self.exclude_filelist.split(",")
+                ):
+                    continue
                 index = self.process_item(
                     item, index, p_to_save_len, pbar, new_book, trans_taglist
                 )

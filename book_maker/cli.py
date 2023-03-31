@@ -153,6 +153,20 @@ def main():
         help="specify base url other than the OpenAI's official API address",
     )
     parser.add_argument(
+        "--exclude_filelist",
+        dest="exclude_filelist",
+        type=str,
+        default="",
+        help="if you have more than one file to exclude, please use comma to split them, example: --exclude_filelist 'nav.xhtml,cover.xhtml'",
+    )
+    parser.add_argument(
+        "--only_filelist",
+        dest="only_filelist",
+        type=str,
+        default="",
+        help="if you only have a few files with translations, please use comma to split them, example: --only_filelist 'nav.xhtml,cover.xhtml'",
+    )
+    parser.add_argument(
         "--translate-tags",
         dest="translate_tags",
         type=str,
@@ -315,6 +329,10 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.allow_navigable_strings = True
     if options.translate_tags:
         e.translate_tags = options.translate_tags
+    if options.exclude_filelist:
+        e.exclude_filelist = options.exclude_filelist
+    if options.only_filelist:
+        e.only_filelist = options.only_filelist
     if options.accumulated_num > 1:
         e.accumulated_num = options.accumulated_num
     if options.translation_style:
