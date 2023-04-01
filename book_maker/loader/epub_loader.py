@@ -314,6 +314,16 @@ class EPUBBookLoader(BaseBookLoader):
         fixstart=None,
         fixend=None,
     ):
+        if self.only_filelist != "" and not item.file_name in self.only_filelist.split(
+            ","
+        ):
+            return index
+        elif self.only_filelist == "" and item.file_name in self.exclude_filelist.split(
+            ","
+        ):
+            new_book.add_item(item)
+            return index
+
         if not os.path.exists("log"):
             os.makedirs("log")
 
@@ -399,16 +409,6 @@ class EPUBBookLoader(BaseBookLoader):
                     new_book.add_item(item)
 
             for item in self.origin_book.get_items_of_type(ITEM_DOCUMENT):
-                if (
-                    self.only_filelist != ""
-                    and not item.file_name in self.only_filelist.split(",")
-                ):
-                    continue
-                elif (
-                    self.only_filelist == ""
-                    and item.file_name in self.exclude_filelist.split(",")
-                ):
-                    continue
                 index = self.process_item(
                     item, index, p_to_save_len, pbar, new_book, trans_taglist
                 )
