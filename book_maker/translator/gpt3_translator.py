@@ -1,3 +1,4 @@
+import re
 import requests
 from rich import print
 
@@ -45,5 +46,5 @@ class GPT3(Base):
         if not r.ok:
             return text
         t_text = r.json().get("choices")[0].get("text", "").strip()
-        print(t_text)
+        print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
         return t_text

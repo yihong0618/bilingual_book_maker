@@ -1,6 +1,8 @@
 import json
+import re
 
 import requests
+from rich import print
 
 from .base_translator import Base
 
@@ -42,5 +44,5 @@ class Caiyun(Base):
             headers=self.headers,
         )
         t_text = json.loads(response.text)["target"]
-        print(t_text)
+        print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
         return t_text
