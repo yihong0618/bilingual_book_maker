@@ -50,8 +50,10 @@ class ChatGPTAPI(Base):
         openai.api_key = next(self.keys)
 
     def create_chat_completion(self, text):
-        content = self.prompt_template.format(text=text, language=self.language)
-        sys_content = self.system_content or self.prompt_sys_msg
+        content = self.prompt_template.format(
+            text=text, language=self.language, crlf="\n"
+        )
+        sys_content = self.system_content or self.prompt_sys_msg.format(crlf="\n")
         messages = [
             {"role": "system", "content": sys_content},
             {"role": "user", "content": content},
