@@ -2,10 +2,12 @@ import json
 import time
 
 import requests
+import re
 
 from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE
 
 from .base_translator import Base
+from rich import print
 
 
 class DeepL(Base):
@@ -83,5 +85,5 @@ class DeepL(Base):
                 headers=self.headers,
             )
         t_text = response.json().get("text", "")
-        print(t_text)
+        print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
         return t_text

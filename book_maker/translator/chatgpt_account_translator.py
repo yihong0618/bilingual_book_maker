@@ -1,4 +1,4 @@
-import requests
+import re
 from revChatGPT.V1 import Chatbot
 from rich import print
 
@@ -24,10 +24,10 @@ class ChatGPTAccount(Base):
             }
         )
         prompt = f"Please help me to translate,`{text}` to {self.language}"
-        response = ""
+        t_text = ""
 
         for data in chatbot.ask(prompt):
-            response = data["message"].encode("utf8").decode()
+            t_text = data["message"].encode("utf8").decode()
 
-        print(response)
-        return response
+        print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
+        return t_text

@@ -1,4 +1,7 @@
+import re
 import requests
+from rich import print
+
 
 from .base_translator import Base
 
@@ -34,5 +37,5 @@ class Google(Base):
         t_text = "".join(
             [sentence.get("trans", "") for sentence in r.json()["sentences"]],
         )
-        print(t_text)
+        print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
         return t_text
