@@ -50,7 +50,7 @@ jobs:
       - name: make caiyun translator test
         if: env.BBM_CAIYUN_API_KEY != null
         run: |
-          python3 make_book.py --book_name "test_books/the_little_prince.txt" --test --batch_size 30 --test_num 20 --model caiyun
+          python3 make_book.py --book_name "test_books/the_little_prince.txt" --test --batch_size 30 --test_num 100 --model caiyun
 
       - name: make deepl translator test
         if: env.BBM_CAIYUN_API_KEY != null

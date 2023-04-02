@@ -3,7 +3,8 @@ import time
 
 import requests
 
-from book_maker.utils import TO_LANGUAGE_CODE, LANGUAGES
+from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE
+
 from .base_translator import Base
 
 
@@ -12,7 +13,7 @@ class DeepL(Base):
     caiyun translator
     """
 
-    def __init__(self, key, language, **kwargs):
+    def __init__(self, key, language, **kwargs) -> None:
         super().__init__(key, language)
         self.api_url = "https://deepl-translator.p.rapidapi.com/translate"
         self.headers = {
@@ -21,10 +22,7 @@ class DeepL(Base):
             "X-RapidAPI-Host": "deepl-translator.p.rapidapi.com",
         }
         l = None
-        if language in LANGUAGES:
-            l = language
-        else:
-            l = TO_LANGUAGE_CODE.get(language)
+        l = language if language in LANGUAGES else TO_LANGUAGE_CODE.get(language)
         if l not in [
             "bg",
             "zh",
@@ -70,13 +68,19 @@ class DeepL(Base):
         payload = {"text": text, "source": "EN", "target": self.language}
         try:
             response = requests.request(
-                "POST", self.api_url, data=json.dumps(payload), headers=self.headers
+                "POST",
+                self.api_url,
+                data=json.dumps(payload),
+                headers=self.headers,
             )
         except Exception as e:
-            print(str(e))
+            print(e)
             time.sleep(30)
             response = requests.request(
-                "POST", self.api_url, data=json.dumps(payload), headers=self.headers
+                "POST",
+                self.api_url,
+                data=json.dumps(payload),
+                headers=self.headers,
             )
         t_text = response.json().get("text", "")
         print(t_text)

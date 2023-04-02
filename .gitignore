@@ -132,3 +132,5 @@ dmypy.json
 .pyre/
 
 /test_books/*.epub
+log/
+.chatgpt_cache.json

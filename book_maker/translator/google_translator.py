@@ -8,7 +8,7 @@ class Google(Base):
     google translate
     """
 
-    def __init__(self, key, language, **kwargs):
+    def __init__(self, key, language, **kwargs) -> None:
         super().__init__(key, language)
         self.api_url = "https://translate.google.com/translate_a/single?client=it&dt=qca&dt=t&dt=rmt&dt=bd&dt=rms&dt=sos&dt=md&dt=gt&dt=ld&dt=ss&dt=ex&otf=2&dj=1&hl=en&ie=UTF-8&oe=UTF-8&sl=auto&tl=zh-CN"
         self.headers = {
@@ -27,12 +27,12 @@ class Google(Base):
         r = self.session.post(
             self.api_url,
             headers=self.headers,
-            data="q={text}".format(text=requests.utils.quote(text)),
+            data=f"q={requests.utils.quote(text)}",
         )
         if not r.ok:
             return text
         t_text = "".join(
-            [sentence.get("trans", "") for sentence in r.json()["sentences"]]
+            [sentence.get("trans", "") for sentence in r.json()["sentences"]],
         )
         print(t_text)
         return t_text

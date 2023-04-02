@@ -38,15 +38,12 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 - 如果出现了错误或使用 `CTRL+C` 中断命令，不想接下来继续翻译了，会生成一本 ${book_name}_bilingual_temp.epub 的书，直接改成你想要的名字就可以了
 - 如果你想要翻译电子书中的无标签字符串，可以使用 `--allow_navigable_strings` 参数，会将可遍历字符串加入翻译队列，**注意，在条件允许情况下，请寻找更规范的电子书**
 - 如果你想调整 prompt，你可以使用 `--prompt` 参数。有效的占位符包括 `{text}` 和 `{language}`。你可以用以下方式配置 prompt：
-   如果您不需要设置 `system` 角色，可以这样：`--prompt "Translate {text} to {language}" 或者 `--prompt prompt_template_sample.txt`（示例文本文件可以在 [./prompt_template_sample.txt](./prompt_template_sample.txt) 找到）。
+   如果您不需要设置 `system` 角色，可以这样：`--prompt "Translate {text} to {language}"` 或者 `--prompt prompt_template_sample.txt`（示例文本文件可以在 [./prompt_template_sample.txt](./prompt_template_sample.txt) 找到）。
    如果您需要设置 `system` 角色，可以使用以下方式配置：`--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'`，或者 `--prompt prompt_template_sample.json`（示例 JSON 文件可以在 [./prompt_template_sample.json](./prompt_template_sample.json) 找到）。
    你也可以用环境以下环境变量来配置 `system` 和 `user` 角色 prompt：`BBM_CHATGPTAPI_USER_MSG_TEMPLATE` 和 `BBM_CHATGPTAPI_SYS_MSG`。
 该参数可以是提示模板字符串，也可以是模板 `.txt` 文件的路径。
-- 翻译完会生成一本 ${book_name}_bilingual.epub 的双语书
-- 如果出现了错误或使用 `CTRL+C` 中断命令，不想接下来继续翻译了，会生成一本 ${book_name}_bilingual_temp.epub 的书，直接改成你想要的名字就可以了
-- 如果你想要翻译电子书中的无标签字符串，可以使用 `--allow_navigable_strings` 参数，会将可遍历字符串加入翻译队列，**注意，在条件允许情况下，请寻找更规范的电子书**
 - 使用`--batch_size` 参数，指定批量翻译的行数(默认行数为10，目前只对txt生效)
-
+- 新增 model chatgptaccount，使用`--chatgptaccount`、`--chatgptpassword`传入 ChatGPT PLUS 账号密码进行翻译，不需要传key。
 
 ### 示范用例
 
@@ -66,7 +63,7 @@ export OPENAI_API_KEY=${your_api_key}
 python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --language ja
 
 # Use the DeepL model with Japanese
-python3 make_book.py --book_name test_books/animal_farm.epub --model deepl --deepl_token ${deepl_token}--language ja
+python3 make_book.py --book_name test_books/animal_farm.epub --model deepl --deepl_token ${deepl_key}--language ja
 
 
 # Translate contents in <div> and <p>
@@ -84,6 +81,9 @@ python3 make_book.py --book_name test_books/the_little_prince.txt --test
 # 聚合多行翻译 txt 文件 
 python3 make_book.py --book_name test_books/the_little_prince.txt --test --batch_size 20
 
+# chatgpt account model 翻译
+python3 make_book.py --book_name test_books/animal_farm.epub --model chatgptaccount --chatgptaccount=xx--chatgptpassword xx
+
 # 使用彩云小译翻译(彩云api目前只支持: 简体中文 <-> 英文， 简体中文 <-> 日语)
 # 彩云提供了测试token（3975l6lr5pcbvidl6jl2）
 # 你可以参考这个教程申请自己的token (https://bobtranslate.com/service/translate/caiyun.html)
@@ -100,6 +100,21 @@ python3 make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_
 # 有可能你不需要 python3 而是python
 python make_book.py --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_base 'https://xxxxx/v1'
 ```
+
+
+[演示视频](https://www.bilibili.com/video/BV1XX4y1d75D/?t=0h07m08s)
+[演示视频2](https://www.bilibili.com/video/BV1T8411c7iU/)
+
+
+使用 Azure OpenAI service
+```shell
+python3 make_book.py --book_name 'animal_farm.epub' --openai_key XXXXX --api_base 'https://example-endpoint.openai.azure.com' --deployment_id 'deployment-name'
+
+# Or python3 is not in your PATH
+python make_book.py --book_name 'animal_farm.epub' --openai_key XXXXX --api_base 'https://example-endpoint.openai.azure.com' --deployment_id 'deployment-name'
+```
+
+
 
 ## 注意
 

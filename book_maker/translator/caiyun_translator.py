@@ -10,12 +10,12 @@ class Caiyun(Base):
     caiyun translator
     """
 
-    def __init__(self, key, language, **kwargs):
+    def __init__(self, key, language, **kwargs) -> None:
         super().__init__(key, language)
         self.api_url = "http://api.interpreter.caiyunai.com/v1/translator"
         self.headers = {
             "content-type": "application/json",
-            "x-authorization": "token " + key,
+            "x-authorization": f"token {key}",
         }
         # caiyun api only supports: zh2en, zh2ja, en2zh, ja2zh
         self.translate_type = "auto2zh"
@@ -36,7 +36,10 @@ class Caiyun(Base):
             "detect": True,
         }
         response = requests.request(
-            "POST", self.api_url, data=json.dumps(payload), headers=self.headers
+            "POST",
+            self.api_url,
+            data=json.dumps(payload),
+            headers=self.headers,
         )
         t_text = json.loads(response.text)["target"]
         print(t_text)

@@ -22,23 +22,20 @@ def parse_prompt_arg(prompt_arg):
             # if not a json string, treat it as a template string
             prompt = {"user": prompt_arg}
 
+    elif os.path.exists(prompt_arg):
+        if prompt_arg.endswith(".txt"):
+            # if it's a txt file, treat it as a template string
+            with open(prompt_arg, encoding="utf-8") as f:
+                prompt = {"user": f.read()}
+        elif prompt_arg.endswith(".json"):
+            # if it's a json file, treat it as a json object
+            # eg: --prompt prompt_template_sample.json
+            with open(prompt_arg, encoding="utf-8") as f:
+                prompt = json.load(f)
     else:
-        if os.path.exists(prompt_arg):
-            if prompt_arg.endswith(".txt"):
-                # if it's a txt file, treat it as a template string
-                with open(prompt_arg, "r") as f:
-                    prompt = {"user": f.read()}
-            elif prompt_arg.endswith(".json"):
-                # if it's a json file, treat it as a json object
-                # eg: --prompt prompt_template_sample.json
-                with open(prompt_arg, "r") as f:
-                    prompt = json.load(f)
-        else:
-            raise FileNotFoundError(f"{prompt_arg} not found")
+        raise FileNotFoundError(f"{prompt_arg} not found")
 
-    if prompt is None or not (
-        all(c in prompt["user"] for c in ["{text}", "{language}"])
-    ):
+    if prompt is None or any(c not in prompt["user"] for c in ["{text}", "{language}"]):
         raise ValueError("prompt must contain `{text}` and `{language}`")
 
     if "user" not in prompt:
@@ -123,7 +120,7 @@ def main():
         "--language",
         type=str,
         choices=sorted(LANGUAGES.keys())
-        + sorted([k.title() for k in TO_LANGUAGE_CODE.keys()]),
+        + sorted([k.title() for k in TO_LANGUAGE_CODE]),
         default="zh-hans",
         metavar="LANGUAGE",
         help="language to translate to, available: {%(choices)s}",
@@ -142,6 +139,12 @@ def main():
         default="",
         help="use proxy like http://127.0.0.1:7890",
     )
+    parser.add_argument(
+        "--deployment_id",
+        dest="deployment_id",
+        type=str,
+        help="the deployment name you chose when you deployed the model",
+    )
     # args to change api_base
     parser.add_argument(
         "--api_base",
@@ -150,11 +153,32 @@ def main():
         help="specify base url other than the OpenAI's official API address",
     )
     parser.add_argument(
+        "--exclude_filelist",
+        dest="exclude_filelist",
+        type=str,
+        default="",
+        help="if you have more than one file to exclude, please use comma to split them, example: --exclude_filelist 'nav.xhtml,cover.xhtml'",
+    )
+    parser.add_argument(
+        "--only_filelist",
+        dest="only_filelist",
+        type=str,
+        default="",
+        help="if you only have a few files with translations, please use comma to split them, example: --only_filelist 'nav.xhtml,cover.xhtml'",
+    )
+    parser.add_argument(
         "--translate-tags",
         dest="translate_tags",
         type=str,
         default="p",
         help="example --translate-tags p,blockquote",
+    )
+    parser.add_argument(
+        "--exclude_translate-tags",
+        dest="exclude_translate_tags",
+        type=str,
+        default="sup",
+        help="example --exclude_translate-tags table,sup",
     )
     parser.add_argument(
         "--allow_navigable_strings",
@@ -171,14 +195,63 @@ def main():
         help="used for customizing the prompt. It can be the prompt template string, or a path to the template file. The valid placeholders are `{text}` and `{language}`.",
     )
     parser.add_argument(
+        "--accumulated_num",
+        dest="accumulated_num",
+        type=int,
+        default=1,
+        help="""Wait for how many tokens have been accumulated before starting the translation.
+gpt3.5 limits the total_token to 4090.
+For example, if you use --accumulated_num 1600, maybe openai will output 2200 tokens
+and maybe 200 tokens for other messages in the system messages user messages, 1600+2200+200=4000,
+So you are close to reaching the limit. You have to choose your own value, there is no way to know if the limit is reached before sending
+""",
+    )
+    parser.add_argument(
+        "--translation_style",
+        dest="translation_style",
+        type=str,
+        help="""ex: --translation_style "color: #808080; font-style: italic;" """,
+    )
+    parser.add_argument(
         "--batch_size",
         dest="batch_size",
         type=int,
-        default=10,
         help="how many lines will be translated by aggregated translation(This options currently only applies to txt files)",
     )
+    parser.add_argument(
+        "--retranslate",
+        dest="retranslate",
+        nargs=4,
+        type=str,
+        help="""--retranslate "$translated_filepath" "file_name_in_epub" "start_str" "end_str"(optional)
+        Retranslate from start_str to end_str's tag:
+        python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which' 'This kind of thing is not a good symptom. Obviously'
+        Retranslate start_str's tag:
+        python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which'
+""",
+    )
 
+    parser.add_argument(
+        "--chatgptaccount",
+        dest="chatgptaccount",
+        type=str,
+        help="your chatgpt account",
+    )
+
+    parser.add_argument(
+        "--chatgptpassword",
+        dest="chatgptpassword",
+        type=str,
+        help="your chatgpt password",
+    )
+    chatgpt_account = ""
+    chatgpt_password = ""
     options = parser.parse_args()
+
+    if not os.path.isfile(options.book_name):
+        print(f"Error: {options.book_name} does not exist.")
+        exit(1)
+
     PROXY = options.proxy
     if PROXY != "":
         os.environ["http_proxy"] = PROXY
@@ -186,21 +259,22 @@ def main():
 
     translate_model = MODEL_DICT.get(options.model)
     assert translate_model is not None, "unsupported model"
+    API_KEY = ""
     if options.model in ["gpt3", "chatgptapi"]:
-        OPENAI_API_KEY = (
+        if OPENAI_API_KEY := (
             options.openai_key
             or env.get(
-                "OPENAI_API_KEY"
+                "OPENAI_API_KEY",
             )  # XXX: for backward compatability, deprecate soon
             or env.get(
-                "BBM_OPENAI_API_KEY"
+                "BBM_OPENAI_API_KEY",
             )  # suggest adding `BBM_` prefix for all the bilingual_book_maker ENVs.
-        )
-        if not OPENAI_API_KEY:
+        ):
+            API_KEY = OPENAI_API_KEY
+        else:
             raise Exception(
-                "OpenAI API key not provided, please google how to obtain it"
+                "OpenAI API key not provided, please google how to obtain it",
             )
-        API_KEY = OPENAI_API_KEY
     elif options.model == "caiyun":
         API_KEY = options.caiyun_key or env.get("BBM_CAIYUN_API_KEY")
         if not API_KEY:
@@ -209,16 +283,21 @@ def main():
         API_KEY = options.deepl_key or env.get("BBM_DEEPL_API_KEY")
         if not API_KEY:
             raise Exception("Please provid deepl key")
+    elif options.model == "chatgptaccount":
+        chatgpt_account = options.chatgptaccount
+        chatgpt_password = options.chatgptpassword
+        if chatgpt_account is None or chatgpt_password is None:
+            raise Exception("Please provid chatgptaccount and chatgptpassword")
     else:
         API_KEY = ""
 
     if options.book_from == "kobo":
-        import book_maker.obok as obok
+        from book_maker import obok
 
         device_path = options.device_path
         if device_path is None:
             raise Exception(
-                "Device path is not given, please specify the path by --device_path <DEVICE_PATH>"
+                "Device path is not given, please specify the path by --device_path <DEVICE_PATH>",
             )
         options.book_name = obok.cli_main(device_path)
 
@@ -226,7 +305,7 @@ def main():
     support_type_list = list(BOOK_LOADER_DICT.keys())
     if book_type not in support_type_list:
         raise Exception(
-            f"now only support files of these formats: {','.join(support_type_list)}"
+            f"now only support files of these formats: {','.join(support_type_list)}",
         )
 
     book_loader = BOOK_LOADER_DICT.get(book_type)
@@ -248,11 +327,39 @@ def main():
         model_api_base=model_api_base,
         is_test=options.test,
         test_num=options.test_num,
-        translate_tags=options.translate_tags,
-        allow_navigable_strings=options.allow_navigable_strings,
         prompt_config=parse_prompt_arg(options.prompt_arg),
-        batch_size=options.batch_size,
+        chatgptaccount=chatgpt_account,
+        chatgptpassword=chatgpt_password,
     )
+    # other options
+    if options.allow_navigable_strings:
+        e.allow_navigable_strings = True
+    if options.translate_tags:
+        e.translate_tags = options.translate_tags
+    if options.exclude_translate_tags:
+        e.exclude_translate_tags = options.exclude_translate_tags
+    if options.exclude_filelist:
+        e.exclude_filelist = options.exclude_filelist
+    if options.only_filelist:
+        e.only_filelist = options.only_filelist
+    if options.accumulated_num > 1:
+        e.accumulated_num = options.accumulated_num
+    if options.translation_style:
+        e.translation_style = options.translation_style
+    if options.batch_size:
+        e.batch_size = options.batch_size
+    if options.retranslate:
+        e.retranslate = options.retranslate
+    if options.deployment_id:
+        # only work for ChatGPT api for now
+        # later maybe support others
+        assert (
+            options.model == "chatgptapi"
+        ), "only support chatgptapi for deployment_id"
+        if not options.api_base:
+            raise ValueError("`api_base` must be provided when using `deployment_id`")
+        e.translate_model.set_deployment_id(options.deployment_id)
+
     e.make_bilingual_book()
 
 
