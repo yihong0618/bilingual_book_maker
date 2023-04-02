@@ -2,6 +2,7 @@ import re
 import time
 from copy import copy
 from os import environ
+from rich import print
 
 import openai
 
@@ -133,7 +134,7 @@ The total token is too long and cannot be completely translated\n
 
         # todo: Determine whether to print according to the cli option
         if needprint:
-            print(re.sub("\n{3,}", "\n\n", t_text))
+            print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
 
         time.time() - start_time
         # print(f"translation time: {elapsed_time:.1f}s")
