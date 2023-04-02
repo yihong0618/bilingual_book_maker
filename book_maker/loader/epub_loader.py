@@ -347,6 +347,7 @@ class EPUBBookLoader(BaseBookLoader):
                 index = self._process_paragraph(p, index, p_to_save_len)
                 # pbar.update(delta) not pbar.update(index)?
                 pbar.update(1)
+                print()
                 if self.is_test and index >= self.test_num:
                     break
 
@@ -375,6 +376,7 @@ class EPUBBookLoader(BaseBookLoader):
             for i in all_items
         )
         pbar = tqdm(total=self.test_num) if self.is_test else tqdm(total=all_p_length)
+        print()
         index = 0
         p_to_save_len = len(self.p_to_save)
         try:
