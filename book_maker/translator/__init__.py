@@ -1,5 +1,4 @@
 from book_maker.translator.caiyun_translator import Caiyun
-from book_maker.translator.chatgpt_account_translator import ChatGPTAccount
 from book_maker.translator.chatgptapi_translator import ChatGPTAPI
 from book_maker.translator.deepl_translator import DeepL
 from book_maker.translator.google_translator import Google
@@ -11,6 +10,5 @@ MODEL_DICT = {
     "google": Google,
     "caiyun": Caiyun,
     "deepl": DeepL,
-    "chatgptaccount": ChatGPTAccount,
     # add more here
 }
