@@ -18,16 +18,12 @@ class TXTBookLoader(BaseBookLoader):
         is_test=False,
         test_num=5,
         prompt_config=None,
-        chatgptaccount=None,
-        chatgptpassword=None,
     ) -> None:
         self.txt_name = txt_name
         self.translate_model = model(
             key,
             language,
             api_base=model_api_base,
-            chatgptaccount=chatgptaccount,
-            chatgptpassword=chatgptpassword,
             **prompt_config_to_kwargs(prompt_config),
         )
         self.is_test = is_test
