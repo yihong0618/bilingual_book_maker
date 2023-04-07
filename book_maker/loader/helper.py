@@ -8,7 +8,7 @@ class EPUBBookLoaderHelper:
         self.accumulated_num = accumulated_num
         self.translation_style = translation_style
 
-    def insert_trans(self, p, text, translation_style=""):
+    def insert_trans(self, p, text, translation_style="", no_bilingual=False):
         if (
             p.string is not None
             and p.string.replace(" ", "").strip() == text.replace(" ", "").strip()
@@ -19,16 +19,19 @@ class EPUBBookLoaderHelper:
         if translation_style != "":
             new_p["style"] = translation_style
         p.insert_after(new_p)
+        if no_bilingual:
+            p.extract()
 
-    def deal_new(self, p, wait_p_list):
-        self.deal_old(wait_p_list)
+    def deal_new(self, p, wait_p_list, no_bilingual=False):
+        self.deal_old(wait_p_list, no_bilingual)
         self.insert_trans(
             p,
             shorter_result_link(self.translate_model.translate(p.text)),
             self.translation_style,
+            no_bilingual,
         )
 
-    def deal_old(self, wait_p_list):
+    def deal_old(self, wait_p_list, no_bilingual=False):
         if not wait_p_list:
             return
 
@@ -41,6 +44,7 @@ class EPUBBookLoaderHelper:
                     p,
                     shorter_result_link(result_txt_list[i]),
                     self.translation_style,
+                    no_bilingual,
                 )
 
         wait_p_list.clear()
