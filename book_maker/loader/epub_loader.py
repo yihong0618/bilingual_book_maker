@@ -29,6 +29,7 @@ class EPUBBookLoader(BaseBookLoader):
         is_test=False,
         test_num=5,
         prompt_config=None,
+        no_bilingual=False,
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
@@ -51,6 +52,7 @@ class EPUBBookLoader(BaseBookLoader):
         self.retranslate = None
         self.exclude_filelist = ""
         self.only_filelist = ""
+        self.no_bilingual = no_bilingual
 
         # monkey patch for # 173
         def _write_items_patch(obj):
@@ -131,7 +133,9 @@ class EPUBBookLoader(BaseBookLoader):
                 new_p.string = self.translate_model.translate(new_p.text)
                 self.p_to_save.append(new_p.text)
 
-        self.helper.insert_trans(p, new_p.string, self.translation_style)
+        self.helper.insert_trans(
+            p, new_p.string, self.translation_style, self.no_bilingual
+        )
         index += 1
 
         if index % 20 == 0:
@@ -154,18 +158,18 @@ class EPUBBookLoader(BaseBookLoader):
                 [not p.text, self._is_special_text(temp_p.text), not_trans(temp_p.text)]
             ):
                 if i == len(p_list) - 1:
-                    self.helper.deal_old(wait_p_list)
+                    self.helper.deal_old(wait_p_list, self.no_bilingual)
                 continue
             length = num_tokens_from_text(temp_p.text)
             if length > send_num:
-                self.helper.deal_new(p, wait_p_list)
+                self.helper.deal_new(p, wait_p_list, self.no_bilingual)
                 continue
             if i == len(p_list) - 1:
                 if count + length < send_num:
                     wait_p_list.append(p)
-                    self.helper.deal_old(wait_p_list)
+                    self.helper.deal_old(wait_p_list, self.no_bilingual)
                 else:
-                    self.helper.deal_new(p, wait_p_list)
+                    self.helper.deal_new(p, wait_p_list, self.no_bilingual)
                 break
             if count + length < send_num:
                 count += length
@@ -175,7 +179,7 @@ class EPUBBookLoader(BaseBookLoader):
                 #     self.helper.deal_old(wait_p_list)
                 #     count = 0
             else:
-                self.helper.deal_old(wait_p_list)
+                self.helper.deal_old(wait_p_list, self.no_bilingual)
                 wait_p_list.append(p)
                 count = length
 
@@ -459,7 +463,10 @@ class EPUBBookLoader(BaseBookLoader):
                             else:
                                 new_p.string = self.p_to_save[index]
                             self.helper.insert_trans(
-                                p, new_p.string, self.translation_style
+                                p,
+                                new_p.string,
+                                self.translation_style,
+                                self.no_bilingual,
                             )
                             index += 1
                         else:
