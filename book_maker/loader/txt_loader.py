@@ -113,7 +113,7 @@ class TXTBookLoader(BaseBookLoader):
 
     def _save_progress(self):
         try:
-            with open(self.bin_path, "w") as f:
+            with open(self.bin_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(self.p_to_save))
         except:
             raise Exception("can not save resume file")
