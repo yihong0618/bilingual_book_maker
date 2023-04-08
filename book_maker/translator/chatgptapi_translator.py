@@ -90,7 +90,7 @@ class ChatGPTAPI(Base):
         # work well or exception finish by length limit
         choice = completion["choices"][0]
 
-        t_text = choice.get("message").get("content").encode("utf8").decode()
+        t_text = choice.get("message").get("content", "").encode("utf8").decode()
 
         if choice["finish_reason"] == "length":
             with open("log/long_text.txt", "a") as f:
@@ -212,7 +212,6 @@ The total token is too long and cannot be completely translated\n
                     print(result_list[i], file=f)
                     print(file=f)
                 print("=============================", file=f)
-        print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
         print(
             f"bug: {plist_len} paragraphs of text translated into {len(result_list)} paragraphs",

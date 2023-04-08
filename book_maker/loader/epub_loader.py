@@ -270,10 +270,9 @@ class EPUBBookLoader(BaseBookLoader):
         for item in complete_book.get_items():
             if item.file_name != fixname:
                 new_book.add_item(item)
+        if soup_complete:
+            complete_item.content = soup_complete.encode()
 
-        complete_item.content = soup_complete.encode()
-
-        # =================================================
         index = self.process_item(
             complete_item,
             index,
@@ -367,7 +366,8 @@ class EPUBBookLoader(BaseBookLoader):
                 if self.is_test and index >= self.test_num:
                     break
 
-        item.content = soup.encode()
+        if soup:
+            item.content = soup.encode()
         new_book.add_item(item)
 
         return index
@@ -465,7 +465,8 @@ class EPUBBookLoader(BaseBookLoader):
                         else:
                             break
                     # for save temp book
-                    item.content = soup.encode()
+                    if soup:
+                        item.content = soup.encode()
                 new_temp_book.add_item(item)
             name, _ = os.path.splitext(self.epub_name)
             epub.write_epub(f"{name}_bilingual_temp.epub", new_temp_book, {})
