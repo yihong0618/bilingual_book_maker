@@ -231,7 +231,7 @@ So you are close to reaching the limit. You have to choose your own value, there
 """,
     )
     parser.add_argument(
-        "--no_bilingual",
+        "--single_translate",
         action="store_true",
         help="output translated book, no bilingual",
     )
@@ -313,7 +313,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         is_test=options.test,
         test_num=options.test_num,
         prompt_config=parse_prompt_arg(options.prompt_arg),
-        no_bilingual=options.no_bilingual,
+        single_translate=options.single_translate,
     )
     # other options
     if options.allow_navigable_strings:
