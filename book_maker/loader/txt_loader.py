@@ -18,6 +18,7 @@ class TXTBookLoader(BaseBookLoader):
         is_test=False,
         test_num=5,
         prompt_config=None,
+        single_translate=False,
     ) -> None:
         self.txt_name = txt_name
         self.translate_model = model(

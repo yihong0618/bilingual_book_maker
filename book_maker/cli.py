@@ -230,6 +230,11 @@ So you are close to reaching the limit. You have to choose your own value, there
         python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which'
 """,
     )
+    parser.add_argument(
+        "--single_translate",
+        action="store_true",
+        help="output translated book, no bilingual",
+    )
 
     options = parser.parse_args()
 
@@ -308,6 +313,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         is_test=options.test,
         test_num=options.test_num,
         prompt_config=parse_prompt_arg(options.prompt_arg),
+        single_translate=options.single_translate,
     )
     # other options
     if options.allow_navigable_strings:
