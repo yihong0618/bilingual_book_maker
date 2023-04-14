@@ -1,10 +1,9 @@
 """
-idea come from: https://github.com/jesselau76/srt-gpt-translator, MIT License
+inspired by: https://github.com/jesselau76/srt-gpt-translator, MIT License
 """
 import re
 import sys
 from pathlib import Path
-import traceback
 
 from book_maker.utils import prompt_config_to_kwargs
 
@@ -43,13 +42,7 @@ class SRTBookLoader(BaseBookLoader):
         self.bilingual_temp_result = []
         self.test_num = test_num
         self.accumulated_num = 1
-
-        try:
-            with open(f"{srt_name}", encoding="utf-8") as f:
-                self.blocks = self._parse_srt(f.read())
-
-        except Exception as e:
-            raise Exception("can not load file") from e
+        self.blocks = []
 
         self.resume = resume
         self.bin_path = f"{Path(srt_name).parent}/.{Path(srt_name).stem}.temp.bin"
@@ -75,16 +68,18 @@ class SRTBookLoader(BaseBookLoader):
                 continue
 
             lines = block.strip().split("\n")
-            new_block["number"] = lines[0]
-            timestamp = lines[1]
+            new_block["number"] = lines[0].strip()
+            timestamp = lines[1].strip()
             new_block["time"] = timestamp
             text = "\n".join(lines[2:]).strip()
             new_block["text"] = text
             next_timestamp = None
-            if re.search(end_puctuation, text):
+            # only merge when batch
+            if self.accumulated_num == 1 or re.search(end_puctuation, text):
                 final_blocks.append(new_block)
                 new_block = {}
             else:
+                # the max merged block is 2
                 concat_max = 2
                 j = 0
                 while j < concat_max:
@@ -96,8 +91,11 @@ class SRTBookLoader(BaseBookLoader):
                     except IndexError:
                         break
 
+                    if not next_block:
+                        break
+
                     lines = next_block.strip().split("\n")
-                    next_timestamp = lines[1]
+                    next_timestamp = lines[1].strip()
                     next_text = "\n".join(lines[2:]).strip()
                     new_block["text"] = f"{new_block['text']}\n{next_text}"
                     if re.search(end_puctuation, next_text):
@@ -106,6 +104,9 @@ class SRTBookLoader(BaseBookLoader):
                     new_block[
                         "time"
                     ] = f"{timestamp.split('-->')[0].strip()} --> {next_timestamp.split('-->')[1].strip()}"
+                    final_blocks.append(new_block)
+                    new_block = {}
+                else:
                     final_blocks.append(new_block)
                     new_block = {}
 
@@ -177,14 +178,20 @@ class SRTBookLoader(BaseBookLoader):
 
     def make_bilingual_book(self):
         if self.accumulated_num > 1024:
+            print(f"{self.accumulated_num} is too large, shrink it to 1024.")
             self.accumulated_num = 1024
+
+        try:
+            with open(f"{self.srt_name}", encoding="utf-8") as f:
+                self.blocks = self._parse_srt(f.read())
+        except Exception as e:
+            raise Exception("can not load file") from e
 
         index = 0
         p_to_save_len = len(self.p_to_save)
 
         try:
             sliced_list = self._get_sliced_list()
-            # raise Exception("Test")
 
             for sliced in sliced_list:
                 begin, end, text = sliced
@@ -201,30 +208,33 @@ class SRTBookLoader(BaseBookLoader):
 
                     translated_blocks = self._get_blocks_from(temp)
 
-                    if not self._check_blocks(
-                        translated_blocks, self.blocks[begin:end]
-                    ):
-                        translated_blocks = []
-                        # try to translate one by one, so don't accumulate too much
-                        print(
-                            f"retry it one by one:  {self.blocks[begin]['number']} - {self.blocks[end-1]['number']}"
-                        )
-                        for block in self.blocks[begin:end]:
-                            try:
-                                temp = self.translate_model.translate(
-                                    self._get_block_translate(block)
-                                )
-                            except Exception as e:
-                                print(e)
-                                raise Exception(
-                                    "Something is wrong when translate"
-                                ) from e
-                            translated_blocks.append(self._get_block_from(temp))
-
+                    if self.accumulated_num > 1:
                         if not self._check_blocks(
                             translated_blocks, self.blocks[begin:end]
                         ):
-                            raise Exception(f"retry failed, adjust the srt manually.")
+                            translated_blocks = []
+                            # try to translate one by one, so don't accumulate too much
+                            print(
+                                f"retry it one by one:  {self.blocks[begin]['number']} - {self.blocks[end-1]['number']}"
+                            )
+                            for block in self.blocks[begin:end]:
+                                try:
+                                    temp = self.translate_model.translate(
+                                        self._get_block_translate(block)
+                                    )
+                                except Exception as e:
+                                    print(e)
+                                    raise Exception(
+                                        "Something is wrong when translate"
+                                    ) from e
+                                translated_blocks.append(self._get_block_from(temp))
+
+                            if not self._check_blocks(
+                                translated_blocks, self.blocks[begin:end]
+                            ):
+                                raise Exception(
+                                    f"retry failed, adjust the srt manually."
+                                )
 
                     i = 0
                     for block in translated_blocks:
@@ -253,7 +263,6 @@ class SRTBookLoader(BaseBookLoader):
             )
 
         except (KeyboardInterrupt, Exception) as e:
-            traceback.print_exc()
             print(e)
             print("you can resume it next time")
             self._save_progress()
