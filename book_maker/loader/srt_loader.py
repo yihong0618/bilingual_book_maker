@@ -32,7 +32,7 @@ class SRTBookLoader(BaseBookLoader):
             **prompt_config_to_kwargs(
                 {
                     "system": "You are a srt subtitle file translator.",
-                    "user": "Translate the following subtitle text into {language}, but keep the subtitle number and timeline and newlines unchanged. Translate one sentence at a time.: \n{text}",
+                    "user": "Translate the following subtitle text into {language}, but keep the subtitle number and timeline and newlines unchanged: \n{text}",
                 }
             ),
         )
