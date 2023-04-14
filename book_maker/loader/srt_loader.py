@@ -151,6 +151,9 @@ class SRTBookLoader(BaseBookLoader):
         return blocks
 
     def _check_blocks(self, translate_blocks, origin_blocks):
+        """
+        Check if the translated blocks match the original text, with only a simple check of the beginning numbers.
+        """
         if len(translate_blocks) != len(origin_blocks):
             return False
 
@@ -250,22 +253,18 @@ class SRTBookLoader(BaseBookLoader):
                                     f"retry failed, adjust the srt manually."
                                 )
 
-                    i = 0
-                    for block in translated_blocks:
+                    for i, block in enumerate(translated_blocks):
                         text = block.get("text", "")
                         self.p_to_save.append(text)
                         self.bilingual_result.append(
                             f"{self._get_block_text(self.blocks[begin + i])}\n{text}"
                         )
-                        i += 1
                 else:
-                    i = 0
-                    for block in self.blocks[begin:end]:
+                    for i, block in enumerate(self.blocks[begin:end]):
                         text = self.p_to_save[begin + i]
                         self.bilingual_result.append(
                             f"{self._get_block_text(self.blocks[begin + i])}\n{text}"
                         )
-                        i += 1
 
                 index += end - begin
                 if self.is_test and index > self.test_num:
