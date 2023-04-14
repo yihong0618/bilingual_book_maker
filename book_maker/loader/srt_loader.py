@@ -148,10 +148,17 @@ class SRTBookLoader(BaseBookLoader):
             return False
 
         for t in zip(translate_blocks, origin_blocks):
-            i = int(t[0].get("number", 0))
+            i = 0
+            try:
+                i = int(t[0].get("number", 0))
+            except ValueError:
+                m = re.search(r"\s*\d+", t[0].get('number'))
+                if m:
+                    i = int(m.group())
+
             j = int(t[1].get("number", -1))
             if i != j:
-                print("check failed: {i}!={j}")
+                print(f"check failed: {i}!={j}")
                 return False
 
         return True
