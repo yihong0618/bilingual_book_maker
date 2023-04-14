@@ -8,6 +8,7 @@ from pathlib import Path
 from book_maker.utils import prompt_config_to_kwargs
 
 from .base_loader import BaseBookLoader
+from book_maker.translator import ChatGPTAPI
 
 
 class SRTBookLoader(BaseBookLoader):
@@ -55,7 +56,7 @@ class SRTBookLoader(BaseBookLoader):
     def _parse_srt(self, srt_text):
         blocks = re.split("\n\s*\n", srt_text)
 
-        end_puctuation = r"[.!?。！？]\s*$"
+        end_puctuation = r"[\"'.!?。！？]\s*$"
         final_blocks = []
         new_block = {}
         skip_i = []
@@ -74,12 +75,18 @@ class SRTBookLoader(BaseBookLoader):
             text = "\n".join(lines[2:]).strip()
             new_block["text"] = text
             next_timestamp = None
-            # only merge when batch
-            if self.accumulated_num == 1 or re.search(end_puctuation, text):
+            # If multiple blocks are sent to ChatGPT and some blocks are part of the same sentence as the following blocks,
+            # ChatGPT may combine them into a single translation sentence, causing the blocks to be misaligned and unable to match.
+            # In this case, the blocks must be re-translated one by one.
+            # To avoid wasting tokens, try to merge them into a single sentence as much as possible, with a maximum of three blocks.
+            if (
+                self.accumulated_num == 1
+                or not isinstance(self.translate_model, ChatGPTAPI)
+                or re.search(end_puctuation, text)
+            ):
                 final_blocks.append(new_block)
                 new_block = {}
             else:
-                # the max merged block is 2
                 concat_max = 2
                 j = 0
                 while j < concat_max:
