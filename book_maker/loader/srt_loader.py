@@ -56,14 +56,9 @@ class SRTBookLoader(BaseBookLoader):
     def _parse_srt(self, srt_text):
         blocks = re.split("\n\s*\n", srt_text)
 
-        end_puctuation = r"[\"'.!?。！？]\s*$"
         final_blocks = []
         new_block = {}
-        skip_i = []
         for i in range(0, len(blocks)):
-            if i in skip_i:
-                continue
-
             block = blocks[i]
             if block.strip() == "":
                 continue
@@ -74,48 +69,8 @@ class SRTBookLoader(BaseBookLoader):
             new_block["time"] = timestamp
             text = "\n".join(lines[2:]).strip()
             new_block["text"] = text
-            next_timestamp = None
-            # If multiple blocks are sent to ChatGPT and some blocks are part of the same sentence as the following blocks,
-            # ChatGPT may combine them into a single translation sentence, causing the blocks to be misaligned and unable to match.
-            # In this case, the blocks must be re-translated one by one.
-            # To avoid wasting tokens, try to merge them into a single sentence as much as possible, with a maximum of three blocks.
-            if (
-                self.accumulated_num == 1
-                or not isinstance(self.translate_model, ChatGPTAPI)
-                or re.search(end_puctuation, text)
-            ):
-                final_blocks.append(new_block)
-                new_block = {}
-            else:
-                concat_max = 2
-                j = 0
-                while j < concat_max:
-                    i += 1
-                    j += 1
-                    skip_i.append(i)
-                    try:
-                        next_block = blocks[i]
-                    except IndexError:
-                        break
-
-                    if not next_block:
-                        break
-
-                    lines = next_block.strip().split("\n")
-                    next_timestamp = lines[1].strip()
-                    next_text = "\n".join(lines[2:]).strip()
-                    new_block["text"] = f"{new_block['text']}\n{next_text}"
-                    if re.search(end_puctuation, next_text):
-                        break
-                if next_timestamp:
-                    new_block[
-                        "time"
-                    ] = f"{timestamp.split('-->')[0].strip()} --> {next_timestamp.split('-->')[1].strip()}"
-                    final_blocks.append(new_block)
-                    new_block = {}
-                else:
-                    final_blocks.append(new_block)
-                    new_block = {}
+            final_blocks.append(new_block)
+            new_block = {}
 
         return final_blocks
 
@@ -194,9 +149,9 @@ class SRTBookLoader(BaseBookLoader):
         return sliced_list
 
     def make_bilingual_book(self):
-        if self.accumulated_num > 1024:
-            print(f"{self.accumulated_num} is too large, shrink it to 1024.")
-            self.accumulated_num = 1024
+        if self.accumulated_num > 512:
+            print(f"{self.accumulated_num} is too large, shrink it to 512.")
+            self.accumulated_num = 512
 
         try:
             with open(f"{self.srt_name}", encoding="utf-8") as f:
