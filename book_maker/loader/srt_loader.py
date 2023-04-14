@@ -152,7 +152,7 @@ class SRTBookLoader(BaseBookLoader):
             try:
                 i = int(t[0].get("number", 0))
             except ValueError:
-                m = re.search(r"\s*\d+", t[0].get('number'))
+                m = re.search(r"\s*\d+", t[0].get("number"))
                 if m:
                     i = int(m.group())
 
