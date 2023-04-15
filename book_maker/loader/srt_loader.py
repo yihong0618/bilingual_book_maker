@@ -8,8 +8,6 @@ from pathlib import Path
 from book_maker.utils import prompt_config_to_kwargs
 
 from .base_loader import BaseBookLoader
-from book_maker.translator import ChatGPTAPI
-
 
 class SRTBookLoader(BaseBookLoader):
     def __init__(
