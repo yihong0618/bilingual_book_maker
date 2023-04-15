@@ -9,6 +9,7 @@ from book_maker.utils import prompt_config_to_kwargs
 
 from .base_loader import BaseBookLoader
 
+
 class SRTBookLoader(BaseBookLoader):
     def __init__(
         self,
