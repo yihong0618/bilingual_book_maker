@@ -56,6 +56,7 @@ jobs:
         if: env.BBM_CAIYUN_API_KEY != null
         run: |
           python3 make_book.py --book_name "test_books/the_little_prince.txt" --test --batch_size 30 --test_num 20 --model deepl
+          python3 make_book.py --book_name test_books/Lex_Fridman_episode_322.srt --test 
 
       - name: make openai key ebook test
         if: env.BBM_DEEPL_API_KEY != null
@@ -63,6 +64,7 @@ jobs:
             python3 make_book.py --book_name "test_books/lemo.epub" --test --test_num 5 --language zh-hans
             python3 make_book.py --book_name "test_books/animal_farm.epub" --test --test_num 5 --language ja --model gpt3 --prompt prompt_template_sample.txt
             python3 make_book.py --book_name "test_books/animal_farm.epub" --test --test_num 5 --language ja --prompt prompt_template_sample.json
+            python3 make_book.py --book_name test_books/Lex_Fridman_episode_322.srt --openai_key ${openai_key}  --test
             
       - name: Rename and Upload ePub
         if: env.OPENAI_API_KEY != null
