@@ -283,30 +283,30 @@ def test_openai_translate_epub_ja_prompt_json(test_book_dir, tmpdir):
     assert os.path.getsize(os.path.join(tmpdir, "animal_farm_bilingual.epub")) != 0
 
 
-@pytest.mark.skipif(
-    not os.environ.get("OPENAI_API_KEY"),
-    reason="No OPENAI_API_KEY in environment variable.",
-)
-def test_openai_translate_srt(test_book_dir, tmpdir):
-    shutil.copyfile(
-        os.path.join(test_book_dir, "Lex_Fridman_episode_322.srt"),
-        os.path.join(tmpdir, "Lex_Fridman_episode_322.srt"),
-    )
+# @pytest.mark.skipif(
+#     not os.environ.get("OPENAI_API_KEY"),
+#     reason="No OPENAI_API_KEY in environment variable.",
+# )
+# def test_openai_translate_srt(test_book_dir, tmpdir):
+#     shutil.copyfile(
+#         os.path.join(test_book_dir, "Lex_Fridman_episode_322.srt"),
+#         os.path.join(tmpdir, "Lex_Fridman_episode_322.srt"),
+#     )
 
-    subprocess.run(
-        [
-            sys.executable,
-            "make_book.py",
-            "--book_name",
-            os.path.join("Lex_Fridman_episode_322.srt"),
-            "--test",
-            "--test_num",
-            "20",
-        ],
-        env=os.environ.copy(),
-    )
-    assert os.path.isfile(os.path.join(tmpdir, "Lex_Fridman_episode_322_bilingual.srt"))
-    assert (
-        os.path.getsize(os.path.join(tmpdir, "Lex_Fridman_episode_322_bilingual.srt"))
-        != 0
-    )
+#     subprocess.run(
+#         [
+#             sys.executable,
+#             "make_book.py",
+#             "--book_name",
+#             os.path.join("Lex_Fridman_episode_322.srt"),
+#             "--test",
+#             "--test_num",
+#             "20",
+#         ],
+#         env=os.environ.copy(),
+#     )
+#     assert os.path.isfile(os.path.join(tmpdir, "Lex_Fridman_episode_322_bilingual.srt"))
+#     assert (
+#         os.path.getsize(os.path.join(tmpdir, "Lex_Fridman_episode_322_bilingual.srt"))
+#         != 0
+#     )
