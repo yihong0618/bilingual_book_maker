@@ -32,7 +32,8 @@ def test_google_translate_epub(test_book_dir, tmpdir):
             "20",
             "--model",
             "google",
-        ]
+        ],
+        env=os.environ.copy(),
     )
 
     assert os.path.isfile(os.path.join(tmpdir, "Liber_Esther_bilingual.epub"))
@@ -61,7 +62,8 @@ def test_google_translate_txt(test_book_dir, tmpdir):
             "20",
             "--model",
             "google",
-        ]
+        ],
+        env=os.environ.copy(),
     )
     assert os.path.isfile(os.path.join(tmpdir, "the_little_prince_bilingual.txt"))
     assert os.path.getsize(os.path.join(tmpdir, "the_little_prince_bilingual.txt")) != 0
@@ -87,7 +89,8 @@ def test_google_translate_txt_batch_size(test_book_dir, tmpdir):
             "20",
             "--model",
             "google",
-        ]
+        ],
+        env=os.environ.copy(),
     )
 
     assert os.path.isfile(os.path.join(tmpdir, "the_little_prince_bilingual.txt"))
@@ -117,7 +120,8 @@ def test_caiyun_translate_txt(test_book_dir, tmpdir):
             "100",
             "--model",
             "caiyun",
-        ]
+        ],
+        env=os.environ.copy(),
     )
 
     assert os.path.isfile(os.path.join(tmpdir, "the_little_prince_bilingual.txt"))
@@ -147,7 +151,8 @@ def test_deepl_translate_txt(test_book_dir, tmpdir):
             "20",
             "--model",
             "deepl",
-        ]
+        ],
+        env=os.environ.copy(),
     )
 
     assert os.path.isfile(os.path.join(tmpdir, "the_little_prince_bilingual.txt"))
@@ -177,7 +182,8 @@ def test_deepl_translate_srt(test_book_dir, tmpdir):
             "20",
             "--model",
             "deepl",
-        ]
+        ],
+        env=os.environ.copy(),
     )
 
     assert os.path.isfile(os.path.join(tmpdir, "Lex_Fridman_episode_322_bilingual.srt"))
@@ -207,7 +213,8 @@ def test_openai_translate_epub_zh_hans(test_book_dir, tmpdir):
             "--test_num",
             "5",
             "--language zh-hans",
-        ]
+        ],
+        env=os.environ.copy(),
     )
     assert os.path.isfile(os.path.join(tmpdir, "lemo_bilingual.epub"))
     assert os.path.getsize(os.path.join(tmpdir, "lemo_bilingual.epub")) != 0
@@ -238,7 +245,8 @@ def test_openai_translate_epub_ja_prompt_txt(test_book_dir, tmpdir):
             "gpt3",
             "--prompt",
             "prompt_template_sample.txt",
-        ]
+        ],
+        env=os.environ.copy(),
     )
     assert os.path.isfile(os.path.join(tmpdir, "animal_farm_bilingual.epub"))
     assert os.path.getsize(os.path.join(tmpdir, "animal_farm_bilingual.epub")) != 0
@@ -267,7 +275,8 @@ def test_openai_translate_epub_ja_prompt_json(test_book_dir, tmpdir):
             "ja",
             "--prompt",
             "prompt_template_sample.json",
-        ]
+        ],
+        env=os.environ.copy(),
     )
     assert os.path.isfile(os.path.join(tmpdir, "animal_farm_bilingual.epub"))
     assert os.path.getsize(os.path.join(tmpdir, "animal_farm_bilingual.epub")) != 0
@@ -292,7 +301,8 @@ def test_openai_translate_srt(test_book_dir, tmpdir):
             "--test",
             "--test_num",
             "20",
-        ]
+        ],
+        env=os.environ.copy(),
     )
     assert os.path.isfile(os.path.join(tmpdir, "Lex_Fridman_episode_322_bilingual.srt"))
     assert (
