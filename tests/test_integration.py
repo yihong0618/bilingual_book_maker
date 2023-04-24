@@ -98,7 +98,7 @@ def test_google_translate_txt_batch_size(test_book_dir, tmpdir):
 
 
 @pytest.mark.skipif(
-    os.environ.get("BBM_CAIYUN_API_KEY") is None,
+    not os.environ.get("BBM_CAIYUN_API_KEY"),
     reason="No BBM_CAIYUN_API_KEY in environment variable.",
 )
 def test_caiyun_translate_txt(test_book_dir, tmpdir):
@@ -129,7 +129,7 @@ def test_caiyun_translate_txt(test_book_dir, tmpdir):
 
 
 @pytest.mark.skipif(
-    os.environ.get("BBM_DEEPL_API_KEY") is None,
+    not os.environ.get("BBM_DEEPL_API_KEY"),
     reason="No BBM_DEEPL_API_KEY in environment variable.",
 )
 def test_deepl_translate_txt(test_book_dir, tmpdir):
@@ -160,7 +160,7 @@ def test_deepl_translate_txt(test_book_dir, tmpdir):
 
 
 @pytest.mark.skipif(
-    os.environ.get("BBM_DEEPL_API_KEY") is None,
+    not os.environ.get("BBM_DEEPL_API_KEY"),
     reason="No BBM_DEEPL_API_KEY in environment variable.",
 )
 def test_deepl_translate_srt(test_book_dir, tmpdir):
@@ -194,7 +194,7 @@ def test_deepl_translate_srt(test_book_dir, tmpdir):
 
 
 @pytest.mark.skipif(
-    os.environ.get("OPENAI_API_KEY") is None,
+    not os.environ.get("OPENAI_API_KEY"),
     reason="No OPENAI_API_KEY in environment variable.",
 )
 def test_openai_translate_epub_zh_hans(test_book_dir, tmpdir):
@@ -212,7 +212,8 @@ def test_openai_translate_epub_zh_hans(test_book_dir, tmpdir):
             "--test",
             "--test_num",
             "5",
-            "--language zh-hans",
+            "--language",
+            "zh-hans",
         ],
         env=os.environ.copy(),
     )
@@ -221,7 +222,7 @@ def test_openai_translate_epub_zh_hans(test_book_dir, tmpdir):
 
 
 @pytest.mark.skipif(
-    os.environ.get("OPENAI_API_KEY") is None,
+    not os.environ.get("OPENAI_API_KEY"),
     reason="No OPENAI_API_KEY in environment variable.",
 )
 def test_openai_translate_epub_ja_prompt_txt(test_book_dir, tmpdir):
@@ -253,7 +254,7 @@ def test_openai_translate_epub_ja_prompt_txt(test_book_dir, tmpdir):
 
 
 @pytest.mark.skipif(
-    os.environ.get("OPENAI_API_KEY") is None,
+    not os.environ.get("OPENAI_API_KEY"),
     reason="No OPENAI_API_KEY in environment variable.",
 )
 def test_openai_translate_epub_ja_prompt_json(test_book_dir, tmpdir):
@@ -283,7 +284,7 @@ def test_openai_translate_epub_ja_prompt_json(test_book_dir, tmpdir):
 
 
 @pytest.mark.skipif(
-    os.environ.get("OPENAI_API_KEY") is None,
+    not os.environ.get("OPENAI_API_KEY"),
     reason="No OPENAI_API_KEY in environment variable.",
 )
 def test_openai_translate_srt(test_book_dir, tmpdir):
