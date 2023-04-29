@@ -3,6 +3,7 @@ from book_maker.translator.chatgptapi_translator import ChatGPTAPI
 from book_maker.translator.deepl_translator import DeepL
 from book_maker.translator.google_translator import Google
 from book_maker.translator.gpt3_translator import GPT3
+from book_maker.translator.gpt4_translator import GPT4
 
 MODEL_DICT = {
     "chatgptapi": ChatGPTAPI,
@@ -10,5 +11,6 @@ MODEL_DICT = {
     "google": Google,
     "caiyun": Caiyun,
     "deepl": DeepL,
+    'gpt4': GPT4,
     # add more here
 }

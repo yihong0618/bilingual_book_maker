@@ -250,7 +250,7 @@ So you are close to reaching the limit. You have to choose your own value, there
     translate_model = MODEL_DICT.get(options.model)
     assert translate_model is not None, "unsupported model"
     API_KEY = ""
-    if options.model in ["gpt3", "chatgptapi"]:
+    if options.model in ["gpt3", "chatgptapi", "gpt4"]:
         if OPENAI_API_KEY := (
             options.openai_key
             or env.get(
