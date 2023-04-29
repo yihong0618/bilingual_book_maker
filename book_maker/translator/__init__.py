@@ -11,6 +11,6 @@ MODEL_DICT = {
     "google": Google,
     "caiyun": Caiyun,
     "deepl": DeepL,
-    'gpt4': GPT4,
+    "gpt4": GPT4,
     # add more here
 }
