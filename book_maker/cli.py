@@ -235,6 +235,12 @@ So you are close to reaching the limit. You have to choose your own value, there
         action="store_true",
         help="output translated book, no bilingual",
     )
+    parser.add_argument(
+        "--use_context",
+        dest="context_flag",
+        action="store_true",
+        help="adds an additional paragraph for global, updating historical context of the story to the model's input, improving the narrative consistency for the AI model (this uses ~200 more tokens each time)",
+    )
 
     options = parser.parse_args()
 
@@ -314,6 +320,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         test_num=options.test_num,
         prompt_config=parse_prompt_arg(options.prompt_arg),
         single_translate=options.single_translate,
+        context_flag=options.context_flag,
     )
     # other options
     if options.allow_navigable_strings:
