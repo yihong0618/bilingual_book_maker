@@ -12,17 +12,17 @@ from .base_loader import BaseBookLoader
 
 class SRTBookLoader(BaseBookLoader):
     def __init__(
-            self,
-            srt_name,
-            model,
-            key,
-            resume,
-            language,
-            model_api_base=None,
-            is_test=False,
-            test_num=5,
-            prompt_config=None,
-            single_translate=False,
+        self,
+        srt_name,
+        model,
+        key,
+        resume,
+        language,
+        model_api_base=None,
+        is_test=False,
+        test_num=5,
+        prompt_config=None,
+        single_translate=False,
     ) -> None:
         self.srt_name = srt_name
         self.translate_model = model(
@@ -76,6 +76,7 @@ class SRTBookLoader(BaseBookLoader):
 
     def _get_block_text(self, block):
         return f"{block['number']}\n{block['time']}\n{block['text']}"
+
     def _get_block_expect_text(self, block):
         return f"{block['number']}\n{block['time']}"
 
@@ -184,7 +185,7 @@ class SRTBookLoader(BaseBookLoader):
 
                     if self.accumulated_num > 1:
                         if not self._check_blocks(
-                                translated_blocks, self.blocks[begin:end]
+                            translated_blocks, self.blocks[begin:end]
                         ):
                             translated_blocks = []
                             # try to translate one by one, so don't accumulate too much
@@ -204,7 +205,7 @@ class SRTBookLoader(BaseBookLoader):
                                 translated_blocks.append(self._get_block_from(temp))
 
                             if not self._check_blocks(
-                                    translated_blocks, self.blocks[begin:end]
+                                translated_blocks, self.blocks[begin:end]
                             ):
                                 raise Exception(
                                     f"retry failed, adjust the srt manually."
