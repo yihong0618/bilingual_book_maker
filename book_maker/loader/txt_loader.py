@@ -8,17 +8,17 @@ from .base_loader import BaseBookLoader
 
 class TXTBookLoader(BaseBookLoader):
     def __init__(
-        self,
-        txt_name,
-        model,
-        key,
-        resume,
-        language,
-        model_api_base=None,
-        is_test=False,
-        test_num=5,
-        prompt_config=None,
-        single_translate=False,
+            self,
+            txt_name,
+            model,
+            key,
+            resume,
+            language,
+            model_api_base=None,
+            is_test=False,
+            test_num=5,
+            prompt_config=None,
+            single_translate=False,
     ) -> None:
         self.txt_name = txt_name
         self.translate_model = model(
@@ -33,6 +33,7 @@ class TXTBookLoader(BaseBookLoader):
         self.bilingual_temp_result = []
         self.test_num = test_num
         self.batch_size = 10
+        self.single_translate = single_translate
 
         try:
             with open(f"{txt_name}", encoding="utf-8") as f:
@@ -59,7 +60,7 @@ class TXTBookLoader(BaseBookLoader):
 
         try:
             sliced_list = [
-                self.origin_book[i : i + self.batch_size]
+                self.origin_book[i: i + self.batch_size]
                 for i in range(0, len(self.origin_book), self.batch_size)
             ]
             for i in sliced_list:
@@ -73,7 +74,8 @@ class TXTBookLoader(BaseBookLoader):
                         print(e)
                         raise Exception("Something is wrong when translate") from e
                     self.p_to_save.append(temp)
-                    self.bilingual_result.append(batch_text)
+                    if not self.single_translate:
+                        self.bilingual_result.append(batch_text)
                     self.bilingual_result.append(temp)
                 index += self.batch_size
                 if self.is_test and index > self.test_num:
@@ -94,7 +96,7 @@ class TXTBookLoader(BaseBookLoader):
     def _save_temp_book(self):
         index = 0
         sliced_list = [
-            self.origin_book[i : i + self.batch_size]
+            self.origin_book[i: i + self.batch_size]
             for i in range(0, len(self.origin_book), self.batch_size)
         ]
 

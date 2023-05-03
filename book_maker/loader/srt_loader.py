@@ -12,17 +12,17 @@ from .base_loader import BaseBookLoader
 
 class SRTBookLoader(BaseBookLoader):
     def __init__(
-        self,
-        srt_name,
-        model,
-        key,
-        resume,
-        language,
-        model_api_base=None,
-        is_test=False,
-        test_num=5,
-        prompt_config=None,
-        single_translate=False,
+            self,
+            srt_name,
+            model,
+            key,
+            resume,
+            language,
+            model_api_base=None,
+            is_test=False,
+            test_num=5,
+            prompt_config=None,
+            single_translate=False,
     ) -> None:
         self.srt_name = srt_name
         self.translate_model = model(
@@ -43,6 +43,7 @@ class SRTBookLoader(BaseBookLoader):
         self.test_num = test_num
         self.accumulated_num = 1
         self.blocks = []
+        self.single_translate = single_translate
 
         self.resume = resume
         self.bin_path = f"{Path(srt_name).parent}/.{Path(srt_name).stem}.temp.bin"
@@ -75,6 +76,8 @@ class SRTBookLoader(BaseBookLoader):
 
     def _get_block_text(self, block):
         return f"{block['number']}\n{block['time']}\n{block['text']}"
+    def _get_block_expect_text(self, block):
+        return f"{block['number']}\n{block['time']}"
 
     def _concat_blocks(self, sliced_text: str, text: str):
         return f"{sliced_text}\n\n{text}" if sliced_text else text
@@ -181,12 +184,12 @@ class SRTBookLoader(BaseBookLoader):
 
                     if self.accumulated_num > 1:
                         if not self._check_blocks(
-                            translated_blocks, self.blocks[begin:end]
+                                translated_blocks, self.blocks[begin:end]
                         ):
                             translated_blocks = []
                             # try to translate one by one, so don't accumulate too much
                             print(
-                                f"retry it one by one:  {self.blocks[begin]['number']} - {self.blocks[end-1]['number']}"
+                                f"retry it one by one:  {self.blocks[begin]['number']} - {self.blocks[end - 1]['number']}"
                             )
                             for block in self.blocks[begin:end]:
                                 try:
@@ -201,7 +204,7 @@ class SRTBookLoader(BaseBookLoader):
                                 translated_blocks.append(self._get_block_from(temp))
 
                             if not self._check_blocks(
-                                translated_blocks, self.blocks[begin:end]
+                                    translated_blocks, self.blocks[begin:end]
                             ):
                                 raise Exception(
                                     f"retry failed, adjust the srt manually."
@@ -210,15 +213,25 @@ class SRTBookLoader(BaseBookLoader):
                     for i, block in enumerate(translated_blocks):
                         text = block.get("text", "")
                         self.p_to_save.append(text)
-                        self.bilingual_result.append(
-                            f"{self._get_block_text(self.blocks[begin + i])}\n{text}"
-                        )
+                        if self.single_translate:
+                            self.bilingual_result.append(
+                                f"{self._get_block_expect_text(self.blocks[begin + i])}\n{text}"
+                            )
+                        else:
+                            self.bilingual_result.append(
+                                f"{self._get_block_text(self.blocks[begin + i])}\n{text}"
+                            )
                 else:
                     for i, block in enumerate(self.blocks[begin:end]):
                         text = self.p_to_save[begin + i]
-                        self.bilingual_result.append(
-                            f"{self._get_block_text(self.blocks[begin + i])}\n{text}"
-                        )
+                        if self.single_translate:
+                            self.bilingual_result.append(
+                                f"{self._get_block_expect_text(self.blocks[begin + i])}\n{text}"
+                            )
+                        else:
+                            self.bilingual_result.append(
+                                f"{self._get_block_text(self.blocks[begin + i])}\n{text}"
+                            )
 
                 index += end - begin
                 if self.is_test and index > self.test_num:
