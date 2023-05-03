@@ -77,7 +77,7 @@ class SRTBookLoader(BaseBookLoader):
     def _get_block_text(self, block):
         return f"{block['number']}\n{block['time']}\n{block['text']}"
 
-    def _get_block_expect_text(self, block):
+    def _get_block_except_text(self, block):
         return f"{block['number']}\n{block['time']}"
 
     def _concat_blocks(self, sliced_text: str, text: str):
@@ -216,7 +216,7 @@ class SRTBookLoader(BaseBookLoader):
                         self.p_to_save.append(text)
                         if self.single_translate:
                             self.bilingual_result.append(
-                                f"{self._get_block_expect_text(self.blocks[begin + i])}\n{text}"
+                                f"{self._get_block_except_text(self.blocks[begin + i])}\n{text}"
                             )
                         else:
                             self.bilingual_result.append(
@@ -227,7 +227,7 @@ class SRTBookLoader(BaseBookLoader):
                         text = self.p_to_save[begin + i]
                         if self.single_translate:
                             self.bilingual_result.append(
-                                f"{self._get_block_expect_text(self.blocks[begin + i])}\n{text}"
+                                f"{self._get_block_except_text(self.blocks[begin + i])}\n{text}"
                             )
                         else:
                             self.bilingual_result.append(
