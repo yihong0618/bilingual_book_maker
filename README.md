@@ -20,7 +20,8 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
    Or, just set environment variable `BMM_OPENAI_API_KEY` instead.
 - A sample book, `test_books/animal_farm.epub`, is provided for testing purposes.
 - The default underlying model is [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis), which is used by ChatGPT currently. Use `--model gpt3` to change the underlying model to `GPT3`
-5. support DeepL model [DeepL Translator](https://rapidapi.com/splintPRO/api/deepl-translator) need pay to get the token use `--model deepl --deepl_key ${deepl_key}`
+- Support DeepL model [DeepL Translator](https://rapidapi.com/splintPRO/api/deepl-translator) need pay to get the token use `--model deepl --deepl_key ${deepl_key}`
+- Support [Claude](https://console.anthropic.com/docs) model, use `--model claude --claude_key ${claude_key}`
 - Use `--test` option to preview the result if you haven't paid for the service. Note that there is a limit and it may take some time.
 - Set the target language like `--language "Simplified Chinese"`. Default target language is `"Simplified Chinese"`.
    Read available languages by helper message: `python make_book.py --help`
@@ -70,8 +71,10 @@ export OPENAI_API_KEY=${your_api_key}
 python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --language ja
 
 # Use the DeepL model with Japanese
-python3 make_book.py --book_name test_books/animal_farm.epub --model deepl --deepl_token ${deepl_token}--language ja
+python3 make_book.py --book_name test_books/animal_farm.epub --model deepl --deepl_key ${deepl_key} --language ja
 
+# Use the Claude model with Japanese
+python3 make_book.py --book_name test_books/animal_farm.epub --model claude --claude_key ${claude_key} --language ja
 
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p
