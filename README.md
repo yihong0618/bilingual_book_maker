@@ -19,7 +19,8 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 - Use `--openai_key` option to specify OpenAI API key. If you have multiple keys, separate them by commas (xxx,xxx,xxx) to reduce errors caused by API call limits.
    Or, just set environment variable `BMM_OPENAI_API_KEY` instead.
 - A sample book, `test_books/animal_farm.epub`, is provided for testing purposes.
-- The default underlying model is [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis), which is used by ChatGPT currently. Use `--model gpt3` to change the underlying model to `GPT3`
+- The default underlying model is [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis), which is used by ChatGPT currently. Use `--model gpt4` to change the underlying model to `GPT4` and use `--model gpt3` to change the model to `GPT3`.
+   If using `GPT4`, you can add `--use_context` to add a context paragraph to each passage sent to the model for translation (see below)
 5. support DeepL model [DeepL Translator](https://rapidapi.com/splintPRO/api/deepl-translator) need pay to get the token use `--model deepl --deepl_key ${deepl_key}`
 - Use `--test` option to preview the result if you haven't paid for the service. Note that there is a limit and it may take some time.
 - Set the target language like `--language "Simplified Chinese"`. Default target language is `"Simplified Chinese"`.
@@ -43,6 +44,7 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 - `--accumulated_num` Wait for how many tokens have been accumulated before starting the translation. gpt3.5 limits the total_token to 4090. For example, if you use --accumulated_num 1600, maybe openai will
 output 2200 tokens and maybe 200 tokens for other messages in the system messages user messages, 1600+2200+200=4000, So you are close to reaching the limit. You have to choose your own
 value, there is no way to know if the limit is reached before sending
+- `--use_context` prompts the GPT4 model to create a one-paragraph summary. If it's the beginning of the translation, it will summarise the entire passage sent (the size depending on `--accumulated_num`), but if it's any proceeding passage, it will amend the summary to include details from the most recent passage, creating a running one-paragraph context payload of the important details of the entire translated work, which improves consistency of flow and tone of each translation.
 - `--translation_style` example: `--translation_style "color: #808080; font-style: italic;"`
 - `--retranslate` `--retranslate "$translated_filepath" "file_name_in_epub" "start_str" "end_str"(optional)`<br>
 Retranslate from start_str to end_str's tag:
@@ -65,6 +67,9 @@ python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${open
 
 # Set env OPENAI_API_KEY to ignore option --openai_key
 export OPENAI_API_KEY=${your_api_key}
+
+# Use the GPT-4 model with context to Japanese
+python3 make_book.py --book_name test_books/animal_farm.epub --model gpt4 --use_context --language ja
 
 # Use the GPT-3 model with Japanese
 python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --language ja
