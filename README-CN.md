@@ -17,7 +17,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 
 - `pip install -r requirements.txt` 或 `pip install -U bbook_maker`
 - 使用 `--openai_key` 指定 OpenAI API key，如果有多个可以用英文逗号分隔(xxx,xxx,xxx)，可以减少接口调用次数限制带来的错误。  
-   或者，指定环境变量 `BMM_OPENAI_API_KEY` 来略过这个选项。
+   或者，指定环境变量 `BBM_OPENAI_API_KEY` 来略过这个选项。
 - 本地放了一个 `test_books/animal_farm.epub` 给大家测试
 - 默认用了 [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis) 模型，也就是 ChatGPT 正在使用的模型，用 `--model gpt3` 来使用 gpt3 模型
 - 可以使用 DeepL 封装的 api 进行翻译，需要付费，[DeepL Translator](https://rapidapi.com/splintPRO/api/deepl-translator) 来获得 token  `--model deepl --deepl_key ${deepl_key}`
