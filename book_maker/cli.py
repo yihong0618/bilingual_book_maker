@@ -92,6 +92,12 @@ def main():
         type=str,
         help="you can apply deepl key from here (https://rapidapi.com/splintPRO/api/deepl-translator",
     )
+    parser.add_argument(
+        "--claude_key",
+        dest="claude_key",
+        type=str,
+        help="you can find claude key from here (https://console.anthropic.com/account/keys)",
+    )
 
     parser.add_argument(
         "--test",
@@ -273,6 +279,10 @@ So you are close to reaching the limit. You have to choose your own value, there
         API_KEY = options.deepl_key or env.get("BBM_DEEPL_API_KEY")
         if not API_KEY:
             raise Exception("Please provid deepl key")
+    elif options.model == "claude":
+        API_KEY = options.claude_key or env.get("BBM_CLAUDE_API_KEY")
+        if not API_KEY:
+            raise Exception("Please provid claude key")
     else:
         API_KEY = ""
 
