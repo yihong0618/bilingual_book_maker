@@ -2,7 +2,6 @@ import re
 import time
 from copy import copy
 from os import environ, linesep
-import os
 from rich import print
 
 import openai
@@ -67,16 +66,6 @@ class GPT4(Base):
 
         sys_content = f"{self.system_content or self.prompt_sys_msg.format(crlf=linesep)} {context_sys_str if self.context_flag else ''} "
 
-        # Log messages to a file
-        # Define an absolute path for the log file
-        script_dir = os.path.dirname("/Users/mstemm/code/bilingual_book_maker/")
-        log_file = os.path.join(script_dir, "debug_log.txt")
-        with open(log_file, "a", encoding="utf-8") as log:
-            log.write(f"Debug - Use context: {self.context_flag}\n")
-            log.write(f"Debug - Context Msg: {self.context}\n")
-            log.write(f"Debug - System prompt: {sys_content}\n")
-            log.write(f"Debug - User prompt: {content}\n")
-
         messages = [
             {"role": "system", "content": sys_content},
             {"role": "user", "content": content},
@@ -99,12 +88,6 @@ class GPT4(Base):
         completion = {}
         try:
             completion = self.create_chat_completion(text)
-            # Log output to a file
-            # Define an absolute path for the log file
-            script_dir = os.path.dirname("/Users/mstemm/code/bilingual_book_maker/")
-            log_file = os.path.join(script_dir, "debug_log.txt")
-            with open(log_file, "a", encoding="utf-8") as log:
-                log.write(f"Debug - Output: {completion}\n")
         except Exception:
             if (
                 "choices" not in completion
