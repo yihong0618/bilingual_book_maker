@@ -132,6 +132,11 @@ python make_book.py --book_name 'animal_farm.epub' --openai_key XXXXX --api_base
 - Issue 中有些 TODO 没做的都可以选
 - 提交代码前请先执行 `black make_book.py` [^black]
 
+# 其它推荐项目
+
+- 书译 iOS -> [AI 全书翻译工具](https://apps.apple.com/cn/app/%E4%B9%A6%E8%AF%91-ai-%E5%85%A8%E4%B9%A6%E7%BF%BB%E8%AF%91%E5%B7%A5%E5%85%B7/id6447665417)
+- 沉浸式翻译 -> [/immersive-translate](https://github.com/immersive-translate/immersive-translate)
+
 ## 赞赏
 
 谢谢就够了

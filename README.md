@@ -172,6 +172,11 @@ docker run --rm --name bilingual_book_maker --mount type=bind,source=/home/user/
 - TODOs in the issue can also be selected.
 - Please run `black make_book.py`[^black] before submitting the code.
 
+# Others better
+
+- 书译 iOS -> [AI 全书翻译工具](https://apps.apple.com/cn/app/%E4%B9%A6%E8%AF%91-ai-%E5%85%A8%E4%B9%A6%E7%BF%BB%E8%AF%91%E5%B7%A5%E5%85%B7/id6447665417)
+- 沉浸式翻译 -> [/immersive-translate](https://github.com/immersive-translate/immersive-translate)
+
 ## Appreciation
 
 Thank you, that's enough.
