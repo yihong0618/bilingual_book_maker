@@ -23,6 +23,7 @@ class SRTBookLoader(BaseBookLoader):
         test_num=5,
         prompt_config=None,
         single_translate=False,
+        context_flag=False,
     ) -> None:
         self.srt_name = srt_name
         self.translate_model = model(

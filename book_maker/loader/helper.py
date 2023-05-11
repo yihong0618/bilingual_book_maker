@@ -3,10 +3,13 @@ from copy import copy
 
 
 class EPUBBookLoaderHelper:
-    def __init__(self, translate_model, accumulated_num, translation_style):
+    def __init__(
+        self, translate_model, accumulated_num, translation_style, context_flag
+    ):
         self.translate_model = translate_model
         self.accumulated_num = accumulated_num
         self.translation_style = translation_style
+        self.context_flag = context_flag
 
     def insert_trans(self, p, text, translation_style="", single_translate=False):
         if (
@@ -23,19 +26,21 @@ class EPUBBookLoaderHelper:
             p.extract()
 
     def deal_new(self, p, wait_p_list, single_translate=False):
-        self.deal_old(wait_p_list, single_translate)
+        self.deal_old(wait_p_list, single_translate, self.context_flag)
         self.insert_trans(
             p,
-            shorter_result_link(self.translate_model.translate(p.text)),
+            shorter_result_link(
+                self.translate_model.translate(p.text, self.context_flag)
+            ),
             self.translation_style,
             single_translate,
         )
 
-    def deal_old(self, wait_p_list, single_translate=False):
+    def deal_old(self, wait_p_list, single_translate=False, context_flag=False):
         if not wait_p_list:
             return
 
-        result_txt_list = self.translate_model.translate_list(wait_p_list)
+        result_txt_list = self.translate_model.translate_list(wait_p_list, context_flag)
 
         for i in range(len(wait_p_list)):
             if i < len(result_txt_list):

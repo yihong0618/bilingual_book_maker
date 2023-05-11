@@ -30,6 +30,7 @@ class EPUBBookLoader(BaseBookLoader):
         test_num=5,
         prompt_config=None,
         single_translate=False,
+        context_flag=False,
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
@@ -37,6 +38,7 @@ class EPUBBookLoader(BaseBookLoader):
             key,
             language,
             api_base=model_api_base,
+            context_flag=context_flag,
             **prompt_config_to_kwargs(prompt_config),
         )
         self.is_test = is_test
@@ -46,8 +48,12 @@ class EPUBBookLoader(BaseBookLoader):
         self.allow_navigable_strings = False
         self.accumulated_num = 1
         self.translation_style = ""
+        self.context_flag = context_flag
         self.helper = EPUBBookLoaderHelper(
-            self.translate_model, self.accumulated_num, self.translation_style
+            self.translate_model,
+            self.accumulated_num,
+            self.translation_style,
+            self.context_flag,
         )
         self.retranslate = None
         self.exclude_filelist = ""
@@ -378,7 +384,10 @@ class EPUBBookLoader(BaseBookLoader):
 
     def make_bilingual_book(self):
         self.helper = EPUBBookLoaderHelper(
-            self.translate_model, self.accumulated_num, self.translation_style
+            self.translate_model,
+            self.accumulated_num,
+            self.translation_style,
+            self.context_flag,
         )
         new_book = self._make_new_book(self.origin_book)
         all_items = list(self.origin_book.get_items())
