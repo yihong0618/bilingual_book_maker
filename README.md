@@ -17,11 +17,14 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 
 - `pip install -r requirements.txt` or `pip install -U bbook_maker`(you can use)
 - Use `--openai_key` option to specify OpenAI API key. If you have multiple keys, separate them by commas (xxx,xxx,xxx) to reduce errors caused by API call limits.
-   Or, just set environment variable `BMM_OPENAI_API_KEY` instead.
+   Or, just set environment variable `BBM_OPENAI_API_KEY` instead.
 - A sample book, `test_books/animal_farm.epub`, is provided for testing purposes.
 - The default underlying model is [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis), which is used by ChatGPT currently. Use `--model gpt4` to change the underlying model to `GPT4` and use `--model gpt3` to change the model to `GPT3`.
    If using `GPT4`, you can add `--use_context` to add a context paragraph to each passage sent to the model for translation (see below)
-5. support DeepL model [DeepL Translator](https://rapidapi.com/splintPRO/api/deepl-translator) need pay to get the token use `--model deepl --deepl_key ${deepl_key}`
+- support DeepL model [DeepL Translator](https://rapidapi.com/splintPRO/api/deepl-translator) need pay to get the token use `--model deepl --deepl_key ${deepl_key}`
+- The default underlying model is [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis), which is used by ChatGPT currently. Use `--model gpt3` to change the underlying model to `GPT3`
+- Support DeepL model [DeepL Translator](https://rapidapi.com/splintPRO/api/deepl-translator) need pay to get the token use `--model deepl --deepl_key ${deepl_key}`
+- Support [Claude](https://console.anthropic.com/docs) model, use `--model claude --claude_key ${claude_key}`
 - Use `--test` option to preview the result if you haven't paid for the service. Note that there is a limit and it may take some time.
 - Set the target language like `--language "Simplified Chinese"`. Default target language is `"Simplified Chinese"`.
    Read available languages by helper message: `python make_book.py --help`
@@ -75,8 +78,10 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model gpt4 --use_
 python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --language ja
 
 # Use the DeepL model with Japanese
-python3 make_book.py --book_name test_books/animal_farm.epub --model deepl --deepl_token ${deepl_token}--language ja
+python3 make_book.py --book_name test_books/animal_farm.epub --model deepl --deepl_key ${deepl_key} --language ja
 
+# Use the Claude model with Japanese
+python3 make_book.py --book_name test_books/animal_farm.epub --model claude --claude_key ${claude_key} --language ja
 
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p
@@ -100,7 +105,7 @@ python3 make_book.py --book_name test_books/the_little_prince.txt --test --batch
 # (the api currently only support: simplified chinese <-> english, simplified chinese <-> japanese)
 # the official Caiyun has provided a test token (3975l6lr5pcbvidl6jl2)
 # you can apply your own token by following this tutorial(https://bobtranslate.com/service/translate/caiyun.html)
-python3 make_book.py --model caiyun --openai_key 3975l6lr5pcbvidl6jl2 --book_name test_books/animal_farm.epub
+python3 make_book.py --model caiyun --caiyun_key 3975l6lr5pcbvidl6jl2 --book_name test_books/animal_farm.epub
 
 
 # Set env BBM_CAIYUN_API_KEY to ignore option --openai_key

@@ -34,6 +34,7 @@ class TXTBookLoader(BaseBookLoader):
         self.bilingual_temp_result = []
         self.test_num = test_num
         self.batch_size = 10
+        self.single_translate = single_translate
 
         try:
             with open(f"{txt_name}", encoding="utf-8") as f:
@@ -74,7 +75,8 @@ class TXTBookLoader(BaseBookLoader):
                         print(e)
                         raise Exception("Something is wrong when translate") from e
                     self.p_to_save.append(temp)
-                    self.bilingual_result.append(batch_text)
+                    if not self.single_translate:
+                        self.bilingual_result.append(batch_text)
                     self.bilingual_result.append(temp)
                 index += self.batch_size
                 if self.is_test and index > self.test_num:
