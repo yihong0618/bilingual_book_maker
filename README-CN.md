@@ -21,6 +21,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 - 本地放了一个 `test_books/animal_farm.epub` 给大家测试
 - 默认用了 [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis) 模型，也就是 ChatGPT 正在使用的模型，用 `--model gpt3` 来使用 gpt3 模型
 - 可以使用 DeepL 封装的 api 进行翻译，需要付费，[DeepL Translator](https://rapidapi.com/splintPRO/api/deepl-translator) 来获得 token  `--model deepl --deepl_key ${deepl_key}`
+- 可以使用 DeepL free `--model deeplfree`
 - 可以使用 [Claude](https://console.anthropic.com/docs) 模型进行翻译 `--model claude --claude_key ${claude_key}`
 - 可以使用 google 来翻译 `--model google`
 - 可用使用彩云进行翻译 `--model caiyun --caiyun_key ${caiyun_key}`

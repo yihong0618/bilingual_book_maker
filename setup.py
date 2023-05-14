@@ -2,7 +2,16 @@
 from setuptools import find_packages, setup
 
 
-packages = ["bs4", "openai", "requests", "ebooklib", "rich", "tqdm", "tiktoken"]
+packages = [
+    "bs4",
+    "openai",
+    "requests",
+    "ebooklib",
+    "rich",
+    "tqdm",
+    "tiktoken",
+    "PyDeepLX",
+]
 
 
 setup(
