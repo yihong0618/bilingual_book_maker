@@ -60,7 +60,7 @@ class DeepLFree(Base):
 
     def translate(self, text):
         print(text)
-        t_text = PyDeepLX.translate(text, "EN", self.language)
+        t_text = str(PyDeepLX.translate(text, "EN", self.language))
         # spider rule
         time.sleep(random.choice(self.time_random))
         print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
