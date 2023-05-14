@@ -40,6 +40,32 @@ def test_google_translate_epub(test_book_dir, tmpdir):
     assert os.path.getsize(os.path.join(tmpdir, "Liber_Esther_bilingual.epub")) != 0
 
 
+def test_deepl_free_translate_epub(test_book_dir, tmpdir):
+    """Test deepl free translate epub"""
+    shutil.copyfile(
+        os.path.join(test_book_dir, "Liber_Esther.epub"),
+        os.path.join(tmpdir, "Liber_Esther.epub"),
+    )
+
+    subprocess.run(
+        [
+            sys.executable,
+            "make_book.py",
+            "--book_name",
+            os.path.join(tmpdir, "Liber_Esther.epub"),
+            "--test",
+            "--test_num",
+            "20",
+            "--model",
+            "deeplfree",
+        ],
+        env=os.environ.copy(),
+    )
+
+    assert os.path.isfile(os.path.join(tmpdir, "Liber_Esther_bilingual.epub"))
+    assert os.path.getsize(os.path.join(tmpdir, "Liber_Esther_bilingual.epub")) != 0
+
+
 def test_google_translate_epub_cli():
     pass
 
