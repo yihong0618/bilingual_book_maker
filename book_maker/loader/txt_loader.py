@@ -20,12 +20,14 @@ class TXTBookLoader(BaseBookLoader):
         prompt_config=None,
         single_translate=False,
         context_flag=False,
+        temperature=1.0,
     ) -> None:
         self.txt_name = txt_name
         self.translate_model = model(
             key,
             language,
             api_base=model_api_base,
+            temperature=temperature,
             **prompt_config_to_kwargs(prompt_config),
         )
         self.is_test = is_test
