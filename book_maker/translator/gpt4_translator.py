@@ -25,6 +25,7 @@ class GPT4(Base):
         prompt_template=None,
         prompt_sys_msg=None,
         context_flag=False,
+        temperature=1.0,
         **kwargs,
     ) -> None:
         super().__init__(key, language)
@@ -49,6 +50,7 @@ class GPT4(Base):
         )
         self.system_content = environ.get("OPENAI_API_SYS_MSG") or ""
         self.deployment_id = None
+        self.temperature = temperature
 
     def rotate_key(self):
         openai.api_key = next(self.keys)
@@ -75,11 +77,13 @@ class GPT4(Base):
             return openai.ChatCompletion.create(
                 engine=self.deployment_id,
                 messages=messages,
+                temperature=self.temperature,
             )
 
         return openai.ChatCompletion.create(
             model="gpt-4",
             messages=messages,
+            temperature=self.temperature,
         )
 
     def get_translation(self, text):
