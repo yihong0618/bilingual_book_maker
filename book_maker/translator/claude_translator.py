@@ -7,7 +7,13 @@ from .base_translator import Base
 
 class Claude(Base):
     def __init__(
-        self, key, language, api_base=None, prompt_template=None, **kwargs
+        self,
+        key,
+        language,
+        api_base=None,
+        prompt_template=None,
+        temperature=1.0,
+        **kwargs,
     ) -> None:
         super().__init__(key, language)
         self.api_url = (
@@ -23,7 +29,7 @@ class Claude(Base):
             "prompt": "",
             "model": "claude-v1.3",
             "max_tokens_to_sample": 1024,
-            "temperature": 1,
+            "temperature": temperature,
             "stop_sequences": ["\n\nHuman:"],
         }
         self.session = requests.session()

@@ -7,7 +7,13 @@ from .base_translator import Base
 
 class GPT3(Base):
     def __init__(
-        self, key, language, api_base=None, prompt_template=None, **kwargs
+        self,
+        key,
+        language,
+        api_base=None,
+        prompt_template=None,
+        temperature=1.0,
+        **kwargs,
     ) -> None:
         super().__init__(key, language)
         self.api_url = (
@@ -23,7 +29,7 @@ class GPT3(Base):
             "prompt": "",
             "model": "text-davinci-003",
             "max_tokens": 1024,
-            "temperature": 1,
+            "temperature": temperature,
             "top_p": 1,
         }
         self.session = requests.session()
