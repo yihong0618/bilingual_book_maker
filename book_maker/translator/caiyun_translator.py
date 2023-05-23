@@ -1,5 +1,6 @@
 import json
 import re
+import time
 
 import requests
 from rich import print
@@ -43,6 +44,20 @@ class Caiyun(Base):
             data=json.dumps(payload),
             headers=self.headers,
         )
-        t_text = json.loads(response.text)["target"]
+        try:
+            t_text = response.json()["target"]
+        except Exception as e:
+            print(str(e), response.text, "will sleep 60s for the time limit")
+            if "limit" in response.json()["message"]:
+                print("will sleep 60s for the time limit")
+            time.sleep(60)
+            response = requests.request(
+                "POST",
+                self.api_url,
+                data=json.dumps(payload),
+                headers=self.headers,
+            )
+            t_text = response.json()["target"]
+
         print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
         return t_text

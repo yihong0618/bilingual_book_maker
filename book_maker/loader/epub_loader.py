@@ -128,6 +128,9 @@ class EPUBBookLoader(BaseBookLoader):
         new_p = copy(p)
 
         for p_exclude in self.exclude_translate_tags.split(","):
+            # for issue #280
+            if type(p) == NavigableString:
+                continue
             for pt in new_p.find_all(p_exclude):
                 pt.extract()
 
@@ -159,6 +162,9 @@ class EPUBBookLoader(BaseBookLoader):
             temp_p = copy(p)
 
             for p_exclude in self.exclude_translate_tags.split(","):
+                # for issue #280
+                if type(p) == NavigableString:
+                    continue
                 for pt in temp_p.find_all(p_exclude):
                     pt.extract()
 
@@ -276,8 +282,9 @@ class EPUBBookLoader(BaseBookLoader):
                 break
 
         for t in extract_p_list_ori:
-            target.insert_after(t)
-            target = t
+            if target:
+                target.insert_after(t)
+                target = t
 
         for item in complete_book.get_items():
             if item.file_name != fixname:
