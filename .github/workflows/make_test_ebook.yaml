@@ -11,7 +11,6 @@ env:
   ACTIONS_ALLOW_UNSECURE_COMMANDS: true
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   BBM_CAIYUN_API_KEY: ${{ secrets.BBM_CAIYUN_API_KEY }}
-  BBM_DEEPL_API_KEY: ${{ secrets.BBM_DEEPL_API_KEY }}
 
 jobs:
   testing:
