@@ -32,6 +32,12 @@ class Caiyun(Base):
 
     def translate(self, text):
         print(text)
+        # for caiyun translate src issue #279
+        text_list = text.splitlines()
+        num = None
+        if len(text_list) > 1:
+            if text_list[0].isdigit():
+                num = text_list[0]
         payload = {
             "source": text,
             "trans_type": self.translate_type,
@@ -60,4 +66,7 @@ class Caiyun(Base):
             t_text = response.json()["target"]
 
         print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
+        # for issue #279
+        if num:
+            t_text = str(num) + "\n" + t_text
         return t_text
