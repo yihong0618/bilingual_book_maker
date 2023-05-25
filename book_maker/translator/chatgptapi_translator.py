@@ -147,7 +147,7 @@ The total token is too long and cannot be completely translated\n
 
     def translate_and_split_lines(self, text):
         result_str = self.translate(text, False)
-        lines = result_str.split("\n")
+        lines = result_str.splitlines()
         lines = [line.strip() for line in lines if line.strip() != ""]
         return lines
 
@@ -223,7 +223,7 @@ The total token is too long and cannot be completely translated\n
         print("continue")
 
     def join_lines(self, text):
-        lines = text.split("\n")
+        lines = text.splitlines()
         new_lines = []
         temp_line = []
 
@@ -244,7 +244,7 @@ The total token is too long and cannot be completely translated\n
 
         # del ^M
         text = text.replace("^M", "\r")
-        lines = text.split("\n")
+        lines = text.splitlines()
         filtered_lines = [line for line in lines if line.strip() != "\r"]
         new_text = "\n".join(filtered_lines)
 

@@ -40,7 +40,7 @@ class TXTBookLoader(BaseBookLoader):
 
         try:
             with open(f"{txt_name}", encoding="utf-8") as f:
-                self.origin_book = f.read().split("\n")
+                self.origin_book = f.read().splitlines()
 
         except Exception as e:
             raise Exception("can not load file") from e
@@ -127,7 +127,7 @@ class TXTBookLoader(BaseBookLoader):
     def load_state(self):
         try:
             with open(self.bin_path, encoding="utf-8") as f:
-                self.p_to_save = f.read().split("\n")
+                self.p_to_save = f.read().splitlines()
         except Exception as e:
             raise Exception("can not load resume file") from e
 

@@ -66,7 +66,7 @@ class SRTBookLoader(BaseBookLoader):
             if block.strip() == "":
                 continue
 
-            lines = block.strip().split("\n")
+            lines = block.strip().splitlines()
             new_block["number"] = lines[0].strip()
             timestamp = lines[1].strip()
             new_block["time"] = timestamp
@@ -94,7 +94,7 @@ class SRTBookLoader(BaseBookLoader):
         if not text:
             return {}
 
-        block = text.split("\n")
+        block = text.splitlines()
         if len(block) < 2:
             return {"number": block[0], "text": ""}
 
