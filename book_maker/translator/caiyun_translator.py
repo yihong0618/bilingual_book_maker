@@ -15,7 +15,7 @@ class Caiyun(Base):
 
     def __init__(self, key, language, **kwargs) -> None:
         super().__init__(key, language)
-        self.api_url = "http://api.interpreter.caiyunai.com/v1/translator"
+        self.api_url = "https://api.interpreter.caiyunai.com/v1/translator"
         self.headers = {
             "content-type": "application/json",
             "x-authorization": f"token {key}",
