@@ -67,7 +67,8 @@ class TXTBookLoader(BaseBookLoader):
                 for i in range(0, len(self.origin_book), self.batch_size)
             ]
             for i in sliced_list:
-                batch_text = "".join(i)
+                # fix the format thanks https://github.com/tudoujunha
+                batch_text = "\n".join(i)
                 if self._is_special_text(batch_text):
                     continue
                 if not self.resume or index >= p_to_save_len:
