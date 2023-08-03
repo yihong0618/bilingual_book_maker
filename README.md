@@ -55,7 +55,7 @@ Retranslate start_str's tag:
 `python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which'`
 ### Examples
 
-**Note if use `pip install bbook_maker` all commands can change to `bbook args`**
+**Note if use `pip install bbook_maker` all commands can change to `bbook_maker args`**
 
 ```shell
 # Test quickly
