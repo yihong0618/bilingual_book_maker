@@ -7,7 +7,7 @@ from rich import print
 import openai
 from litellm import completion
 
-from book_maker.translator.chatgptapi_translator import ChatGPTAPI 
+from book_maker.translator.chatgptapi_translator import ChatGPTAPI
 
 from .base_translator import Base
 
@@ -41,7 +41,7 @@ class liteLLM(ChatGPTAPI):
                 engine=self.deployment_id,
                 messages=messages,
                 temperature=self.temperature,
-                azure=True
+                azure=True,
             )
 
         return completion(
