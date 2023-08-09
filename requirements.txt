@@ -1,1 +1,3 @@
 -e .
+mkdocs
+mkdocs-material

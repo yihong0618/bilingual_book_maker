@@ -8,3 +8,6 @@ fmt:
 tests:
 	@echo "Running tests ..."
 	venv/bin/pytest tests/test_integration.py
+
+serve-docs:
+	mkdocs serve
