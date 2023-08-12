@@ -1,10 +1,15 @@
 **[中文](./README-CN.md) | English**
+[![litellm](https://img.shields.io/badge/%20%F0%9F%9A%85%20liteLLM-OpenAI%7CAzure%7CAnthropic%7CPalm%7CCohere%7CReplicate%7CHugging%20Face-blue?color=green)](https://github.com/BerriAI/litellm)
 
 # bilingual_book_maker
 The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist users in creating multi-language versions of epub/txt/srt files and books. This tool is exclusively designed for translating epub books that have entered the public domain and is not intended for copyrighted works. Before using this tool, please review the project's **[disclaimer](./disclaimer.md)**.
 
 ![image](https://user-images.githubusercontent.com/15976103/222317531-a05317c5-4eee-49de-95cd-04063d9539d9.png)
 
+## Supported Models
+gpt-4, gpt-3.5-turbo, claude-2, palm, llama-2, azure-openai, command-nightly
+For using Non-OpenAI models, use class `liteLLM()` - liteLLM supports all models above.
+Find more info here for using liteLLM: https://github.com/BerriAI/litellm/blob/main/setup.py
 
 ## Preparation
 

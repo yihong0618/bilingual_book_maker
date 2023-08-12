@@ -5,6 +5,7 @@ from setuptools import find_packages, setup
 packages = [
     "bs4",
     "openai",
+    "litellm",
     "requests",
     "ebooklib",
     "rich",
