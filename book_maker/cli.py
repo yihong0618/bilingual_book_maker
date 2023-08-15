@@ -154,6 +154,7 @@ def main():
     # args to change api_base
     parser.add_argument(
         "--api_base",
+        metavar="API_BASE_URL",
         dest="api_base",
         type=str,
         help="specify base url other than the OpenAI's official API address",

@@ -51,7 +51,7 @@ Find more info here for using liteLLM: https://github.com/BerriAI/litellm/blob/m
 - `--accumulated_num` Wait for how many tokens have been accumulated before starting the translation. gpt3.5 limits the total_token to 4090. For example, if you use --accumulated_num 1600, maybe openai will
 output 2200 tokens and maybe 200 tokens for other messages in the system messages user messages, 1600+2200+200=4000, So you are close to reaching the limit. You have to choose your own
 value, there is no way to know if the limit is reached before sending
-- `--use_context` prompts the GPT4 model to create a one-paragraph summary. If it's the beginning of the translation, it will summarise the entire passage sent (the size depending on `--accumulated_num`), but if it's any proceeding passage, it will amend the summary to include details from the most recent passage, creating a running one-paragraph context payload of the important details of the entire translated work, which improves consistency of flow and tone of each translation.
+- `--use_context` prompts the GPT4 model to create a one-paragraph summary. If it's the beginning of the translation, it will summarize the entire passage sent (the size depending on `--accumulated_num`), but if it's any proceeding passage, it will amend the summary to include details from the most recent passage, creating a running one-paragraph context payload of the important details of the entire translated work, which improves consistency of flow and tone of each translation.
 - `--translation_style` example: `--translation_style "color: #808080; font-style: italic;"`
 - `--retranslate` `--retranslate "$translated_filepath" "file_name_in_epub" "start_str" "end_str"(optional)`<br>
 Retranslate from start_str to end_str's tag:
@@ -60,7 +60,7 @@ Retranslate start_str's tag:
 `python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which'`
 ### Examples
 
-**Note if use `pip install bbook_maker` all commands can change to `bbook args`**
+**Note if use `pip install bbook_maker` all commands can change to `bbook_maker args`**
 
 ```shell
 # Test quickly

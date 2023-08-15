@@ -1,0 +1,21 @@
+site_name: bilingual book maker
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - content.code.copy
+
+nav: 
+  - Home : index.md
+  - Getting started: 
+    - Installation: installation.md
+    - QuickStart: quickstart.md
+  - Usage:
+    - Model and languages: model_lang.md
+    - Command line options: cmd.md
+    - Translate from different source: book_source.md
+    - Environment setting: env_settings.md
+    - Tweek the prompt: prompt.md
+  - Disclaimer: disclaimer.md
+    

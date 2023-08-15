@@ -24,7 +24,7 @@ setup(
     author_email="zouzou0208@gmail.com",
     packages=find_packages(),
     url="https://github.com/yihong0618/bilingual_book_maker",
-    python_requires=">=3.7",
+    python_requires=">=3.8",
     install_requires=packages,
     classifiers=[
         "Programming Language :: Python :: 3",
