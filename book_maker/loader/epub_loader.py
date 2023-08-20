@@ -405,15 +405,10 @@ class EPUBBookLoader(BaseBookLoader):
             0
             if (
                 (i.get_type() != ITEM_DOCUMENT)
+                or (i.file_name in self.exclude_filelist.split(","))
                 or (
-                    i.file_name in self.exclude_filelist.split(",")
-                    if self.exclude_filelist != ""
-                    else False
-                )
-                or (
-                    not i.file_name in self.only_filelist.split(",")
-                    if self.only_filelist != ""
-                    else False
+                    self.only_filelist
+                    and i.file_name not in self.only_filelist.split(",")
                 )
             )
             else len(bs(i.content, "html.parser").findAll(trans_taglist))
@@ -423,15 +418,10 @@ class EPUBBookLoader(BaseBookLoader):
             0
             if (
                 (i.get_type() != ITEM_DOCUMENT)
+                or (i.file_name in self.exclude_filelist.split(","))
                 or (
-                    i.file_name in self.exclude_filelist.split(",")
-                    if self.exclude_filelist != ""
-                    else False
-                )
-                or (
-                    not i.file_name in self.only_filelist.split(",")
-                    if self.only_filelist != ""
-                    else False
+                    self.only_filelist
+                    and i.file_name not in self.only_filelist.split(",")
                 )
             )
             else len(bs(i.content, "html.parser").findAll(text=True))
@@ -490,15 +480,10 @@ class EPUBBookLoader(BaseBookLoader):
             for item in origin_book_temp.get_items():
                 if (
                     item.get_type() == ITEM_DOCUMENT
-                    and (
-                        item.file_name not in self.exclude_filelist.split(",")
-                        if self.exclude_filelist != ""
-                        else True
-                    )
+                    and (item.file_name not in self.exclude_filelist.split(","))
                     and (
                         item.file_name in self.only_filelist.split(",")
-                        if self.only_filelist != ""
-                        else True
+                        or self.only_filelist != ""
                     )
                 ):
                     soup = bs(item.content, "html.parser")
