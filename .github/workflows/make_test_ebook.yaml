@@ -13,6 +13,16 @@ env:
   BBM_CAIYUN_API_KEY: ${{ secrets.BBM_CAIYUN_API_KEY }}
 
 jobs:
+  typos-check:
+    name: Spell Check with Typos
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Actions Repository
+        uses: actions/checkout@v3
+      - name: Check spelling with custom config file
+        uses: crate-ci/typos@v1.16.6
+        with:
+          config: ./typos.toml
   testing:
     runs-on: ubuntu-latest
     steps:

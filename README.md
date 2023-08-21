@@ -35,7 +35,7 @@ Find more info here for using liteLLM: https://github.com/BerriAI/litellm/blob/m
 - Use `--proxy` option to specify proxy server for internet access. Enter a string such as `http://127.0.0.1:7890`.
 - Use `--resume` option to manually resume the process after an interruption.
 - epub is made of html files. By default, we only translate contents in `<p>`.
-   Use `--translate-tags` to specify tags need for translation. Use comma to seperate multiple tags. For example:
+   Use `--translate-tags` to specify tags need for translation. Use comma to separate multiple tags. For example:
    `--translate-tags h1,h2,h3,p,div`
 - Use `--book_from` option to specify e-reader type (Now only `kobo` is available), and use `--device_path` to specify the mounting point.
 - If you want to change api_base like using Cloudflare Workers, use `--api_base <URL>` to support it.

@@ -128,7 +128,7 @@ def test_google_translate_txt_batch_size(test_book_dir, tmpdir):
     reason="No BBM_CAIYUN_API_KEY in environment variable.",
 )
 def test_caiyun_translate_txt(test_book_dir, tmpdir):
-    """Test caiyun tranlate txt"""
+    """Test caiyun translate txt"""
     shutil.copyfile(
         os.path.join(test_book_dir, "the_little_prince.txt"),
         os.path.join(tmpdir, "the_little_prince.txt"),

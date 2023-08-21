@@ -6,7 +6,7 @@ Txt files and srt files are plain text files. This program can translate plain t
     python3 make_book.py --book_name test_books/the_little_prince.txt --test --language zh-hans
 
 ## epub
-epub is made of html files. By default, we only translate contents in `<p>`. Use `--translate-tags` to specify tags need for translation. Use comma to seperate multiple tags. For example: `--translate-tags h1,h2,h3,p,div`
+epub is made of html files. By default, we only translate contents in `<p>`. Use `--translate-tags` to specify tags need for translation. Use comma to separate multiple tags. For example: `--translate-tags h1,h2,h3,p,div`
 
     bbook_maker --book_name test_books/animal_farm.epub --openai_key ${openai_key} --translate-tags div,p
 
