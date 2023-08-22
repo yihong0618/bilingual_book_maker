@@ -17,7 +17,7 @@ class DeepL(Base):
 
     def __init__(self, key, language, **kwargs) -> None:
         super().__init__(key, language)
-        self.api_url = "https://deepl-translator.p.rapidapi.com/translate"
+        self.api_url = "https://dpl-translator.p.rapidapi.com/translate"
         self.headers = {
             "content-type": "application/json",
             "X-RapidAPI-Key": "",

@@ -90,7 +90,7 @@ def main():
         "--deepl_key",
         dest="deepl_key",
         type=str,
-        help="you can apply deepl key from here (https://rapidapi.com/splintPRO/api/deepl-translator",
+        help="you can apply deepl key from here (https://rapidapi.com/splintPRO/api/dpl-translator",
     )
     parser.add_argument(
         "--claude_key",

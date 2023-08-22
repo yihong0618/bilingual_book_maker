@@ -26,7 +26,7 @@ Find more info here for using liteLLM: https://github.com/BerriAI/litellm/blob/m
 - A sample book, `test_books/animal_farm.epub`, is provided for testing purposes.
 - The default underlying model is [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis), which is used by ChatGPT currently. Use `--model gpt4` to change the underlying model to `GPT4` and use `--model gpt3` to change the model to `GPT3`.
    If using `GPT4`, you can add `--use_context` to add a context paragraph to each passage sent to the model for translation (see below)
-- support DeepL model [DeepL Translator](https://rapidapi.com/splintPRO/api/deepl-translator) need pay to get the token use `--model deepl --deepl_key ${deepl_key}`
+- support DeepL model [DeepL Translator](https://rapidapi.com/splintPRO/api/dpl-translator) need pay to get the token use `--model deepl --deepl_key ${deepl_key}`
 - support DeepL free model `--model deeplfree`
 - Support [Claude](https://console.anthropic.com/docs) model, use `--model claude --claude_key ${claude_key}`
 - Use `--test` option to preview the result if you haven't paid for the service. Note that there is a limit and it may take some time.
