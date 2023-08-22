@@ -71,7 +71,7 @@ There are two models you can choose from.
 
     
 
-* deepl: [DeepL Translator](https://rapidapi.com/splintPRO/api/deepl-translator). <br>
+* deepl: [DeepL Translator](https://rapidapi.com/splintPRO/api/dpl-translator). <br>
 
     
 
