@@ -1,0 +1,8 @@
+# See https://github.com/crate-ci/typos/blob/master/docs/reference.md to configure typos
+[default.extend-words]
+sur = "sur"
+banch = "banch" # TODO: not sure if this is a typo or not
+fo = "fo"
+ba = "ba"
+[files]
+extend-exclude = ["LICENSE"]

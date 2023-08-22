@@ -274,7 +274,7 @@ So you are close to reaching the limit. You have to choose your own value, there
             options.openai_key
             or env.get(
                 "OPENAI_API_KEY",
-            )  # XXX: for backward compatability, deprecate soon
+            )  # XXX: for backward compatibility, deprecate soon
             or env.get(
                 "BBM_OPENAI_API_KEY",
             )  # suggest adding `BBM_` prefix for all the bilingual_book_maker ENVs.
@@ -287,15 +287,15 @@ So you are close to reaching the limit. You have to choose your own value, there
     elif options.model == "caiyun":
         API_KEY = options.caiyun_key or env.get("BBM_CAIYUN_API_KEY")
         if not API_KEY:
-            raise Exception("Please provid caiyun key")
+            raise Exception("Please provide caiyun key")
     elif options.model == "deepl":
         API_KEY = options.deepl_key or env.get("BBM_DEEPL_API_KEY")
         if not API_KEY:
-            raise Exception("Please provid deepl key")
+            raise Exception("Please provide deepl key")
     elif options.model == "claude":
         API_KEY = options.claude_key or env.get("BBM_CLAUDE_API_KEY")
         if not API_KEY:
-            raise Exception("Please provid claude key")
+            raise Exception("Please provide claude key")
     else:
         API_KEY = ""
 
