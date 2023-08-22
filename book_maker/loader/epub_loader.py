@@ -403,13 +403,27 @@ class EPUBBookLoader(BaseBookLoader):
         trans_taglist = self.translate_tags.split(",")
         all_p_length = sum(
             0
-            if i.get_type() != ITEM_DOCUMENT
+            if (
+                (i.get_type() != ITEM_DOCUMENT)
+                or (i.file_name in self.exclude_filelist.split(","))
+                or (
+                    self.only_filelist
+                    and i.file_name not in self.only_filelist.split(",")
+                )
+            )
             else len(bs(i.content, "html.parser").findAll(trans_taglist))
             for i in all_items
         )
         all_p_length += self.allow_navigable_strings * sum(
             0
-            if i.get_type() != ITEM_DOCUMENT
+            if (
+                (i.get_type() != ITEM_DOCUMENT)
+                or (i.file_name in self.exclude_filelist.split(","))
+                or (
+                    self.only_filelist
+                    and i.file_name not in self.only_filelist.split(",")
+                )
+            )
             else len(bs(i.content, "html.parser").findAll(text=True))
             for i in all_items
         )
@@ -464,7 +478,14 @@ class EPUBBookLoader(BaseBookLoader):
         index = 0
         try:
             for item in origin_book_temp.get_items():
-                if item.get_type() == ITEM_DOCUMENT:
+                if (
+                    item.get_type() == ITEM_DOCUMENT
+                    and (item.file_name not in self.exclude_filelist.split(","))
+                    and (
+                        item.file_name in self.only_filelist.split(",")
+                        or self.only_filelist != ""
+                    )
+                ):
                     soup = bs(item.content, "html.parser")
                     p_list = soup.findAll(trans_taglist)
                     if self.allow_navigable_strings:
