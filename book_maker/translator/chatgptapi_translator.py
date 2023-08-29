@@ -70,7 +70,7 @@ class ChatGPTAPI(Base):
             )
 
         return openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
+            model="gpt-3.5-turbo-16k",
             messages=messages,
             temperature=self.temperature,
         )
@@ -109,7 +109,6 @@ The total token is too long and cannot be completely translated\n
         return t_text
 
     def translate(self, text, needprint=True):
-        # print("=================================================")
         start_time = time.time()
         # todo: Determine whether to print according to the cli option
         if needprint:
