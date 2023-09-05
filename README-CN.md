@@ -1,3 +1,6 @@
+**中文 | [English](./README.md)**
+[![litellm](https://img.shields.io/badge/%20%F0%9F%9A%85%20liteLLM-OpenAI%7CAzure%7CAnthropic%7CPalm%7CCohere%7CReplicate%7CHugging%20Face-blue?color=green)](https://github.com/BerriAI/litellm)
+
 # bilingual_book_maker
 
 bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制作多语言版本的 epub/txt/srt 文件和图书。该工具仅适用于翻译进入公共版权领域的 epub/txt 图书，不适用于有版权的书籍。请在使用之前阅读项目的 **[免责声明](./disclaimer.md)**。
@@ -19,7 +22,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 - 使用 `--openai_key` 指定 OpenAI API key，如果有多个可以用英文逗号分隔(xxx,xxx,xxx)，可以减少接口调用次数限制带来的错误。  
    或者，指定环境变量 `BBM_OPENAI_API_KEY` 来略过这个选项。
 - 本地放了一个 `test_books/animal_farm.epub` 给大家测试
-- 默认用了 [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis) 模型，也就是 ChatGPT 正在使用的模型，用 `--model gpt3` 来使用 gpt3 模型
+- 默认用了 [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis) 模型，也就是 ChatGPT 正在使用的模型，用 `--model gpt4` 来使用 gpt4 模型，以及用 `--model gpt3` 来使用 gpt3 模型。若使用gpt4模型，用--use_context會在每次翻譯時，多翻譯一段彙整脈絡文字。
 - 可以使用 DeepL 封装的 api 进行翻译，需要付费，[DeepL Translator](https://rapidapi.com/splintPRO/api/dpl-translator) 来获得 token  `--model deepl --deepl_key ${deepl_key}`
 - 可以使用 DeepL free `--model deeplfree`
 - 可以使用 [Claude](https://console.anthropic.com/docs) 模型进行翻译 `--model claude --claude_key ${claude_key}`
@@ -45,6 +48,14 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
    你也可以用环境以下环境变量来配置 `system` 和 `user` 角色 prompt：`BBM_CHATGPTAPI_USER_MSG_TEMPLATE` 和 `BBM_CHATGPTAPI_SYS_MSG`。
 该参数可以是提示模板字符串，也可以是模板 `.txt` 文件的路径。
 - 使用`--batch_size` 参数，指定批量翻译的行数(默认行数为10，目前只对txt生效)
+- `--accumulated_num` Wait for how many tokens have been accumulated before starting the translation. gpt3.5 limits the total_token to 4090. For example, if you use --accumulated_num 1600, maybe openai will
+output 2200 tokens and maybe 200 tokens for other messages in the system messages user messages, 1600+2200+200=4000, So you are close to reaching the limit. You have to choose your own
+value, there is no way to know if the limit is reached before sending
+- `--use_context` 會讓GPT4模型生成摘要。如果是翻譯的最開始，它會摘要那整個段落（大小取決於 --accumulated_num）。如果是後續的段落，他會修改並延續上一個段落的摘要，創造出一段持續改變的摘要，納含整本翻譯書籍的重要資訊，增進翻譯段落間的一致性。
+- `--translation_style` 範例: --translation_style "color: #808080; font-style: italic;"
+- `--retranslate` "$translated_filepath" "file_name_in_epub" "start_str" "end_str"(optional)<br>
+重新翻譯start_str 到 end_str標記的範圍
+
 
 ### 示范用例
 
