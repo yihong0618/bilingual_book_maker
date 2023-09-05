@@ -56,7 +56,6 @@ value, there is no way to know if the limit is reached before sending
 - `--retranslate` "$translated_filepath" "file_name_in_epub" "start_str" "end_str"(optional)<br>
 重新翻譯start_str 到 end_str標記的範圍
 
-
 ### 示范用例
 
 **如果使用 `pip install bbook_maker` 以下命令都可以改成 `bbook args`**
