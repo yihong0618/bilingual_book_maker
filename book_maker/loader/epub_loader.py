@@ -5,7 +5,8 @@ import sys
 from copy import copy
 from pathlib import Path
 
-from bs4 import BeautifulSoup as bs, Tag
+from bs4 import BeautifulSoup as bs
+from bs4 import Tag
 from bs4.element import NavigableString
 from ebooklib import ITEM_DOCUMENT, epub
 from rich import print
@@ -14,7 +15,7 @@ from tqdm import tqdm
 from book_maker.utils import num_tokens_from_text, prompt_config_to_kwargs
 
 from .base_loader import BaseBookLoader
-from .helper import EPUBBookLoaderHelper, not_trans, is_text_link
+from .helper import EPUBBookLoaderHelper, is_text_link, not_trans
 
 
 class EPUBBookLoader(BaseBookLoader):
@@ -478,14 +479,7 @@ class EPUBBookLoader(BaseBookLoader):
         index = 0
         try:
             for item in origin_book_temp.get_items():
-                if (
-                    item.get_type() == ITEM_DOCUMENT
-                    and (item.file_name not in self.exclude_filelist.split(","))
-                    and (
-                        item.file_name in self.only_filelist.split(",")
-                        or self.only_filelist != ""
-                    )
-                ):
+                if item.get_type() == ITEM_DOCUMENT:
                     soup = bs(item.content, "html.parser")
                     p_list = soup.findAll(trans_taglist)
                     if self.allow_navigable_strings:
