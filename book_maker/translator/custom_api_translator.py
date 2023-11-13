@@ -3,6 +3,7 @@ import re
 import json
 import requests
 import time
+from rich import print
 
 class CustomAPI(Base):
     """
