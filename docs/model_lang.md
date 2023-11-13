@@ -2,7 +2,7 @@
 ## Models
 `-m, --model <Model>` <br>
 
-Currently `bbook_maker` supports these models: `chatgptapi` , `gpt3` , `google` , `caiyun` , `deepl` , `deeplfree` , `gpt4` , `claude` .
+Currently `bbook_maker` supports these models: `chatgptapi` , `gpt3` , `google` , `caiyun` , `deepl` , `deeplfree` , `gpt4` , `claude` , `customapi`.
 Default model is `chatgptapi` . 
 
 ### OPENAI models
@@ -95,7 +95,11 @@ Support [Claude](https://console.anthropic.com/docs) model. Use `--model claude 
 
     bbook_maker --book_name test_books/animal_farm.epub --model claude --claude_key ${claude_key}
             
-            
+
+### Custom API
+Support CustomAPI model. Use `--model customapi --custom_api ${custom_api}` .
+
+    bbook_maker --book_name test_books/animal_farm.epub --model customapi --custom_api ${custom_api}  
 
 ### Google
 
