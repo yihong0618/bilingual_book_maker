@@ -1,7 +1,7 @@
 from .base_translator import Base
 import re
 import json
-import httpx
+import requests
 import time
 
 class CustomAPI(Base):
@@ -25,7 +25,7 @@ class CustomAPI(Base):
             "target_lang": "auto"
         }
         post_data = json.dumps(data)
-        r = httpx.post(url = custom_api, data = post_data, timeout = 10).text
+        r = requests.post(url = custom_api, data = post_data, timeout = 10).text
         t_text = json.loads(r)["data"]
         print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
         time.sleep(5)
