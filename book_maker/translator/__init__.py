@@ -6,6 +6,7 @@ from book_maker.translator.google_translator import Google
 from book_maker.translator.gpt3_translator import GPT3
 from book_maker.translator.gpt4_translator import GPT4
 from book_maker.translator.claude_translator import Claude
+from book_maker.translator.custom_api_translator import CustomAPI
 
 MODEL_DICT = {
     "chatgptapi": ChatGPTAPI,
@@ -16,5 +17,6 @@ MODEL_DICT = {
     "deeplfree": DeepLFree,
     "gpt4": GPT4,
     "claude": Claude,
+    "customapi": CustomAPI
     # add more here
 }

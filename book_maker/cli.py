@@ -100,6 +100,13 @@ def main():
     )
 
     parser.add_argument(
+        "--custom_api",
+        dest="custom_api",
+        type=str,
+        help="you should build your own translation api",
+    )
+
+    parser.add_argument(
         "--test",
         dest="test",
         action="store_true",
@@ -296,6 +303,10 @@ So you are close to reaching the limit. You have to choose your own value, there
         API_KEY = options.claude_key or env.get("BBM_CLAUDE_API_KEY")
         if not API_KEY:
             raise Exception("Please provide claude key")
+    elif options.model == "customapi":
+        API_KEY = options.custom_api or env.get("BBM_CUSTOM_API")
+        if not API_KEY:
+            raise Exception("Please provide custom translate api")
     else:
         API_KEY = ""
 

@@ -87,6 +87,9 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model deepl --dee
 # Use the Claude model with Japanese
 python3 make_book.py --book_name test_books/animal_farm.epub --model claude --claude_key ${claude_key} --language ja
 
+# Use the CustomAPI model with Japanese
+python3 make_book.py --book_name test_books/animal_farm.epub --model customapi --custom_api ${custom_api} --language ja
+
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p
 
