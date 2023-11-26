@@ -1,15 +1,8 @@
-import re
-import time
-from copy import copy
-from os import environ, linesep
-from rich import print
+from os import linesep
 
-import openai
 from litellm import completion
 
 from book_maker.translator.chatgptapi_translator import ChatGPTAPI
-
-from .base_translator import Base
 
 PROMPT_ENV_MAP = {
     "user": "BBM_CHATGPTAPI_USER_MSG_TEMPLATE",

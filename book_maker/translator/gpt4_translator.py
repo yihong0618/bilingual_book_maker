@@ -2,9 +2,9 @@ import re
 import time
 from copy import copy
 from os import environ, linesep
-from rich import print
 
 import openai
+from rich import print
 
 from .base_translator import Base
 
@@ -81,7 +81,7 @@ class GPT4(Base):
             )
 
         return openai.ChatCompletion.create(
-            model="gpt-4",
+            model="gpt-4-1106-preview",
             messages=messages,
             temperature=self.temperature,
         )

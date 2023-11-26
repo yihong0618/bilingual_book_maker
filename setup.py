@@ -3,7 +3,7 @@ from setuptools import find_packages, setup
 
 packages = [
     "bs4",
-    "openai",
+    "openai==0.27.2",
     "litellm",
     "requests",
     "ebooklib",
@@ -17,7 +17,7 @@ packages = [
 setup(
     name="bbook_maker",
     description="The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist users in creating multi-language versions of epub/txt files and books.",
-    version="0.5.0",
+    version="0.5.1",
     license="MIT",
     author="yihong0618",
     author_email="zouzou0208@gmail.com",
