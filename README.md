@@ -24,7 +24,7 @@ Find more info here for using liteLLM: https://github.com/BerriAI/litellm/blob/m
 - Use `--openai_key` option to specify OpenAI API key. If you have multiple keys, separate them by commas (xxx,xxx,xxx) to reduce errors caused by API call limits.
    Or, just set environment variable `BBM_OPENAI_API_KEY` instead.
 - A sample book, `test_books/animal_farm.epub`, is provided for testing purposes.
-- The default underlying model is [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis), which is used by ChatGPT currently. Use `--model gpt4` to change the underlying model to `GPT4` and use `--model gpt3` to change the model to `GPT3`.
+- The default underlying model is [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis), which is used by ChatGPT currently. Use `--model gpt4` to change the underlying model to `GPT4`.
    If using `GPT4`, you can add `--use_context` to add a context paragraph to each passage sent to the model for translation (see below)
 - support DeepL model [DeepL Translator](https://rapidapi.com/splintPRO/api/dpl-translator) need pay to get the token use `--model deepl --deepl_key ${deepl_key}`
 - support DeepL free model `--model deeplfree`
@@ -77,9 +77,6 @@ export OPENAI_API_KEY=${your_api_key}
 
 # Use the GPT-4 model with context to Japanese
 python3 make_book.py --book_name test_books/animal_farm.epub --model gpt4 --use_context --language ja
-
-# Use the GPT-3 model with Japanese
-python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --language ja
 
 # Use the DeepL model with Japanese
 python3 make_book.py --book_name test_books/animal_farm.epub --model deepl --deepl_key ${deepl_key} --language ja

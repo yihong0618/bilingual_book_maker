@@ -2,9 +2,10 @@ import re
 import time
 from copy import copy
 from os import environ
-from rich import print
+from itertools import cycle
 
-import openai
+from openai import AzureOpenAI, OpenAI
+from rich import print
 
 from .base_translator import Base
 
@@ -12,6 +13,21 @@ PROMPT_ENV_MAP = {
     "user": "BBM_CHATGPTAPI_USER_MSG_TEMPLATE",
     "system": "BBM_CHATGPTAPI_SYS_MSG",
 }
+
+GPT35_MODEL_LIST = [
+    "gpt-3.5-turbo",
+    "gpt-3.5-turbo-1106",
+    "gpt-3.5-turbo-16k",
+    "gpt-3.5-turbo-0613",
+    "gpt-3.5-turbo-16k-0613",
+    "gpt-3.5-turbo-0301",
+]
+GPT4_MODEL_LIST = [
+    "gpt-4-1106-preview",
+    "gpt-4",
+    "gpt-4-0613",
+    "gpt-4-0314",
+]
 
 
 class ChatGPTAPI(Base):
@@ -29,9 +45,8 @@ class ChatGPTAPI(Base):
     ) -> None:
         super().__init__(key, language)
         self.key_len = len(key.split(","))
+        self.openai_client = OpenAI(api_key=key, base_url=api_base)
 
-        if api_base:
-            openai.api_base = api_base
         self.prompt_template = (
             prompt_template
             or environ.get(PROMPT_ENV_MAP["user"])
@@ -48,9 +63,15 @@ class ChatGPTAPI(Base):
         self.system_content = environ.get("OPENAI_API_SYS_MSG") or ""
         self.deployment_id = None
         self.temperature = temperature
+        # gpt3 all models for save the limit
+        self.model_list = cycle(GPT35_MODEL_LIST)
 
     def rotate_key(self):
-        openai.api_key = next(self.keys)
+        self.openai_client.api_key = next(self.keys)
+
+    def rotate_model(self):
+        # TODO
+        self.model = next(self.model_list)
 
     def create_chat_completion(self, text):
         content = self.prompt_template.format(
@@ -62,49 +83,25 @@ class ChatGPTAPI(Base):
             {"role": "user", "content": content},
         ]
 
-        if self.deployment_id:
-            return openai.ChatCompletion.create(
-                engine=self.deployment_id,
-                messages=messages,
-                temperature=self.temperature,
-            )
-
-        return openai.ChatCompletion.create(
-            model="gpt-3.5-turbo-16k",
+        completion = self.openai_client.chat.completions.create(
+            model=self.model,
             messages=messages,
             temperature=self.temperature,
         )
+        return completion
 
     def get_translation(self, text):
         self.rotate_key()
+        self.rotate_model()  # rotate all the model to aviod the limit
 
-        completion = {}
         try:
             completion = self.create_chat_completion(text)
-        except Exception:
-            if (
-                "choices" not in completion
-                or not isinstance(completion["choices"], list)
-                or len(completion["choices"]) == 0
-            ):
-                raise
-            if completion["choices"][0]["finish_reason"] != "length":
-                raise
+        except Exception as e:
+            print(e)
+            pass
 
-        # work well or exception finish by length limit
-        choice = completion["choices"][0]
-
-        t_text = choice.get("message").get("content", "").encode("utf8").decode()
-
-        if choice["finish_reason"] == "length":
-            with open("log/long_text.txt", "a") as f:
-                print(
-                    f"""==================================================
-The total token is too long and cannot be completely translated\n
-{text}
-""",
-                    file=f,
-                )
+        # TODO work well or exception finish by length limit
+        t_text = completion.choices[0].message.content.encode("utf8").decode() or ""
 
         return t_text
 
@@ -278,7 +275,7 @@ The total token is too long and cannot be completely translated\n
         result_list, retry_count = self.get_best_result_list(
             plist_len,
             new_str,
-            6,
+            6,  # WTF this magic number here?
             result_list,
         )
 
@@ -295,6 +292,13 @@ The total token is too long and cannot be completely translated\n
         return result_list
 
     def set_deployment_id(self, deployment_id):
-        openai.api_type = "azure"
-        openai.api_version = "2023-03-15-preview"
         self.deployment_id = deployment_id
+        self.openai_client = AzureOpenAI(
+            api_key=next(self.keys),
+            azure_endpoint=self.api_base,
+            api_version="2023-07-01-preview",
+            azure_deployment=self.deployment_id,
+        )
+
+    def set_gpt4_models(self, model="gpt4"):
+        self.model_list = cycle(GPT4_MODEL_LIST)

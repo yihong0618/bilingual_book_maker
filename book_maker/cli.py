@@ -259,7 +259,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         "--temperature",
         type=float,
         default=1.0,
-        help="temperature parameter for `gpt3`/`chatgptapi`/`gpt4`/`claude`",
+        help="temperature parameter for `chatgptapi`/`gpt4`/`claude`",
     )
 
     options = parser.parse_args()
@@ -276,7 +276,7 @@ So you are close to reaching the limit. You have to choose your own value, there
     translate_model = MODEL_DICT.get(options.model)
     assert translate_model is not None, "unsupported model"
     API_KEY = ""
-    if options.model in ["gpt3", "chatgptapi", "gpt4"]:
+    if options.model in ["chatgptapi", "gpt4"]:
         if OPENAI_API_KEY := (
             options.openai_key
             or env.get(
@@ -287,6 +287,7 @@ So you are close to reaching the limit. You have to choose your own value, there
             )  # suggest adding `BBM_` prefix for all the bilingual_book_maker ENVs.
         ):
             API_KEY = OPENAI_API_KEY
+            # patch
         else:
             raise Exception(
                 "OpenAI API key not provided, please google how to obtain it",
@@ -373,12 +374,16 @@ So you are close to reaching the limit. You have to choose your own value, there
     if options.deployment_id:
         # only work for ChatGPT api for now
         # later maybe support others
-        assert (
-            options.model == "chatgptapi"
-        ), "only support chatgptapi for deployment_id"
+        assert options.model in [
+            "chatgptapi",
+            "gpt4",
+        ], "only support chatgptapi for deployment_id"
         if not options.api_base:
             raise ValueError("`api_base` must be provided when using `deployment_id`")
         e.translate_model.set_deployment_id(options.deployment_id)
+    # TODO refactor, quick fix for gpt4 model
+    if options.model == "gpt4":
+        e.translate_model.set_gpt4_models("gpt4")
 
     e.make_bilingual_book()
 
