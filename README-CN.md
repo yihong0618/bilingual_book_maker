@@ -19,7 +19,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 - 使用 `--openai_key` 指定 OpenAI API key，如果有多个可以用英文逗号分隔(xxx,xxx,xxx)，可以减少接口调用次数限制带来的错误。  
    或者，指定环境变量 `BBM_OPENAI_API_KEY` 来略过这个选项。
 - 本地放了一个 `test_books/animal_farm.epub` 给大家测试
-- 默认用了 [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis) 模型，也就是 ChatGPT 正在使用的模型，用 `--model gpt3` 来使用 gpt3 模型
+- 默认用了 [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis) 模型，也就是 ChatGPT 正在使用的模型。
 - 可以使用 DeepL 封装的 api 进行翻译，需要付费，[DeepL Translator](https://rapidapi.com/splintPRO/api/dpl-translator) 来获得 token  `--model deepl --deepl_key ${deepl_key}`
 - 可以使用 DeepL free `--model deeplfree`
 - 可以使用 [Claude](https://console.anthropic.com/docs) 模型进行翻译 `--model claude --claude_key ${claude_key}`
@@ -59,9 +59,6 @@ python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${open
 
 # 指定环境变量来略过 --openai_key
 export OPENAI_API_KEY=${your_api_key}
-
-# 或使用 gpt3 模型
-python3 make_book.py --book_name test_books/animal_farm.epub --model gpt3 --language ja
 
 # Use the DeepL model with Japanese
 python3 make_book.py --book_name test_books/animal_farm.epub --model deepl --deepl_key ${deepl_key} --language ja
