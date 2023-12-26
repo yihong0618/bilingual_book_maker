@@ -92,7 +92,7 @@ class ChatGPTAPI(Base):
 
     def get_translation(self, text):
         self.rotate_key()
-        self.rotate_model()  # rotate all the model to aviod the limit
+        self.rotate_model()  # rotate all the model to avoid the limit
 
         try:
             completion = self.create_chat_completion(text)
