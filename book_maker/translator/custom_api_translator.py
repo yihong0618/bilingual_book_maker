@@ -22,7 +22,7 @@ class CustomAPI(Base):
     def translate(self, text):
         print(text)
         custom_api = self.custom_api
-        data = {"text": text, "source_lang": self.language, "target_lang": "auto"}
+        data = {"text": text, "source_lang": "auto", "target_lang": self.language}
         post_data = json.dumps(data)
         r = requests.post(url=custom_api, data=post_data, timeout=10).text
         t_text = json.loads(r)["data"]
