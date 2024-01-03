@@ -82,7 +82,11 @@ class EPUBBookLoader(BaseBookLoader):
                 else:
                     obj.out.writestr("%s" % item.file_name, item.content)
 
+        def _check_deprecated(obj):
+            pass
+
         epub.EpubWriter._write_items = _write_items_patch
+        epub.EpubReader._check_deprecated = _check_deprecated  # drop the warning
 
         try:
             self.origin_book = epub.read_epub(self.epub_name)
