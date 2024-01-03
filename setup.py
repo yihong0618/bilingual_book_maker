@@ -11,6 +11,7 @@ packages = [
     "tqdm",
     "tiktoken",
     "PyDeepLX",
+    "google-generativeai",
 ]
 
 
