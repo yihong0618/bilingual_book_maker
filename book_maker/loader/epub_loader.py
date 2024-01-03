@@ -86,7 +86,7 @@ class EPUBBookLoader(BaseBookLoader):
             pass
 
         epub.EpubWriter._write_items = _write_items_patch
-        epub.EpubReader._check_deprecated = _check_deprecated  # drop the warning
+        epub.EpubReader._check_deprecated = _check_deprecated
 
         try:
             self.origin_book = epub.read_epub(self.epub_name)
@@ -164,6 +164,7 @@ class EPUBBookLoader(BaseBookLoader):
         wait_p_list = []
         for i in range(len(p_list)):
             p = p_list[i]
+            print(f"translating {i}/{len(p_list)}")
             temp_p = copy(p)
 
             for p_exclude in self.exclude_translate_tags.split(","):
@@ -193,10 +194,6 @@ class EPUBBookLoader(BaseBookLoader):
             if count + length < send_num:
                 count += length
                 wait_p_list.append(p)
-                # This is because the more paragraphs, the easier it is possible to translate different numbers of paragraphs, maybe you should find better values than 15 and 2
-                # if len(wait_p_list) > 15 and count > send_num / 2:
-                #     self.helper.deal_old(wait_p_list)
-                #     count = 0
             else:
                 self.helper.deal_old(wait_p_list, self.single_translate)
                 wait_p_list.append(p)
