@@ -4,7 +4,7 @@ from copy import copy
 from os import environ
 from itertools import cycle
 
-from openai import AzureOpenAI, OpenAI
+from openai import AzureOpenAI, OpenAI, RateLimitError
 from rich import print
 
 from .base_translator import Base
@@ -94,11 +94,7 @@ class ChatGPTAPI(Base):
         self.rotate_key()
         self.rotate_model()  # rotate all the model to avoid the limit
 
-        try:
-            completion = self.create_chat_completion(text)
-        except Exception as e:
-            print(e)
-            pass
+        completion = self.create_chat_completion(text)
 
         # TODO work well or exception finish by length limit
         t_text = completion.choices[0].message.content.encode("utf8").decode() or ""
@@ -119,7 +115,7 @@ class ChatGPTAPI(Base):
             try:
                 t_text = self.get_translation(text)
                 break
-            except Exception as e:
+            except RateLimitError as e:
                 # todo: better sleep time? why sleep alawys about key_len
                 # 1. openai server error or own network interruption, sleep for a fixed time
                 # 2. an apikey has no money or reach limit, don`t sleep, just replace it with another apikey
@@ -131,6 +127,8 @@ class ChatGPTAPI(Base):
                 if attempt_count == max_attempts:
                     print(f"Get {attempt_count} consecutive exceptions")
                     raise
+            except Exception as e:
+                print(str(e), "!!")
 
         # todo: Determine whether to print according to the cli option
         if needprint:

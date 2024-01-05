@@ -40,7 +40,7 @@ class EPUBBookLoaderHelper:
         if not wait_p_list:
             return
 
-        result_txt_list = self.translate_model.translate_list(wait_p_list, context_flag)
+        result_txt_list = self.translate_model.translate_list(wait_p_list)
 
         for i in range(len(wait_p_list)):
             if i < len(result_txt_list):
