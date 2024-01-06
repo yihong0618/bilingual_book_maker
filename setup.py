@@ -18,7 +18,7 @@ packages = [
 setup(
     name="bbook_maker",
     description="The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist users in creating multi-language versions of epub/txt files and books.",
-    version="0.6.2",
+    version="0.7.0",
     license="MIT",
     author="yihong0618",
     author_email="zouzou0208@gmail.com",
