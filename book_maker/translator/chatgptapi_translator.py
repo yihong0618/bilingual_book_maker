@@ -128,7 +128,8 @@ class ChatGPTAPI(Base):
                     print(f"Get {attempt_count} consecutive exceptions")
                     raise
             except Exception as e:
-                print(str(e), "!!")
+                print(str(e))
+                return
 
         # todo: Determine whether to print according to the cli option
         if needprint:

@@ -7,7 +7,7 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 ![image](https://user-images.githubusercontent.com/15976103/222317531-a05317c5-4eee-49de-95cd-04063d9539d9.png)
 
 ## Supported Models
-gpt-4, gpt-3.5-turbo, claude-2, palm, llama-2, azure-openai, command-nightly
+gpt-4, gpt-3.5-turbo, claude-2, palm, llama-2, azure-openai, command-nightly, gemini
 For using Non-OpenAI models, use class `liteLLM()` - liteLLM supports all models above.
 Find more info here for using liteLLM: https://github.com/BerriAI/litellm/blob/main/setup.py
 
@@ -28,6 +28,7 @@ Find more info here for using liteLLM: https://github.com/BerriAI/litellm/blob/m
    If using `GPT4`, you can add `--use_context` to add a context paragraph to each passage sent to the model for translation (see below)
 - support DeepL model [DeepL Translator](https://rapidapi.com/splintPRO/api/dpl-translator) need pay to get the token use `--model deepl --deepl_key ${deepl_key}`
 - support DeepL free model `--model deeplfree`
+- support Google [Gemini](https://makersuite.google.com/app/apikey) model `--model gemini --gemini_key ${gemini_key}`
 - Support [Claude](https://console.anthropic.com/docs) model, use `--model claude --claude_key ${claude_key}`
 - Use `--test` option to preview the result if you haven't paid for the service. Note that there is a limit and it may take some time.
 - Set the target language like `--language "Simplified Chinese"`. Default target language is `"Simplified Chinese"`.
@@ -72,6 +73,9 @@ python3 make_book.py --book_name test_books/Lex_Fridman_episode_322.srt --openai
 # Or translate the whole book
 python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --language zh-hans
 
+# Or translate the whole book using Gemini
+python3 make_book.py --book_name test_books/animal_farm.epub --gemini_key ${gemini_key} --model gemini
+
 # Set env OPENAI_API_KEY to ignore option --openai_key
 export OPENAI_API_KEY=${your_api_key}
 
@@ -80,6 +84,7 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model gpt4 --use_
 
 # Use the DeepL model with Japanese
 python3 make_book.py --book_name test_books/animal_farm.epub --model deepl --deepl_key ${deepl_key} --language ja
+
 
 # Use the Claude model with Japanese
 python3 make_book.py --book_name test_books/animal_farm.epub --model claude --claude_key ${claude_key} --language ja
