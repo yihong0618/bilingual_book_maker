@@ -25,6 +25,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 - 可以使用 [Claude](https://console.anthropic.com/docs) 模型进行翻译 `--model claude --claude_key ${claude_key}`
 - 可以使用 google 来翻译 `--model google`
 - 可用使用彩云进行翻译 `--model caiyun --caiyun_key ${caiyun_key}`
+- 可用使用 Gemini 进行翻译 `--model gemini --gemini_key ${gemini_key}`
 - 使用 `--test` 命令如果大家没付费可以加上这个先看看效果（有 limit 稍微有些慢）
 - 使用 `--language` 指定目标语言，例如： `--language "Simplified Chinese"`，预设值为 `"Simplified Chinese"`.  
    请阅读 helper message 来查找可用的目标语言：  `python make_book.py --help`
@@ -56,6 +57,9 @@ python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${open
 
 # 或翻译完整本书
 python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --language zh-hans
+
+# Or translate the whole book using Gemini
+python3 make_book.py --book_name test_books/animal_farm.epub --gemini_key ${gemini_key} --model gemini
 
 # 指定环境变量来略过 --openai_key
 export OPENAI_API_KEY=${your_api_key}

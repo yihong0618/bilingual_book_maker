@@ -106,6 +106,14 @@ def main():
         help="you should build your own translation api",
     )
 
+    # for Google Gemini
+    parser.add_argument(
+        "--gemini_key",
+        dest="gemini_key",
+        type=str,
+        help="You can get Gemini Key from  https://makersuite.google.com/app/apikey",
+    )
+
     parser.add_argument(
         "--test",
         dest="test",
@@ -308,6 +316,8 @@ So you are close to reaching the limit. You have to choose your own value, there
         API_KEY = options.custom_api or env.get("BBM_CUSTOM_API")
         if not API_KEY:
             raise Exception("Please provide custom translate api")
+    elif options.model == "gemini":
+        API_KEY = options.gemini_key or env.get("BBM_GOOGLE_GEMINI_KEY")
     else:
         API_KEY = ""
 
