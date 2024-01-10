@@ -46,6 +46,7 @@ class ChatGPTAPI(Base):
         super().__init__(key, language)
         self.key_len = len(key.split(","))
         self.openai_client = OpenAI(api_key=key, base_url=api_base)
+        self.api_base = api_base
 
         self.prompt_template = (
             prompt_template
@@ -97,7 +98,11 @@ class ChatGPTAPI(Base):
         completion = self.create_chat_completion(text)
 
         # TODO work well or exception finish by length limit
-        t_text = completion.choices[0].message.content.encode("utf8").decode() or ""
+        # Check if content is not None before encoding
+        if completion.choices[0].message.content is not None:
+            t_text = completion.choices[0].message.content.encode("utf8").decode() or ""
+        else:
+            t_text = ""
 
         return t_text
 
