@@ -34,31 +34,32 @@ class ChatGPTAPI(Base):
     DEFAULT_PROMPT = "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text"
 
     def __init__(
-        self,
-        key,
-        language,
-        api_base=None,
-        prompt_template=None,
-        prompt_sys_msg=None,
-        temperature=1.0,
-        **kwargs,
+            self,
+            key,
+            language,
+            api_base=None,
+            prompt_template=None,
+            prompt_sys_msg=None,
+            temperature=1.0,
+            **kwargs,
     ) -> None:
         super().__init__(key, language)
         self.key_len = len(key.split(","))
         self.openai_client = OpenAI(api_key=key, base_url=api_base)
+        self.api_base = api_base
 
         self.prompt_template = (
-            prompt_template
-            or environ.get(PROMPT_ENV_MAP["user"])
-            or self.DEFAULT_PROMPT
+                prompt_template
+                or environ.get(PROMPT_ENV_MAP["user"])
+                or self.DEFAULT_PROMPT
         )
         self.prompt_sys_msg = (
-            prompt_sys_msg
-            or environ.get(
-                "OPENAI_API_SYS_MSG",
-            )  # XXX: for backward compatibility, deprecate soon
-            or environ.get(PROMPT_ENV_MAP["system"])
-            or ""
+                prompt_sys_msg
+                or environ.get(
+            "OPENAI_API_SYS_MSG",
+        )  # XXX: for backward compatibility, deprecate soon
+                or environ.get(PROMPT_ENV_MAP["system"])
+                or ""
         )
         self.system_content = environ.get("OPENAI_API_SYS_MSG") or ""
         self.deployment_id = None
@@ -97,7 +98,12 @@ class ChatGPTAPI(Base):
         completion = self.create_chat_completion(text)
 
         # TODO work well or exception finish by length limit
-        t_text = completion.choices[0].message.content.encode("utf8").decode() or ""
+        # Check if content is not None before encoding
+        if completion.choices[0].message.content is not None:
+            t_text = completion.choices[0].message.content.encode("utf8").decode() or ""
+        else:
+            t_text = ""
+
 
         return t_text
 
@@ -147,12 +153,12 @@ class ChatGPTAPI(Base):
         return lines
 
     def get_best_result_list(
-        self,
-        plist_len,
-        new_str,
-        sleep_dur,
-        result_list,
-        max_retries=15,
+            self,
+            plist_len,
+            new_str,
+            sleep_dur,
+            result_list,
+            max_retries=15,
     ):
         if len(result_list) == plist_len:
             return result_list, 0
@@ -169,12 +175,12 @@ class ChatGPTAPI(Base):
             retry_count += 1
             result_list = self.translate_and_split_lines(new_str)
             if (
-                len(result_list) == plist_len
-                or len(best_result_list) < len(result_list) <= plist_len
-                or (
+                    len(result_list) == plist_len
+                    or len(best_result_list) < len(result_list) <= plist_len
+                    or (
                     len(result_list) < len(best_result_list)
                     and len(best_result_list) > plist_len
-                )
+            )
             ):
                 best_result_list = result_list
 
@@ -191,12 +197,12 @@ class ChatGPTAPI(Base):
             )
 
     def log_translation_mismatch(
-        self,
-        plist_len,
-        result_list,
-        new_str,
-        sep,
-        log_path="log/buglog.txt",
+            self,
+            plist_len,
+            result_list,
+            new_str,
+            sep,
+            log_path="log/buglog.txt",
     ):
         if len(result_list) == plist_len:
             return
