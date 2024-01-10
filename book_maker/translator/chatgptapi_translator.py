@@ -56,8 +56,8 @@ class ChatGPTAPI(Base):
         self.prompt_sys_msg = (
             prompt_sys_msg
             or environ.get(
-            "OPENAI_API_SYS_MSG",
-        )  # XXX: for backward compatibility, deprecate soon
+                "OPENAI_API_SYS_MSG",
+            )  # XXX: for backward compatibility, deprecate soon
             or environ.get(PROMPT_ENV_MAP["system"])
             or ""
         )
