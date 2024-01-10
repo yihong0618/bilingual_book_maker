@@ -104,7 +104,6 @@ class ChatGPTAPI(Base):
         else:
             t_text = ""
 
-
         return t_text
 
     def translate(self, text, needprint=True):
