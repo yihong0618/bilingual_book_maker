@@ -189,43 +189,42 @@ class EPUBBookLoader(BaseBookLoader):
             self._save_progress()
         return index
 
-    def _process_combined_paragraph(self, p_block, new_p_block, index, p_to_save_len):
+    def _process_combined_paragraph(self, p_block, index, p_to_save_len):
         text = []
+
         for p in p_block:
             if self.resume and index < p_to_save_len:
                 p.string = self.p_to_save[index]
-                index += 1
             else:
-                text.append(p.text.rstrip())
+                p_text = p.text.rstrip()
+                text.append(p_text)
 
             if self.is_test and index >= self.test_num:
                 break
 
-        translated_text = self.translate_model.translate("\n".join(text))
-        translated_text = translated_text.split("\n")
-
-        text_len = len(translated_text)
-        for i in range(text_len):
-            t = translated_text[i]
-
-            if i > len(p_block):
-                p = p_block[-1]
-                new_p = new_p_block[-1]
-            else:
-                p = p_block[i]
-                new_p = new_p_block[i]
-
-            if type(p) == NavigableString:
-                new_p = t
-                self.p_to_save.append(new_p)
-            else:
-                new_p.string = t
-                self.p_to_save.append(new_p.text)
-
-            self.helper.insert_trans(
-                p, new_p.string, self.translation_style, self.single_translate
-            )
             index += 1
+
+        if len(text) > 0:
+            translated_text = self.translate_model.translate("\n".join(text))
+            translated_text = translated_text.split("\n")
+            text_len = len(translated_text)
+
+            for i in range(text_len):
+                t = translated_text[i]
+
+                if i >= len(p_block):
+                    p = p_block[-1]
+                else:
+                    p = p_block[i]
+
+                if type(p) == NavigableString:
+                    p = t
+                else:
+                    p.string = t
+
+                self.helper.insert_trans(
+                    p, p.string, self.translation_style, self.single_translate
+                )
 
         self._save_progress()
         return index
@@ -449,7 +448,6 @@ class EPUBBookLoader(BaseBookLoader):
         else:
             is_test_done = self.is_test and index > self.test_num
             p_block = []
-            new_p_block = []
             block_len = 0
             for p in p_list:
                 if is_test_done:
@@ -464,24 +462,24 @@ class EPUBBookLoader(BaseBookLoader):
                     block_len += p_len
                     if block_len > self.block_size:
                         index = self._process_combined_paragraph(
-                            p_block, new_p_block, index, p_to_save_len
+                            p_block, index, p_to_save_len
                         )
                         p_block = [p]
-                        new_p_block = [new_p]
                         block_len = p_len
                         print()
                     else:
                         p_block.append(p)
-                        new_p_block.append(new_p)
                 else:
                     index = self._process_paragraph(p, new_p, index, p_to_save_len)
                     print()
-
+                # print(p)
                 # pbar.update(delta) not pbar.update(index)?
                 pbar.update(1)
 
                 if self.is_test and index >= self.test_num:
                     break
+            if self.single_translate and self.block_size > 0 and len(p_block) > 0:
+                index = self._process_combined_paragraph(p_block, index, p_to_save_len)
 
         if soup:
             item.content = soup.encode()
