@@ -127,39 +127,6 @@ class EPUBBookLoader(BaseBookLoader):
         new_book.toc = book.toc
         return new_book
 
-    # def _process_paragraph(self, p, index, p_to_save_len):
-    #     if not p.text or self._is_special_text(p.text):
-    #         return index
-
-    #     new_p = copy(p)
-
-    #     for p_exclude in self.exclude_translate_tags.split(","):
-    #         # for issue #280
-    #         if type(p) == NavigableString:
-    #             continue
-    #         for pt in new_p.find_all(p_exclude):
-    #             pt.extract()
-
-    #     if self.resume and index < p_to_save_len:
-    #         new_p.string = self.p_to_save[index]
-    #     else:
-    #         if type(p) == NavigableString:
-    #             new_p = self.translate_model.translate(new_p.text)
-    #             self.p_to_save.append(new_p)
-    #         else:
-    #             new_p.string = self.translate_model.translate(new_p.text)
-    #             self.p_to_save.append(new_p.text)
-
-    #     self.helper.insert_trans(
-    #         p, new_p.string, self.translation_style, self.single_translate
-    #     )
-    #     index += 1
-
-    #     if index % 20 == 0:
-    #         self._save_progress()
-
-    #     return index
-
     def _extract_paragraph(self, p):
         for p_exclude in self.exclude_translate_tags.split(","):
             # for issue #280
@@ -472,7 +439,7 @@ class EPUBBookLoader(BaseBookLoader):
                 else:
                     index = self._process_paragraph(p, new_p, index, p_to_save_len)
                     print()
-                # print(p)
+
                 # pbar.update(delta) not pbar.update(index)?
                 pbar.update(1)
 
