@@ -269,6 +269,12 @@ So you are close to reaching the limit. You have to choose your own value, there
         default=1.0,
         help="temperature parameter for `chatgptapi`/`gpt4`/`claude`",
     )
+    parser.add_argument(
+        "--block_size",
+        type=int,
+        default=-1,
+        help="merge multiple paragraphs into one block, may increase accuracy and speed up the process, but disturb the original format, must be used with `--single_translate`",
+    )
 
     options = parser.parse_args()
 
@@ -338,6 +344,11 @@ So you are close to reaching the limit. You have to choose your own value, there
             f"now only support files of these formats: {','.join(support_type_list)}",
         )
 
+    if options.block_size > 0 and not options.single_translate:
+        raise Exception(
+            "block_size must be used with `--single_translate` because it disturbs the original format",
+        )
+
     book_loader = BOOK_LOADER_DICT.get(book_type)
     assert book_loader is not None, "unsupported loader"
     language = options.language
@@ -394,6 +405,8 @@ So you are close to reaching the limit. You have to choose your own value, there
     # TODO refactor, quick fix for gpt4 model
     if options.model == "gpt4":
         e.translate_model.set_gpt4_models("gpt4")
+    if options.block_size > 0:
+        e.block_size = options.block_size
 
     e.make_bilingual_book()
 

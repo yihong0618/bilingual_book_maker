@@ -62,6 +62,7 @@ class EPUBBookLoader(BaseBookLoader):
         self.exclude_filelist = ""
         self.only_filelist = ""
         self.single_translate = single_translate
+        self.block_size = -1
 
         # monkey patch for # 173
         def _write_items_patch(obj):
@@ -126,21 +127,18 @@ class EPUBBookLoader(BaseBookLoader):
         new_book.toc = book.toc
         return new_book
 
-    def _process_paragraph(self, p, index, p_to_save_len):
-        if not p.text or self._is_special_text(p.text):
-            return index
-
-        new_p = copy(p)
-
+    def _extract_paragraph(self, p):
         for p_exclude in self.exclude_translate_tags.split(","):
             # for issue #280
             if type(p) == NavigableString:
                 continue
-            for pt in new_p.find_all(p_exclude):
+            for pt in p.find_all(p_exclude):
                 pt.extract()
+        return p
 
+    def _process_paragraph(self, p, new_p, index, p_to_save_len):
         if self.resume and index < p_to_save_len:
-            new_p.string = self.p_to_save[index]
+            p.string = self.p_to_save[index]
         else:
             if type(p) == NavigableString:
                 new_p = self.translate_model.translate(new_p.text)
@@ -156,7 +154,46 @@ class EPUBBookLoader(BaseBookLoader):
 
         if index % 20 == 0:
             self._save_progress()
+        return index
 
+    def _process_combined_paragraph(self, p_block, index, p_to_save_len):
+        text = []
+
+        for p in p_block:
+            if self.resume and index < p_to_save_len:
+                p.string = self.p_to_save[index]
+            else:
+                p_text = p.text.rstrip()
+                text.append(p_text)
+
+            if self.is_test and index >= self.test_num:
+                break
+
+            index += 1
+
+        if len(text) > 0:
+            translated_text = self.translate_model.translate("\n".join(text))
+            translated_text = translated_text.split("\n")
+            text_len = len(translated_text)
+
+            for i in range(text_len):
+                t = translated_text[i]
+
+                if i >= len(p_block):
+                    p = p_block[-1]
+                else:
+                    p = p_block[i]
+
+                if type(p) == NavigableString:
+                    p = t
+                else:
+                    p.string = t
+
+                self.helper.insert_trans(
+                    p, p.string, self.translation_style, self.single_translate
+                )
+
+        self._save_progress()
         return index
 
     def translate_paragraphs_acc(self, p_list, send_num):
@@ -377,15 +414,39 @@ class EPUBBookLoader(BaseBookLoader):
             self.translate_paragraphs_acc(p_list, send_num)
         else:
             is_test_done = self.is_test and index > self.test_num
+            p_block = []
+            block_len = 0
             for p in p_list:
                 if is_test_done:
                     break
-                index = self._process_paragraph(p, index, p_to_save_len)
+                if not p.text or self._is_special_text(p.text):
+                    pbar.update(1)
+                    continue
+
+                new_p = self._extract_paragraph(copy(p))
+                if self.single_translate and self.block_size > 0:
+                    p_len = num_tokens_from_text(new_p.text)
+                    block_len += p_len
+                    if block_len > self.block_size:
+                        index = self._process_combined_paragraph(
+                            p_block, index, p_to_save_len
+                        )
+                        p_block = [p]
+                        block_len = p_len
+                        print()
+                    else:
+                        p_block.append(p)
+                else:
+                    index = self._process_paragraph(p, new_p, index, p_to_save_len)
+                    print()
+
                 # pbar.update(delta) not pbar.update(index)?
                 pbar.update(1)
-                print()
+
                 if self.is_test and index >= self.test_num:
                     break
+            if self.single_translate and self.block_size > 0 and len(p_block) > 0:
+                index = self._process_combined_paragraph(p_block, index, p_to_save_len)
 
         if soup:
             item.content = soup.encode()
