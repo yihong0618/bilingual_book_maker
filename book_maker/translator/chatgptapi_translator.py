@@ -26,7 +26,6 @@ GPT4_MODEL_LIST = [
     "gpt-4-1106-preview",
     "gpt-4",
     "gpt-4-0613",
-    "gpt-4-0314",
 ]
 
 
