@@ -25,7 +25,9 @@ GPT35_MODEL_LIST = [
 GPT4_MODEL_LIST = [
     "gpt-4-1106-preview",
     "gpt-4",
+    "gpt-4-32k",
     "gpt-4-0613",
+    "gpt-4-32k-0613",
 ]
 
 
@@ -64,7 +66,12 @@ class ChatGPTAPI(Base):
         self.deployment_id = None
         self.temperature = temperature
         # gpt3 all models for save the limit
-        self.model_list = cycle(GPT35_MODEL_LIST)
+        my_model_list = [
+            i["id"] for i in self.openai_client.models.list().model_dump()["data"]
+        ]
+        model_list = list(set(my_model_list) & set(GPT35_MODEL_LIST))
+        print(f"Using model list {model_list}")
+        self.model_list = cycle(model_list)
 
     def rotate_key(self):
         self.openai_client.api_key = next(self.keys)
@@ -304,4 +311,9 @@ class ChatGPTAPI(Base):
         )
 
     def set_gpt4_models(self, model="gpt4"):
-        self.model_list = cycle(GPT4_MODEL_LIST)
+        my_model_list = [
+            i["id"] for i in self.openai_client.models.list().model_dump()["data"]
+        ]
+        model_list = list(set(my_model_list) & set(GPT4_MODEL_LIST))
+        print(f"Using model list {model_list}")
+        self.model_list = cycle(model_list)
