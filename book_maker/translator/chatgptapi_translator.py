@@ -247,6 +247,9 @@ class ChatGPTAPI(Base):
             new_lines.append(" ".join(temp_line))
 
         text = "\n".join(new_lines)
+        # try to fix #372
+        if not text:
+            return ""
 
         # del ^M
         text = text.replace("^M", "\r")
