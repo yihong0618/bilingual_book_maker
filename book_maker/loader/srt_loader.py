@@ -1,6 +1,7 @@
 """
 inspired by: https://github.com/jesselau76/srt-gpt-translator, MIT License
 """
+
 import re
 import sys
 from pathlib import Path

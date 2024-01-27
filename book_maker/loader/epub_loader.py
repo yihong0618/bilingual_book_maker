@@ -465,29 +465,33 @@ class EPUBBookLoader(BaseBookLoader):
         all_items = list(self.origin_book.get_items())
         trans_taglist = self.translate_tags.split(",")
         all_p_length = sum(
-            0
-            if (
-                (i.get_type() != ITEM_DOCUMENT)
-                or (i.file_name in self.exclude_filelist.split(","))
-                or (
-                    self.only_filelist
-                    and i.file_name not in self.only_filelist.split(",")
+            (
+                0
+                if (
+                    (i.get_type() != ITEM_DOCUMENT)
+                    or (i.file_name in self.exclude_filelist.split(","))
+                    or (
+                        self.only_filelist
+                        and i.file_name not in self.only_filelist.split(",")
+                    )
                 )
+                else len(bs(i.content, "html.parser").findAll(trans_taglist))
             )
-            else len(bs(i.content, "html.parser").findAll(trans_taglist))
             for i in all_items
         )
         all_p_length += self.allow_navigable_strings * sum(
-            0
-            if (
-                (i.get_type() != ITEM_DOCUMENT)
-                or (i.file_name in self.exclude_filelist.split(","))
-                or (
-                    self.only_filelist
-                    and i.file_name not in self.only_filelist.split(",")
+            (
+                0
+                if (
+                    (i.get_type() != ITEM_DOCUMENT)
+                    or (i.file_name in self.exclude_filelist.split(","))
+                    or (
+                        self.only_filelist
+                        and i.file_name not in self.only_filelist.split(",")
+                    )
                 )
+                else len(bs(i.content, "html.parser").findAll(text=True))
             )
-            else len(bs(i.content, "html.parser").findAll(text=True))
             for i in all_items
         )
         pbar = tqdm(total=self.test_num) if self.is_test else tqdm(total=all_p_length)
