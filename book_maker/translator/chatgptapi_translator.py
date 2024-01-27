@@ -21,6 +21,7 @@ GPT35_MODEL_LIST = [
     "gpt-3.5-turbo-0613",
     "gpt-3.5-turbo-16k-0613",
     "gpt-3.5-turbo-0301",
+    "gpt-3.5-turbo-0125",
 ]
 GPT4_MODEL_LIST = [
     "gpt-4-1106-preview",

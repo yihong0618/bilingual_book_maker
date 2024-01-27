@@ -53,6 +53,13 @@ class Gemini(Base):
 
     def translate(self, text):
         t_text = ""
+        print(text)
+        # same for caiyun translate src issue #279 gemini for #374
+        text_list = text.splitlines()
+        num = None
+        if len(text_list) > 1:
+            if text_list[0].isdigit():
+                num = text_list[0]
         try:
             self.convo.send_message(
                 self.DEFAULT_PROMPT.format(text=text, language=self.language)
@@ -60,7 +67,6 @@ class Gemini(Base):
             print(text)
             t_text = self.convo.last.text.strip()
         except StopCandidateException as e:
-            print("Here")
             match = re.search(r'content\s*{\s*parts\s*{\s*text:\s*"([^"]+)"', str(e))
             if match:
                 t_text = match.group(1)
@@ -80,4 +86,6 @@ class Gemini(Base):
         print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
         # for limit
         time.sleep(0.5)
+        if num:
+            t_text = str(num) + "\n" + t_text
         return t_text

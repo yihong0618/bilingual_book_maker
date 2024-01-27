@@ -134,3 +134,7 @@ dmypy.json
 /test_books/*.epub
 log/
 .chatgpt_cache.json
+# for user do not want to push
+*.srt
+*.txt
+*.bin
