@@ -403,8 +403,11 @@ So you are close to reaching the limit. You have to choose your own value, there
             raise ValueError("`api_base` must be provided when using `deployment_id`")
         e.translate_model.set_deployment_id(options.deployment_id)
     # TODO refactor, quick fix for gpt4 model
+    if options.model == "chatgptapi":
+        print(21232)
+        e.translate_model.set_gpt35_models()
     if options.model == "gpt4":
-        e.translate_model.set_gpt4_models("gpt4")
+        e.translate_model.set_gpt4_models()
     if options.block_size > 0:
         e.block_size = options.block_size
 

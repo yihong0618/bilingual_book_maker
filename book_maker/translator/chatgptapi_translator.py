@@ -66,13 +66,7 @@ class ChatGPTAPI(Base):
         self.system_content = environ.get("OPENAI_API_SYS_MSG") or ""
         self.deployment_id = None
         self.temperature = temperature
-        # gpt3 all models for save the limit
-        my_model_list = [
-            i["id"] for i in self.openai_client.models.list().model_dump()["data"]
-        ]
-        model_list = list(set(my_model_list) & set(GPT35_MODEL_LIST))
-        print(f"Using model list {model_list}")
-        self.model_list = cycle(model_list)
+        self.model_list = None
 
     def rotate_key(self):
         self.openai_client.api_key = next(self.keys)
@@ -314,10 +308,26 @@ class ChatGPTAPI(Base):
             azure_deployment=self.deployment_id,
         )
 
-    def set_gpt4_models(self, model="gpt4"):
-        my_model_list = [
-            i["id"] for i in self.openai_client.models.list().model_dump()["data"]
-        ]
-        model_list = list(set(my_model_list) & set(GPT4_MODEL_LIST))
-        print(f"Using model list {model_list}")
-        self.model_list = cycle(model_list)
+    def set_gpt35_models(self):
+        # gpt3 all models for save the limit
+        if self.deployment_id:
+            self.model_list = cycle(["gpt-35-turbo"])
+        else:
+            my_model_list = [
+                i["id"] for i in self.openai_client.models.list().model_dump()["data"]
+            ]
+            model_list = list(set(my_model_list) & set(GPT35_MODEL_LIST))
+            print(f"Using model list {model_list}")
+            self.model_list = cycle(model_list)
+
+    def set_gpt4_models(self):
+        # for issue #375 azure can not use model list
+        if self.deployment_id:
+            self.model_list = cycle(["gpt-4"])
+        else:
+            my_model_list = [
+                i["id"] for i in self.openai_client.models.list().model_dump()["data"]
+            ]
+            model_list = list(set(my_model_list) & set(GPT4_MODEL_LIST))
+            print(f"Using model list {model_list}")
+            self.model_list = cycle(model_list)
