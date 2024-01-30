@@ -47,7 +47,7 @@ class ChatGPTAPI(Base):
     ) -> None:
         super().__init__(key, language)
         self.key_len = len(key.split(","))
-        self.openai_client = OpenAI(api_key=key, base_url=api_base)
+        self.openai_client = OpenAI(api_key=next(self.keys), base_url=api_base)
         self.api_base = api_base
 
         self.prompt_template = (
@@ -72,7 +72,6 @@ class ChatGPTAPI(Base):
         self.openai_client.api_key = next(self.keys)
 
     def rotate_model(self):
-        # TODO
         self.model = next(self.model_list)
 
     def create_chat_completion(self, text):
