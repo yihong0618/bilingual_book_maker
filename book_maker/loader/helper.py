@@ -12,9 +12,10 @@ class EPUBBookLoaderHelper:
         self.context_flag = context_flag
 
     def insert_trans(self, p, text, translation_style="", single_translate=False):
+        if text is None:
+            text = ""
         if (
             p.string is not None
-            and text is not None
             and p.string.replace(" ", "").strip() == text.replace(" ", "").strip()
         ):
             return
