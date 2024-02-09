@@ -16,7 +16,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 ## 使用
 
 - `pip install -r requirements.txt` 或 `pip install -U bbook_maker`
-- 使用 `--openai_key` 指定 OpenAI API key，如果有多个可以用英文逗号分隔(xxx,xxx,xxx)，可以减少接口调用次数限制带来的错误。  
+- 使用 `--openai_key` 指定 OpenAI API key，如果有多个可以用英文逗号分隔(xxx,xxx,xxx)，可以减少接口调用次数限制带来的错误。
    或者，指定环境变量 `BBM_OPENAI_API_KEY` 来略过这个选项。
 - 本地放了一个 `test_books/animal_farm.epub` 给大家测试
 - 默认用了 [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis) 模型，也就是 ChatGPT 正在使用的模型。
@@ -24,10 +24,11 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 - 可以使用 DeepL free `--model deeplfree`
 - 可以使用 [Claude](https://console.anthropic.com/docs) 模型进行翻译 `--model claude --claude_key ${claude_key}`
 - 可以使用 google 来翻译 `--model google`
-- 可用使用彩云进行翻译 `--model caiyun --caiyun_key ${caiyun_key}`
-- 可用使用 Gemini 进行翻译 `--model gemini --gemini_key ${gemini_key}`
+- 可以使用彩云进行翻译 `--model caiyun --caiyun_key ${caiyun_key}`
+- 可以使用 Gemini 进行翻译 `--model gemini --gemini_key ${gemini_key}`
+- 可以使用腾讯交互翻译(免费)进行翻译`--model tencentransmart`
 - 使用 `--test` 命令如果大家没付费可以加上这个先看看效果（有 limit 稍微有些慢）
-- 使用 `--language` 指定目标语言，例如： `--language "Simplified Chinese"`，预设值为 `"Simplified Chinese"`.  
+- 使用 `--language` 指定目标语言，例如： `--language "Simplified Chinese"`，预设值为 `"Simplified Chinese"`.
    请阅读 helper message 来查找可用的目标语言：  `python make_book.py --help`
 - 使用 `--proxy` 参数，方便中国大陆的用户在本地测试时使用代理，传入类似 `http://127.0.0.1:7890` 的字符串
 - 使用 `--resume` 命令，可以手动中断后，加入命令继续执行。
@@ -35,7 +36,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
    使用 `--translate-tags` 指定需要翻译的标签。使用逗号分隔多个标签。例如：
    `--translate-tags h1,h2,h3,p,div`
 - 请使用 --book_from 选项指定电子阅读器类型（现在只有 kobo 可用），并使用 --device_path 指定挂载点。
-- 如果你遇到了墙需要用 Cloudflare Workers 替换 api_base 请使用 `--api_base ${url}` 来替换。  
+- 如果你遇到了墙需要用 Cloudflare Workers 替换 api_base 请使用 `--api_base ${url}` 来替换。
    **请注意，此处你输入的api应该是'`https://xxxx/v1`'的字样，域名需要用引号包裹**
 - 翻译完会生成一本 ${book_name}_bilingual.epub 的双语书
 - 如果出现了错误或使用 `CTRL+C` 中断命令，不想接下来继续翻译了，会生成一本 ${book_name}_bilingual_temp.epub 的书，直接改成你想要的名字就可以了
@@ -84,8 +85,8 @@ python3 make_book.py --book_name test_books/animal_farm.epub --prompt "Please tr
 python3 make_book.py --book_from kobo --device_path /tmp/kobo
 
 # 翻译 txt 文件
-python3 make_book.py --book_name test_books/the_little_prince.txt --test 
-# 聚合多行翻译 txt 文件 
+python3 make_book.py --book_name test_books/the_little_prince.txt --test
+# 聚合多行翻译 txt 文件
 python3 make_book.py --book_name test_books/the_little_prince.txt --test --batch_size 20
 
 
