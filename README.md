@@ -30,6 +30,7 @@ Find more info here for using liteLLM: https://github.com/BerriAI/litellm/blob/m
 - support DeepL free model `--model deeplfree`
 - support Google [Gemini](https://makersuite.google.com/app/apikey) model `--model gemini --gemini_key ${gemini_key}`
 - Support [Claude](https://console.anthropic.com/docs) model, use `--model claude --claude_key ${claude_key}`
+- Support [Tencent TranSmart](https://transmart.qq.com) model (Free), use `--model tencentransmart`
 - Use `--test` option to preview the result if you haven't paid for the service. Note that there is a limit and it may take some time.
 - Set the target language like `--language "Simplified Chinese"`. Default target language is `"Simplified Chinese"`.
    Read available languages by helper message: `python make_book.py --help`
