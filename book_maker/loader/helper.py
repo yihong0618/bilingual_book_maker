@@ -1,5 +1,10 @@
 import re
 from copy import copy
+import backoff
+import logging
+
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger(__name__)
 
 
 class EPUBBookLoaderHelper:
@@ -27,12 +32,21 @@ class EPUBBookLoaderHelper:
         if single_translate:
             p.extract()
 
+    @backoff.on_exception(
+        backoff.expo,
+        Exception,
+        on_backoff=lambda details: logger.warning(f"retry backoff: {details}"),
+        on_giveup=lambda details: logger.warning(f"retry abort: {details}"),
+    )
+    def translate_with_backoff(self, **kwargs):
+        return self.translate_model.translate(**kwargs)
+
     def deal_new(self, p, wait_p_list, single_translate=False):
         self.deal_old(wait_p_list, single_translate, self.context_flag)
         self.insert_trans(
             p,
             shorter_result_link(
-                self.translate_model.translate(p.text, self.context_flag)
+                self.translate_with_backoff(p.text, self.context_flag)
             ),
             self.translation_style,
             single_translate,
