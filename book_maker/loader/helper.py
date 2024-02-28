@@ -45,9 +45,7 @@ class EPUBBookLoaderHelper:
         self.deal_old(wait_p_list, single_translate, self.context_flag)
         self.insert_trans(
             p,
-            shorter_result_link(
-                self.translate_with_backoff(p.text, self.context_flag)
-            ),
+            shorter_result_link(self.translate_with_backoff(p.text, self.context_flag)),
             self.translation_style,
             single_translate,
         )
