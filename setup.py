@@ -13,6 +13,7 @@ packages = [
     "PyDeepLX",
     "google-generativeai",
     "langdetect",
+    "backoff",
 ]
 
 
