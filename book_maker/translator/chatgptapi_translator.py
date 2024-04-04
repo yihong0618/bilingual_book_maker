@@ -66,7 +66,9 @@ class ChatGPTAPI(Base):
         self.system_content = environ.get("OPENAI_API_SYS_MSG") or ""
         self.deployment_id = None
         self.temperature = temperature
-        self.model_list = None
+
+        # Get the model_list from the kwargs or use the default model list
+        self.model_list = kwargs.get("model_list", None)
 
     def rotate_key(self):
         self.openai_client.api_key = next(self.keys)
@@ -330,3 +332,8 @@ class ChatGPTAPI(Base):
             model_list = list(set(my_model_list) & set(GPT4_MODEL_LIST))
             print(f"Using model list {model_list}")
             self.model_list = cycle(model_list)
+
+    def set_model_list(self, model_list):
+        model_list = list(set(model_list))
+        print(f"Using model list {model_list}")
+        self.model_list = cycle(model_list)
