@@ -275,6 +275,12 @@ So you are close to reaching the limit. You have to choose your own value, there
         default=-1,
         help="merge multiple paragraphs into one block, may increase accuracy and speed up the process, but disturb the original format, must be used with `--single_translate`",
     )
+    parser.add_argument(
+        "--model_list",
+        type=str,
+        dest="model_list",
+        help="Rather than using our preset lists of models, specify exactly the models you want as a comma separated list `gpt-4-32k,gpt-3.5-turbo-0125` (Currently only supports: `openai`)",
+    )
 
     options = parser.parse_args()
 
@@ -290,7 +296,7 @@ So you are close to reaching the limit. You have to choose your own value, there
     translate_model = MODEL_DICT.get(options.model)
     assert translate_model is not None, "unsupported model"
     API_KEY = ""
-    if options.model in ["chatgptapi", "gpt4"]:
+    if options.model in ["openai", "chatgptapi", "gpt4"]:
         if OPENAI_API_KEY := (
             options.openai_key
             or env.get(
@@ -402,6 +408,14 @@ So you are close to reaching the limit. You have to choose your own value, there
         if not options.api_base:
             raise ValueError("`api_base` must be provided when using `deployment_id`")
         e.translate_model.set_deployment_id(options.deployment_id)
+    if options.model == "openai":
+        # Currently only supports `openai` when you also have --model_list set
+        if options.model_list:
+            e.translate_model.set_model_list(options.model_list.split(","))
+        else:
+            raise ValueError(
+                "When using `openai` model, you must also provide `--model_list`. For default model sets use `--model chatgptapi` or `--model gpt4`",
+            )
     # TODO refactor, quick fix for gpt4 model
     if options.model == "chatgptapi":
         e.translate_model.set_gpt35_models()
