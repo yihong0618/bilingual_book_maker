@@ -66,9 +66,7 @@ class ChatGPTAPI(Base):
         self.system_content = environ.get("OPENAI_API_SYS_MSG") or ""
         self.deployment_id = None
         self.temperature = temperature
-
-        # Get the model_list from the kwargs or use the default model list
-        self.model_list = kwargs.get("model_list", None)
+        self.model_list = None
 
     def rotate_key(self):
         self.openai_client.api_key = next(self.keys)
