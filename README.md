@@ -87,6 +87,9 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model gpt4 --use_
 # Use a specific OpenAI model alias
 python3 make_book.py --book_name test_books/animal_farm.epub --model openai --model_list gpt-4-1106-preview --openai_key ${openai_key}
 
+**Note** you can use other `openai like` model in this way
+python3 make_book.py --book_name test_books/animal_farm.epub --model openai --model_list yi-34b-chat-0205 --openai_key ${openai_key} --api_base "https://api.lingyiwanwu.com/v1"
+
 # Use a specific list of OpenAI model aliases
 python3 make_book.py --book_name test_books/animal_farm.epub --model openai --model_list gpt-4-1106-preview,gpt-4-0125-preview,gpt-3.5-turbo-0125 --openai_key ${openai_key}
 
