@@ -14,6 +14,7 @@ packages = [
     "google-generativeai",
     "langdetect",
     "backoff",
+    "anthropic",
 ]
 
 
