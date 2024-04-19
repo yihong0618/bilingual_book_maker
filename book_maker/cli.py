@@ -138,6 +138,14 @@ def main():
         help="model to use, available: {%(choices)s}",
     )
     parser.add_argument(
+        "--ollama_model",
+        dest="ollama_model",
+        type=str,
+        default="ollama_model",
+        metavar="MODEL",
+        help="use ollama",
+    )    
+    parser.add_argument(
         "--language",
         type=str,
         choices=sorted(LANGUAGES.keys())
@@ -308,6 +316,9 @@ So you are close to reaching the limit. You have to choose your own value, there
         ):
             API_KEY = OPENAI_API_KEY
             # patch
+        elif options.ollama_model:
+            # any string is ok, can't be empty
+            API_KEY  = "ollama"
         else:
             raise Exception(
                 "OpenAI API key not provided, please google how to obtain it",
@@ -365,6 +376,10 @@ So you are close to reaching the limit. You have to choose your own value, there
     # change api_base for issue #42
     model_api_base = options.api_base
 
+    if options.ollama_model and not model_api_base:
+        # ollama default api_base
+        model_api_base  = "http://localhost:11434/v1"
+
     e = book_loader(
         options.book_name,
         translate_model,
@@ -418,7 +433,10 @@ So you are close to reaching the limit. You have to choose your own value, there
             )
     # TODO refactor, quick fix for gpt4 model
     if options.model == "chatgptapi":
-        e.translate_model.set_gpt35_models()
+        if options.ollama_model:
+            e.translate_model.set_gpt35_models(ollama_model=options.ollama_model)
+        else:
+            e.translate_model.set_gpt35_models()
     if options.model == "gpt4":
         e.translate_model.set_gpt4_models()
     if options.block_size > 0:
