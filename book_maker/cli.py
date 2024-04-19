@@ -144,7 +144,7 @@ def main():
         default="ollama_model",
         metavar="MODEL",
         help="use ollama",
-    )    
+    )
     parser.add_argument(
         "--language",
         type=str,
@@ -318,7 +318,7 @@ So you are close to reaching the limit. You have to choose your own value, there
             # patch
         elif options.ollama_model:
             # any string is ok, can't be empty
-            API_KEY  = "ollama"
+            API_KEY = "ollama"
         else:
             raise Exception(
                 "OpenAI API key not provided, please google how to obtain it",
@@ -378,7 +378,7 @@ So you are close to reaching the limit. You have to choose your own value, there
 
     if options.ollama_model and not model_api_base:
         # ollama default api_base
-        model_api_base  = "http://localhost:11434/v1"
+        model_api_base = "http://localhost:11434/v1"
 
     e = book_loader(
         options.book_name,
