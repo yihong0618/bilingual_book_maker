@@ -1,6 +1,5 @@
 [project]
 name = "bbook-maker"
-dynamic = ["version"]
 description = "The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist users in creating multi-language versions of epub/txt files and books."
 readme = "README.md"
 license = {text = "MIT"}
@@ -43,3 +42,5 @@ without-hashes = true
 [build-system]
 requires = ["pdm-backend>=2.0.0"]
 build-backend = "pdm.backend"
+[tool.pdm.version]
+source = "scm"
