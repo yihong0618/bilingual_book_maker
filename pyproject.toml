@@ -3,6 +3,7 @@ name = "bbook-maker"
 description = "The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist users in creating multi-language versions of epub/txt files and books."
 readme = "README.md"
 license = {text = "MIT"}
+dynamic = ["version"]
 requires-python = ">=3.9"
 authors = [
     { name = "yihong0618", email = "zouzou0208@gmail.com" },
