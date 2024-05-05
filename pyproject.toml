@@ -1,0 +1,47 @@
+[project]
+name = "bbook-maker"
+description = "The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist users in creating multi-language versions of epub/txt files and books."
+readme = "README.md"
+license = {text = "MIT"}
+dynamic = ["version"]
+requires-python = ">=3.9"
+authors = [
+    { name = "yihong0618", email = "zouzou0208@gmail.com" },
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "anthropic",
+    "backoff",
+    "bs4",
+    "ebooklib",
+    "google-generativeai",
+    "langdetect",
+    "litellm",
+    "openai>=1.1.1",
+    "PyDeepLX",
+    "requests",
+    "rich",
+    "tiktoken",
+    "tqdm",
+]
+
+[project.scripts]
+bbook_maker = "book_maker.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/yihong0618/bilingual_book_maker"
+
+[tool.pdm]
+plugins = ["pdm-autoexport"]
+[[tool.pdm.autoexport]]
+filename = "requirements.txt"
+without-hashes = true
+[build-system]
+requires = ["pdm-backend>=2.0.0"]
+build-backend = "pdm.backend"
+[tool.pdm.version]
+source = "scm"

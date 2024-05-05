@@ -9,12 +9,13 @@ from book_maker.translator.tencent_transmart_translator import TencentTranSmart
 from book_maker.translator.custom_api_translator import CustomAPI
 
 MODEL_DICT = {
+    "openai": ChatGPTAPI,
     "chatgptapi": ChatGPTAPI,
+    "gpt4": ChatGPTAPI,
     "google": Google,
     "caiyun": Caiyun,
     "deepl": DeepL,
     "deeplfree": DeepLFree,
-    "gpt4": ChatGPTAPI,
     "claude": Claude,
     "gemini": Gemini,
     "tencentransmart": TencentTranSmart,

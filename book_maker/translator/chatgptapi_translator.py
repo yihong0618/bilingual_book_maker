@@ -307,7 +307,10 @@ class ChatGPTAPI(Base):
             azure_deployment=self.deployment_id,
         )
 
-    def set_gpt35_models(self):
+    def set_gpt35_models(self, ollama_model=""):
+        if ollama_model:
+            self.model_list = cycle([ollama_model])
+            return
         # gpt3 all models for save the limit
         if self.deployment_id:
             self.model_list = cycle(["gpt-35-turbo"])
@@ -330,3 +333,8 @@ class ChatGPTAPI(Base):
             model_list = list(set(my_model_list) & set(GPT4_MODEL_LIST))
             print(f"Using model list {model_list}")
             self.model_list = cycle(model_list)
+
+    def set_model_list(self, model_list):
+        model_list = list(set(model_list))
+        print(f"Using model list {model_list}")
+        self.model_list = cycle(model_list)
