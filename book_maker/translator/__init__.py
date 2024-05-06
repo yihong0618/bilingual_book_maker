@@ -5,6 +5,7 @@ from book_maker.translator.deepl_free_translator import DeepLFree
 from book_maker.translator.google_translator import Google
 from book_maker.translator.claude_translator import Claude
 from book_maker.translator.gemini_translator import Gemini
+from book_maker.translator.groq_translator import GroqClient
 from book_maker.translator.tencent_transmart_translator import TencentTranSmart
 from book_maker.translator.custom_api_translator import CustomAPI
 
@@ -18,6 +19,7 @@ MODEL_DICT = {
     "deeplfree": DeepLFree,
     "claude": Claude,
     "gemini": Gemini,
+    "groq": GroqClient,
     "tencentransmart": TencentTranSmart,
     "customapi": CustomAPI,
     # add more here
