@@ -114,6 +114,14 @@ def main():
         help="You can get Gemini Key from  https://makersuite.google.com/app/apikey",
     )
 
+    # for Groq
+    parser.add_argument(
+        "--groq_key",
+        dest="groq_key",
+        type=str,
+        help="You can get Groq Key from  https://console.groq.com/keys",
+    )
+
     parser.add_argument(
         "--test",
         dest="test",
@@ -341,6 +349,8 @@ So you are close to reaching the limit. You have to choose your own value, there
             raise Exception("Please provide custom translate api")
     elif options.model == "gemini":
         API_KEY = options.gemini_key or env.get("BBM_GOOGLE_GEMINI_KEY")
+    elif options.model == "groq":
+        API_KEY = options.groq_key or env.get("BBM_GROQ_API_KEY")
     else:
         API_KEY = ""
 
@@ -423,7 +433,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         if not options.api_base:
             raise ValueError("`api_base` must be provided when using `deployment_id`")
         e.translate_model.set_deployment_id(options.deployment_id)
-    if options.model == "openai":
+    if options.model in ("openai", "groq"):
         # Currently only supports `openai` when you also have --model_list set
         if options.model_list:
             e.translate_model.set_model_list(options.model_list.split(","))

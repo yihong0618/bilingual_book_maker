@@ -27,6 +27,7 @@ dependencies = [
     "rich",
     "tiktoken",
     "tqdm",
+    "groq>=0.5.0",
 ]
 
 [project.scripts]
