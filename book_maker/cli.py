@@ -149,7 +149,7 @@ def main():
         "--ollama_model",
         dest="ollama_model",
         type=str,
-        default="ollama_model",
+        default="",
         metavar="MODEL",
         help="use ollama",
     )
