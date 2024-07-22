@@ -114,7 +114,7 @@ class ChatGPTAPI(Base):
             print(re.sub("\n{3,}", "\n\n", text))
 
         attempt_count = 0
-        max_attempts = 3
+        max_attempts = 5
         t_text = ""
 
         while attempt_count < max_attempts:
@@ -134,8 +134,14 @@ class ChatGPTAPI(Base):
                     print(f"Get {attempt_count} consecutive exceptions")
                     raise
             except Exception as e:
-                print(str(e))
-                return
+                sleep_time = 10+20*attempt_count
+                print(str(e), f"will sleep {sleep_time} seconds")
+                time.sleep(sleep_time)
+                attempt_count += 1
+                if attempt_count == max_attempts:
+                    print(f"Get {attempt_count} consecutive exceptions")
+                    return
+
 
         # todo: Determine whether to print according to the cli option
         if needprint:
