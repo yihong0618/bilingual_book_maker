@@ -27,6 +27,8 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 - 可以使用彩云进行翻译 `--model caiyun --caiyun_key ${caiyun_key}`
 - 可以使用 Gemini 进行翻译 `--model gemini --gemini_key ${gemini_key}`
 - 可以使用腾讯交互翻译(免费)进行翻译`--model tencentransmart`
+- 可以使用 [Ollama](https://github.com/ollama/ollama) 自托管模型进行翻译，使用 `--ollama_model ${ollama_model_name}`
+   - 如果 ollama server 不运行在本地，使用 `--api_base http://x.x.x.x:port/v1` 指向 ollama server 地址
 - 使用 `--test` 命令如果大家没付费可以加上这个先看看效果（有 limit 稍微有些慢）
 - 使用 `--language` 指定目标语言，例如： `--language "Simplified Chinese"`，预设值为 `"Simplified Chinese"`.
    请阅读 helper message 来查找可用的目标语言：  `python make_book.py --help`

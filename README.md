@@ -27,11 +27,14 @@ Find more info here for using liteLLM: https://github.com/BerriAI/litellm/blob/m
 - The default underlying model is [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis), which is used by ChatGPT currently. Use `--model gpt4` to change the underlying model to `GPT4`.
   - Important to note that `gpt-4` is significantly more expensive than `gpt-4-turbo`, but to avoid bumping into rate limits, we automatically balance queries across `gpt-4-1106-preview`, `gpt-4`, `gpt-4-32k`, `gpt-4-0613`,`gpt-4-32k-0613`.
     - If you want to use a specific model alias with OpenAI (eg `gpt-4-1106-preview` or `gpt-3.5-turbo-0125`), you can use `--model openai --model_list gpt-4-1106-preview,gpt-3.5-turbo-0125`. `--model_list` takes a comma-separated list of model aliases.
-  - If using `GPT4`, you can add `--use_context` to add a context paragraph to each passage sent to the model for translation (see below).- support DeepL model [DeepL Translator](https://rapidapi.com/splintPRO/api/dpl-translator) need pay to get the token use `--model deepl --deepl_key ${deepl_key}`
-- support DeepL free model `--model deeplfree`
-- support Google [Gemini](https://makersuite.google.com/app/apikey) model `--model gemini --gemini_key ${gemini_key}`
+  - If using `GPT4`, you can add `--use_context` to add a context paragraph to each passage sent to the model for translation (see below).
+- Support DeepL model [DeepL Translator](https://rapidapi.com/splintPRO/api/dpl-translator) need pay to get the token use `--model deepl --deepl_key ${deepl_key}`
+- Support DeepL free model `--model deeplfree`
+- Support Google [Gemini](https://makersuite.google.com/app/apikey) model `--model gemini --gemini_key ${gemini_key}`
 - Support [Claude](https://console.anthropic.com/docs) model, use `--model claude --claude_key ${claude_key}`
 - Support [Tencent TranSmart](https://transmart.qq.com) model (Free), use `--model tencentransmart`
+- Support [Ollama](https://github.com/ollama/ollama) self-host models, use `--ollama_model ${ollama_model_name}`
+   - If ollama server is not running on localhost, use `--api_base http://x.x.x.x:port/v1` to point to the ollama server address
 - Use `--test` option to preview the result if you haven't paid for the service. Note that there is a limit and it may take some time.
 - Set the target language like `--language "Simplified Chinese"`. Default target language is `"Simplified Chinese"`.
    Read available languages by helper message: `python make_book.py --help`
