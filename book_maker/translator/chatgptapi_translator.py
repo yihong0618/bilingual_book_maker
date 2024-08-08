@@ -32,6 +32,11 @@ GPT4_MODEL_LIST = [
     "gpt-4-32k-0613",
 ]
 
+GPT4oMINI_MODEL_LIST = [
+    "gpt-4o-mini",
+    "gpt-4o-mini-2024-07-18",
+]
+
 
 class ChatGPTAPI(Base):
     DEFAULT_PROMPT = "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text"
@@ -332,6 +337,18 @@ class ChatGPTAPI(Base):
                 i["id"] for i in self.openai_client.models.list().model_dump()["data"]
             ]
             model_list = list(set(my_model_list) & set(GPT4_MODEL_LIST))
+            print(f"Using model list {model_list}")
+            self.model_list = cycle(model_list)
+
+    def set_gpt4omini_models(self):
+        # for issue #375 azure can not use model list
+        if self.deployment_id:
+            self.model_list = cycle(["gpt-4o-mini"])
+        else:
+            my_model_list = [
+                i["id"] for i in self.openai_client.models.list().model_dump()["data"]
+            ]
+            model_list = list(set(my_model_list) & set(GPT4oMINI_MODEL_LIST))
             print(f"Using model list {model_list}")
             self.model_list = cycle(model_list)
 
