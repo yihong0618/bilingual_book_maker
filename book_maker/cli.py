@@ -312,7 +312,7 @@ So you are close to reaching the limit. You have to choose your own value, there
     translate_model = MODEL_DICT.get(options.model)
     assert translate_model is not None, "unsupported model"
     API_KEY = ""
-    if options.model in ["openai", "chatgptapi", "gpt4"]:
+    if options.model in ["openai", "chatgptapi", "gpt4", "gpt4omini"]:
         if OPENAI_API_KEY := (
             options.openai_key
             or env.get(
@@ -429,6 +429,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         assert options.model in [
             "chatgptapi",
             "gpt4",
+            "gpt4omini",
         ], "only support chatgptapi for deployment_id"
         if not options.api_base:
             raise ValueError("`api_base` must be provided when using `deployment_id`")
@@ -439,7 +440,7 @@ So you are close to reaching the limit. You have to choose your own value, there
             e.translate_model.set_model_list(options.model_list.split(","))
         else:
             raise ValueError(
-                "When using `openai` model, you must also provide `--model_list`. For default model sets use `--model chatgptapi` or `--model gpt4`",
+                "When using `openai` model, you must also provide `--model_list`. For default model sets use `--model chatgptapi` or `--model gpt4` or `--model gpt4omini`",
             )
     # TODO refactor, quick fix for gpt4 model
     if options.model == "chatgptapi":
@@ -449,6 +450,8 @@ So you are close to reaching the limit. You have to choose your own value, there
             e.translate_model.set_gpt35_models()
     if options.model == "gpt4":
         e.translate_model.set_gpt4_models()
+    if options.model == "gpt4omini":
+        e.translate_model.set_gpt4omini_models()
     if options.block_size > 0:
         e.block_size = options.block_size
 
