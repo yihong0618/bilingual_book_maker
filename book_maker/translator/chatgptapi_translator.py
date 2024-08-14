@@ -102,7 +102,12 @@ class ChatGPTAPI(Base):
         ]
         if self.context_flag:
             messages.append({"role": "user", "content": "\n".join(self.context_list)})
-            messages.append({"role": "assistant", "content": "\n".join(self.context_translated_list)})
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": "\n".join(self.context_translated_list),
+                }
+            )
         messages.append({"role": "user", "content": content})
 
         completion = self.openai_client.chat.completions.create(
@@ -129,6 +134,7 @@ class ChatGPTAPI(Base):
             self.save_context(text, t_text)
 
         return t_text
+
     def save_context(self, text, t_text):
         if self.context_paragraph_limit > 0:
             self.context_list.append(text)
