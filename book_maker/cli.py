@@ -280,6 +280,13 @@ So you are close to reaching the limit. You have to choose your own value, there
         help="adds an additional paragraph for global, updating historical context of the story to the model's input, improving the narrative consistency for the AI model (this uses ~200 more tokens each time)",
     )
     parser.add_argument(
+        "--context_paragraph_limit",
+        dest="context_paragraph_limit",
+        type=int,
+        default=0,
+        help="if use --use_context, set context paragraph limit",
+    )
+    parser.add_argument(
         "--temperature",
         type=float,
         default=1.0,

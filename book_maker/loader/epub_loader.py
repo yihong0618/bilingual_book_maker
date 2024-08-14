@@ -33,6 +33,7 @@ class EPUBBookLoader(BaseBookLoader):
         single_translate=False,
         context_flag=False,
         temperature=1.0,
+        context_paragraph_limit=0,
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
@@ -41,6 +42,7 @@ class EPUBBookLoader(BaseBookLoader):
             language,
             api_base=model_api_base,
             context_flag=context_flag,
+            context_paragraph_limit=context_paragraph_limit,
             temperature=temperature,
             **prompt_config_to_kwargs(prompt_config),
         )

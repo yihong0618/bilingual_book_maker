@@ -36,6 +36,7 @@ GPT4oMINI_MODEL_LIST = [
     "gpt-4o-mini",
     "gpt-4o-mini-2024-07-18",
 ]
+CONTEXT_PARAGRAPH_LIMIT = 3
 
 
 class ChatGPTAPI(Base):
@@ -49,6 +50,8 @@ class ChatGPTAPI(Base):
         prompt_template=None,
         prompt_sys_msg=None,
         temperature=1.0,
+        context_flag=False,
+        context_paragraph_limit=0,
         **kwargs,
     ) -> None:
         super().__init__(key, language)
@@ -73,6 +76,15 @@ class ChatGPTAPI(Base):
         self.deployment_id = None
         self.temperature = temperature
         self.model_list = None
+        self.context_flag = context_flag
+        self.context_list = []
+        self.context_translated_list = []
+        if context_paragraph_limit > 0:
+            # not set by user, use default
+            self.context_paragraph_limit = context_paragraph_limit
+        else:
+            # set by user, use user's value
+            self.context_paragraph_limit = CONTEXT_PARAGRAPH_LIMIT
 
     def rotate_key(self):
         self.openai_client.api_key = next(self.keys)
@@ -87,8 +99,16 @@ class ChatGPTAPI(Base):
         sys_content = self.system_content or self.prompt_sys_msg.format(crlf="\n")
         messages = [
             {"role": "system", "content": sys_content},
-            {"role": "user", "content": content},
         ]
+        if self.context_flag:
+            messages.append({"role": "user", "content": "\n".join(self.context_list)})
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": "\n".join(self.context_translated_list),
+                }
+            )
+        messages.append({"role": "user", "content": content})
 
         completion = self.openai_client.chat.completions.create(
             model=self.model,
@@ -110,7 +130,19 @@ class ChatGPTAPI(Base):
         else:
             t_text = ""
 
+        if self.context_flag:
+            self.save_context(text, t_text)
+
         return t_text
+
+    def save_context(self, text, t_text):
+        if self.context_paragraph_limit > 0:
+            self.context_list.append(text)
+            self.context_translated_list.append(t_text)
+            # Remove the oldest context
+            if len(self.context_list) > self.context_paragraph_limit:
+                self.context_list.pop(0)
+                self.context_translated_list.pop(0)
 
     def translate(self, text, needprint=True):
         start_time = time.time()
