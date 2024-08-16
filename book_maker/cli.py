@@ -304,6 +304,18 @@ So you are close to reaching the limit. You have to choose your own value, there
         dest="model_list",
         help="Rather than using our preset lists of models, specify exactly the models you want as a comma separated list `gpt-4-32k,gpt-3.5-turbo-0125` (Currently only supports: `openai`)",
     )
+    parser.add_argument(
+        "--batch",
+        dest="batch_flag",
+        action="store_true",
+        help="Enable batch translation using ChatGPT's batch API for improved efficiency",
+    )
+    parser.add_argument(
+        "--batch-use",
+        dest="batch_use_flag",
+        action="store_true",
+        help="Use pre-generated batch translations to create files. Run with --batch first before using this option",
+    )
 
     options = parser.parse_args()
 
@@ -461,6 +473,10 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.translate_model.set_gpt4omini_models()
     if options.block_size > 0:
         e.block_size = options.block_size
+    if options.batch_flag:
+        e.batch_flag = options.batch_flag
+    if options.batch_use_flag:
+        e.batch_use_flag = options.batch_use_flag
 
     e.make_bilingual_book()
 
