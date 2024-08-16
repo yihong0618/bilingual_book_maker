@@ -399,11 +399,11 @@ class ChatGPTAPI(Base):
         print(f"Using model list {model_list}")
         self.model_list = cycle(model_list)
 
-    def add_to_batch_translate_queue(self, book_index, text):
-        self.batch_text_list.append({"book_index": book_index, "text": text})
-
     def batch_init(self, book_name):
         self.book_name = self.sanitize_book_name(book_name)
+
+    def add_to_batch_translate_queue(self, book_index, text):
+        self.batch_text_list.append({"book_index": book_index, "text": text})
 
     def sanitize_book_name(self, book_name):
         # Replace any characters that are not alphanumeric, underscore, hyphen, or dot with an underscore
