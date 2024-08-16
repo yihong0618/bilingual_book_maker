@@ -90,6 +90,7 @@ class ChatGPTAPI(Base):
             self.context_paragraph_limit = CONTEXT_PARAGRAPH_LIMIT
         self.batch_text_list = []
         self.batch_info_cache = None
+        self.result_content_cache = {}
 
     def rotate_key(self):
         self.openai_client.api_key = next(self.keys)
@@ -453,10 +454,15 @@ class ChatGPTAPI(Base):
         if not target_batch:
             raise ValueError(f"No batch found for book_index {book_index}")
 
-        batch_status = self.check_batch_status(target_batch["batch_id"])
-        if batch_status.output_file_id == None:
-            raise ValueError(f"Batch {target_batch['batch_id']} is not completed")
-        result_content = self.get_batch_result(batch_status.output_file_id)
+        if target_batch["batch_id"] in self.result_content_cache:
+            result_content = self.result_content_cache[target_batch["batch_id"]]
+        else:
+            batch_status = self.check_batch_status(target_batch["batch_id"])
+            if batch_status.output_file_id is None:
+                raise ValueError(f"Batch {target_batch['batch_id']} is not completed")
+            result_content = self.get_batch_result(batch_status.output_file_id)
+            self.result_content_cache[target_batch["batch_id"]] = result_content
+
         result_lines = result_content.text.split("\n")
         custom_id = self.custom_id(book_index)
         for line in result_lines:
