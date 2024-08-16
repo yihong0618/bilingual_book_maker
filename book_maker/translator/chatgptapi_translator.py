@@ -399,7 +399,7 @@ class ChatGPTAPI(Base):
         print(f"Using model list {model_list}")
         self.model_list = cycle(model_list)
 
-    def add_to_batch_trasnlate_queue(self, book_index, text):
+    def add_to_batch_translate_queue(self, book_index, text):
         self.batch_text_list.append({"book_index": book_index, "text": text})
 
     def batch_init(self, book_name):

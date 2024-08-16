@@ -147,7 +147,7 @@ class EPUBBookLoader(BaseBookLoader):
         else:
             t_text = ""
             if self.batch_flag:
-                self.translate_model.add_to_batch_trasnlate_queue(index, new_p.text)
+                self.translate_model.add_to_batch_translate_queue(index, new_p.text)
             elif self.batch_use_flag:
                 t_text = self.translate_model.batch_translate(index)
             else:
