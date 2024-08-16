@@ -98,7 +98,7 @@ class ChatGPTAPI(Base):
     def rotate_model(self):
         self.model = next(self.model_list)
 
-    def create_messages(self, text):
+    def create_messages(self, text, intermediate_messages=None):
         content = self.prompt_template.format(
             text=text, language=self.language, crlf="\n"
         )
@@ -107,6 +107,15 @@ class ChatGPTAPI(Base):
         messages = [
             {"role": "system", "content": sys_content},
         ]
+
+        if intermediate_messages:
+            messages.extend(intermediate_messages)
+
+        messages.append({"role": "user", "content": content})
+        return messages
+
+    def create_context_messages(self):
+        messages = []
         if self.context_flag:
             messages.append({"role": "user", "content": "\n".join(self.context_list)})
             messages.append(
@@ -115,11 +124,10 @@ class ChatGPTAPI(Base):
                     "content": "\n".join(self.context_translated_list),
                 }
             )
-        messages.append({"role": "user", "content": content})
         return messages
 
     def create_chat_completion(self, text):
-        messages = self.create_messages(text)
+        messages = self.create_messages(text, self.create_context_messages())
         completion = self.openai_client.chat.completions.create(
             model=self.model,
             messages=messages,
@@ -514,11 +522,6 @@ class ChatGPTAPI(Base):
 
         return file_paths
 
-    def upload_batch_file(self, file_path):
-        batch_input_file = self.openai_client.files.create(
-            file=open(file_path, "rb"), purpose="batch"
-        )
-        return batch_input_file.id
 
     def batch(self):
         self.rotate_model()
@@ -559,6 +562,12 @@ class ChatGPTAPI(Base):
             "end_index": end_index,
             "prefix": self.book_name,
         }
+
+    def upload_batch_file(self, file_path):
+        batch_input_file = self.openai_client.files.create(
+            file=open(file_path, "rb"), purpose="batch"
+        )
+        return batch_input_file.id
 
     def batch_execute(self, file_id):
         current_time = time.strftime("%Y-%m-%d %H:%M:%S")
