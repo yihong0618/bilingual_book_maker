@@ -412,7 +412,7 @@ class ChatGPTAPI(Base):
         sanitized_book_name = sanitized_book_name.strip("._")
         return sanitized_book_name
 
-    def batch_result_file_path(self):
+    def batch_metadata_file_path(self):
         return f"{os.getcwd()}/batch_files/{self.book_name}_info.json"
 
     def batch_dir(self):
@@ -422,13 +422,13 @@ class ChatGPTAPI(Base):
         return f"{self.book_name}-{book_index}"
 
     def is_completed_batch(self):
-        batch_result_file_path = self.batch_result_file_path()
+        batch_metadata_file_path = self.batch_metadata_file_path()
 
-        if not os.path.exists(batch_result_file_path):
+        if not os.path.exists(batch_metadata_file_path):
             print("Batch result file does not exist")
             raise Exception("Batch result file does not exist")
 
-        with open(batch_result_file_path, "r", encoding="utf-8") as f:
+        with open(batch_metadata_file_path, "r", encoding="utf-8") as f:
             batch_info = json.load(f)
 
         for batch_file in batch_info["batch_files"]:
@@ -440,8 +440,8 @@ class ChatGPTAPI(Base):
 
     def batch_translate(self, book_index):
         if self.batch_info_cache is None:
-            batch_result_file_path = self.batch_result_file_path()
-            with open(batch_result_file_path, "r", encoding="utf-8") as f:
+            batch_metadata_file_path = self.batch_metadata_file_path()
+            with open(batch_metadata_file_path, "r", encoding="utf-8") as f:
                 self.batch_info_cache = json.load(f)
 
         batch_info = self.batch_info_cache
@@ -524,12 +524,12 @@ class ChatGPTAPI(Base):
         self.rotate_model()
         # current working directory
         batch_dir = self.batch_dir()
-        batch_result_file_path = self.batch_result_file_path()
+        batch_metadata_file_path = self.batch_metadata_file_path()
         # cleanup batch dir and result file
         if os.path.exists(batch_dir):
             shutil.rmtree(batch_dir)
-        if os.path.exists(batch_result_file_path):
-            os.remove(batch_result_file_path)
+        if os.path.exists(batch_metadata_file_path):
+            os.remove(batch_metadata_file_path)
         os.makedirs(batch_dir, exist_ok=True)
         # batch execute
         batch_files = self.create_batch_files(batch_dir)
@@ -548,7 +548,7 @@ class ChatGPTAPI(Base):
             "batch_date": time.strftime("%Y-%m-%d %H:%M:%S"),
             "batch_files": batch_info,
         }
-        with open(batch_result_file_path, "w", encoding="utf-8") as f:
+        with open(batch_metadata_file_path, "w", encoding="utf-8") as f:
             json.dump(batch_info_json, f, ensure_ascii=False, indent=2)
 
     def create_batch_info(self, file_id, batch, start_index, end_index):
