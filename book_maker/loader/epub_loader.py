@@ -547,7 +547,6 @@ class EPUBBookLoader(BaseBookLoader):
                 self.translate_model.batch()
             else:
                 epub.write_epub(f"{name}_bilingual.epub", new_book, {})
-            epub.write_epub(f"{name}_bilingual.epub", new_book, {})
             if self.accumulated_num == 1:
                 pbar.close()
         except (KeyboardInterrupt, Exception) as e:
