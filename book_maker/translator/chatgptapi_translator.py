@@ -40,6 +40,7 @@ GPT4oMINI_MODEL_LIST = [
     "gpt-4o-mini-2024-07-18",
 ]
 CONTEXT_PARAGRAPH_LIMIT = 3
+BATCH_CONTEXT_UPDATE_INTERVAL = 50
 
 
 class ChatGPTAPI(Base):
@@ -483,13 +484,51 @@ class ChatGPTAPI(Base):
 
         raise ValueError(f"No result found for custom_id {custom_id}")
 
+    def create_batch_context_messages(self, index):
+        messages = []
+        if self.context_flag:
+            if index % BATCH_CONTEXT_UPDATE_INTERVAL == 0 or not hasattr(
+                self, "cached_context_messages"
+            ):
+                context_messages = []
+                for i in range(index - 1, -1, -1):
+                    item = self.batch_text_list[i]
+                    if len(item["text"].split()) >= 100:
+                        context_messages.append(item["text"])
+                        if len(context_messages) == self.context_paragraph_limit:
+                            break
+
+                if len(context_messages) == self.context_paragraph_limit:
+                    print("Creating cached context messages")
+                    self.cached_context_messages = [
+                        {"role": "user", "content": "\n".join(context_messages)},
+                        {
+                            "role": "assistant",
+                            "content": self.get_translation(
+                                "\n".join(context_messages)
+                            ),
+                        },
+                    ]
+
+            if hasattr(self, "cached_context_messages"):
+                messages.extend(self.cached_context_messages)
+
+        return messages
+
     def make_batch_request(self, book_index, text):
-        messages = self.create_messages(text)
+        messages = self.create_messages(
+            text, self.create_batch_context_messages(book_index)
+        )
         return {
             "custom_id": self.custom_id(book_index),
             "method": "POST",
             "url": "/v1/chat/completions",
-            "body": {"model": self.model, "messages": messages, "max_tokens": 1000},
+            "body": {
+                # model shuould not be rotate
+                "model": self.batch_model,
+                "messages": messages,
+                "temperature": self.temperature,
+            },
         }
 
     def create_batch_files(self, dest_file_path):
@@ -522,9 +561,9 @@ class ChatGPTAPI(Base):
 
         return file_paths
 
-
     def batch(self):
         self.rotate_model()
+        self.batch_model = self.model
         # current working directory
         batch_dir = self.batch_dir()
         batch_metadata_file_path = self.batch_metadata_file_path()
