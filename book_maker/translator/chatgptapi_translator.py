@@ -12,6 +12,7 @@ from rich import print
 
 from .base_translator import Base
 from ..config import config
+
 CHATGPT_CONFIG = config["translator"]["chatgptapi"]
 
 PROMPT_ENV_MAP = {
@@ -41,6 +42,7 @@ GPT4oMINI_MODEL_LIST = [
     "gpt-4o-mini",
     "gpt-4o-mini-2024-07-18",
 ]
+
 
 class ChatGPTAPI(Base):
     DEFAULT_PROMPT = "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text"
@@ -486,9 +488,9 @@ class ChatGPTAPI(Base):
     def create_batch_context_messages(self, index):
         messages = []
         if self.context_flag:
-            if index % CHATGPT_CONFIG["batch_context_update_interval"] == 0 or not hasattr(
-                self, "cached_context_messages"
-            ):
+            if index % CHATGPT_CONFIG[
+                "batch_context_update_interval"
+            ] == 0 or not hasattr(self, "cached_context_messages"):
                 context_messages = []
                 for i in range(index - 1, -1, -1):
                     item = self.batch_text_list[i]
