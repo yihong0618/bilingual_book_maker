@@ -2,6 +2,7 @@ import os
 import pickle
 import string
 import sys
+import time
 from copy import copy
 from pathlib import Path
 
@@ -65,6 +66,8 @@ class EPUBBookLoader(BaseBookLoader):
         self.only_filelist = ""
         self.single_translate = single_translate
         self.block_size = -1
+        self.batch_use_flag = False
+        self.batch_flag = False
 
         # monkey patch for # 173
         def _write_items_patch(obj):
@@ -142,11 +145,18 @@ class EPUBBookLoader(BaseBookLoader):
         if self.resume and index < p_to_save_len:
             p.string = self.p_to_save[index]
         else:
+            t_text = ""
+            if self.batch_flag:
+                self.translate_model.add_to_batch_translate_queue(index, new_p.text)
+            elif self.batch_use_flag:
+                t_text = self.translate_model.batch_translate(index)
+            else:
+                t_text = self.translate_model.translate(new_p.text)
             if type(p) == NavigableString:
-                new_p = self.translate_model.translate(new_p.text)
+                new_p = t_text
                 self.p_to_save.append(new_p)
             else:
-                new_p.string = self.translate_model.translate(new_p.text)
+                new_p.string = t_text
                 self.p_to_save.append(new_p.text)
 
         self.helper.insert_trans(
@@ -456,6 +466,18 @@ class EPUBBookLoader(BaseBookLoader):
 
         return index
 
+    def batch_init_then_wait(self):
+        name, _ = os.path.splitext(self.epub_name)
+        if self.batch_flag or self.batch_use_flag:
+            self.translate_model.batch_init(name)
+            if self.batch_use_flag:
+                start_time = time.time()
+                while not self.translate_model.is_completed_batch():
+                    print("Batch translation is not completed yet")
+                    time.sleep(2)
+                    if time.time() - start_time > 300:  # 5 minutes
+                        raise Exception("Batch translation timed out after 5 minutes")
+
     def make_bilingual_book(self):
         self.helper = EPUBBookLoaderHelper(
             self.translate_model,
@@ -463,6 +485,7 @@ class EPUBBookLoader(BaseBookLoader):
             self.translation_style,
             self.context_flag,
         )
+        self.batch_init_then_wait()
         new_book = self._make_new_book(self.origin_book)
         all_items = list(self.origin_book.get_items())
         trans_taglist = self.translate_tags.split(",")
@@ -520,7 +543,10 @@ class EPUBBookLoader(BaseBookLoader):
                     name, _ = os.path.splitext(self.epub_name)
                     epub.write_epub(f"{name}_bilingual.epub", new_book, {})
             name, _ = os.path.splitext(self.epub_name)
-            epub.write_epub(f"{name}_bilingual.epub", new_book, {})
+            if self.batch_flag:
+                self.translate_model.batch()
+            else:
+                epub.write_epub(f"{name}_bilingual.epub", new_book, {})
             if self.accumulated_num == 1:
                 pbar.close()
         except (KeyboardInterrupt, Exception) as e:
