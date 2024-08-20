@@ -422,10 +422,10 @@ class ChatGPTAPI(Base):
         return sanitized_book_name
 
     def batch_metadata_file_path(self):
-        return f"{os.getcwd()}/batch_files/{self.book_name}_info.json"
+        return os.path.join(os.getcwd(), "batch_files", f"{self.book_name}_info.json")
 
     def batch_dir(self):
-        return f"{os.getcwd()}/batch_files/{self.book_name}"
+        return os.path.join(os.getcwd(), "batch_files", self.book_name)
 
     def custom_id(self, book_index):
         return f"{self.book_name}-{book_index}"
@@ -539,7 +539,7 @@ class ChatGPTAPI(Base):
 
         for i in range(0, len(self.batch_text_list), lines_per_file):
             current_file += 1
-            file_path = f"{dest_file_path}/{current_file}.jsonl"
+            file_path = os.path.join(dest_file_path, f"{current_file}.jsonl")
             start_index = i
             end_index = i + lines_per_file
 
