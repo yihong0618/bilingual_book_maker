@@ -11,6 +11,8 @@ from openai import AzureOpenAI, OpenAI, RateLimitError
 from rich import print
 
 from .base_translator import Base
+from ..config import config
+CHATGPT_CONFIG = config["translator"]["chatgptapi"]
 
 PROMPT_ENV_MAP = {
     "user": "BBM_CHATGPTAPI_USER_MSG_TEMPLATE",
@@ -39,9 +41,6 @@ GPT4oMINI_MODEL_LIST = [
     "gpt-4o-mini",
     "gpt-4o-mini-2024-07-18",
 ]
-CONTEXT_PARAGRAPH_LIMIT = 3
-BATCH_CONTEXT_UPDATE_INTERVAL = 50
-
 
 class ChatGPTAPI(Base):
     DEFAULT_PROMPT = "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text"
@@ -88,7 +87,7 @@ class ChatGPTAPI(Base):
             self.context_paragraph_limit = context_paragraph_limit
         else:
             # set by user, use user's value
-            self.context_paragraph_limit = CONTEXT_PARAGRAPH_LIMIT
+            self.context_paragraph_limit = CHATGPT_CONFIG["context_paragraph_limit"]
         self.batch_text_list = []
         self.batch_info_cache = None
         self.result_content_cache = {}
@@ -487,7 +486,7 @@ class ChatGPTAPI(Base):
     def create_batch_context_messages(self, index):
         messages = []
         if self.context_flag:
-            if index % BATCH_CONTEXT_UPDATE_INTERVAL == 0 or not hasattr(
+            if index % CHATGPT_CONFIG["batch_context_update_interval"] == 0 or not hasattr(
                 self, "cached_context_messages"
             ):
                 context_messages = []
