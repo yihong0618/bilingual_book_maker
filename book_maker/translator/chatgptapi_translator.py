@@ -409,7 +409,6 @@ class ChatGPTAPI(Base):
             model_list = list(set(my_model_list) & set(GPT4oMINI_MODEL_LIST))
             print(f"Using model list {model_list}")
             self.model_list = cycle(model_list)
-            self.model_list = cycle(["plamo-beta"])
 
     def set_gpt4o_models(self):
         # for issue #375 azure can not use model list
