@@ -46,7 +46,7 @@ GPT4o_MODEL_LIST = [
     "gpt-4o",
     "gpt-4o-2024-05-13",
     "gpt-4o-2024-08-06",
-    "chatgpt-4o-latest"
+    "chatgpt-4o-latest",
 ]
 
 
