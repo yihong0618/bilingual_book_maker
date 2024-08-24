@@ -14,6 +14,7 @@ MODEL_DICT = {
     "chatgptapi": ChatGPTAPI,
     "gpt4": ChatGPTAPI,
     "gpt4omini": ChatGPTAPI,
+    "gpt4o": ChatGPTAPI,
     "google": Google,
     "caiyun": Caiyun,
     "deepl": DeepL,

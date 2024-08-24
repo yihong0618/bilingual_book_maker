@@ -42,6 +42,12 @@ GPT4oMINI_MODEL_LIST = [
     "gpt-4o-mini",
     "gpt-4o-mini-2024-07-18",
 ]
+GPT4o_MODEL_LIST = [
+    "gpt-4o",
+    "gpt-4o-2024-05-13",
+    "gpt-4o-2024-08-06",
+    "chatgpt-4o-latest",
+]
 
 
 class ChatGPTAPI(Base):
@@ -401,6 +407,18 @@ class ChatGPTAPI(Base):
                 i["id"] for i in self.openai_client.models.list().model_dump()["data"]
             ]
             model_list = list(set(my_model_list) & set(GPT4oMINI_MODEL_LIST))
+            print(f"Using model list {model_list}")
+            self.model_list = cycle(model_list)
+
+    def set_gpt4o_models(self):
+        # for issue #375 azure can not use model list
+        if self.deployment_id:
+            self.model_list = cycle(["gpt-4o"])
+        else:
+            my_model_list = [
+                i["id"] for i in self.openai_client.models.list().model_dump()["data"]
+            ]
+            model_list = list(set(my_model_list) & set(GPT4o_MODEL_LIST))
             print(f"Using model list {model_list}")
             self.model_list = cycle(model_list)
 
