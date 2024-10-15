@@ -43,9 +43,11 @@ class Gemini(Base):
         key,
         language,
         temperature=1.0,
+        interval=0.01,
         **kwargs,
     ) -> None:
         super().__init__(key, language)
+        self.interval = interval
         generation_config["temperature"] = temperature
         model = genai.GenerativeModel(
             model_name="gemini-pro",
@@ -90,8 +92,8 @@ class Gemini(Base):
             self.convo.history = self.convo.history[2:]
 
         print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
-        # for limit
-        time.sleep(0.5)
+        # for rate limit(RPM)
+        time.sleep(self.interval)
         if num:
             t_text = str(num) + "\n" + t_text
         return t_text

@@ -316,6 +316,12 @@ So you are close to reaching the limit. You have to choose your own value, there
         action="store_true",
         help="Use pre-generated batch translations to create files. Run with --batch first before using this option",
     )
+    parser.add_argument(
+        "--interval",
+        type=float,
+        default=0.01,
+        help="Request interval in seconds (e.g., 0.1 for 100ms). Currently only supported for Gemini models. Deafult: 0.01",
+    )
 
     options = parser.parse_args()
 
@@ -422,6 +428,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         single_translate=options.single_translate,
         context_flag=options.context_flag,
         temperature=options.temperature,
+        interval=options.interval,
     )
     # other options
     if options.allow_navigable_strings:
