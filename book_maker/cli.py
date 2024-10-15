@@ -428,7 +428,6 @@ So you are close to reaching the limit. You have to choose your own value, there
         single_translate=options.single_translate,
         context_flag=options.context_flag,
         temperature=options.temperature,
-        interval=options.interval,
     )
     # other options
     if options.allow_navigable_strings:
@@ -487,13 +486,13 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.batch_flag = options.batch_flag
     if options.batch_use_flag:
         e.batch_use_flag = options.batch_use_flag
-
+    if options.interval:
+        e.interval = options.interval
     if options.model == "gemini":
         if options.model_list:
             e.translate_model.set_model_list(options.model_list.split(","))
         else:
             e.translate_model.set_geminiflash_models()
-
     if options.model == "geminipro":
         e.translate_model.set_geminipro_models()
 
