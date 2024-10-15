@@ -290,7 +290,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         "--temperature",
         type=float,
         default=1.0,
-        help="temperature parameter for `chatgptapi`/`gpt4`/`claude`",
+        help="temperature parameter for `chatgptapi`/`gpt4`/`claude`/`gemini`",
     )
     parser.add_argument(
         "--block_size",

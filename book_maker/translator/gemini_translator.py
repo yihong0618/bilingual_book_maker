@@ -11,7 +11,7 @@ from rich import print
 from .base_translator import Base
 
 generation_config = {
-    "temperature": 0.7,
+    "temperature": 1.0,
     "top_p": 1,
     "top_k": 1,
     "max_output_tokens": 2048,
@@ -38,9 +38,15 @@ class Gemini(Base):
 
     DEFAULT_PROMPT = "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text"
 
-    def __init__(self, key, language, **kwargs) -> None:
-        genai.configure(api_key=key)
+    def __init__(
+        self,
+        key,
+        language,
+        temperature=1.0,
+        **kwargs,
+    ) -> None:
         super().__init__(key, language)
+        generation_config["temperature"] = temperature
         model = genai.GenerativeModel(
             model_name="gemini-pro",
             generation_config=generation_config,
