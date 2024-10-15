@@ -100,6 +100,11 @@ class Gemini(Base):
         genai.configure(api_key=next(self.keys))
 
     def translate(self, text):
+        delay = 1
+        exponential_base = 2
+        attempt_count = 0
+        max_attempts = 7
+
         t_text = ""
         print(text)
         # same for caiyun translate src issue #279 gemini for #374
@@ -108,26 +113,40 @@ class Gemini(Base):
         if len(text_list) > 1:
             if text_list[0].isdigit():
                 num = text_list[0]
-        try:
-            self.convo.send_message(
-                self.DEFAULT_PROMPT.format(text=text, language=self.language)
-            )
-            print(text)
-            t_text = self.convo.last.text.strip()
-        except StopCandidateException as e:
-            match = re.search(r'content\s*{\s*parts\s*{\s*text:\s*"([^"]+)"', str(e))
-            if match:
-                t_text = match.group(1)
-                t_text = re.sub(r"\\n", "\n", t_text)
-            else:
-                t_text = "Can not translate"
-        except BlockedPromptException as e:
-            print(str(e))
-            t_text = "Can not translate by SAFETY reason.(因安全问题不能翻译)"
-        except Exception as e:
-            print(str(e))
-            t_text = "Can not translate by other reason.(因安全问题不能翻译)"
 
+        while attempt_count < max_attempts:
+            try:
+                self.convo.send_message(
+                    self.prompt.format(text=text, language=self.language)
+                )
+                t_text = self.convo.last.text.strip()
+                break
+            except StopCandidateException as e:
+                print(
+                    f"Translation failed due to StopCandidateException: {e} Attempting to switch model..."
+                )
+                self.rotate_model()
+            except BlockedPromptException as e:
+                print(
+                    f"Translation failed due to BlockedPromptException: {e} Attempting to switch model..."
+                )
+                self.rotate_model()
+            except Exception as e:
+                print(
+                    f"Translation failed due to {type(e).__name__}: {e} Will sleep {delay} seconds"
+                )
+                time.sleep(delay)
+                delay *= exponential_base
+
+                self.rotate_key()
+                if attempt_count >= 1:
+                    self.rotate_model()
+
+            attempt_count += 1
+
+        if attempt_count == max_attempts:
+            print(f"Translation failed after {max_attempts} attempts.")
+            return
 
         if self.context_flag:
             if len(self.convo.history) > 10:
