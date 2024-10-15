@@ -61,12 +61,10 @@ class Gemini(Base):
         prompt_sys_msg=None,
         context_flag=False,
         temperature=1.0,
-        interval=0.01,
         **kwargs,
     ) -> None:
         super().__init__(key, language)
         self.context_flag = context_flag
-        self.interval = interval
         self.prompt = (
             prompt_template
             or environ.get(PROMPT_ENV_MAP["user"])
@@ -160,6 +158,9 @@ class Gemini(Base):
         if num:
             t_text = str(num) + "\n" + t_text
         return t_text
+
+    def set_interval(self, interval):
+        self.interval = interval
 
     def set_geminipro_models(self):
         self.set_models(GEMINIPRO_MODEL_LIST)

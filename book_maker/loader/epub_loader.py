@@ -35,7 +35,6 @@ class EPUBBookLoader(BaseBookLoader):
         context_flag=False,
         temperature=1.0,
         context_paragraph_limit=0,
-        interval=0.01,
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
@@ -46,7 +45,6 @@ class EPUBBookLoader(BaseBookLoader):
             context_flag=context_flag,
             context_paragraph_limit=context_paragraph_limit,
             temperature=temperature,
-            interval=interval,
             **prompt_config_to_kwargs(prompt_config),
         )
         self.is_test = is_test
