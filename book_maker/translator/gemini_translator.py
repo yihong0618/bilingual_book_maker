@@ -78,6 +78,7 @@ class Gemini(Base):
             or None  # Allow None, but not empty string
         )
 
+        genai.configure(api_key=next(self.keys))
         generation_config["temperature"] = temperature
 
     def create_convo(self):
@@ -96,7 +97,7 @@ class Gemini(Base):
         print(f"Using model {self.model}")
 
     def rotate_key(self):
-        pass
+        genai.configure(api_key=next(self.keys))
 
     def translate(self, text):
         t_text = ""
