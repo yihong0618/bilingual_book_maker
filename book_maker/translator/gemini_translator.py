@@ -89,7 +89,7 @@ class Gemini(Base):
             system_instruction=self.prompt_sys_msg,
         )
         self.convo = model.start_chat()
-        # print(model)  # Uncomment to debug and inspect the model details. 
+        # print(model)  # Uncomment to debug and inspect the model details.
 
     def rotate_model(self):
         self.model = next(self.model_list)

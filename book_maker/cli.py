@@ -320,7 +320,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         "--interval",
         type=float,
         default=0.01,
-        help="Request interval in seconds (e.g., 0.1 for 100ms). Currently only supported for Gemini models. Deafult: 0.01",
+        help="Request interval in seconds (e.g., 0.1 for 100ms). Currently only supported for Gemini models. Default: 0.01",
     )
 
     options = parser.parse_args()
