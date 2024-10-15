@@ -1,5 +1,7 @@
 import re
 import time
+from os import environ
+from itertools import cycle
 
 import google.generativeai as genai
 from google.generativeai.types.generation_types import (
@@ -28,6 +30,19 @@ safety_settings = [
         "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
         "threshold": "BLOCK_MEDIUM_AND_ABOVE",
     },
+
+GEMINIPRO_MODEL_LIST = [
+    "gemini-1.5-pro",
+    "gemini-1.5-pro-latest",
+    "gemini-1.5-pro-001",
+    "gemini-1.5-pro-002",
+]
+
+GEMINIFLASH_MODEL_LIST = [
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-flash-001",
+    "gemini-1.5-flash-002",
 ]
 
 
@@ -50,11 +65,17 @@ class Gemini(Base):
         self.interval = interval
         generation_config["temperature"] = temperature
         model = genai.GenerativeModel(
-            model_name="gemini-pro",
+            model_name=self.model,
             generation_config=generation_config,
             safety_settings=safety_settings,
         )
         self.convo = model.start_chat()
+        # print(model)  # Uncomment to debug and inspect the model details. 
+
+    def rotate_model(self):
+        self.model = next(self.model_list)
+        self.create_convo()
+        print(f"Using model {self.model}")
 
     def rotate_key(self):
         pass
@@ -97,3 +118,28 @@ class Gemini(Base):
         if num:
             t_text = str(num) + "\n" + t_text
         return t_text
+
+    def set_geminipro_models(self):
+        self.set_models(GEMINIPRO_MODEL_LIST)
+
+    def set_geminiflash_models(self):
+        self.set_models(GEMINIFLASH_MODEL_LIST)
+
+    def set_models(self, allowed_models):
+        available_models = [
+            re.sub(r"^models/", "", i.name) for i in genai.list_models()
+        ]
+        model_list = sorted(
+            list(set(available_models) & set(allowed_models)),
+            key=allowed_models.index,
+        )
+        print(f"Using model list {model_list}")
+        self.model_list = cycle(model_list)
+        self.rotate_model()
+
+    def set_model_list(self, model_list):
+        # keep the order of input
+        model_list = sorted(list(set(model_list)), key=model_list.index)
+        print(f"Using model list {model_list}")
+        self.model_list = cycle(model_list)
+        self.rotate_model()

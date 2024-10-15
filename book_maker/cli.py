@@ -372,7 +372,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         API_KEY = options.custom_api or env.get("BBM_CUSTOM_API")
         if not API_KEY:
             raise Exception("Please provide custom translate api")
-    elif options.model == "gemini":
+    elif options.model in ["gemini", "geminipro"]:
         API_KEY = options.gemini_key or env.get("BBM_GOOGLE_GEMINI_KEY")
     elif options.model == "groq":
         API_KEY = options.groq_key or env.get("BBM_GROQ_API_KEY")
@@ -487,6 +487,15 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.batch_flag = options.batch_flag
     if options.batch_use_flag:
         e.batch_use_flag = options.batch_use_flag
+
+    if options.model == "gemini":
+        if options.model_list:
+            e.translate_model.set_model_list(options.model_list.split(","))
+        else:
+            e.translate_model.set_geminiflash_models()
+
+    if options.model == "geminipro":
+        e.translate_model.set_geminipro_models()
 
     e.make_bilingual_book()
 
