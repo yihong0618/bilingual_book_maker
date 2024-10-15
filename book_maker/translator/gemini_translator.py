@@ -59,11 +59,13 @@ class Gemini(Base):
         language,
         prompt_template=None,
         prompt_sys_msg=None,
+        context_flag=False,
         temperature=1.0,
         interval=0.01,
         **kwargs,
     ) -> None:
         super().__init__(key, language)
+        self.context_flag = context_flag
         self.interval = interval
         self.prompt = (
             prompt_template
@@ -125,8 +127,12 @@ class Gemini(Base):
             print(str(e))
             t_text = "Can not translate by other reason.(因安全问题不能翻译)"
 
-        if len(self.convo.history) > 10:
-            self.convo.history = self.convo.history[2:]
+
+        if self.context_flag:
+            if len(self.convo.history) > 10:
+                self.convo.history = self.convo.history[2:]
+        else:
+            self.convo.history = []
 
         print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
         # for rate limit(RPM)
