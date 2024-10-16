@@ -487,9 +487,9 @@ So you are close to reaching the limit. You have to choose your own value, there
     if options.batch_use_flag:
         e.batch_use_flag = options.batch_use_flag
 
+    if options.model in ("gemini", "geminipro"):
+        e.translate_model.set_interval(options.interval)
     if options.model == "gemini":
-        if options.interval:
-            e.translate_model.set_interval(options.interval)
         if options.model_list:
             e.translate_model.set_model_list(options.model_list.split(","))
         else:
