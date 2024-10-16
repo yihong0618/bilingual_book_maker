@@ -96,6 +96,7 @@ class Gemini(Base):
 
     def rotate_key(self):
         genai.configure(api_key=next(self.keys))
+        self.create_convo()
 
     def translate(self, text):
         delay = 1
