@@ -290,7 +290,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         "--temperature",
         type=float,
         default=1.0,
-        help="temperature parameter for `chatgptapi`/`gpt4`/`claude`",
+        help="temperature parameter for `chatgptapi`/`gpt4`/`claude`/`gemini`",
     )
     parser.add_argument(
         "--block_size",
@@ -315,6 +315,12 @@ So you are close to reaching the limit. You have to choose your own value, there
         dest="batch_use_flag",
         action="store_true",
         help="Use pre-generated batch translations to create files. Run with --batch first before using this option",
+    )
+    parser.add_argument(
+        "--interval",
+        type=float,
+        default=0.01,
+        help="Request interval in seconds (e.g., 0.1 for 100ms). Currently only supported for Gemini models. Default: 0.01",
     )
 
     options = parser.parse_args()
@@ -366,7 +372,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         API_KEY = options.custom_api or env.get("BBM_CUSTOM_API")
         if not API_KEY:
             raise Exception("Please provide custom translate api")
-    elif options.model == "gemini":
+    elif options.model in ["gemini", "geminipro"]:
         API_KEY = options.gemini_key or env.get("BBM_GOOGLE_GEMINI_KEY")
     elif options.model == "groq":
         API_KEY = options.groq_key or env.get("BBM_GROQ_API_KEY")
@@ -480,6 +486,16 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.batch_flag = options.batch_flag
     if options.batch_use_flag:
         e.batch_use_flag = options.batch_use_flag
+
+    if options.model in ("gemini", "geminipro"):
+        e.translate_model.set_interval(options.interval)
+    if options.model == "gemini":
+        if options.model_list:
+            e.translate_model.set_model_list(options.model_list.split(","))
+        else:
+            e.translate_model.set_geminiflash_models()
+    if options.model == "geminipro":
+        e.translate_model.set_geminipro_models()
 
     e.make_bilingual_book()
 

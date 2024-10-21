@@ -71,7 +71,7 @@ jobs:
             
       - name: Rename and Upload ePub
         if: env.OPENAI_API_KEY != null
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: epub_output
           path: "test_books/lemo_bilingual.epub"

@@ -30,7 +30,8 @@ Find more info here for using liteLLM: https://github.com/BerriAI/litellm/blob/m
   - If using chatgptapi, you can add `--use_context` to add a context paragraph to each passage sent to the model for translation (see below).
 - Support DeepL model [DeepL Translator](https://rapidapi.com/splintPRO/api/dpl-translator) need pay to get the token use `--model deepl --deepl_key ${deepl_key}`
 - Support DeepL free model `--model deeplfree`
-- Support Google [Gemini](https://makersuite.google.com/app/apikey) model `--model gemini --gemini_key ${gemini_key}`
+- Support Google [Gemini](https://aistudio.google.com/app/apikey) model, use `--model gemini` for Gemini Flash or `--model geminipro` for Gemini Pro. `--gemini_key ${gemini_key}`
+    - If you want to use a specific model alias with Gemini (eg `gemini-1.5-flash-002` or `gemini-1.5-flash-8b-exp-0924`), you can use `--model gemini --model_list gemini-1.5-flash-002,gemini-1.5-flash-8b-exp-0924`. `--model_list` takes a comma-separated list of model aliases.
 - Support [Claude](https://console.anthropic.com/docs) model, use `--model claude --claude_key ${claude_key}`
 - Support [Tencent TranSmart](https://transmart.qq.com) model (Free), use `--model tencentransmart`
 - Support [Ollama](https://github.com/ollama/ollama) self-host models, use `--ollama_model ${ollama_model_name}`
@@ -57,7 +58,7 @@ Find more info here for using liteLLM: https://github.com/BerriAI/litellm/blob/m
 - `--accumulated_num` Wait for how many tokens have been accumulated before starting the translation. gpt3.5 limits the total_token to 4090. For example, if you use --accumulated_num 1600, maybe openai will
 output 2200 tokens and maybe 200 tokens for other messages in the system messages user messages, 1600+2200+200=4000, So you are close to reaching the limit. You have to choose your own
 value, there is no way to know if the limit is reached before sending
-- `--use_context` prompts the model to create a three-paragraph summary. If it's the beginning of the translation, it will summarize the entire passage sent (the size depending on `--accumulated_num`). For subsequent passages, it will amend the summary to include details from the most recent passage, creating a running one-paragraph context payload of the important details of the entire translated work. This improves consistency of flow and tone throughout the translation. This option is available for all ChatGPT-compatible models.
+- `--use_context` prompts the model to create a three-paragraph summary. If it's the beginning of the translation, it will summarize the entire passage sent (the size depending on `--accumulated_num`). For subsequent passages, it will amend the summary to include details from the most recent passage, creating a running one-paragraph context payload of the important details of the entire translated work. This improves consistency of flow and tone throughout the translation. This option is available for all ChatGPT-compatible models and Gemini models.
 - Use `--context_paragraph_limit` to set a limit on the number of context paragraphs when using the `--use_context` option.
 - Use `--temperature` to set the temperature parameter for `chatgptapi`/`gpt4`/`claude` models. For example: `--temperature 0.7`.
 - Use `--block_size` to merge multiple paragraphs into one block. This may increase accuracy and speed up the process but can disturb the original format. Must be used with `--single_translate`. For example: `--block_size 5`.
@@ -82,8 +83,11 @@ python3 make_book.py --book_name test_books/Lex_Fridman_episode_322.srt --openai
 # Or translate the whole book
 python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --language zh-hans
 
-# Or translate the whole book using Gemini
+# Or translate the whole book using Gemini flash
 python3 make_book.py --book_name test_books/animal_farm.epub --gemini_key ${gemini_key} --model gemini
+
+# Use a specific list of Gemini model aliases
+python3 make_book.py --book_name test_books/animal_farm.epub --gemini_key ${gemini_key} --model gemini --model_list gemini-1.5-flash-002,gemini-1.5-flash-8b-exp-0924
 
 # Set env OPENAI_API_KEY to ignore option --openai_key
 export OPENAI_API_KEY=${your_api_key}

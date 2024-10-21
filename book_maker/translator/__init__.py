@@ -21,6 +21,7 @@ MODEL_DICT = {
     "deeplfree": DeepLFree,
     "claude": Claude,
     "gemini": Gemini,
+    "geminipro": Gemini,
     "groq": GroqClient,
     "tencentransmart": TencentTranSmart,
     "customapi": CustomAPI,
