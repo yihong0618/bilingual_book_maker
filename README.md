@@ -34,6 +34,7 @@ Find more info here for using liteLLM: https://github.com/BerriAI/litellm/blob/m
     - If you want to use a specific model alias with Gemini (eg `gemini-1.5-flash-002` or `gemini-1.5-flash-8b-exp-0924`), you can use `--model gemini --model_list gemini-1.5-flash-002,gemini-1.5-flash-8b-exp-0924`. `--model_list` takes a comma-separated list of model aliases.
 - Support [Claude](https://console.anthropic.com/docs) model, use `--model claude --claude_key ${claude_key}`
 - Support [Tencent TranSmart](https://transmart.qq.com) model (Free), use `--model tencentransmart`
+- Support [xAI](https://x.ai) model, use `--model xai --xai_key ${xai_key}`
 - Support [Ollama](https://github.com/ollama/ollama) self-host models, use `--ollama_model ${ollama_model_name}`
    - If ollama server is not running on localhost, use `--api_base http://x.x.x.x:port/v1` to point to the ollama server address
 - Use `--test` option to preview the result if you haven't paid for the service. Note that there is a limit and it may take some time.
