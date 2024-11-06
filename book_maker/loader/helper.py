@@ -37,7 +37,7 @@ class EPUBBookLoaderHelper:
         Exception,
         on_backoff=lambda details: logger.warning(f"retry backoff: {details}"),
         on_giveup=lambda details: logger.warning(f"retry abort: {details}"),
-        jitter=None
+        jitter=None,
     )
     def translate_with_backoff(self, text, context_flag=False):
         return self.translate_model.translate(text, context_flag)
