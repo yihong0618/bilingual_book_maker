@@ -2,7 +2,7 @@
 ## Models
 `-m, --model <Model>` <br>
 
-Currently `bbook_maker` supports these models: `chatgptapi` , `gpt3` , `google` , `caiyun` , `deepl` , `deeplfree` , `gpt4` , `claude` , `customapi`.
+Currently `bbook_maker` supports these models: `chatgptapi` , `gpt3` , `google` , `caiyun` , `deepl` , `deeplfree` , `gpt4` , `gpt4omini` , `claude` , `customapi`.
 Default model is `chatgptapi` . 
 
 ### OPENAI models

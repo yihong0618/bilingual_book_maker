@@ -112,7 +112,7 @@ files = [
 
 [[package]]
 name = "anthropic"
-version = "0.25.7"
+version = "0.26.1"
 requires_python = ">=3.7"
 summary = "The official Python library for the anthropic API"
 groups = ["default"]
@@ -120,14 +120,15 @@ dependencies = [
     "anyio<5,>=3.5.0",
     "distro<2,>=1.7.0",
     "httpx<1,>=0.23.0",
+    "jiter<1,>=0.1.0",
     "pydantic<3,>=1.9.0",
     "sniffio",
     "tokenizers>=0.13.0",
     "typing-extensions<5,>=4.7",
 ]
 files = [
-    {file = "anthropic-0.25.7-py3-none-any.whl", hash = "sha256:419a276eb20cfb7ddaac03c7e28e4e12df3ace71bcf33071a68c9a03c0dfcbdd"},
-    {file = "anthropic-0.25.7.tar.gz", hash = "sha256:e7de4c8ba8e7e8248ad7f05ed9176634780b95b67c678d23915d8964c8a26f4e"},
+    {file = "anthropic-0.26.1-py3-none-any.whl", hash = "sha256:2812b9b250b551ed8a1f0a7e6ae3f005654098994f45ebca5b5808bd154c9628"},
+    {file = "anthropic-0.26.1.tar.gz", hash = "sha256:26680ff781a6f678a30a1dccd0743631e602b23a47719439ffdef5335fa167d8"},
 ]
 
 [[package]]
@@ -613,7 +614,7 @@ files = [
 
 [[package]]
 name = "google-ai-generativelanguage"
-version = "0.6.2"
+version = "0.6.4"
 requires_python = ">=3.7"
 summary = "Google Ai Generativelanguage API client library"
 groups = ["default"]
@@ -624,8 +625,8 @@ dependencies = [
     "protobuf!=3.20.0,!=3.20.1,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5,<5.0.0dev,>=3.19.5",
 ]
 files = [
-    {file = "google-ai-generativelanguage-0.6.2.tar.gz", hash = "sha256:308791ac3b9dad015b359172970739aa3753dd542142a416d07f9fa047e22386"},
-    {file = "google_ai_generativelanguage-0.6.2-py3-none-any.whl", hash = "sha256:bf84c34c641570d7e8a1f2e6901e6771af1438f2ee8307d1801fd43585f9b1c6"},
+    {file = "google-ai-generativelanguage-0.6.4.tar.gz", hash = "sha256:1750848c12af96cb24ae1c3dd05e4bfe24867dc4577009ed03e1042d8421e874"},
+    {file = "google_ai_generativelanguage-0.6.4-py3-none-any.whl", hash = "sha256:730e471aa549797118fb1c88421ba1957741433ada575cf5dd08d3aebf903ab1"},
 ]
 
 [[package]]
@@ -715,12 +716,12 @@ files = [
 
 [[package]]
 name = "google-generativeai"
-version = "0.5.2"
+version = "0.5.4"
 requires_python = ">=3.9"
 summary = "Google Generative AI High level API client library and tools."
 groups = ["default"]
 dependencies = [
-    "google-ai-generativelanguage==0.6.2",
+    "google-ai-generativelanguage==0.6.4",
     "google-api-core",
     "google-api-python-client",
     "google-auth>=2.15.0",
@@ -730,7 +731,7 @@ dependencies = [
     "typing-extensions",
 ]
 files = [
-    {file = "google_generativeai-0.5.2-py3-none-any.whl", hash = "sha256:56f39485a0a673c93c21ec31c17809cc6a964193fb77b7ce809ad15d0dd72d7b"},
+    {file = "google_generativeai-0.5.4-py3-none-any.whl", hash = "sha256:036d63ee35e7c8aedceda4f81c390a5102808af09ff3a6e57e27ed0be0708f3c"},
 ]
 
 [[package]]
@@ -749,7 +750,7 @@ files = [
 
 [[package]]
 name = "groq"
-version = "0.5.0"
+version = "0.8.0"
 requires_python = ">=3.7"
 summary = "The official Python library for the groq API"
 groups = ["default"]
@@ -762,8 +763,8 @@ dependencies = [
     "typing-extensions<5,>=4.7",
 ]
 files = [
-    {file = "groq-0.5.0-py3-none-any.whl", hash = "sha256:a7e6be1118bcdfea3ed071ec00f505a34d4e6ec28c435adb5a5afd33545683a1"},
-    {file = "groq-0.5.0.tar.gz", hash = "sha256:d476cdc3383b45d2a4dc1876142a9542e663ea1029f9e07a05de24f895cae48c"},
+    {file = "groq-0.8.0-py3-none-any.whl", hash = "sha256:f5e4e892d45001241a930db451e633ca1f0007e3f749deaa5d7360062fcd61e3"},
+    {file = "groq-0.8.0.tar.gz", hash = "sha256:37ceb2f706bd516d0bfcac8e89048a24b375172987a0d6bd9efb521c54f6deff"},
 ]
 
 [[package]]
@@ -964,6 +965,64 @@ files = [
 ]
 
 [[package]]
+name = "jiter"
+version = "0.4.0"
+requires_python = ">=3.8"
+summary = "Fast iterable JSON parser."
+groups = ["default"]
+files = [
+    {file = "jiter-0.4.0-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:4aa6226d82a4a4505078c0bd5947bad65399635fc5cd4b226512e41753624edf"},
+    {file = "jiter-0.4.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:947111ac906740a948e7b63799481acd3d5ef666ccb178d146e25718640b7408"},
+    {file = "jiter-0.4.0-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:69572ffb4e84ae289a7422b9af4ea123cae2ce0772228859b37d4b26b4bc92ea"},
+    {file = "jiter-0.4.0-cp310-cp310-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:ba6046cbb5d1baa5a781b846f7e5438596a332f249a857d63f86ef5d1d9563b0"},
+    {file = "jiter-0.4.0-cp310-cp310-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:d4f346e54602782e66d07df0d1c7389384fd93680052ed6170da2c6dc758409e"},
+    {file = "jiter-0.4.0-cp310-cp310-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:49110ce693f07e97d61089d894cea05a0b9894d5ccc6ac6fc583028726c8c8af"},
+    {file = "jiter-0.4.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:2e358df6fd129f3a4e087539f086355ad0107e5da16dbc8bc857d94222eaeed5"},
+    {file = "jiter-0.4.0-cp310-cp310-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:7eb852ca39a48f3c049def56f0d1771b32e948e4f429a782d14ef4cc64cfd26e"},
+    {file = "jiter-0.4.0-cp310-cp310-musllinux_1_1_aarch64.whl", hash = "sha256:44dc045decb2545bffe2da04ea4c36d9438d3f3d49fc47ed423ea75c352b712e"},
+    {file = "jiter-0.4.0-cp310-cp310-musllinux_1_1_x86_64.whl", hash = "sha256:413adb15372ac63db04373240f40925788e4282c997eeafc2040530049a0a599"},
+    {file = "jiter-0.4.0-cp310-none-win32.whl", hash = "sha256:0b48ea71673a97b897e4b94bbc871e62495a5a85f836c9f90712a4c70aa3ef7e"},
+    {file = "jiter-0.4.0-cp310-none-win_amd64.whl", hash = "sha256:6a1c84b44afafaf0ba6223679cf17af664b889da14da31d8af3595fd977d96fa"},
+    {file = "jiter-0.4.0-cp311-cp311-macosx_10_12_x86_64.whl", hash = "sha256:b2cc498345fa37ca23fbc20271a553aa46e6eb00924600f49b7dc4b2aa8952ee"},
+    {file = "jiter-0.4.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:69f7221ac09ab421abf04f89942026868297c568133998fb181bcf435760cbf3"},
+    {file = "jiter-0.4.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ef7d01c52f3e5a56ae73af36bd13797dd1a56711eb522748e5e84d15425b3f10"},
+    {file = "jiter-0.4.0-cp311-cp311-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:39be97d5ce0c4d0dae28c23c03a0af0501a725589427e99763f99c42e18aa402"},
+    {file = "jiter-0.4.0-cp311-cp311-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:eac2ed1ec1e577b92b7ea2d4e6de8aec0c1164defd8af8affdc8ec0f0ec2904a"},
+    {file = "jiter-0.4.0-cp311-cp311-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:6258837d184c92c9cb91c983c310ad7269d41afb49d34f00ca9246e073943a03"},
+    {file = "jiter-0.4.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:123c2a77b066bf17a4d021e238e8351058cfa56b90ac04f2522d120dc64ea055"},
+    {file = "jiter-0.4.0-cp311-cp311-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:2df939f792c7a40e55f36700417db551b9f6b84d348990fa0f2c608adeb1f11b"},
+    {file = "jiter-0.4.0-cp311-cp311-musllinux_1_1_aarch64.whl", hash = "sha256:cb1b09b16d40cf9ba1d11ba11e5b96ad29286a6a1c4ad5e6a2aef5e352a89f5d"},
+    {file = "jiter-0.4.0-cp311-cp311-musllinux_1_1_x86_64.whl", hash = "sha256:0efb4208889ebdbf933bf08dbcbc16e64ffd34c8e2b28044ee142789a9dc3a67"},
+    {file = "jiter-0.4.0-cp311-none-win32.whl", hash = "sha256:20545ac1b68e7e5b066a1e8347840c9cebdd02ace65faae2e655fc02ec5c915c"},
+    {file = "jiter-0.4.0-cp311-none-win_amd64.whl", hash = "sha256:6b300f9887c8e4431cd03a974ea3e4f9958885636003c3864220a9b2d2f8462b"},
+    {file = "jiter-0.4.0-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:923432a0563bbae404ff25bb010e348514a69bfab979f2f8119b23b625dbf6d9"},
+    {file = "jiter-0.4.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:ab8bb0ec8b97cec4422dc8b37b525442d969244488c805b834609ab0ccd788e2"},
+    {file = "jiter-0.4.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:b857adb127b9c533907226791eafa79c5038c3eb5a477984994bf7c4715ba518"},
+    {file = "jiter-0.4.0-cp312-cp312-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:2609cc0d1d8d470e921ff9a604afeb4c701bbe13e00bd9834d5aa6e7ea732a9b"},
+    {file = "jiter-0.4.0-cp312-cp312-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:d39e99f8b7df46a119b6f84321f6ba01f16fa46abfa765d44c05c486d8e66829"},
+    {file = "jiter-0.4.0-cp312-cp312-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:56de8b518ebfe76a70f856741f6de248ce396c50a87acef827b6e8388e3a502d"},
+    {file = "jiter-0.4.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:488b7e777be47f67ce1a1f8f8eb907f9bbd81af5c03784a9bab09d025c250233"},
+    {file = "jiter-0.4.0-cp312-cp312-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:7ea35e0ecbb5dadd457855eb980dcc548c14cf5341bcd22a43814cb56f2bcc79"},
+    {file = "jiter-0.4.0-cp312-cp312-musllinux_1_1_aarch64.whl", hash = "sha256:e1a9e9ee69c80b63951c93226b68d0e955953f64fe758bad2afe7ef7f9016af9"},
+    {file = "jiter-0.4.0-cp312-cp312-musllinux_1_1_x86_64.whl", hash = "sha256:78e2f3cc2a32a21d43ccc5afcf66f5d17e827ccc4e6d21c0b353bdad2c7dcc9c"},
+    {file = "jiter-0.4.0-cp312-none-win32.whl", hash = "sha256:eeaa7a2b47a99f4ebbb4142bb58b95617e09f24c87570f6a57d2770687c9ddbe"},
+    {file = "jiter-0.4.0-cp312-none-win_amd64.whl", hash = "sha256:8d4a78b385b93ff59a67215d26000fcb4789a388fca3730d1b60fab17fc81e3c"},
+    {file = "jiter-0.4.0-cp39-cp39-macosx_10_12_x86_64.whl", hash = "sha256:091e978f4e586a2f1c69bf940d45f4e6a23455877172a0ab7d6de04a3b119299"},
+    {file = "jiter-0.4.0-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:79134b2d601309bcbe3304a262d7d228ad61d53c80883231c637773000a6d683"},
+    {file = "jiter-0.4.0-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:c471473e0b05058b5d729ff04271b6d45a575ac8bd9948563268c734b380ac7e"},
+    {file = "jiter-0.4.0-cp39-cp39-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:bb84b8930da8b32b0b1fdff9817e2c4b47e8981b5647ad11c4975403416e4112"},
+    {file = "jiter-0.4.0-cp39-cp39-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:7f2805e28941751ebfe0948596a64cde4cfb9b84bea5282affd020063e659c96"},
+    {file = "jiter-0.4.0-cp39-cp39-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:42ef59f9e513bf081a8b5c5578933ea9c3a63e559e6e3501a3e72edcd456ff5e"},
+    {file = "jiter-0.4.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3ae12e3906f9e565120ab569de261b738e3a1ec50c40e30c67499e4f893e9a8c"},
+    {file = "jiter-0.4.0-cp39-cp39-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:264dc1324f45a793bc89af4f653225229eb17bca9ec7107dce6c8fb4fe68d20f"},
+    {file = "jiter-0.4.0-cp39-cp39-musllinux_1_1_aarch64.whl", hash = "sha256:9a1c172ec47d846e25881dfbd52438ddb690da4ea04d185e477abd3db6c32f8a"},
+    {file = "jiter-0.4.0-cp39-cp39-musllinux_1_1_x86_64.whl", hash = "sha256:ccde31d0bc114aedad0dbd71b7f63ba0f0eecd7ec9ae1926a0ca01c1eb2854e7"},
+    {file = "jiter-0.4.0-cp39-none-win32.whl", hash = "sha256:13139b05792fbc13a0f9a5b4c89823ea0874141decae1b8f693f12bb1d28e061"},
+    {file = "jiter-0.4.0-cp39-none-win_amd64.whl", hash = "sha256:3a729b2631c6d5551a41069697415fee9659c3eadc9ab87369376ba51930cd00"},
+    {file = "jiter-0.4.0.tar.gz", hash = "sha256:68203e02e0419bc3eca717c580c2d8f615aeee1150e2a1fb68d6600a7e52a37c"},
+]
+
+[[package]]
 name = "langdetect"
 version = "1.0.9"
 summary = "Language detection library ported from Google's language-detection."
@@ -977,7 +1036,7 @@ files = [
 
 [[package]]
 name = "litellm"
-version = "1.35.38"
+version = "1.38.10"
 requires_python = "!=2.7.*,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,!=3.6.*,!=3.7.*,>=3.8"
 summary = "Library to easily interface with LLM API providers"
 groups = ["default"]
@@ -986,15 +1045,15 @@ dependencies = [
     "click",
     "importlib-metadata>=6.8.0",
     "jinja2<4.0.0,>=3.1.2",
-    "openai>=1.0.0",
+    "openai>=1.27.0",
     "python-dotenv>=0.2.0",
     "requests<3.0.0,>=2.31.0",
     "tiktoken>=0.4.0",
     "tokenizers",
 ]
 files = [
-    {file = "litellm-1.35.38-py3-none-any.whl", hash = "sha256:79ab3403c945b340a751d889cf49030fee050487dff6294a21fb9586c49e3faf"},
-    {file = "litellm-1.35.38.tar.gz", hash = "sha256:1a0b195c74d45ba0c2391c5be533c211ee1bcdba6be09e6950037432f62f79ea"},
+    {file = "litellm-1.38.10-py3-none-any.whl", hash = "sha256:4d33465eacde566832b9d7aa7677476e61aa7ba4ec26631fb1c8411c87219ed1"},
+    {file = "litellm-1.38.10.tar.gz", hash = "sha256:1a0b3088fe4b072f367343a7d7d25e4c5f9990975d9ee7dbf21f3b25ff046bb0"},
 ]
 
 [[package]]
@@ -1263,7 +1322,7 @@ files = [
 
 [[package]]
 name = "openai"
-version = "1.25.2"
+version = "1.30.3"
 requires_python = ">=3.7.1"
 summary = "The official Python library for the openai API"
 groups = ["default"]
@@ -1277,8 +1336,8 @@ dependencies = [
     "typing-extensions<5,>=4.7",
 ]
 files = [
-    {file = "openai-1.25.2-py3-none-any.whl", hash = "sha256:8df66384343e81ae49f5b9ee7d2d67df3b98d578d1e3a50994111e1c6062bf5e"},
-    {file = "openai-1.25.2.tar.gz", hash = "sha256:a2b4a6ae9afb8b5578b5b69315ecc6c01564d4c8dbe18fe2375bb9547ff5038c"},
+    {file = "openai-1.30.3-py3-none-any.whl", hash = "sha256:f88119c8a848998be533c71ab8aa832446fa72b7ddbc70917c3f5886dc132051"},
+    {file = "openai-1.30.3.tar.gz", hash = "sha256:8e1bcdca2b96fe3636ab522fa153d88efde1b702d12ec32f1c73e9553ff93f45"},
 ]
 
 [[package]]
@@ -1618,8 +1677,8 @@ files = [
 
 [[package]]
 name = "requests"
-version = "2.31.0"
-requires_python = ">=3.7"
+version = "2.32.2"
+requires_python = ">=3.8"
 summary = "Python HTTP for Humans."
 groups = ["default"]
 dependencies = [
@@ -1629,8 +1688,8 @@ dependencies = [
     "urllib3<3,>=1.21.1",
 ]
 files = [
-    {file = "requests-2.31.0-py3-none-any.whl", hash = "sha256:58cd2187c01e70e6e26505bca751777aa9f2ee0b7f4300988b709f44e013003f"},
-    {file = "requests-2.31.0.tar.gz", hash = "sha256:942c5a758f98d790eaed1a29cb6eefc7ffb0d1cf7af05c3d2791656dbd6ad1e1"},
+    {file = "requests-2.32.2-py3-none-any.whl", hash = "sha256:fc06670dd0ed212426dfeb94fc1b983d917c4f9847c863f313c9dfaaffb7c23c"},
+    {file = "requests-2.32.2.tar.gz", hash = "sha256:dd951ff5ecf3e3b3aa26b40703ba77495dab41da839ae72ef3c8e5d8e2433289"},
 ]
 
 [[package]]
@@ -1708,7 +1767,7 @@ files = [
 
 [[package]]
 name = "tiktoken"
-version = "0.6.0"
+version = "0.7.0"
 requires_python = ">=3.8"
 summary = "tiktoken is a fast BPE tokeniser for use with OpenAI's models"
 groups = ["default"]
@@ -1717,35 +1776,35 @@ dependencies = [
     "requests>=2.26.0",
 ]
 files = [
-    {file = "tiktoken-0.6.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:277de84ccd8fa12730a6b4067456e5cf72fef6300bea61d506c09e45658d41ac"},
-    {file = "tiktoken-0.6.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:9c44433f658064463650d61387623735641dcc4b6c999ca30bc0f8ba3fccaf5c"},
-    {file = "tiktoken-0.6.0-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:afb9a2a866ae6eef1995ab656744287a5ac95acc7e0491c33fad54d053288ad3"},
-    {file = "tiktoken-0.6.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c62c05b3109fefca26fedb2820452a050074ad8e5ad9803f4652977778177d9f"},
-    {file = "tiktoken-0.6.0-cp310-cp310-musllinux_1_1_aarch64.whl", hash = "sha256:0ef917fad0bccda07bfbad835525bbed5f3ab97a8a3e66526e48cdc3e7beacf7"},
-    {file = "tiktoken-0.6.0-cp310-cp310-musllinux_1_1_x86_64.whl", hash = "sha256:e095131ab6092d0769a2fda85aa260c7c383072daec599ba9d8b149d2a3f4d8b"},
-    {file = "tiktoken-0.6.0-cp310-cp310-win_amd64.whl", hash = "sha256:05b344c61779f815038292a19a0c6eb7098b63c8f865ff205abb9ea1b656030e"},
-    {file = "tiktoken-0.6.0-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:cefb9870fb55dca9e450e54dbf61f904aab9180ff6fe568b61f4db9564e78871"},
-    {file = "tiktoken-0.6.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:702950d33d8cabc039845674107d2e6dcabbbb0990ef350f640661368df481bb"},
-    {file = "tiktoken-0.6.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:e8d49d076058f23254f2aff9af603863c5c5f9ab095bc896bceed04f8f0b013a"},
-    {file = "tiktoken-0.6.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:430bc4e650a2d23a789dc2cdca3b9e5e7eb3cd3935168d97d43518cbb1f9a911"},
-    {file = "tiktoken-0.6.0-cp311-cp311-musllinux_1_1_aarch64.whl", hash = "sha256:293cb8669757301a3019a12d6770bd55bec38a4d3ee9978ddbe599d68976aca7"},
-    {file = "tiktoken-0.6.0-cp311-cp311-musllinux_1_1_x86_64.whl", hash = "sha256:7bd1a288b7903aadc054b0e16ea78e3171f70b670e7372432298c686ebf9dd47"},
-    {file = "tiktoken-0.6.0-cp311-cp311-win_amd64.whl", hash = "sha256:ac76e000183e3b749634968a45c7169b351e99936ef46f0d2353cd0d46c3118d"},
-    {file = "tiktoken-0.6.0-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:17cc8a4a3245ab7d935c83a2db6bb71619099d7284b884f4b2aea4c74f2f83e3"},
-    {file = "tiktoken-0.6.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:284aebcccffe1bba0d6571651317df6a5b376ff6cfed5aeb800c55df44c78177"},
-    {file = "tiktoken-0.6.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0c1a3a5d33846f8cd9dd3b7897c1d45722f48625a587f8e6f3d3e85080559be8"},
-    {file = "tiktoken-0.6.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6318b2bb2337f38ee954fd5efa82632c6e5ced1d52a671370fa4b2eff1355e91"},
-    {file = "tiktoken-0.6.0-cp312-cp312-musllinux_1_1_aarch64.whl", hash = "sha256:1f5f0f2ed67ba16373f9a6013b68da298096b27cd4e1cf276d2d3868b5c7efd1"},
-    {file = "tiktoken-0.6.0-cp312-cp312-musllinux_1_1_x86_64.whl", hash = "sha256:75af4c0b16609c2ad02581f3cdcd1fb698c7565091370bf6c0cf8624ffaba6dc"},
-    {file = "tiktoken-0.6.0-cp312-cp312-win_amd64.whl", hash = "sha256:45577faf9a9d383b8fd683e313cf6df88b6076c034f0a16da243bb1c139340c3"},
-    {file = "tiktoken-0.6.0-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:47fdcfe11bd55376785a6aea8ad1db967db7f66ea81aed5c43fad497521819a4"},
-    {file = "tiktoken-0.6.0-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:fb7d2ccbf1a7784810aff6b80b4012fb42c6fc37eaa68cb3b553801a5cc2d1fc"},
-    {file = "tiktoken-0.6.0-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:1ccb7a111ee76af5d876a729a347f8747d5ad548e1487eeea90eaf58894b3138"},
-    {file = "tiktoken-0.6.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b2048e1086b48e3c8c6e2ceeac866561374cd57a84622fa49a6b245ffecb7744"},
-    {file = "tiktoken-0.6.0-cp39-cp39-musllinux_1_1_aarch64.whl", hash = "sha256:07f229a5eb250b6403a61200199cecf0aac4aa23c3ecc1c11c1ca002cbb8f159"},
-    {file = "tiktoken-0.6.0-cp39-cp39-musllinux_1_1_x86_64.whl", hash = "sha256:432aa3be8436177b0db5a2b3e7cc28fd6c693f783b2f8722539ba16a867d0c6a"},
-    {file = "tiktoken-0.6.0-cp39-cp39-win_amd64.whl", hash = "sha256:8bfe8a19c8b5c40d121ee7938cd9c6a278e5b97dc035fd61714b4f0399d2f7a1"},
-    {file = "tiktoken-0.6.0.tar.gz", hash = "sha256:ace62a4ede83c75b0374a2ddfa4b76903cf483e9cb06247f566be3bf14e6beed"},
+    {file = "tiktoken-0.7.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:485f3cc6aba7c6b6ce388ba634fbba656d9ee27f766216f45146beb4ac18b25f"},
+    {file = "tiktoken-0.7.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:e54be9a2cd2f6d6ffa3517b064983fb695c9a9d8aa7d574d1ef3c3f931a99225"},
+    {file = "tiktoken-0.7.0-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:79383a6e2c654c6040e5f8506f3750db9ddd71b550c724e673203b4f6b4b4590"},
+    {file = "tiktoken-0.7.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:5d4511c52caacf3c4981d1ae2df85908bd31853f33d30b345c8b6830763f769c"},
+    {file = "tiktoken-0.7.0-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:13c94efacdd3de9aff824a788353aa5749c0faee1fbe3816df365ea450b82311"},
+    {file = "tiktoken-0.7.0-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:8e58c7eb29d2ab35a7a8929cbeea60216a4ccdf42efa8974d8e176d50c9a3df5"},
+    {file = "tiktoken-0.7.0-cp310-cp310-win_amd64.whl", hash = "sha256:21a20c3bd1dd3e55b91c1331bf25f4af522c525e771691adbc9a69336fa7f702"},
+    {file = "tiktoken-0.7.0-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:10c7674f81e6e350fcbed7c09a65bca9356eaab27fb2dac65a1e440f2bcfe30f"},
+    {file = "tiktoken-0.7.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:084cec29713bc9d4189a937f8a35dbdfa785bd1235a34c1124fe2323821ee93f"},
+    {file = "tiktoken-0.7.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:811229fde1652fedcca7c6dfe76724d0908775b353556d8a71ed74d866f73f7b"},
+    {file = "tiktoken-0.7.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:86b6e7dc2e7ad1b3757e8a24597415bafcfb454cebf9a33a01f2e6ba2e663992"},
+    {file = "tiktoken-0.7.0-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:1063c5748be36344c7e18c7913c53e2cca116764c2080177e57d62c7ad4576d1"},
+    {file = "tiktoken-0.7.0-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:20295d21419bfcca092644f7e2f2138ff947a6eb8cfc732c09cc7d76988d4a89"},
+    {file = "tiktoken-0.7.0-cp311-cp311-win_amd64.whl", hash = "sha256:959d993749b083acc57a317cbc643fb85c014d055b2119b739487288f4e5d1cb"},
+    {file = "tiktoken-0.7.0-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:71c55d066388c55a9c00f61d2c456a6086673ab7dec22dd739c23f77195b1908"},
+    {file = "tiktoken-0.7.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:09ed925bccaa8043e34c519fbb2f99110bd07c6fd67714793c21ac298e449410"},
+    {file = "tiktoken-0.7.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:03c6c40ff1db0f48a7b4d2dafeae73a5607aacb472fa11f125e7baf9dce73704"},
+    {file = "tiktoken-0.7.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d20b5c6af30e621b4aca094ee61777a44118f52d886dbe4f02b70dfe05c15350"},
+    {file = "tiktoken-0.7.0-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:d427614c3e074004efa2f2411e16c826f9df427d3c70a54725cae860f09e4bf4"},
+    {file = "tiktoken-0.7.0-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:8c46d7af7b8c6987fac9b9f61041b452afe92eb087d29c9ce54951280f899a97"},
+    {file = "tiktoken-0.7.0-cp312-cp312-win_amd64.whl", hash = "sha256:0bc603c30b9e371e7c4c7935aba02af5994a909fc3c0fe66e7004070858d3f8f"},
+    {file = "tiktoken-0.7.0-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:cabc6dc77460df44ec5b879e68692c63551ae4fae7460dd4ff17181df75f1db7"},
+    {file = "tiktoken-0.7.0-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:8d57f29171255f74c0aeacd0651e29aa47dff6f070cb9f35ebc14c82278f3b25"},
+    {file = "tiktoken-0.7.0-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:2ee92776fdbb3efa02a83f968c19d4997a55c8e9ce7be821ceee04a1d1ee149c"},
+    {file = "tiktoken-0.7.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e215292e99cb41fbc96988ef62ea63bb0ce1e15f2c147a61acc319f8b4cbe5bf"},
+    {file = "tiktoken-0.7.0-cp39-cp39-musllinux_1_2_aarch64.whl", hash = "sha256:8a81bac94769cab437dd3ab0b8a4bc4e0f9cf6835bcaa88de71f39af1791727a"},
+    {file = "tiktoken-0.7.0-cp39-cp39-musllinux_1_2_x86_64.whl", hash = "sha256:d6d73ea93e91d5ca771256dfc9d1d29f5a554b83821a1dc0891987636e0ae226"},
+    {file = "tiktoken-0.7.0-cp39-cp39-win_amd64.whl", hash = "sha256:2bcb28ddf79ffa424f171dfeef9a4daff61a94c631ca6813f43967cb263b83b9"},
+    {file = "tiktoken-0.7.0.tar.gz", hash = "sha256:1077266e949c24e0291f6c350433c6f0971365ece2b173a23bc3b9f9defef6b6"},
 ]
 
 [[package]]

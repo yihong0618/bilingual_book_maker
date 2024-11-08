@@ -122,6 +122,14 @@ def main():
         help="You can get Groq Key from  https://console.groq.com/keys",
     )
 
+    # for xAI
+    parser.add_argument(
+        "--xai_key",
+        dest="xai_key",
+        type=str,
+        help="You can get xAI Key from  https://console.x.ai/",
+    )
+
     parser.add_argument(
         "--test",
         dest="test",
@@ -149,7 +157,7 @@ def main():
         "--ollama_model",
         dest="ollama_model",
         type=str,
-        default="ollama_model",
+        default="",
         metavar="MODEL",
         help="use ollama",
     )
@@ -280,10 +288,17 @@ So you are close to reaching the limit. You have to choose your own value, there
         help="adds an additional paragraph for global, updating historical context of the story to the model's input, improving the narrative consistency for the AI model (this uses ~200 more tokens each time)",
     )
     parser.add_argument(
+        "--context_paragraph_limit",
+        dest="context_paragraph_limit",
+        type=int,
+        default=0,
+        help="if use --use_context, set context paragraph limit",
+    )
+    parser.add_argument(
         "--temperature",
         type=float,
         default=1.0,
-        help="temperature parameter for `chatgptapi`/`gpt4`/`claude`",
+        help="temperature parameter for `chatgptapi`/`gpt4`/`claude`/`gemini`",
     )
     parser.add_argument(
         "--block_size",
@@ -297,11 +312,32 @@ So you are close to reaching the limit. You have to choose your own value, there
         dest="model_list",
         help="Rather than using our preset lists of models, specify exactly the models you want as a comma separated list `gpt-4-32k,gpt-3.5-turbo-0125` (Currently only supports: `openai`)",
     )
+    parser.add_argument(
+        "--batch",
+        dest="batch_flag",
+        action="store_true",
+        help="Enable batch translation using ChatGPT's batch API for improved efficiency",
+    )
+    parser.add_argument(
+        "--batch-use",
+        dest="batch_use_flag",
+        action="store_true",
+        help="Use pre-generated batch translations to create files. Run with --batch first before using this option",
+    )
+    parser.add_argument(
+        "--interval",
+        type=float,
+        default=0.01,
+        help="Request interval in seconds (e.g., 0.1 for 100ms). Currently only supported for Gemini models. Default: 0.01",
+    )
 
     options = parser.parse_args()
 
+    if not options.book_name:
+        print(f"Error: please provide the path of your book using --book_name <path>")
+        exit(1)
     if not os.path.isfile(options.book_name):
-        print(f"Error: {options.book_name} does not exist.")
+        print(f"Error: the book {options.book_name!r} does not exist.")
         exit(1)
 
     PROXY = options.proxy
@@ -312,7 +348,7 @@ So you are close to reaching the limit. You have to choose your own value, there
     translate_model = MODEL_DICT.get(options.model)
     assert translate_model is not None, "unsupported model"
     API_KEY = ""
-    if options.model in ["openai", "chatgptapi", "gpt4"]:
+    if options.model in ["openai", "chatgptapi", "gpt4", "gpt4omini", "gpt4o"]:
         if OPENAI_API_KEY := (
             options.openai_key
             or env.get(
@@ -347,10 +383,12 @@ So you are close to reaching the limit. You have to choose your own value, there
         API_KEY = options.custom_api or env.get("BBM_CUSTOM_API")
         if not API_KEY:
             raise Exception("Please provide custom translate api")
-    elif options.model == "gemini":
+    elif options.model in ["gemini", "geminipro"]:
         API_KEY = options.gemini_key or env.get("BBM_GOOGLE_GEMINI_KEY")
     elif options.model == "groq":
         API_KEY = options.groq_key or env.get("BBM_GROQ_API_KEY")
+    elif options.model == "xai":
+        API_KEY = options.xai_key or env.get("BBM_XAI_API_KEY")
     else:
         API_KEY = ""
 
@@ -429,6 +467,8 @@ So you are close to reaching the limit. You have to choose your own value, there
         assert options.model in [
             "chatgptapi",
             "gpt4",
+            "gpt4omini",
+            "gpt4o",
         ], "only support chatgptapi for deployment_id"
         if not options.api_base:
             raise ValueError("`api_base` must be provided when using `deployment_id`")
@@ -439,7 +479,7 @@ So you are close to reaching the limit. You have to choose your own value, there
             e.translate_model.set_model_list(options.model_list.split(","))
         else:
             raise ValueError(
-                "When using `openai` model, you must also provide `--model_list`. For default model sets use `--model chatgptapi` or `--model gpt4`",
+                "When using `openai` model, you must also provide `--model_list`. For default model sets use `--model chatgptapi` or `--model gpt4` or `--model gpt4omini`",
             )
     # TODO refactor, quick fix for gpt4 model
     if options.model == "chatgptapi":
@@ -449,8 +489,26 @@ So you are close to reaching the limit. You have to choose your own value, there
             e.translate_model.set_gpt35_models()
     if options.model == "gpt4":
         e.translate_model.set_gpt4_models()
+    if options.model == "gpt4omini":
+        e.translate_model.set_gpt4omini_models()
+    if options.model == "gpt4o":
+        e.translate_model.set_gpt4o_models()
     if options.block_size > 0:
         e.block_size = options.block_size
+    if options.batch_flag:
+        e.batch_flag = options.batch_flag
+    if options.batch_use_flag:
+        e.batch_use_flag = options.batch_use_flag
+
+    if options.model in ("gemini", "geminipro"):
+        e.translate_model.set_interval(options.interval)
+    if options.model == "gemini":
+        if options.model_list:
+            e.translate_model.set_model_list(options.model_list.split(","))
+        else:
+            e.translate_model.set_geminiflash_models()
+    if options.model == "geminipro":
+        e.translate_model.set_geminipro_models()
 
     e.make_bilingual_book()
 
