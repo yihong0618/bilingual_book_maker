@@ -56,25 +56,27 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   ```
 
 * [Claude](https://console.anthropic.com/docs)
-  使用 [Claude](https://console.anthropic.com/docs) 模型进行翻译
+
+  Use [Claude](https://console.anthropic.com/docs) model to translate
 
   ```
   python3 make_book.py --book_name test_books/animal_farm.epub --model claude --claude_key ${claude_key}
   ```
 
-* 谷歌翻译
+* Google Translate
 
   ```
   python3 make_book.py --book_name test_books/animal_farm.epub --model google
   ```
 
-* 彩云小译
+* Caiyun Translate
 
   ```
   python3 make_book.py --book_name test_books/animal_farm.epub --model caiyun --caiyun_key ${caiyun_key}
   ```
 
 * Gemini
+
   Support Google [Gemini](https://aistudio.google.com/app/apikey) model, use `--model gemini` for Gemini Flash or `--model geminipro` for Gemini Pro.
   If you want to use a specific model alias with Gemini (eg `gemini-1.5-flash-002` or `gemini-1.5-flash-8b-exp-0924`), you can use `--model gemini --model_list gemini-1.5-flash-002,gemini-1.5-flash-8b-exp-0924`. `--model_list` takes a comma-separated list of model aliases.
 
@@ -94,14 +96,16 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   python3 make_book.py --book_name test_books/animal_farm.epub --model xai --xai_key ${xai_key}
   ```
 
-* Support [Ollama](https://github.com/ollama/ollama) self-host models,
+* [Ollama](https://github.com/ollama/ollama)
+
+  Support [Ollama](https://github.com/ollama/ollama) self-host models,
   If ollama server is not running on localhost, use `--api_base http://x.x.x.x:port/v1` to point to the ollama server address
 
   ```
   python3 make_book.py --book_name test_books/animal_farm.epub --ollama_model ${ollama_model_name}
   ```
 
-* groq
+* [groq](https://console.groq.com/keys)
 
   ```
   python3 make_book.py --book_name test_books/animal_farm.epub --groq_key [your_key] --model groq --model_list llama3-8b-8192
