@@ -51,59 +51,65 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 
 * DeepL free
 
-  ```
+  ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --model deeplfree
   ```
 
 * [Claude](https://console.anthropic.com/docs)
-  使用 [Claude](https://console.anthropic.com/docs) 模型进行翻译
 
-  ```
+  Use [Claude](https://console.anthropic.com/docs) model to translate
+
+  ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --model claude --claude_key ${claude_key}
   ```
 
-* 谷歌翻译
+* Google Translate
 
-  ```
+  ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --model google
   ```
 
-* 彩云小译
+* Caiyun Translate
 
-  ```
+  ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --model caiyun --caiyun_key ${caiyun_key}
   ```
 
 * Gemini
+
   Support Google [Gemini](https://aistudio.google.com/app/apikey) model, use `--model gemini` for Gemini Flash or `--model geminipro` for Gemini Pro.
   If you want to use a specific model alias with Gemini (eg `gemini-1.5-flash-002` or `gemini-1.5-flash-8b-exp-0924`), you can use `--model gemini --model_list gemini-1.5-flash-002,gemini-1.5-flash-8b-exp-0924`. `--model_list` takes a comma-separated list of model aliases.
 
-  ```
+  ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --model gemini --gemini_key ${gemini_key}
   ```
 
 * [Tencent TranSmart](https://transmart.qq.com)
 
-  ```
+  ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --model tencentransmart
   ```
 
 * [xAI](https://x.ai)
 
-  ```
+  ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --model xai --xai_key ${xai_key}
   ```
 
-* Support [Ollama](https://github.com/ollama/ollama) self-host models,
+* [Ollama](https://github.com/ollama/ollama)
+
+  Support [Ollama](https://github.com/ollama/ollama) self-host models,
   If ollama server is not running on localhost, use `--api_base http://x.x.x.x:port/v1` to point to the ollama server address
 
-  ```
+  ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --ollama_model ${ollama_model_name}
   ```
 
-* groq
+* [groq](https://console.groq.com/keys)
 
-  ```
+  GroqCloud currently supports models: you can find from [Supported Models](https://console.groq.com/docs/models)
+
+  ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --groq_key [your_key] --model groq --model_list llama3-8b-8192
   ```
 
@@ -114,33 +120,105 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 
 ## Params
 
-- Use `--test` option to preview the result if you haven't paid for the service. Note that there is a limit and it may take some time.
-- Set the target language like `--language "Simplified Chinese"`. Default target language is `"Simplified Chinese"`.
+- `--test`:
+
+  Use `--test` option to preview the result if you haven't paid for the service. Note that there is a limit and it may take some time.
+
+- `--language`:
+
+  Set the target language like `--language "Simplified Chinese"`. Default target language is `"Simplified Chinese"`.
   Read available languages by helper message: `python make_book.py --help`
-- Use `--proxy` option to specify proxy server for internet access. Enter a string such as `http://127.0.0.1:7890`.
-- Use `--resume` option to manually resume the process after an interruption. -`--translate-tags`: epub is made of html files. By default, we only translate contents in `<p>`.
-  Use `--translate-tags` to specify tags need for translation. Use comma to separate multiple tags. For example:
-  `--translate-tags h1,h2,h3,p,div`
-- Use `--book_from` option to specify e-reader type (Now only `kobo` is available), and use `--device_path` to specify the mounting point. -`--api_base`: If you want to change api_base like using Cloudflare Workers, use `--api_base <URL>` to support it.
-  **Note: the api url should be '`https://xxxx/v1`'. Quotation marks are required.** -`--allow_navigable_strings`: If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue. **Note that it's best to look for e-books that are more standardized if possible.** -`--prompt`: To tweak the prompt, use the `--prompt` parameter. Valid placeholders for the `user` role template include `{text}` and `{language}`. It supports a few ways to configure the prompt:
-  If you don't need to set the `system` role content, you can simply set it up like this: `--prompt "Translate {text} to {language}."` or `--prompt prompt_template_sample.txt` (example of a text file can be found at [./prompt_template_sample.txt](./prompt_template_sample.txt)).
-  If you need to set the `system` role content, you can use the following format: `--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'` or `--prompt prompt_template_sample.json` (example of a JSON file can be found at [./prompt_template_sample.json](./prompt_template_sample.json)).
-  You can also set the `user` and `system` role prompt by setting environment variables: `BBM_CHATGPTAPI_USER_MSG_TEMPLATE` and `BBM_CHATGPTAPI_SYS_MSG`.
-- Use the `--batch_size` parameter to specify the number of lines for batch translation (default is 10, currently only effective for txt files).
-- `--accumulated_num` Wait for how many tokens have been accumulated before starting the translation. gpt3.5 limits the total_token to 4090. For example, if you use --accumulated_num 1600, maybe openai will
-  output 2200 tokens and maybe 200 tokens for other messages in the system messages user messages, 1600+2200+200=4000, So you are close to reaching the limit. You have to choose your own
+
+- `--proxy`:
+
+  Use `--proxy` option to specify proxy server for internet access. Enter a string such as `http://127.0.0.1:7890`.
+
+- `--resume`:
+
+  Use `--resume` option to manually resume the process after an interruption.
+
+  ```shell
+  python3 make_book.py --book_name test_books/animal_farm.epub --model google --resume
+  ```
+
+- `--translate-tags`:
+
+  epub is made of html files. By default, we only translate contents in `<p>`.
+  Use `--translate-tags` to specify tags need for translation. Use comma to separate multiple tags.
+  For example: `--translate-tags h1,h2,h3,p,div`
+
+- `--book_from`:
+
+  Use `--book_from` option to specify e-reader type (Now only `kobo` is available), and use `--device_path` to specify the mounting point.
+
+- `--api_base`:
+
+  If you want to change api_base like using Cloudflare Workers, use `--api_base <URL>` to support it.
+  **Note: the api url should be '`https://xxxx/v1`'. Quotation marks are required.**
+
+- `--allow_navigable_strings`:
+
+  If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue. **Note that it's best to look for e-books that are more standardized if possible.**
+
+- `--prompt`:
+
+  To tweak the prompt, use the `--prompt` parameter. Valid placeholders for the `user` role template include `{text}` and `{language}`. It supports a few ways to configure the prompt:
+
+  - If you don't need to set the `system` role content, you can simply set it up like this: `--prompt "Translate {text} to {language}."` or `--prompt prompt_template_sample.txt` (example of a text file can be found at [./prompt_template_sample.txt](./prompt_template_sample.txt)).
+
+  - If you need to set the `system` role content, you can use the following format: `--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'` or `--prompt prompt_template_sample.json` (example of a JSON file can be found at [./prompt_template_sample.json](./prompt_template_sample.json)).
+
+  - You can also set the `user` and `system` role prompt by setting environment variables: `BBM_CHATGPTAPI_USER_MSG_TEMPLATE` and `BBM_CHATGPTAPI_SYS_MSG`.
+
+- `--batch_size`:
+
+  Use the `--batch_size` parameter to specify the number of lines for batch translation (default is 10, currently only effective for txt files).
+
+- `--accumulated_num`:
+
+  Wait for how many tokens have been accumulated before starting the translation. gpt3.5 limits the total_token to 4090. For example, if you use `--accumulated_num 1600`, maybe openai will output 2200 tokens and maybe 200 tokens for other messages in the system messages user messages, 1600+2200+200=4000, So you are close to reaching the limit. You have to choose your own
   value, there is no way to know if the limit is reached before sending
-- `--use_context` prompts the model to create a three-paragraph summary. If it's the beginning of the translation, it will summarize the entire passage sent (the size depending on `--accumulated_num`). For subsequent passages, it will amend the summary to include details from the most recent passage, creating a running one-paragraph context payload of the important details of the entire translated work. This improves consistency of flow and tone throughout the translation. This option is available for all ChatGPT-compatible models and Gemini models.
-- Use `--context_paragraph_limit` to set a limit on the number of context paragraphs when using the `--use_context` option.
-- Use `--temperature` to set the temperature parameter for `chatgptapi`/`gpt4`/`claude` models. For example: `--temperature 0.7`.
-- Use `--block_size` to merge multiple paragraphs into one block. This may increase accuracy and speed up the process but can disturb the original format. Must be used with `--single_translate`. For example: `--block_size 5`.
-- Use `--single_translate` to output only the translated book without creating a bilingual version.
-- `--translation_style` example: `--translation_style "color: #808080; font-style: italic;"`
-- `--retranslate` `--retranslate "$translated_filepath" "file_name_in_epub" "start_str" "end_str"(optional)`<br>
+
+- `--use_context`:
+
+  prompts the model to create a three-paragraph summary. If it's the beginning of the translation, it will summarize the entire passage sent (the size depending on `--accumulated_num`).
+  For subsequent passages, it will amend the summary to include details from the most recent passage, creating a running one-paragraph context payload of the important details of the entire translated work. This improves consistency of flow and tone throughout the translation. This option is available for all ChatGPT-compatible models and Gemini models.
+
+- `--context_paragraph_limit`:
+
+  Use `--context_paragraph_limit` to set a limit on the number of context paragraphs when using the `--use_context` option.
+
+- `--temperature`:
+
+  Use `--temperature` to set the temperature parameter for `chatgptapi`/`gpt4`/`claude` models.
+  For example: `--temperature 0.7`.
+
+- `--block_size`:
+
+  Use `--block_size` to merge multiple paragraphs into one block. This may increase accuracy and speed up the process but can disturb the original format. Must be used with `--single_translate`.
+  For example: `--block_size 5 --single_translate`.
+
+- `--single_translate`:
+
+  Use `--single_translate` to output only the translated book without creating a bilingual version.
+
+- `--translation_style`:
+
+  example: `--translation_style "color: #808080; font-style: italic;"`
+
+- `--retranslate "$translated_filepath" "file_name_in_epub" "start_str" "end_str"(optional)`:
+
   Retranslate from start_str to end_str's tag:
-  `python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which' 'This kind of thing is not a good symptom. Obviously'`<br>
+
+  ```shell
+  python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which' 'This kind of thing is not a good symptom. Obviously'
+  ```
+
   Retranslate start_str's tag:
-  `python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which'`
+
+  ```shell
+  python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which'
+  ```
 
 ### Examples
 
