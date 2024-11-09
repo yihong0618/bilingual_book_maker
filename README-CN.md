@@ -92,7 +92,9 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   python3 make_book.py --book_name test_books/animal_farm.epub --ollama_model ${ollama_model_name}
   ```
 
-* [groq](https://console.groq.com/keys)
+* [Groq](https://console.groq.com/keys)
+
+  GroqCloud 当前支持的模型可以查看[Supported Models](https://console.groq.com/docs/models)
 
   ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --groq_key [your_key] --model groq --model_list llama3-8b-8192

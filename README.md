@@ -107,6 +107,8 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 
 * [groq](https://console.groq.com/keys)
 
+  GroqCloud currently supports models: you can find from [Supported Models](https://console.groq.com/docs/models)
+
   ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --groq_key [your_key] --model groq --model_list llama3-8b-8192
   ```
@@ -206,13 +208,13 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 
 - `--retranslate "$translated_filepath" "file_name_in_epub" "start_str" "end_str"(optional)`:
 
-  - Retranslate from start_str to end_str's tag:
+  Retranslate from start_str to end_str's tag:
 
   ```shell
   python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which' 'This kind of thing is not a good symptom. Obviously'
   ```
 
-  - Retranslate start_str's tag:
+  Retranslate start_str's tag:
 
   ```shell
   python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which'
