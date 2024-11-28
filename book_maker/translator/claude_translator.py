@@ -30,6 +30,9 @@ class Claude(Base):
     def rotate_key(self):
         pass
 
+    def set_claude_model(self, model_name):
+        self.model = model_name
+
     def translate(self, text):
         print(text)
         self.rotate_key()
