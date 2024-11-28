@@ -19,12 +19,13 @@ class Claude(Base):
         super().__init__(key, language)
         self.api_url = f"{api_base}" if api_base else "https://api.anthropic.com"
         self.client = Anthropic(base_url=api_base, api_key=key, timeout=20)
-
+        self.model = "claude-3-5-sonnet-20241022"  # default it for now
         self.language = language
         self.prompt_template = (
             prompt_template
             or "\n\nHuman: Help me translate the text within triple backticks into {language} and provide only the translated result.\n```{text}```\n\nAssistant: "
         )
+        self.temperature = temperature
 
     def rotate_key(self):
         pass
@@ -40,7 +41,8 @@ class Claude(Base):
         r = self.client.messages.create(
             max_tokens=4096,
             messages=message,
-            model="claude-3-haiku-20240307",  # default it for now
+            temperature=self.temperature,
+            model=self.model,
         )
         t_text = r.content[0].text
         # api limit rate and spider rule
