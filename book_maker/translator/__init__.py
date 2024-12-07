@@ -26,7 +26,6 @@ MODEL_DICT = {
     "claude-3-5-sonnet-20240620": Claude,
     "claude-3-5-haiku-latest": Claude,
     "claude-3-5-haiku-20241022": Claude,
-    "claude-3-5-haiku-20240620": Claude,
     "gemini": Gemini,
     "geminipro": Gemini,
     "groq": GroqClient,
