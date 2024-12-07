@@ -25,6 +25,7 @@ class SRTBookLoader(BaseBookLoader):
         prompt_config=None,
         single_translate=False,
         context_flag=False,
+        context_paragraph_limit=0,
         temperature=1.0,
     ) -> None:
         self.srt_name = srt_name
