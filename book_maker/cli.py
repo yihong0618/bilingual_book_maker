@@ -440,6 +440,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         prompt_config=parse_prompt_arg(options.prompt_arg),
         single_translate=options.single_translate,
         context_flag=options.context_flag,
+        context_paragraph_limit=options.context_paragraph_limit,
         temperature=options.temperature,
     )
     # other options

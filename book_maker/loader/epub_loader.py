@@ -33,8 +33,8 @@ class EPUBBookLoader(BaseBookLoader):
         prompt_config=None,
         single_translate=False,
         context_flag=False,
-        temperature=1.0,
         context_paragraph_limit=0,
+        temperature=1.0,
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
