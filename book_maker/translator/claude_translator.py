@@ -43,10 +43,13 @@ class Claude(Base):
 
     def create_messages(self, text, intermediate_messages=None):
         """Create messages for the current translation request"""
-        current_msg = {"role": "user", "content": self.prompt_template.format(
-            text=text,
-            language=self.language,
-        )}
+        current_msg = {
+            "role": "user",
+            "content": self.prompt_template.format(
+                text=text,
+                language=self.language,
+            ),
+        }
 
         messages = []
         if intermediate_messages:
@@ -67,12 +70,9 @@ class Claude(Base):
                 "content": self.prompt_template.format(
                     text="\n\n".join(self.context_list),
                     language=self.language,
-                )
+                ),
             },
-            {
-                "role": "assistant",
-                "content": "\n\n".join(self.context_translated_list)
-            }
+            {"role": "assistant", "content": "\n\n".join(self.context_translated_list)},
         ]
 
     def save_context(self, text, t_text):
