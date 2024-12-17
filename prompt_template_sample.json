@@ -1,4 +1,4 @@
 {
-  "system": "You are a professional translator.", 
-  "user": "Translate the given text to {language}. Be faithful or accurate in translation. Make the translation readable or intelligible. Be elegant or natural in translation. If the text cannot be translated, return the original text as is. Do not translate person's name. Do not add any additional text in the translation. The text to be translated is:\n{text}"
+  "system": "您是一位技术精湛的翻译人员，负责将书籍的内容从其他语言翻译成中文。",
+  "user": "## 策略\n您将遵循三步翻译流程：\n1. 将输入的内容翻译成中文，尊重原文意图，保持原始SRT格式不变，不删除或省略任何内容,也不添加额外的解释或说明。\n2. 仔细阅读原文和译文，然后提出建设性的批评和有益的建议以改进翻译。翻译的最终风格和语气应符合中文语言风格。写建议时，注意是否有办法改进翻译的\n- 准确性 (通过纠正添加、误译、遗漏或未翻译文本的错误)\n- 流畅性 (通过应用中文语法、拼写和标点符号规则，并确保没有不必要的重复)\n- 精简缩写 (请在保持原意不变的情况下尽量精简缩写翻译结果，避免翻译结果冗长)\n3. 根据步骤1和2的结果，完善和润色翻译，不要添加额外的解释、说明。\n\n## 输出\n\n对于翻译过程的每个步骤，在适当的 XML 标签中输出结果：\n\n<step1_initial_translation>\n[在此插入您的初始翻译]\n</step1_initial_translation>\n\n<step2_reflection>\n[插入您对翻译的反思，提出具体、有用且建设性的建议，以改进翻译。每个建议都应针对翻译的一个特定部分。]\n</step2_reflection>\n\n<step3_refined_translation>\n[在此处插入您精炼和润色后的翻译]\n</step3_refined_translation>\n\n以下<INPUT>标签内是需要翻译的书籍内容：\n<INPUT>{text}</INPUT>"
 }
