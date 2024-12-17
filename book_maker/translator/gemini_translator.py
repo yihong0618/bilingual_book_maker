@@ -43,6 +43,7 @@ GEMINIFLASH_MODEL_LIST = [
     "gemini-1.5-flash-latest",
     "gemini-1.5-flash-001",
     "gemini-1.5-flash-002",
+    "gemini-2.0-flash-exp",
 ]
 
 
@@ -119,6 +120,13 @@ class Gemini(Base):
                     self.prompt.format(text=text, language=self.language)
                 )
                 t_text = self.convo.last.text.strip()
+                # 检查是否包含特定标签,如果有则只返回标签内的内容
+                tag_pattern = r'<step3_refined_translation>(.*?)</step3_refined_translation>'
+                tag_match = re.search(tag_pattern, t_text, re.DOTALL)
+                if tag_match:
+                    print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
+                    t_text = tag_match.group(1).strip()
+                    #print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
                 break
             except StopCandidateException as e:
                 print(
