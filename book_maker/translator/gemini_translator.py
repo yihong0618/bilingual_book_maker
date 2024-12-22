@@ -76,7 +76,7 @@ class Gemini(Base):
             or environ.get(PROMPT_ENV_MAP["system"])
             or None  # Allow None, but not empty string
         )
-
+        self.interval = 3
         genai.configure(api_key=next(self.keys))
         generation_config["temperature"] = temperature
 
