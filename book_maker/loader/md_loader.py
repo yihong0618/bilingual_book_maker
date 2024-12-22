@@ -60,21 +60,21 @@ class MarkdownBookLoader(BaseBookLoader):
         for line in self.origin_book:
             # 如果是空行且当前段落不为空，保存当前段落
             if not line.strip() and current_paragraph:
-                self.md_paragraphs.append('\n'.join(current_paragraph))
+                self.md_paragraphs.append("\n".join(current_paragraph))
                 current_paragraph = []
             # 如果是标题行，单独作为一个段落
-            elif line.strip().startswith('#'):
+            elif line.strip().startswith("#"):
                 if current_paragraph:
-                    self.md_paragraphs.append('\n'.join(current_paragraph))
+                    self.md_paragraphs.append("\n".join(current_paragraph))
                     current_paragraph = []
                 self.md_paragraphs.append(line)
             # 其他情况，添加到当前段落
             else:
                 current_paragraph.append(line)
-        
+
         # 处理最后一个段落
         if current_paragraph:
-            self.md_paragraphs.append('\n'.join(current_paragraph))
+            self.md_paragraphs.append("\n".join(current_paragraph))
 
     @staticmethod
     def _is_special_text(text):
@@ -93,7 +93,7 @@ class MarkdownBookLoader(BaseBookLoader):
                 for i in range(0, len(self.md_paragraphs), self.batch_size)
             ]
             for paragraphs in sliced_list:
-                batch_text = '\n\n'.join(paragraphs)
+                batch_text = "\n\n".join(paragraphs)
                 if self._is_special_text(batch_text):
                     continue
                 if not self.resume or index >= p_to_save_len:
@@ -112,7 +112,7 @@ class MarkdownBookLoader(BaseBookLoader):
                     except Exception as e:
                         print(f"翻译过程中出错: {e}")
                         raise Exception("翻译过程中出现错误") from e
-                    
+
                     self.p_to_save.append(temp)
                     if not self.single_translate:
                         self.bilingual_result.append(batch_text)

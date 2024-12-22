@@ -35,7 +35,7 @@ def parse_prompt_arg(prompt_arg):
     else:
         raise FileNotFoundError(f"{prompt_arg} not found")
 
-    #if prompt is None or any(c not in prompt["user"] for c in ["{text}", "{language}"]):
+    # if prompt is None or any(c not in prompt["user"] for c in ["{text}", "{language}"]):
     if prompt is None or any(c not in prompt["user"] for c in ["{text}"]):
         raise ValueError("prompt must contain `{text}`")
 

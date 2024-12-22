@@ -121,12 +121,18 @@ class Gemini(Base):
                 )
                 t_text = self.convo.last.text.strip()
                 # 检查是否包含特定标签,如果有则只返回标签内的内容
-                tag_pattern = r'<step3_refined_translation>(.*?)</step3_refined_translation>'
+                tag_pattern = (
+                    r"<step3_refined_translation>(.*?)</step3_refined_translation>"
+                )
                 tag_match = re.search(tag_pattern, t_text, re.DOTALL)
                 if tag_match:
-                    print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
+                    print(
+                        "[bold green]"
+                        + re.sub("\n{3,}", "\n\n", t_text)
+                        + "[/bold green]"
+                    )
                     t_text = tag_match.group(1).strip()
-                    #print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
+                    # print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
                 break
             except StopCandidateException as e:
                 print(
