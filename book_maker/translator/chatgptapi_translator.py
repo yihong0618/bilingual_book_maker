@@ -134,8 +134,8 @@ class ChatGPTAPI(Base):
             )
         return messages
 
-    def create_chat_completion(self, text):
-        messages = self.create_messages(text, self.create_context_messages())
+    def create_chat_completion(self, messages):
+        
         completion = self.openai_client.chat.completions.create(
             model=self.model,
             messages=messages,
@@ -146,15 +146,24 @@ class ChatGPTAPI(Base):
     def get_translation(self, text):
         self.rotate_key()
         self.rotate_model()  # rotate all the model to avoid the limit
-
-        completion = self.create_chat_completion(text)
+        
+        messages = self.create_messages(text, self.create_context_messages())
+        completion = self.create_chat_completion(messages)
 
         # TODO work well or exception finish by length limit
         # Check if content is not None before encoding
-        if completion.choices[0].message.content is not None:
-            t_text = completion.choices[0].message.content.encode("utf8").decode() or ""
-        else:
-            t_text = ""
+        t_text = ""
+        max_len_retry= 5
+        for len_retry in range(max_len_retry):
+            cur_content = completion.choices[0].message.content
+            if cur_content is not None:
+                t_text += cur_content.encode("utf8").decode() or ""
+            else:
+                break
+            if completion.choices[0].finish_reason != "length":
+                break
+            messages+=[{"role": "assistant","content": cur_content},{"role": "user", "content": "继续"}]
+            completion = self.create_chat_completion(messages)
 
         if self.context_flag:
             self.save_context(text, t_text)
