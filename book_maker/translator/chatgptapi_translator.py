@@ -109,7 +109,7 @@ class ChatGPTAPI(Base):
     def create_messages(self, text, intermediate_messages=None):
         content = self.prompt_template.format(
             text=text, language=self.language, crlf="\n"
-        )
+        ) if "{language}" in self.prompt_template else self.prompt_template.format(text=text, crlf="\n")
 
         sys_content = self.system_content or self.prompt_sys_msg.format(crlf="\n")
         messages = [
