@@ -6,10 +6,10 @@ from book_maker.utils import prompt_config_to_kwargs
 from .base_loader import BaseBookLoader
 
 
-class TXTBookLoader(BaseBookLoader):
+class MarkdownBookLoader(BaseBookLoader):
     def __init__(
         self,
-        txt_name,
+        md_name,
         model,
         key,
         resume,
@@ -23,7 +23,7 @@ class TXTBookLoader(BaseBookLoader):
         context_paragraph_limit=0,
         temperature=1.0,
     ) -> None:
-        self.txt_name = txt_name
+        self.md_name = md_name
         self.translate_model = model(
             key,
             language,
@@ -38,18 +38,43 @@ class TXTBookLoader(BaseBookLoader):
         self.test_num = test_num
         self.batch_size = 10
         self.single_translate = single_translate
+        self.md_paragraphs = []
 
         try:
-            with open(f"{txt_name}", encoding="utf-8") as f:
+            with open(f"{md_name}", encoding="utf-8") as f:
                 self.origin_book = f.read().splitlines()
 
         except Exception as e:
             raise Exception("can not load file") from e
 
         self.resume = resume
-        self.bin_path = f"{Path(txt_name).parent}/.{Path(txt_name).stem}.temp.bin"
+        self.bin_path = f"{Path(md_name).parent}/.{Path(md_name).stem}.temp.bin"
         if self.resume:
             self.load_state()
+
+        self.process_markdown_content()
+
+    def process_markdown_content(self):
+        """将原始内容处理成 markdown 段落"""
+        current_paragraph = []
+        for line in self.origin_book:
+            # 如果是空行且当前段落不为空，保存当前段落
+            if not line.strip() and current_paragraph:
+                self.md_paragraphs.append("\n".join(current_paragraph))
+                current_paragraph = []
+            # 如果是标题行，单独作为一个段落
+            elif line.strip().startswith("#"):
+                if current_paragraph:
+                    self.md_paragraphs.append("\n".join(current_paragraph))
+                    current_paragraph = []
+                self.md_paragraphs.append(line)
+            # 其他情况，添加到当前段落
+            else:
+                current_paragraph.append(line)
+
+        # 处理最后一个段落
+        if current_paragraph:
+            self.md_paragraphs.append("\n".join(current_paragraph))
 
     @staticmethod
     def _is_special_text(text):
@@ -64,20 +89,30 @@ class TXTBookLoader(BaseBookLoader):
 
         try:
             sliced_list = [
-                self.origin_book[i : i + self.batch_size]
-                for i in range(0, len(self.origin_book), self.batch_size)
+                self.md_paragraphs[i : i + self.batch_size]
+                for i in range(0, len(self.md_paragraphs), self.batch_size)
             ]
-            for i in sliced_list:
-                # fix the format thanks https://github.com/tudoujunha
-                batch_text = "\n".join(i)
+            for paragraphs in sliced_list:
+                batch_text = "\n\n".join(paragraphs)
                 if self._is_special_text(batch_text):
                     continue
                 if not self.resume or index >= p_to_save_len:
                     try:
-                        temp = self.translate_model.translate(batch_text)
+                        max_retries = 3
+                        retry_count = 0
+                        while retry_count < max_retries:
+                            try:
+                                temp = self.translate_model.translate(batch_text)
+                                break
+                            except AttributeError as ae:
+                                print(f"翻译出错: {ae}")
+                                retry_count += 1
+                                if retry_count == max_retries:
+                                    raise Exception("翻译模型初始化失败") from ae
                     except Exception as e:
-                        print(e)
-                        raise Exception("Something is wrong when translate") from e
+                        print(f"翻译过程中出错: {e}")
+                        raise Exception("翻译过程中出现错误") from e
+
                     self.p_to_save.append(temp)
                     if not self.single_translate:
                         self.bilingual_result.append(batch_text)
@@ -87,16 +122,16 @@ class TXTBookLoader(BaseBookLoader):
                     break
 
             self.save_file(
-                f"{Path(self.txt_name).parent}/{Path(self.txt_name).stem}_bilingual.txt",
+                f"{Path(self.md_name).parent}/{Path(self.md_name).stem}_bilingual.md",
                 self.bilingual_result,
             )
 
         except (KeyboardInterrupt, Exception) as e:
-            print(e)
-            print("you can resume it next time")
+            print(f"发生错误: {e}")
+            print("程序将保存进度，您可以稍后继续")
             self._save_progress()
             self._save_temp_book()
-            sys.exit(0)
+            sys.exit(1)  # 使用非零退出码表示错误
 
     def _save_temp_book(self):
         index = 0
@@ -115,7 +150,7 @@ class TXTBookLoader(BaseBookLoader):
             index += 1
 
         self.save_file(
-            f"{Path(self.txt_name).parent}/{Path(self.txt_name).stem}_bilingual_temp.txt",
+            f"{Path(self.md_name).parent}/{Path(self.md_name).stem}_bilingual_temp.txt",
             self.bilingual_temp_result,
         )
 
