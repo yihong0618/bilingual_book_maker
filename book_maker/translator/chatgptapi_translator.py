@@ -174,10 +174,10 @@ class ChatGPTAPI(Base):
         start_time = time.time()
         # todo: Determine whether to print according to the cli option
         if needprint:
-            print(re.sub("\n{3,}", "\n\n", text))
+            print(re.sub("\n{3,}", "\n\n", text).replace('[/','').replace(r'[\\',''))
 
         attempt_count = 0
-        max_attempts = 5
+        max_attempts = 30
         t_text = ""
 
         while attempt_count < max_attempts:
@@ -189,7 +189,7 @@ class ChatGPTAPI(Base):
                 # 1. openai server error or own network interruption, sleep for a fixed time
                 # 2. an apikey has no money or reach limit, don`t sleep, just replace it with another apikey
                 # 3. all apikey reach limit, then use current sleep
-                sleep_time = int(60 / self.key_len)
+                sleep_time = int(10 / self.key_len)
                 print(e, f"will sleep {sleep_time} seconds")
                 time.sleep(sleep_time)
                 attempt_count += 1
@@ -197,7 +197,7 @@ class ChatGPTAPI(Base):
                     print(f"Get {attempt_count} consecutive exceptions")
                     raise
             except Exception as e:
-                sleep_time = 10+20*attempt_count
+                sleep_time = 5+5*attempt_count
                 print(str(e), f"will sleep {sleep_time} seconds")
                 time.sleep(sleep_time)
                 attempt_count += 1
@@ -208,7 +208,7 @@ class ChatGPTAPI(Base):
 
         # todo: Determine whether to print according to the cli option
         if needprint:
-            print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
+            print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text).replace('[/','').replace(r'[\\','') + "[/bold green]")
 
         time.time() - start_time
         # print(f"translation time: {elapsed_time:.1f}s")
@@ -227,7 +227,7 @@ class ChatGPTAPI(Base):
         new_str,
         sleep_dur,
         result_list,
-        max_retries=15,
+        max_retries=20,
     ):
         if len(result_list) == plist_len:
             return result_list, 0
