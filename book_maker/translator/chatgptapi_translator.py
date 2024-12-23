@@ -143,7 +143,7 @@ class ChatGPTAPI(Base):
         )
         return completion
 
-    def get_translation(self, text):
+    def get_translation(self, text, needprint=True):
         self.rotate_key()
         self.rotate_model()  # rotate all the model to avoid the limit
         
@@ -162,6 +162,9 @@ class ChatGPTAPI(Base):
                 break
             if completion.choices[0].finish_reason != "length":
                 break
+            if needprint:
+                _comp_len_info = f"completion_tokens: {completion.usage.completion_tokens}" if completion.usage.completion_tokens else f"len(completion): {len(cur_content)}"
+                print(f"[bold red]Imcompleted translation due to length at Attempt {len_retry+1}; {_comp_len_info}[/bold red]")
             messages+=[{"role": "assistant","content": cur_content},{"role": "user", "content": "继续"}]
             completion = self.create_chat_completion(messages)
 
