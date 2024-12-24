@@ -153,7 +153,7 @@ class ChatGPTAPI(Base):
         # TODO work well or exception finish by length limit
         # Check if content is not None before encoding
         t_text = ""
-        max_len_retry= 5
+        max_len_retry= 32
         for len_retry in range(max_len_retry):
             cur_content = completion.choices[0].message.content
             if cur_content is not None:
