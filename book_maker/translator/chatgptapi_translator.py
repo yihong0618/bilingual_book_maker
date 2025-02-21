@@ -156,6 +156,7 @@ class ChatGPTAPI(Base):
         max_len_retry= 32
         for len_retry in range(max_len_retry):
             cur_content = completion.choices[0].message.content
+            cur_content = re.sub(r'<think>.*?</think>','',cur_content,flags=re.S) #r1-like things
             if cur_content is not None:
                 t_text += cur_content.encode("utf8").decode() or ""
             else:
