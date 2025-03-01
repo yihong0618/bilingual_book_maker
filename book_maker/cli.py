@@ -13,10 +13,48 @@ def parse_prompt_arg(prompt_arg):
     if prompt_arg is None:
         return prompt
 
-    if not any(prompt_arg.endswith(ext) for ext in [".json", ".txt"]):
+    # Check if it's a path to a markdown file (PromptDown format)
+    if prompt_arg.endswith(".md") and os.path.exists(prompt_arg):
+        try:
+            from promptdown import StructuredPrompt
+            structured_prompt = StructuredPrompt.from_promptdown_file(prompt_arg)
+            
+            # Initialize our prompt structure
+            prompt = {}
+            
+            # Handle developer_message or system_message
+            # Developer message takes precedence if both are present
+            if hasattr(structured_prompt, 'developer_message') and structured_prompt.developer_message:
+                prompt['system'] = structured_prompt.developer_message
+            elif hasattr(structured_prompt, 'system_message') and structured_prompt.system_message:
+                prompt['system'] = structured_prompt.system_message
+            
+            # Extract user message from conversation
+            if hasattr(structured_prompt, 'conversation') and structured_prompt.conversation:
+                for message in structured_prompt.conversation:
+                    if message.role.lower() == 'user':
+                        prompt['user'] = message.content
+                        break
+            
+            # Ensure we found a user message
+            if 'user' not in prompt or not prompt['user']:
+                raise ValueError("PromptDown file must contain at least one user message")
+                
+            print(f"Successfully loaded PromptDown file: {prompt_arg}")
+            
+            # Validate required placeholders
+            if any(c not in prompt["user"] for c in ["{text}"]):
+                raise ValueError("User message in PromptDown must contain `{text}` placeholder")
+            
+            return prompt
+        except Exception as e:
+            print(f"Error parsing PromptDown file: {e}")
+            # Fall through to other parsing methods
+    
+    # Existing parsing logic for JSON strings and other formats
+    if not any(prompt_arg.endswith(ext) for ext in [".json", ".txt", ".md"]):
         try:
             # user can define prompt by passing a json string
-            # eg: --prompt '{"system": "You are a professional translator who translates computer technology books", "user": "Translate \`{text}\` to {language}"}'
             prompt = json.loads(prompt_arg)
         except json.JSONDecodeError:
             # if not a json string, treat it as a template string
@@ -29,13 +67,12 @@ def parse_prompt_arg(prompt_arg):
                 prompt = {"user": f.read()}
         elif prompt_arg.endswith(".json"):
             # if it's a json file, treat it as a json object
-            # eg: --prompt prompt_template_sample.json
             with open(prompt_arg, encoding="utf-8") as f:
                 prompt = json.load(f)
     else:
         raise FileNotFoundError(f"{prompt_arg} not found")
 
-    # if prompt is None or any(c not in prompt["user"] for c in ["{text}", "{language}"]):
+    # Validate the prompt
     if prompt is None or any(c not in prompt["user"] for c in ["{text}"]):
         raise ValueError("prompt must contain `{text}`")
 
@@ -47,7 +84,6 @@ def parse_prompt_arg(prompt_arg):
 
     print("prompt config:", prompt)
     return prompt
-
 
 def main():
     translate_model_list = list(MODEL_DICT.keys())
@@ -245,7 +281,7 @@ def main():
         "--accumulated_num",
         dest="accumulated_num",
         type=int,
-        default=1,
+        default=200000,
         help="""Wait for how many tokens have been accumulated before starting the translation.
 gpt3.5 limits the total_token to 4090.
 For example, if you use --accumulated_num 1600, maybe openai will output 2200 tokens
@@ -263,6 +299,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         "--batch_size",
         dest="batch_size",
         type=int,
+        default=500,
         help="how many lines will be translated by aggregated translation(This options currently only applies to txt files)",
     )
     parser.add_argument(
