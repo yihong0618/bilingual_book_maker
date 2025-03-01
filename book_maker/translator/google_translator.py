@@ -2,7 +2,7 @@ import re
 import requests
 from rich import print
 
-
+from book_maker.utils import TO_LANGUAGE_CODE, LANGUAGES
 from .base_translator import Base
 
 
@@ -13,7 +13,14 @@ class Google(Base):
 
     def __init__(self, key, language, **kwargs) -> None:
         super().__init__(key, language)
-        self.api_url = "https://translate.google.com/translate_a/single?client=it&dt=qca&dt=t&dt=rmt&dt=bd&dt=rms&dt=sos&dt=md&dt=gt&dt=ld&dt=ss&dt=ex&otf=2&dj=1&hl=en&ie=UTF-8&oe=UTF-8&sl=auto&tl=zh-CN"
+
+        # Convert language name to code if needed, otherwise use as-is
+        if language.lower() in TO_LANGUAGE_CODE:
+            language_code = TO_LANGUAGE_CODE[language.lower()]
+        else:
+            language_code = language
+
+        self.api_url = f"https://translate.google.com/translate_a/single?client=it&dt=qca&dt=t&dt=rmt&dt=bd&dt=rms&dt=sos&dt=md&dt=gt&dt=ld&dt=ss&dt=ex&otf=2&dj=1&hl=en&ie=UTF-8&oe=UTF-8&sl=auto&tl={language_code}"
         self.headers = {
             "Content-Type": "application/x-www-form-urlencoded",
             "User-Agent": "GoogleTranslate/6.29.59279 (iPhone; iOS 15.4; en; iPhone14,2)",
