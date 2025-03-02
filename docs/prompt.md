@@ -19,6 +19,32 @@ To tweak the prompt, use the `--prompt` parameter. Valid placeholders for the `u
 
 You can also set the `user` and `system` role prompt by setting environment variables: `BBM_CHATGPTAPI_USER_MSG_TEMPLATE` and `BBM_CHATGPTAPI_SYS_MSG`.
 
+- You can now use PromptDown format (`.md` files) for more structured prompts: `--prompt prompt_md.prompt.md`
+
+        # Translation Prompt
+        
+        ## System Message
+        You are a professional translator who specializes in accurate translations.
+        
+        ## Conversation
+        
+        | Role  | Content                                  |
+        |-------|------------------------------------------|
+        | User  | Please translate the following text into {language}:\n\n{text} |
+        
+        # OR using Developer Message (for newer AI models)
+        
+        # Translation Prompt
+        
+        ## Developer Message
+        You are a professional translator who specializes in accurate translations.
+        
+        ## Conversation
+        
+        | Role  | Content                                  |
+        |-------|------------------------------------------|
+        | User  | Please translate the following text into {language}:\n\n{text} |
+
 ## Examples
 ```sh
 python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template_sample.txt

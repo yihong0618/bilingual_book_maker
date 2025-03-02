@@ -53,6 +53,7 @@ mdurl==0.1.2
 multidict==6.0.5
 openai==1.30.3
 packaging==24.0
+promptdown==0.9.0
 proto-plus==1.23.0
 protobuf==4.25.3
 pyasn1==0.6.0
