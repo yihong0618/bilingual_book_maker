@@ -138,3 +138,9 @@ log/
 *.srt
 *.txt
 *.bin
+*.epub
+
+# For markdown files in user directories
+.cursorrules
+books/
+prompts/
