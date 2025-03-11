@@ -64,6 +64,7 @@ O3MINI_MODEL_LIST = [
     "o3-mini",
 ]
 
+
 class ChatGPTAPI(Base):
     DEFAULT_PROMPT = "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text"
 
