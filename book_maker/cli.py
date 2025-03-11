@@ -17,40 +17,54 @@ def parse_prompt_arg(prompt_arg):
     if prompt_arg.endswith(".md") and os.path.exists(prompt_arg):
         try:
             from promptdown import StructuredPrompt
+
             structured_prompt = StructuredPrompt.from_promptdown_file(prompt_arg)
-            
+
             # Initialize our prompt structure
             prompt = {}
-            
+
             # Handle developer_message or system_message
             # Developer message takes precedence if both are present
-            if hasattr(structured_prompt, 'developer_message') and structured_prompt.developer_message:
-                prompt['system'] = structured_prompt.developer_message
-            elif hasattr(structured_prompt, 'system_message') and structured_prompt.system_message:
-                prompt['system'] = structured_prompt.system_message
-            
+            if (
+                hasattr(structured_prompt, "developer_message")
+                and structured_prompt.developer_message
+            ):
+                prompt["system"] = structured_prompt.developer_message
+            elif (
+                hasattr(structured_prompt, "system_message")
+                and structured_prompt.system_message
+            ):
+                prompt["system"] = structured_prompt.system_message
+
             # Extract user message from conversation
-            if hasattr(structured_prompt, 'conversation') and structured_prompt.conversation:
+            if (
+                hasattr(structured_prompt, "conversation")
+                and structured_prompt.conversation
+            ):
                 for message in structured_prompt.conversation:
-                    if message.role.lower() == 'user':
-                        prompt['user'] = message.content
+                    if message.role.lower() == "user":
+                        prompt["user"] = message.content
                         break
-            
+
             # Ensure we found a user message
-            if 'user' not in prompt or not prompt['user']:
-                raise ValueError("PromptDown file must contain at least one user message")
-                
+            if "user" not in prompt or not prompt["user"]:
+                raise ValueError(
+                    "PromptDown file must contain at least one user message"
+                )
+
             print(f"Successfully loaded PromptDown file: {prompt_arg}")
-            
+
             # Validate required placeholders
             if any(c not in prompt["user"] for c in ["{text}"]):
-                raise ValueError("User message in PromptDown must contain `{text}` placeholder")
-            
+                raise ValueError(
+                    "User message in PromptDown must contain `{text}` placeholder"
+                )
+
             return prompt
         except Exception as e:
             print(f"Error parsing PromptDown file: {e}")
             # Fall through to other parsing methods
-    
+
     # Existing parsing logic for JSON strings and other formats
     if not any(prompt_arg.endswith(ext) for ext in [".json", ".txt", ".md"]):
         try:
@@ -388,7 +402,17 @@ So you are close to reaching the limit. You have to choose your own value, there
     translate_model = MODEL_DICT.get(options.model)
     assert translate_model is not None, "unsupported model"
     API_KEY = ""
-    if options.model in ["openai", "chatgptapi", "gpt4", "gpt4omini", "gpt4o"]:
+    if options.model in [
+        "openai",
+        "chatgptapi",
+        "gpt4",
+        "gpt4omini",
+        "gpt4o",
+        "o1preview",
+        "o1",
+        "o1mini",
+        "o3mini",
+    ]:
         if OPENAI_API_KEY := (
             options.openai_key
             or env.get(
@@ -510,6 +534,10 @@ So you are close to reaching the limit. You have to choose your own value, there
             "gpt4",
             "gpt4omini",
             "gpt4o",
+            "o1",
+            "o1preview",
+            "o1mini",
+            "o3mini",
         ], "only support chatgptapi for deployment_id"
         if not options.api_base:
             raise ValueError("`api_base` must be provided when using `deployment_id`")
@@ -534,6 +562,14 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.translate_model.set_gpt4omini_models()
     if options.model == "gpt4o":
         e.translate_model.set_gpt4o_models()
+    if options.model == "o1preview":
+        e.translate_model.set_o1preview_models()
+    if options.model == "o1":
+        e.translate_model.set_o1_models()
+    if options.model == "o1mini":
+        e.translate_model.set_o1mini_models()
+    if options.model == "o3mini":
+        e.translate_model.set_o3mini_models()
     if options.model.startswith("claude-"):
         e.translate_model.set_claude_model(options.model)
     if options.block_size > 0:
