@@ -256,8 +256,7 @@ class ChatGPTAPI(Base):
             retry_count += 1
 
             # Make instructions increasingly explicit with each retry
-            emphasis = "!" * min(retry_count,
-                                 3)  # Add up to 3 exclamation marks
+            emphasis = "!" * min(retry_count, 3)  # Add up to 3 exclamation marks
             paragraph_instruction = f"IMPORTANT{emphasis} The text contains exactly {plist_len} numbered paragraphs. Your translation MUST maintain exactly {plist_len} paragraphs with the same numbering structure."
 
             # Extend the original prompt
@@ -392,12 +391,10 @@ class ChatGPTAPI(Base):
         log_path = "log/buglog.txt"
 
         self.log_retry(state, retry_count, end_time - start_time, log_path)
-        self.log_translation_mismatch(plist_len, result_list, new_str, sep,
-                                      log_path)
+        self.log_translation_mismatch(plist_len, result_list, new_str, sep, log_path)
 
         # Remove paragraph numbers from the result
-        result_list = [re.sub(r"^(\(\d+\)|\d+\.|(\d+))\s*", "", s) for s in
-                       result_list]
+        result_list = [re.sub(r"^(\(\d+\)|\d+\.|(\d+))\s*", "", s) for s in result_list]
         return result_list
 
     def extract_paragraphs(self, text, paragraph_count):
@@ -405,14 +402,14 @@ class ChatGPTAPI(Base):
         # First try to extract by paragraph numbers (1), (2), etc.
         result_list = []
         for i in range(1, paragraph_count + 1):
-            pattern = rf'\({i}\)\s*(.*?)(?=\s*\({i + 1}\)|\Z)'
+            pattern = rf"\({i}\)\s*(.*?)(?=\s*\({i + 1}\)|\Z)"
             match = re.search(pattern, text, re.DOTALL)
             if match:
                 result_list.append(match.group(1).strip())
 
         # If exact pattern matching failed, try another approach
         if len(result_list) != paragraph_count:
-            pattern = r'\((\d+)\)\s*(.*?)(?=\s*\(\d+\)|\Z)'
+            pattern = r"\((\d+)\)\s*(.*?)(?=\s*\(\d+\)|\Z)"
             matches = re.findall(pattern, text, re.DOTALL)
             if matches:
                 # Sort by paragraph number
