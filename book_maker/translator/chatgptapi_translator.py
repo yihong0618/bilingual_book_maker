@@ -377,12 +377,14 @@ class ChatGPTAPI(Base):
         # Save original prompt template
         original_prompt_template = self.prompt_template
 
-        # Create a structured prompt that forces exact paragraph count
+        # Create a structured prompt that forces exact paragraph count and prevents merging
         structured_prompt = (
             f"Translate the following {plist_len} paragraphs to {{language}}. "
             f"CRUCIAL: Your output MUST contain EXACTLY {plist_len} paragraphs. "
             f"Each paragraph is wrapped in numbered tags like <p1>text</p1>. "
-            f"Preserve these exact tags in your output, only translating the text inside them. "
+            f"DO NOT merge paragraphs. Keep each paragraph separate. "
+            f"DO NOT combine multiple paragraphs into one. "
+            f"Each original paragraph should become exactly one translated paragraph. "
             f"Example output format: <p1>translated text for paragraph 1</p1>\n<p2>translated text for paragraph 2</p2>\n...\n<p{plist_len}>translated text for paragraph {plist_len}</p{plist_len}>"
         )
 
@@ -400,7 +402,7 @@ class ChatGPTAPI(Base):
             result_list, retry_count = self.get_best_result_list(
                 plist_len,
                 new_str,
-                6,  # WTF this magic number here?
+                6,
                 result_list,
             )
         else:
@@ -411,6 +413,38 @@ class ChatGPTAPI(Base):
         # Restore original prompt
         self.prompt_template = original_prompt_template
 
+        # Clean up the results - strip any XML tags from the final output
+        cleaned_result_list = []
+        for paragraph in result_list:
+            # Remove any XML tags that might be in the output
+            cleaned_text = re.sub(r"<p\d+>(.*?)</p\d+>", r"\1", paragraph)
+            # Also clean any partial tags
+            cleaned_text = re.sub(r"</?p\d*>", "", cleaned_text).strip()
+            cleaned_result_list.append(cleaned_text)
+
+        # Check for merged paragraphs and attempt to split them
+        final_result_list = []
+        for paragraph in cleaned_result_list:
+            # If this is potentially a merged paragraph, try to split it
+            if len(paragraph) > 200 and ". " in paragraph:
+                # Look for sentence patterns that might indicate paragraph breaks
+                potential_paragraphs = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", paragraph)
+                # Only split if it would help us get closer to the target paragraph count
+                if (
+                    len(potential_paragraphs) > 1
+                    and len(final_result_list) + len(potential_paragraphs) <= plist_len
+                ):
+                    final_result_list.extend(potential_paragraphs)
+                    continue
+            final_result_list.append(paragraph)
+
+        # Ensure we have plist_len paragraphs
+        if len(final_result_list) > plist_len:
+            final_result_list = final_result_list[:plist_len]
+        elif len(final_result_list) < plist_len:
+            final_result_list.extend([""] * (plist_len - len(final_result_list)))
+
+        # Log results
         state = "fail" if len(result_list) != plist_len else "success"
         log_path = "log/buglog.txt"
 
@@ -420,7 +454,12 @@ class ChatGPTAPI(Base):
                 plist_len, result_list, new_str, "\n", log_path
             )
 
-        return result_list
+        # Del paragraph numbers if any remain
+        final_result_list = [
+            re.sub(r"^(\(\d+\)|\d+\.|(\d+))\s*", "", s) for s in final_result_list
+        ]
+
+        return final_result_list
 
     def extract_tagged_paragraphs(self, text, plist_len):
         """Extract paragraphs from text with <p1>...</p1> tags."""
