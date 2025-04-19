@@ -75,7 +75,7 @@ class ChatGPTAPI(Base):
         api_base=None,
         prompt_template=None,
         prompt_sys_msg=None,
-        temperature=0.2,
+        temperature=1.0,
         context_flag=False,
         context_paragraph_limit=0,
         **kwargs,
@@ -155,7 +155,6 @@ class ChatGPTAPI(Base):
             model=self.model,
             messages=messages,
             temperature=self.temperature,
-            top_p=0.1
         )
         return completion
 
@@ -241,39 +240,43 @@ class ChatGPTAPI(Base):
     ):
         if len(result_list) == plist_len:
             return result_list, 0
+
         best_result_list = result_list
         retry_count = 0
-        # Save the original templates
+
+        # Save original prompt template
         original_prompt_template = self.prompt_template
-        original_system_content = self.system_content
+
         while retry_count < max_retries and len(result_list) != plist_len:
             print(
                 f"bug: {plist_len} -> {len(result_list)} : Number of paragraphs before and after translation",
             )
-            print(f"sleep for {sleep_dur}s and retry {retry_count + 1} ...")
+            print(f"sleep for {sleep_dur}s and retry {retry_count+1} ...")
             time.sleep(sleep_dur)
             retry_count += 1
 
-            # Use increasingly forceful prompts on retries
-            self.prompt_template = f"Translate the following text to {{language}}. IMPORTANT: The text has EXACTLY {plist_len} numbered paragraphs. Your translation MUST have EXACTLY {plist_len} paragraphs with the same numbering (1), (2), etc. `{{text}}`"
-            self.system_content = f"You are a precise translator. The text contains {plist_len} paragraphs. Your output MUST contain exactly {plist_len} paragraphs, no more and no less."
+            # Make instructions increasingly explicit with each retry
+            emphasis = "!" * min(retry_count,
+                                 3)  # Add up to 3 exclamation marks
+            paragraph_instruction = f"IMPORTANT{emphasis} The text contains exactly {plist_len} numbered paragraphs. Your translation MUST maintain exactly {plist_len} paragraphs with the same numbering structure."
 
-            # Try again with modified instruction
-            result_str = self.translate(new_str, False)
-            result_list = self.extract_paragraphs(result_str, plist_len)
+            # Extend the original prompt
+            self.prompt_template = f"{original_prompt_template} {paragraph_instruction}"
 
+            result_list = self.translate_and_split_lines(new_str)
             if (
                 len(result_list) == plist_len
                 or len(best_result_list) < len(result_list) <= plist_len
                 or (
-                len(result_list) < len(best_result_list)
-                and len(best_result_list) > plist_len
-            )
+                    len(result_list) < len(best_result_list)
+                    and len(best_result_list) > plist_len
+                )
             ):
                 best_result_list = result_list
-        # Restore the original templates
+
+        # Restore original prompt
         self.prompt_template = original_prompt_template
-        self.system_content = original_system_content
+
         return best_result_list, retry_count
 
     def log_retry(self, state, retry_count, elapsed_time, log_path="log/buglog.txt"):
@@ -348,7 +351,6 @@ class ChatGPTAPI(Base):
         sep = "\n\n\n\n\n"
         plist_len = len(plist)
 
-        # Construct the text to be translated
         new_str = ""
         i = 1
         for p in plist:
@@ -360,41 +362,39 @@ class ChatGPTAPI(Base):
 
         if new_str.endswith(sep):
             new_str = new_str[: -len(sep)]
+
         new_str = self.join_lines(new_str)
 
         print(f"plist len = {plist_len}")
 
-        # Save the original prompt template and system message
+        # Preserve original prompt and append paragraph count requirements
         original_prompt_template = self.prompt_template
-        original_system_content = self.system_content
+        self.prompt_template = f"{original_prompt_template} The text contains exactly {plist_len} paragraphs numbered as (1), (2), etc. Your translation MUST maintain exactly {plist_len} paragraphs with the same numbering."
 
-        # Modify the prompt template and system message to include paragraph count requirement
-        self.prompt_template = f"Please translate the following {plist_len} numbered paragraphs to {{language}}. Ensure your translation maintains exactly {plist_len} paragraphs and preserves the paragraph numbers. `{{text}}`"
-        self.system_content = f"You are a translator. The text contains {plist_len} numbered paragraphs. Your translation must have exactly {plist_len} paragraphs with the same numbering structure."
+        # Translate with enhanced prompt
+        result_list = self.translate_and_split_lines(new_str)
 
-        # Translate with explicit paragraph count instruction
-        result_str = self.translate(new_str, False)
-
-        # Extract paragraphs with a robust strategy
-        result_list = self.extract_paragraphs(result_str, plist_len)
-
-        # Restore original templates
+        # Restore original prompt
         self.prompt_template = original_prompt_template
-        self.system_content = original_system_content
 
         start_time = time.time()
+
         result_list, retry_count = self.get_best_result_list(
             plist_len,
             new_str,
-            6,
+            6,  # WTF this magic number here?
             result_list,
         )
+
         end_time = time.time()
+
         state = "fail" if len(result_list) != plist_len else "success"
         log_path = "log/buglog.txt"
+
         self.log_retry(state, retry_count, end_time - start_time, log_path)
         self.log_translation_mismatch(plist_len, result_list, new_str, sep,
                                       log_path)
+
         # Remove paragraph numbers from the result
         result_list = [re.sub(r"^(\(\d+\)|\d+\.|(\d+))\s*", "", s) for s in
                        result_list]
