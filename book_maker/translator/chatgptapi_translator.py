@@ -384,6 +384,7 @@ class ChatGPTAPI(Base):
             f"Each paragraph is wrapped in numbered tags like <p1>text</p1>. "
             f"DO NOT merge paragraphs. Keep each paragraph separate. "
             f"DO NOT combine multiple paragraphs into one. "
+            f"Preserve numbers at the beginning of paragraphs like '17' or '10x'. "
             f"Each original paragraph should become exactly one translated paragraph. "
             f"Example output format: <p1>translated text for paragraph 1</p1>\n<p2>translated text for paragraph 2</p2>\n...\n<p{plist_len}>translated text for paragraph {plist_len}</p{plist_len}>"
         )
@@ -438,7 +439,7 @@ class ChatGPTAPI(Base):
                     continue
             final_result_list.append(paragraph)
 
-        # Ensure we have plist_len paragraphs
+        # Ensure we have exactly plist_len paragraphs
         if len(final_result_list) > plist_len:
             final_result_list = final_result_list[:plist_len]
         elif len(final_result_list) < plist_len:
@@ -454,9 +455,9 @@ class ChatGPTAPI(Base):
                 plist_len, result_list, new_str, "\n", log_path
             )
 
-        # Del paragraph numbers if any remain
+        # Remove ONLY the paragraph numbering formats, not all numbers at the start
         final_result_list = [
-            re.sub(r"^(\(\d+\)|\d+\.|(\d+))\s*", "", s) for s in final_result_list
+            re.sub(r"^(\(\d+\)|\d+\.)\s*", "", s) for s in final_result_list
         ]
 
         return final_result_list
