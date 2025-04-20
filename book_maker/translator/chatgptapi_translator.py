@@ -361,106 +361,110 @@ class ChatGPTAPI(Base):
     def translate_list(self, plist):
         plist_len = len(plist)
 
-        # Format input with explicit paragraph numbering
-        formatted_paragraphs = []
+        # 创建原始文本列表，并为每个段落添加明确的编号标记
+        formatted_text = ""
         for i, p in enumerate(plist, 1):
             temp_p = copy(p)
             for sup in temp_p.find_all("sup"):
                 sup.extract()
-            formatted_paragraphs.append(f"<p{i}>{temp_p.get_text().strip()}</p{i}>")
-
-        # Join with single newlines for cleaner input
-        new_str = "\n".join(formatted_paragraphs)
+            para_text = temp_p.get_text().strip()
+            # 使用特殊的分隔符和明确的编号
+            formatted_text += f"PARAGRAPH {i}:\n{para_text}\n\n"
 
         print(f"plist len = {plist_len}")
 
-        # Save original prompt template
+        # 保存原始提示模板
         original_prompt_template = self.prompt_template
 
-        # Create a structured prompt that forces exact paragraph count and prevents merging
+        # 创建明确要求保持段落结构的提示
         structured_prompt = (
             f"Translate the following {plist_len} paragraphs to {{language}}. "
-            f"CRUCIAL: Your output MUST contain EXACTLY {plist_len} paragraphs. "
-            f"Each paragraph is wrapped in numbered tags like <p1>text</p1>. "
-            f"DO NOT merge paragraphs. Keep each paragraph separate. "
-            f"DO NOT combine multiple paragraphs into one. "
-            f"Preserve numbers at the beginning of paragraphs like '17' or '10x'. "
-            f"Each original paragraph should become exactly one translated paragraph. "
-            f"Example output format: <p1>translated text for paragraph 1</p1>\n<p2>translated text for paragraph 2</p2>\n...\n<p{plist_len}>translated text for paragraph {plist_len}</p{plist_len}>"
+            f"CRUCIAL INSTRUCTION: Format your response using EXACTLY this structure:\n\n"
+            f"TRANSLATION OF PARAGRAPH 1:\n[Your translation of paragraph 1 here]\n\n"
+            f"TRANSLATION OF PARAGRAPH 2:\n[Your translation of paragraph 2 here]\n\n"
+            f"... and so on for all {plist_len} paragraphs.\n\n"
+            f"You MUST provide EXACTLY {plist_len} translated paragraphs. "
+            f"Do not merge, split, or rearrange paragraphs. "
+            f"Translate each paragraph independently but consistently. "
+            f"Keep all numbers and special formatting in your translation. "
+            f"Each original paragraph must correspond to exactly one translated paragraph."
         )
 
-        self.prompt_template = structured_prompt + " `{text}`"
+        self.prompt_template = structured_prompt + " ```{text}```"
 
-        # First translation attempt
-        translated_text = self.translate(new_str, False)
+        # 翻译
+        translated_text = self.translate(formatted_text, False)
 
-        # Extract paragraphs using the tags
-        result_list = self.extract_tagged_paragraphs(translated_text, plist_len)
-
-        # If we still don't have the right number, try the retry approach
-        start_time = time.time()
-        if len(result_list) != plist_len:
-            result_list, retry_count = self.get_best_result_list(
-                plist_len,
-                new_str,
-                6,
-                result_list,
+        # 从结构化输出中提取翻译
+        translated_paragraphs = []
+        for i in range(1, plist_len + 1):
+            pattern = (
+                r"TRANSLATION OF PARAGRAPH "
+                + str(i)
+                + r":(.*?)(?=TRANSLATION OF PARAGRAPH \d+:|\Z)"
             )
-        else:
-            retry_count = 0
+            matches = re.findall(pattern, translated_text, re.DOTALL)
 
-        end_time = time.time()
+            if matches:
+                translated_paragraph = matches[0].strip()
+                translated_paragraphs.append(translated_paragraph)
+            else:
+                print(f"Warning: Could not find translation for paragraph {i}")
+                # 尝试更宽松的匹配
+                loose_pattern = (
+                    r"(?:TRANSLATION|PARAGRAPH|PARA).*?"
+                    + str(i)
+                    + r".*?:(.*?)(?=(?:TRANSLATION|PARAGRAPH|PARA).*?\d+.*?:|\Z)"
+                )
+                loose_matches = re.findall(loose_pattern, translated_text, re.DOTALL)
+                if loose_matches:
+                    translated_paragraphs.append(loose_matches[0].strip())
+                else:
+                    translated_paragraphs.append("")
 
-        # Restore original prompt
+        # 恢复原始提示
         self.prompt_template = original_prompt_template
 
-        # Clean up the results - strip any XML tags from the final output
-        cleaned_result_list = []
-        for paragraph in result_list:
-            # Remove any XML tags that might be in the output
-            cleaned_text = re.sub(r"<p\d+>(.*?)</p\d+>", r"\1", paragraph)
-            # Also clean any partial tags
-            cleaned_text = re.sub(r"</?p\d*>", "", cleaned_text).strip()
-            cleaned_result_list.append(cleaned_text)
-
-        # Check for merged paragraphs and attempt to split them
-        final_result_list = []
-        for paragraph in cleaned_result_list:
-            # If this is potentially a merged paragraph, try to split it
-            if len(paragraph) > 200 and ". " in paragraph:
-                # Look for sentence patterns that might indicate paragraph breaks
-                potential_paragraphs = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", paragraph)
-                # Only split if it would help us get closer to the target paragraph count
-                if (
-                    len(potential_paragraphs) > 1
-                    and len(final_result_list) + len(potential_paragraphs) <= plist_len
-                ):
-                    final_result_list.extend(potential_paragraphs)
-                    continue
-            final_result_list.append(paragraph)
-
-        # Ensure we have exactly plist_len paragraphs
-        if len(final_result_list) > plist_len:
-            final_result_list = final_result_list[:plist_len]
-        elif len(final_result_list) < plist_len:
-            final_result_list.extend([""] * (plist_len - len(final_result_list)))
-
-        # Log results
-        state = "fail" if len(result_list) != plist_len else "success"
-        log_path = "log/buglog.txt"
-
-        self.log_retry(state, retry_count, end_time - start_time, log_path)
-        if state == "fail":
-            self.log_translation_mismatch(
-                plist_len, result_list, new_str, "\n", log_path
+        # 如果提取到的段落数不正确，尝试备用提取方法
+        if len(translated_paragraphs) != plist_len:
+            print(
+                f"Warning: Extracted {len(translated_paragraphs)}/{plist_len} paragraphs. Using fallback extraction."
             )
+            # 提取所有可能的段落标记
+            all_para_pattern = r"(?:TRANSLATION|PARAGRAPH|PARA).*?(\d+).*?:(.*?)(?=(?:TRANSLATION|PARAGRAPH|PARA).*?\d+.*?:|\Z)"
+            all_matches = re.findall(all_para_pattern, translated_text, re.DOTALL)
 
-        # Remove ONLY the paragraph numbering formats, not all numbers at the start
-        final_result_list = [
-            re.sub(r"^(\(\d+\)|\d+\.)\s*", "", s) for s in final_result_list
-        ]
+            if all_matches:
+                # 创建一个字典，根据段落编号映射翻译内容
+                para_dict = {}
+                for num_str, content in all_matches:
+                    try:
+                        num = int(num_str)
+                        if 1 <= num <= plist_len:
+                            para_dict[num] = content.strip()
+                    except ValueError:
+                        continue
 
-        return final_result_list
+                # 按原始顺序重建翻译列表
+                new_translated_paragraphs = []
+                for i in range(1, plist_len + 1):
+                    if i in para_dict:
+                        new_translated_paragraphs.append(para_dict[i])
+                    else:
+                        new_translated_paragraphs.append("")
+
+                if len(new_translated_paragraphs) == plist_len:
+                    translated_paragraphs = new_translated_paragraphs
+
+        # 确保最终有正确数量的段落
+        if len(translated_paragraphs) < plist_len:
+            translated_paragraphs.extend(
+                [""] * (plist_len - len(translated_paragraphs))
+            )
+        elif len(translated_paragraphs) > plist_len:
+            translated_paragraphs = translated_paragraphs[:plist_len]
+
+        return translated_paragraphs
 
     def extract_tagged_paragraphs(self, text, plist_len):
         """Extract paragraphs from text with <p1>...</p1> tags."""
