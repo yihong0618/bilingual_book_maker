@@ -75,7 +75,7 @@ class ChatGPTAPI(Base):
         api_base=None,
         prompt_template=None,
         prompt_sys_msg=None,
-        temperature=1.0,
+        temperature=1.3,
         context_flag=False,
         context_paragraph_limit=0,
         **kwargs,
@@ -229,66 +229,6 @@ class ChatGPTAPI(Base):
         lines = result_str.splitlines()
         lines = [line.strip() for line in lines if line.strip() != ""]
         return lines
-
-    def get_best_result_list(
-        self,
-        plist_len,
-        new_str,
-        sleep_dur,
-        result_list,
-        max_retries=15,
-    ):
-        if len(result_list) == plist_len:
-            return result_list, 0
-        best_result_list = result_list
-        retry_count = 0
-
-        # Save original prompt template
-        original_prompt_template = self.prompt_template
-        while retry_count < max_retries and len(result_list) != plist_len:
-            print(
-                f"bug: {plist_len} -> {len(result_list)} : Number of paragraphs before and after translation",
-            )
-            print(f"sleep for {sleep_dur}s and retry {retry_count + 1} ...")
-            time.sleep(sleep_dur)
-            retry_count += 1
-
-            # Create increasingly strict prompts
-            structured_prompt = (
-                f"CRITICAL!!! Translate the following {plist_len} paragraphs to {{language}}. "
-                f"Your output MUST have EXACTLY {plist_len} paragraphs - NO MORE, NO LESS. "
-                f"Each paragraph must be wrapped in numbered XML tags: <p1>text</p1>, <p2>text</p2>, etc. "
-                f"DO NOT skip any paragraph numbers. DO NOT add extra paragraphs. "
-                f"Required format: <p1>translated text</p1>\n<p2>translated text</p2>\n...\n<p{plist_len}>translated text</p{plist_len}>"
-            )
-
-            self.prompt_template = structured_prompt + " `{text}`"
-
-            translated_text = self.translate(new_str, False)
-            result_list = self.extract_tagged_paragraphs(translated_text, plist_len)
-
-            if (
-                len(result_list) == plist_len
-                or len(best_result_list) < len(result_list) <= plist_len
-                or (
-                    len(result_list) < len(best_result_list)
-                    and len(best_result_list) > plist_len
-                )
-            ):
-                best_result_list = result_list
-        # Restore original prompt
-        self.prompt_template = original_prompt_template
-
-        # If we still don't have the right number, force it by padding or trimming
-        if len(best_result_list) != plist_len:
-            if len(best_result_list) < plist_len:
-                # Pad with empty strings if we have too few
-                best_result_list.extend([""] * (plist_len - len(best_result_list)))
-            else:
-                # Trim if we have too many
-                best_result_list = best_result_list[:plist_len]
-
-        return best_result_list, retry_count
 
     def log_retry(self, state, retry_count, elapsed_time, log_path="log/buglog.txt"):
         if retry_count == 0:
@@ -465,72 +405,6 @@ class ChatGPTAPI(Base):
             translated_paragraphs = translated_paragraphs[:plist_len]
 
         return translated_paragraphs
-
-    def extract_tagged_paragraphs(self, text, plist_len):
-        """Extract paragraphs from text with <p1>...</p1> tags."""
-        result_list = []
-
-        # Try extracting with tags first
-        for i in range(1, plist_len + 1):
-            pattern = rf"<p{i}>(.*?)</p{i}>"
-            matches = re.findall(pattern, text, re.DOTALL)
-            if matches:
-                result_list.append(matches[0].strip())
-
-        # If we got all paragraphs, return them
-        if len(result_list) == plist_len:
-            return result_list
-
-        # Fallback: try general tag pattern
-        pattern = r"<p(\d+)>(.*?)</p\1>"
-        matches = re.findall(pattern, text, re.DOTALL)
-
-        if matches and len(matches) == plist_len:
-            # Sort by paragraph number
-            matches.sort(key=lambda x: int(x[0]))
-            result_list = [match[1].strip() for match in matches]
-            return result_list
-
-        # Second fallback: try another approach with numbered paragraphs
-        result_list = []
-        for i in range(1, plist_len + 1):
-            pattern = rf"\({i}\)\s*(.*?)(?=\s*\({i + 1}\)|\Z)"
-            match = re.search(pattern, text, re.DOTALL)
-            if match:
-                result_list.append(match.group(1).strip())
-
-        # If all else fails, fall back to splitting by lines
-        if len(result_list) != plist_len:
-            lines = text.splitlines()
-            non_empty_lines = [line.strip() for line in lines if line.strip()]
-
-            # Attempt to find paragraph markers and divide accordingly
-            paragraph_markers = [
-                i
-                for i, line in enumerate(non_empty_lines)
-                if re.match(r"^\s*(\(\d+\)|\d+\.)", line)
-            ]
-
-            if len(paragraph_markers) == plist_len:
-                result_list = []
-                for i in range(len(paragraph_markers)):
-                    start = paragraph_markers[i]
-                    end = (
-                        paragraph_markers[i + 1]
-                        if i < len(paragraph_markers) - 1
-                        else len(non_empty_lines)
-                    )
-                    paragraph = " ".join(non_empty_lines[start:end])
-                    result_list.append(re.sub(r"^\s*(\(\d+\)|\d+\.)\s*", "", paragraph))
-            else:
-                # Last resort: try to split evenly
-                result_list = (
-                    non_empty_lines[:plist_len]
-                    if len(non_empty_lines) >= plist_len
-                    else non_empty_lines
-                )
-
-        return result_list
 
     def extract_paragraphs(self, text, paragraph_count):
         """Extract paragraphs from translated text, ensuring paragraph count is preserved."""
