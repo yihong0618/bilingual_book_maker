@@ -75,7 +75,7 @@ class ChatGPTAPI(Base):
         api_base=None,
         prompt_template=None,
         prompt_sys_msg=None,
-        temperature=1.3,
+        temperature=1.0,
         context_flag=False,
         context_paragraph_limit=0,
         **kwargs,
@@ -301,22 +301,20 @@ class ChatGPTAPI(Base):
     def translate_list(self, plist):
         plist_len = len(plist)
 
-        # 创建原始文本列表，并为每个段落添加明确的编号标记
+        # Create a list of original texts and add clear numbering markers to each paragraph
         formatted_text = ""
         for i, p in enumerate(plist, 1):
             temp_p = copy(p)
             for sup in temp_p.find_all("sup"):
                 sup.extract()
             para_text = temp_p.get_text().strip()
-            # 使用特殊的分隔符和明确的编号
+            # Using special delimiters and clear numbering
             formatted_text += f"PARAGRAPH {i}:\n{para_text}\n\n"
 
         print(f"plist len = {plist_len}")
 
-        # 保存原始提示模板
         original_prompt_template = self.prompt_template
 
-        # 创建明确要求保持段落结构的提示
         structured_prompt = (
             f"Translate the following {plist_len} paragraphs to {{language}}. "
             f"CRUCIAL INSTRUCTION: Format your response using EXACTLY this structure:\n\n"
@@ -332,10 +330,9 @@ class ChatGPTAPI(Base):
 
         self.prompt_template = structured_prompt + " ```{text}```"
 
-        # 翻译
         translated_text = self.translate(formatted_text, False)
 
-        # 从结构化输出中提取翻译
+        # Extract translations from structured output
         translated_paragraphs = []
         for i in range(1, plist_len + 1):
             pattern = (
@@ -350,7 +347,6 @@ class ChatGPTAPI(Base):
                 translated_paragraphs.append(translated_paragraph)
             else:
                 print(f"Warning: Could not find translation for paragraph {i}")
-                # 尝试更宽松的匹配
                 loose_pattern = (
                     r"(?:TRANSLATION|PARAGRAPH|PARA).*?"
                     + str(i)
@@ -362,20 +358,19 @@ class ChatGPTAPI(Base):
                 else:
                     translated_paragraphs.append("")
 
-        # 恢复原始提示
         self.prompt_template = original_prompt_template
 
-        # 如果提取到的段落数不正确，尝试备用提取方法
+        # If the number of extracted paragraphs is incorrect, try the alternative extraction method.
         if len(translated_paragraphs) != plist_len:
             print(
                 f"Warning: Extracted {len(translated_paragraphs)}/{plist_len} paragraphs. Using fallback extraction."
             )
-            # 提取所有可能的段落标记
+
             all_para_pattern = r"(?:TRANSLATION|PARAGRAPH|PARA).*?(\d+).*?:(.*?)(?=(?:TRANSLATION|PARAGRAPH|PARA).*?\d+.*?:|\Z)"
             all_matches = re.findall(all_para_pattern, translated_text, re.DOTALL)
 
             if all_matches:
-                # 创建一个字典，根据段落编号映射翻译内容
+                # Create a dictionary to map translation content based on paragraph numbers
                 para_dict = {}
                 for num_str, content in all_matches:
                     try:
@@ -385,7 +380,7 @@ class ChatGPTAPI(Base):
                     except ValueError:
                         continue
 
-                # 按原始顺序重建翻译列表
+                # Rebuild the translation list in the original order
                 new_translated_paragraphs = []
                 for i in range(1, plist_len + 1):
                     if i in para_dict:
@@ -396,7 +391,6 @@ class ChatGPTAPI(Base):
                 if len(new_translated_paragraphs) == plist_len:
                     translated_paragraphs = new_translated_paragraphs
 
-        # 确保最终有正确数量的段落
         if len(translated_paragraphs) < plist_len:
             translated_paragraphs.extend(
                 [""] * (plist_len - len(translated_paragraphs))
