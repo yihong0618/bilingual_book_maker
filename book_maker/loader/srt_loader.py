@@ -27,6 +27,7 @@ class SRTBookLoader(BaseBookLoader):
         context_flag=False,
         context_paragraph_limit=0,
         temperature=1.0,
+        source_lang="auto",
     ) -> None:
         self.srt_name = srt_name
         self.translate_model = model(
@@ -34,6 +35,7 @@ class SRTBookLoader(BaseBookLoader):
             language,
             api_base=model_api_base,
             temperature=temperature,
+            source_lang=source_lang,
             **prompt_config_to_kwargs(
                 {
                     "system": "You are a srt subtitle file translator.",
