@@ -37,6 +37,7 @@ MODEL_DICT = {
     "tencentransmart": TencentTranSmart,
     "customapi": CustomAPI,
     "xai": XAIClient,
+    "qwen": QwenTranslator,
     "qwen-mt-turbo": QwenTranslator,
     "qwen-mt-plus": QwenTranslator,
     # add more here
