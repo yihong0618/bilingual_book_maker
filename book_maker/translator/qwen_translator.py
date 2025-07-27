@@ -220,7 +220,7 @@ class QwenTranslator(Base):
                     time.sleep(1)  # Wait before retry
 
         if needprint:
-            print(f"[bold green]{re.sub(r'\n{3,}', '\n\n', t_text)}[/bold green]")
+            print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
 
         end_time = time.time()
         print(f"[dim]Translation time: {end_time - start_time:.2f}s[/dim]")
