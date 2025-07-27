@@ -137,7 +137,7 @@ class EPUBBookLoader(BaseBookLoader):
     def _extract_paragraph(self, p):
         for p_exclude in self.exclude_translate_tags.split(","):
             # for issue #280
-            if type(p) == NavigableString:
+            if type(p) is NavigableString:
                 continue
             for pt in p.find_all(p_exclude):
                 pt.extract()
@@ -154,7 +154,7 @@ class EPUBBookLoader(BaseBookLoader):
                 t_text = self.translate_model.batch_translate(index)
             else:
                 t_text = self.translate_model.translate(new_p.text)
-            if type(p) == NavigableString:
+            if type(p) is NavigableString:
                 new_p = t_text
                 self.p_to_save.append(new_p)
             else:
@@ -198,7 +198,7 @@ class EPUBBookLoader(BaseBookLoader):
                 else:
                     p = p_block[i]
 
-                if type(p) == NavigableString:
+                if type(p) is NavigableString:
                     p = t
                 else:
                     p.string = t
@@ -220,7 +220,7 @@ class EPUBBookLoader(BaseBookLoader):
 
             for p_exclude in self.exclude_translate_tags.split(","):
                 # for issue #280
-                if type(p) == NavigableString:
+                if type(p) is NavigableString:
                     continue
                 for pt in temp_p.find_all(p_exclude):
                     pt.extract()
@@ -381,7 +381,7 @@ class EPUBBookLoader(BaseBookLoader):
         fixstart=None,
         fixend=None,
     ):
-        if self.only_filelist != "" and not item.file_name in self.only_filelist.split(
+        if self.only_filelist != "" and item.file_name not in self.only_filelist.split(
             ","
         ):
             return index
@@ -587,7 +587,7 @@ class EPUBBookLoader(BaseBookLoader):
                         # PR welcome here
                         if index < p_to_save_len:
                             new_p = copy(p)
-                            if type(p) == NavigableString:
+                            if type(p) is NavigableString:
                                 new_p = self.p_to_save[index]
                             else:
                                 new_p.string = self.p_to_save[index]

@@ -23,7 +23,6 @@ class DeepL(Base):
             "X-RapidAPI-Key": "",
             "X-RapidAPI-Host": "dpl-translator.p.rapidapi.com",
         }
-        l = None
         l = language if language in LANGUAGES else TO_LANGUAGE_CODE.get(language)
         if l not in [
             "bg",

@@ -160,8 +160,8 @@ class MarkdownBookLoader(BaseBookLoader):
         try:
             with open(self.bin_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(self.p_to_save))
-        except:
-            raise Exception("can not save resume file")
+        except Exception as e:
+            raise Exception("can not save resume file") from e
 
     def load_state(self):
         try:
@@ -174,5 +174,5 @@ class MarkdownBookLoader(BaseBookLoader):
         try:
             with open(book_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(content))
-        except:
-            raise Exception("can not save file")
+        except Exception as e:
+            raise Exception("can not save file") from e

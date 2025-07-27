@@ -1,6 +1,5 @@
 import re
 import time
-from os import environ
 from rich import print
 from openai import OpenAI
 
@@ -100,7 +99,7 @@ class QwenTranslator(Base):
         self.context_translated_list = []
         self.context_paragraph_limit = context_paragraph_limit
 
-        print(f"[bold blue]Qwen Translator initialized:[/bold blue]")
+        print("[bold blue]Qwen Translator initialized:[/bold blue]")
         print(f"  Model: {self.model}")
         print(f"  Source Language: {self.source_lang}")
         print(f"  Target Language: {self.target_lang}")

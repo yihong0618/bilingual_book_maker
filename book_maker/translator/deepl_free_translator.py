@@ -16,7 +16,6 @@ class DeepLFree(Base):
 
     def __init__(self, key, language, **kwargs) -> None:
         super().__init__(key, language)
-        l = None
         l = language if language in LANGUAGES else TO_LANGUAGE_CODE.get(language)
         if l not in [
             "bg",

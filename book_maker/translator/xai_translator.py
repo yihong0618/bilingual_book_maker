@@ -1,7 +1,5 @@
 from openai import OpenAI
 from .chatgptapi_translator import ChatGPTAPI
-from os import linesep
-from itertools import cycle
 
 
 XAI_MODEL_LIST = [

@@ -402,7 +402,7 @@ So you are close to reaching the limit. You have to choose your own value, there
     options = parser.parse_args()
 
     if not options.book_name:
-        print(f"Error: please provide the path of your book using --book_name <path>")
+        print("Error: please provide the path of your book using --book_name <path>")
         exit(1)
     if not os.path.isfile(options.book_name):
         print(f"Error: the book {options.book_name!r} does not exist.")
