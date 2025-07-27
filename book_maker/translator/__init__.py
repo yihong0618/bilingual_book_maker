@@ -9,6 +9,7 @@ from book_maker.translator.groq_translator import GroqClient
 from book_maker.translator.tencent_transmart_translator import TencentTranSmart
 from book_maker.translator.custom_api_translator import CustomAPI
 from book_maker.translator.xai_translator import XAIClient
+from book_maker.translator.qwen_translator import QwenTranslator
 
 MODEL_DICT = {
     "openai": ChatGPTAPI,
@@ -36,5 +37,8 @@ MODEL_DICT = {
     "tencentransmart": TencentTranSmart,
     "customapi": CustomAPI,
     "xai": XAIClient,
+    "qwen": QwenTranslator,
+    "qwen-mt-turbo": QwenTranslator,
+    "qwen-mt-plus": QwenTranslator,
     # add more here
 }

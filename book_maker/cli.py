@@ -184,6 +184,14 @@ def main():
         help="You can get xAI Key from  https://console.x.ai/",
     )
 
+    # for Qwen
+    parser.add_argument(
+        "--qwen_key",
+        dest="qwen_key",
+        type=str,
+        help="You can get Qwen Key from  https://bailian.console.aliyun.com/?tab=model#/api-key",
+    )
+
     parser.add_argument(
         "--test",
         dest="test",
@@ -355,6 +363,12 @@ So you are close to reaching the limit. You have to choose your own value, there
         help="temperature parameter for `chatgptapi`/`gpt4`/`claude`/`gemini`",
     )
     parser.add_argument(
+        "--source_lang",
+        type=str,
+        default="auto",
+        help="source language for translation models like `qwen` (default: auto-detect)",
+    )
+    parser.add_argument(
         "--block_size",
         type=int,
         default=-1,
@@ -453,6 +467,8 @@ So you are close to reaching the limit. You have to choose your own value, there
         API_KEY = options.groq_key or env.get("BBM_GROQ_API_KEY")
     elif options.model == "xai":
         API_KEY = options.xai_key or env.get("BBM_XAI_API_KEY")
+    elif options.model.startswith("qwen-"):
+        API_KEY = options.qwen_key or env.get("BBM_QWEN_API_KEY")
     else:
         API_KEY = ""
 
@@ -506,6 +522,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         context_flag=options.context_flag,
         context_paragraph_limit=options.context_paragraph_limit,
         temperature=options.temperature,
+        source_lang=options.source_lang,
     )
     # other options
     if options.allow_navigable_strings:
@@ -572,6 +589,8 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.translate_model.set_o3mini_models()
     if options.model.startswith("claude-"):
         e.translate_model.set_claude_model(options.model)
+    if options.model.startswith("qwen-"):
+        e.translate_model.set_qwen_model(options.model)
     if options.block_size > 0:
         e.block_size = options.block_size
     if options.batch_flag:
