@@ -140,6 +140,7 @@ class ChatGPTAPI(Base):
             model=self.model,
             messages=messages,
             temperature=self.temperature,
+            stream=False,
         )
         return completion
 
