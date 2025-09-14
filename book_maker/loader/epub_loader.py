@@ -156,7 +156,9 @@ class EPUBBookLoader(BaseBookLoader):
             else:
                 t_text = self.translate_model.translate(new_p.text)
             if t_text is None:
-                raise RuntimeError('`t_text` is None: your translation model is not working as expected. Please check your translation model configuration.')
+                raise RuntimeError(
+                    "`t_text` is None: your translation model is not working as expected. Please check your translation model configuration."
+                )
             if type(p) is NavigableString:
                 new_p = t_text
                 self.p_to_save.append(new_p)
