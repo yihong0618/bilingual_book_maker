@@ -5,6 +5,7 @@ import sys
 import time
 from copy import copy
 from pathlib import Path
+import traceback
 
 from bs4 import BeautifulSoup as bs
 from bs4 import Tag
@@ -553,12 +554,15 @@ class EPUBBookLoader(BaseBookLoader):
                 epub.write_epub(f"{name}_bilingual.epub", new_book, {})
             if self.accumulated_num == 1:
                 pbar.close()
-        except (KeyboardInterrupt, Exception) as e:
+        except KeyboardInterrupt as e:
             print(e)
             if self.accumulated_num == 1:
                 print("you can resume it next time")
                 self._save_progress()
                 self._save_temp_book()
+            sys.exit(0)
+        except Exception:
+            traceback.print_exc()
             sys.exit(0)
 
     def load_state(self):
