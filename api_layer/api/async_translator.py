@@ -17,9 +17,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from book_maker.loader.epub_loader import EPUBBookLoader
 from book_maker.translator import (
-    ChatGPTAPI, ClaudeAPI, GeminiAPI, DeepLAPI, GoogleAPI,
-    GroqAPI, QwenAPI, XaiAPI, CaiyunAPI, TencentAPI,
-    DeepLFreeAPI, CustomAPI, LiteLLMAPI
+    ChatGPTAPI, Claude, Gemini, DeepL, Google,
+    GroqClient, QwenTranslator, XAIClient, Caiyun, TencentTranSmart,
+    DeepLFree, CustomAPI
 )
 
 from .models import TranslationJob, JobStatus, TranslationModel
@@ -44,13 +44,13 @@ class AsyncEPUBTranslator:
     # Model mapping for easy access
     MODEL_CLASSES = {
         TranslationModel.CHATGPT: ChatGPTAPI,
-        TranslationModel.CLAUDE: ClaudeAPI,
-        TranslationModel.GEMINI: GeminiAPI,
-        TranslationModel.DEEPL: DeepLAPI,
-        TranslationModel.GOOGLE: GoogleAPI,
-        TranslationModel.GROQ: GroqAPI,
-        TranslationModel.QWEN: QwenAPI,
-        TranslationModel.XAI: XaiAPI,
+        TranslationModel.CLAUDE: Claude,
+        TranslationModel.GEMINI: Gemini,
+        TranslationModel.DEEPL: DeepL,
+        TranslationModel.GOOGLE: Google,
+        TranslationModel.GROQ: GroqClient,
+        TranslationModel.QWEN: QwenTranslator,
+        TranslationModel.XAI: XAIClient,
     }
 
     def __init__(self, timeout_minutes: int = 30, max_retries: int = 1):
