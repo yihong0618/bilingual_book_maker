@@ -107,6 +107,36 @@ Uploads and translates an EPUB file. Behavior varies by environment.
 
 #### Response
 
+## TODO: Local development mode response is incorrect, we shouldn't return the file in binary, because when it succeed, the files will be saved in some local directory. I'm thinking maybe it's better we return a job id and make the translate async.
+
+I also not sure how sync process should work in prod, we need to discuss this. I think it's better the post api should return 200 if the translate request is successfully received and started. As for how to track the progress and download the completed translation, let's discuss this.
+
+GPT suggest：
+现在这是一个基于 FastAPI 的翻译服务项目（是从 bilingual_book_maker 修改来的）。
+请你先帮我确认现有代码是否有以下能力：
+
+翻译逻辑：
+
+目前的翻译核心代码是不是一次性翻译整本 ePub，而不是分片翻译？
+
+有没有办法在翻译过程中逐步返回进度（比如 20%、50%、80%），还是只能在完成后一次性输出？
+
+API 层：
+
+现有的 POST /translate 是不是阻塞式执行？- 我确认过，是本地sync执行的，没有异步化。
+
+项目里有没有 GET /status/{job_id} 这样的接口？- 应该是没有的
+
+如果我现在加一个 GET /status/{job_id}，它能不能正确返回任务的状态？还是目前代码结构里没有合适的任务状态管理机制？
+
+状态管理：
+
+项目里有没有地方维护任务状态（比如 pending/running/done/failed）？
+
+如果没有，是否需要新增一个任务字典（或存储）来支持 GET /status/{job_id} 查询？
+
+请你不要直接修改代码，先确认以上几点，告诉我现在的代码处于什么状态，哪些地方已经支持，哪些地方还需要改造。
+
 **Local Development Mode**:
 ```http
 HTTP/1.1 200 OK
