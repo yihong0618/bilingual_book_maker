@@ -1,185 +1,393 @@
+"""
+FastAPI application with async translation endpoints
+"""
 import os
 import logging
-import tempfile
-import shutil
-from typing import Optional
-from datetime import datetime
+from pathlib import Path
+from typing import List, Optional
+from datetime import datetime, timedelta
 
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Response
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Depends
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from contextlib import asynccontextmanager
 import uvicorn
 
-from .config import settings
-from .models import TranslationModel, HealthCheckResponse, ErrorResponse
-from .translator import TranslationService
-from .storage import StorageFactory
+from .models import (
+    TranslationRequest, TranslationResponse, JobStatusResponse,
+    JobListResponse, ErrorResponse, HealthResponse, JobStatus, TranslationModel
+)
+from .async_translator import async_translator
+from .job_manager import job_manager
+from .progress_monitor import global_progress_tracker
+
 
 # Configure logging
-logging.basicConfig(level=settings.log_level)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan handler"""
+    # Startup
+    logger.info("Starting Bilingual Book Maker API")
+
+    # Create necessary directories
+    for directory in ["uploads", "outputs", "temp"]:
+        Path(directory).mkdir(exist_ok=True)
+
+    yield
+
+    # Shutdown
+    logger.info("Shutting down Bilingual Book Maker API")
+    job_manager.shutdown(wait=False)
+
 
 # Create FastAPI app
 app = FastAPI(
-    title="EPUB Translator API",
-    description="API service for translating EPUB files using various translation models",
-    version="1.0.0"
+    title="Bilingual Book Maker API",
+    description="Async translation API for EPUB books with job tracking and progress monitoring",
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=["*"],  # Configure appropriately for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Initialize services
-translator = TranslationService()
-storage = StorageFactory.get_storage()
-
-
-@app.get("/health", response_model=HealthCheckResponse)
-async def health_check():
-    """Check the health status of the API."""
-    return HealthCheckResponse(
-        status="healthy",
-        timestamp=datetime.now(),
-        storage_mode=settings.storage_mode.value,
-        version="1.0.0"
-    )
-
-
-@app.post("/translate")
-async def translate_epub(
-    file: UploadFile = File(..., description="EPUB file to translate"),
-    target_language: str = Form(..., description="Target language code (e.g., 'zh', 'en', 'ja')"),
-    model: TranslationModel = Form(TranslationModel.CHATGPT, description="Translation model to use"),
-    openai_key: Optional[str] = Form(None, description="OpenAI API key"),
-    claude_key: Optional[str] = Form(None, description="Claude API key"),
-    gemini_key: Optional[str] = Form(None, description="Gemini API key"),
-    deepl_key: Optional[str] = Form(None, description="DeepL API key"),
-    single_translate: bool = Form(False, description="Output translated only (no bilingual)"),
-    temperature: float = Form(1.0, description="Temperature for LLM models"),
-    test_mode: bool = Form(False, description="Test mode - translate only first 10 paragraphs")
-):
-    """
-    Translate an EPUB file synchronously.
-
-    This endpoint accepts an EPUB file and translation parameters,
-    processes the translation, and returns the translated file directly.
-    """
-
-    # Validate file type
-    if not file.filename.endswith('.epub'):
-        raise HTTPException(status_code=400, detail="Only EPUB files are supported")
-
-    # Check file size
-    file_content = await file.read()
-    file_size_mb = len(file_content) / (1024 * 1024)
-
-    if file_size_mb > settings.max_file_size_mb:
-        raise HTTPException(
-            status_code=413,
-            detail=f"File size ({file_size_mb:.1f}MB) exceeds maximum allowed size ({settings.max_file_size_mb}MB)"
-        )
-
-    # Prepare API keys
-    api_keys = {}
-    if openai_key:
-        api_keys['openai_key'] = openai_key
-    if claude_key:
-        api_keys['claude_key'] = claude_key
-    if gemini_key:
-        api_keys['gemini_key'] = gemini_key
-    if deepl_key:
-        api_keys['deepl_key'] = deepl_key
-
-    temp_dir = None
-    try:
-        # Create temporary directory for processing
-        temp_dir = tempfile.mkdtemp(prefix="epub_trans_")
-
-        # Save uploaded file
-        input_path = os.path.join(temp_dir, file.filename)
-        with open(input_path, 'wb') as f:
-            f.write(file_content)
-
-        logger.info(f"Processing translation for {file.filename}")
-
-        # Translate the file
-        output_path = await translator.translate_epub(
-            input_path=input_path,
-            target_language=target_language,
-            model=model,
-            api_keys=api_keys,
-            single_translate=single_translate,
-            temperature=temperature,
-            test_mode=test_mode
-        )
-
-        # Generate output filename
-        base_name = os.path.splitext(file.filename)[0]
-        if single_translate:
-            output_filename = f"{base_name}_{target_language}.epub"
-        else:
-            output_filename = f"{base_name}_bilingual.epub"
-
-        # For production (S3), upload and return presigned URL
-        if settings.storage_mode.value == "s3":
-            import uuid
-            job_id = str(uuid.uuid4())
-
-            # Save to S3
-            await storage.save_result(job_id, output_path, output_filename)
-            download_url = await storage.get_download_url(job_id, output_filename)
-
-            return JSONResponse(content={
-                "status": "success",
-                "filename": output_filename,
-                "download_url": download_url,
-                "message": "Translation completed successfully"
-            })
-
-        # For local development, return file directly
-        else:
-            return FileResponse(
-                path=output_path,
-                filename=output_filename,
-                media_type='application/epub+zip'
-            )
-
-    except Exception as e:
-        logger.error(f"Translation failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-    finally:
-        # Cleanup temp directory
-        if temp_dir and os.path.exists(temp_dir):
-            try:
-                shutil.rmtree(temp_dir)
-            except Exception as e:
-                logger.error(f"Failed to cleanup temp directory: {e}")
+# Add trusted host middleware
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["*"]  # Configure appropriately for production
+)
 
 
 @app.exception_handler(Exception)
-async def general_exception_handler(request, exc):
-    """Handle unexpected exceptions."""
-    logger.error(f"Unexpected error: {str(exc)}")
+async def global_exception_handler(request, exc):
+    """Global exception handler"""
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={
-            "error": "Internal server error",
-            "detail": str(exc) if settings.log_level == "DEBUG" else "An unexpected error occurred"
-        }
+        content=ErrorResponse(
+            error="Internal server error",
+            detail=str(exc),
+            timestamp=datetime.now()
+        ).dict()
     )
 
 
+@app.get("/", response_model=dict)
+async def root():
+    """Root endpoint with API information"""
+    return {
+        "name": "Bilingual Book Maker API",
+        "version": "1.0.0",
+        "description": "Async translation API for EPUB books",
+        "docs_url": "/docs",
+        "health_url": "/health",
+        "status": "running"
+    }
+
+
+@app.get("/health", response_model=HealthResponse)
+async def health_check():
+    """Health check endpoint"""
+    job_stats = job_manager.get_job_stats()
+    system_stats = async_translator.get_system_stats()
+
+    return HealthResponse(
+        status="healthy",
+        timestamp=datetime.now(),
+        active_jobs=job_stats.get("active", 0),
+        total_jobs=job_stats.get("total", 0),
+        system_info=system_stats
+    )
+
+
+@app.post("/translate", response_model=TranslationResponse)
+async def start_translation(
+    file: UploadFile = File(...),
+    model: TranslationModel = TranslationModel.CHATGPT,
+    key: str = "",
+    language: str = "zh-cn",
+    model_api_base: Optional[str] = None,
+    resume: bool = False,
+    is_test: bool = False,
+    test_num: int = 5,
+    single_translate: bool = False,
+    context_flag: bool = False,
+    context_paragraph_limit: int = 0,
+    temperature: float = 1.0,
+    source_lang: str = "auto"
+):
+    """
+    Start a new translation job
+
+    Returns job_id immediately for async processing
+    """
+    # Validate file
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    if not file.filename.lower().endswith('.epub'):
+        raise HTTPException(status_code=400, detail="Only EPUB files are supported")
+
+    # Validate required parameters
+    if not key:
+        raise HTTPException(status_code=400, detail="API key is required")
+
+    # Validate temperature
+    if not 0.0 <= temperature <= 2.0:
+        raise HTTPException(status_code=400, detail="Temperature must be between 0.0 and 2.0")
+
+    try:
+        # Save uploaded file
+        upload_path = Path("uploads") / file.filename
+        with open(upload_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+
+        # Start translation job
+        job_id = async_translator.start_translation(
+            file_path=str(upload_path),
+            model=model,
+            key=key,
+            language=language,
+            model_api_base=model_api_base,
+            resume=resume,
+            is_test=is_test,
+            test_num=test_num,
+            single_translate=single_translate,
+            context_flag=context_flag,
+            context_paragraph_limit=context_paragraph_limit,
+            temperature=temperature,
+            source_lang=source_lang
+        )
+
+        # Estimate duration (rough)
+        estimated_duration = "5-30 minutes depending on file size and model"
+        if is_test:
+            estimated_duration = "1-5 minutes (test mode)"
+
+        return TranslationResponse(
+            job_id=job_id,
+            status=JobStatus.PENDING,
+            message="Translation job started successfully",
+            estimated_duration=estimated_duration
+        )
+
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error starting translation: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to start translation: {str(e)}")
+
+
+@app.get("/status/{job_id}", response_model=JobStatusResponse)
+async def get_job_status(job_id: str):
+    """Get status and progress of a translation job"""
+    job = async_translator.get_job_status(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Build download URL if job is completed
+    download_url = None
+    if job.status == JobStatus.COMPLETED and job.output_path:
+        download_url = f"/download/{job_id}"
+
+    return JobStatusResponse(
+        job_id=job.job_id,
+        status=job.status,
+        progress=job.progress,
+        filename=job.filename,
+        created_at=job.created_at,
+        completed_at=job.completed_at,
+        error_message=job.error_message,
+        download_url=download_url,
+        total_paragraphs=job.total_paragraphs,
+        processed_paragraphs=job.processed_paragraphs,
+        model=job.model,
+        target_language=job.target_language
+    )
+
+
+@app.get("/jobs", response_model=JobListResponse)
+async def list_jobs(
+    status: Optional[JobStatus] = None,
+    limit: int = 50,
+    offset: int = 0
+):
+    """List translation jobs with optional status filtering"""
+    jobs = async_translator.list_jobs(status_filter=status)
+
+    # Apply pagination
+    total_count = len(jobs)
+    jobs = jobs[offset:offset + limit]
+
+    # Convert to response format
+    job_responses = []
+    for job in jobs:
+        download_url = None
+        if job.status == JobStatus.COMPLETED and job.output_path:
+            download_url = f"/download/{job.job_id}"
+
+        job_responses.append(JobStatusResponse(
+            job_id=job.job_id,
+            status=job.status,
+            progress=job.progress,
+            filename=job.filename,
+            created_at=job.created_at,
+            completed_at=job.completed_at,
+            error_message=job.error_message,
+            download_url=download_url,
+            total_paragraphs=job.total_paragraphs,
+            processed_paragraphs=job.processed_paragraphs,
+            model=job.model,
+            target_language=job.target_language
+        ))
+
+    # Get stats
+    stats = job_manager.get_job_stats()
+
+    return JobListResponse(
+        jobs=job_responses,
+        total_count=total_count,
+        active_count=stats.get("active", 0),
+        completed_count=stats.get("completed", 0),
+        failed_count=stats.get("failed", 0)
+    )
+
+
+@app.post("/cancel/{job_id}")
+async def cancel_job(job_id: str):
+    """Cancel a running translation job"""
+    success = async_translator.cancel_translation(job_id)
+
+    if not success:
+        job = async_translator.get_job_status(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot cancel job in {job.status} status"
+            )
+
+    return {"message": f"Job {job_id} cancelled successfully"}
+
+
+@app.get("/download/{job_id}")
+async def download_result(job_id: str):
+    """Download the translated EPUB file"""
+    file_path = async_translator.get_download_path(job_id)
+
+    if not file_path:
+        job = async_translator.get_job_status(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        elif job.status != JobStatus.COMPLETED:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Job is not completed. Current status: {job.status}"
+            )
+        else:
+            raise HTTPException(status_code=404, detail="Translated file not found")
+
+    # Get original filename and create download filename
+    job = async_translator.get_job_status(job_id)
+    if job:
+        name, ext = os.path.splitext(job.filename)
+        download_filename = f"{name}_bilingual{ext}"
+    else:
+        download_filename = f"translated_{job_id}.epub"
+
+    return FileResponse(
+        path=file_path,
+        filename=download_filename,
+        media_type="application/epub+zip"
+    )
+
+
+@app.delete("/jobs/{job_id}")
+async def delete_job(job_id: str):
+    """Delete a job and its associated files"""
+    job = async_translator.get_job_status(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Can only delete completed, failed, or cancelled jobs
+    if job.status in [JobStatus.PENDING, JobStatus.PROCESSING]:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete active job. Cancel it first."
+        )
+
+    # Force cleanup (this would normally happen via TTL)
+    success = job_manager._remove_job(job_id)
+
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to delete job")
+
+    return {"message": f"Job {job_id} deleted successfully"}
+
+
+@app.post("/cleanup")
+async def manual_cleanup():
+    """Manually trigger cleanup of expired jobs"""
+    cleaned_count = job_manager.cleanup_expired_jobs()
+    return {
+        "message": f"Cleanup completed. Removed {cleaned_count} expired jobs.",
+        "cleaned_count": cleaned_count
+    }
+
+
+@app.get("/models", response_model=List[dict])
+async def list_models():
+    """List available translation models"""
+    models = []
+    for model in TranslationModel:
+        models.append({
+            "name": model.value,
+            "display_name": model.value.replace("_", " ").title(),
+            "description": f"{model.value} translation service"
+        })
+
+    return models
+
+
+@app.get("/stats")
+async def get_system_stats():
+    """Get detailed system statistics"""
+    job_stats = job_manager.get_job_stats()
+    system_stats = async_translator.get_system_stats()
+
+    return {
+        "timestamp": datetime.now().isoformat(),
+        "jobs": job_stats,
+        "system": system_stats,
+        "uptime": "N/A"  # Could implement uptime tracking
+    }
+
+
 if __name__ == "__main__":
+    # Development server
     uvicorn.run(
-        "api.main:app",
-        host=settings.api_host,
-        port=settings.api_port,
-        reload=True
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        log_level="info"
     )
