@@ -328,8 +328,10 @@ class JobManager:
             return stats
 
     def get_upload_path(self, filename: str) -> Path:
-        """Get upload path for a file"""
-        return self._upload_dir / filename
+        """Get upload path for a file with unique prefix to avoid conflicts"""
+        import uuid
+        unique_filename = f"{uuid.uuid4().hex[:8]}_{filename}"
+        return self._upload_dir / unique_filename
 
     def get_output_path(self, job_id: str, filename: str) -> Path:
         """Get output path for a job"""

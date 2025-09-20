@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import List, Optional
 from datetime import datetime, timedelta
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Depends
+from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Depends, Form
+from pydantic import Field
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -116,24 +117,53 @@ async def health_check():
 
 @app.post("/translate", response_model=TranslationResponse)
 async def start_translation(
-    file: UploadFile = File(...),
-    model: TranslationModel = TranslationModel.CHATGPT,
-    key: str = "",
-    language: str = "zh-cn",
-    model_api_base: Optional[str] = None,
-    resume: bool = False,
-    is_test: bool = False,
-    test_num: int = 5,
-    single_translate: bool = False,
-    context_flag: bool = False,
-    context_paragraph_limit: int = 0,
-    temperature: float = 1.0,
-    source_lang: str = "auto"
+    file: UploadFile = File(..., description="EPUB file to translate"),
+    model: TranslationModel = Form(..., description="Translation model to use"),
+    key: str = Form(..., description="API key for the translation service"),
+    language: str = Form(default="zh-cn", description="Target language code"),
+    model_api_base: Optional[str] = Form(default=None, description="Custom API base URL (optional)"),
+    resume: bool = Form(default=False, description="Resume from previous translation"),
+    is_test: bool = Form(default=False, description="Test mode with limited paragraphs"),
+    test_num: int = Form(default=5, description="Number of paragraphs for test mode"),
+    single_translate: bool = Form(default=False, description="Single translation mode"),
+    context_flag: bool = Form(default=False, description="Use context for translation"),
+    context_paragraph_limit: int = Form(default=0, description="Context paragraph limit"),
+    temperature: float = Form(default=1.0, description="Translation temperature (0.0-2.0)"),
+    source_lang: str = Form(default="auto", description="Source language detection")
 ):
     """
     Start a new translation job
 
-    Returns job_id immediately for async processing
+    **Models Available:**
+    - chatgpt: OpenAI ChatGPT/GPT-4
+    - claude: Anthropic Claude
+    - gemini: Google Gemini
+    - deepl: DeepL Translator
+    - google: Google Translate
+    - groq: Groq API
+    - qwen: Alibaba Qwen
+    - xai: xAI Grok
+
+    **Common Language Codes:**
+    - zh-cn: Chinese (Simplified)
+    - zh-tw: Chinese (Traditional)
+    - en: English
+    - es: Spanish
+    - fr: French
+    - de: German
+    - ja: Japanese
+    - ko: Korean
+    - ru: Russian
+
+    **Parameters:**
+    - file: EPUB file to translate
+    - model: Choose translation model
+    - key: Your API key for the selected model
+    - language: Target language code
+    - is_test: Enable for testing (translates only 5 paragraphs)
+    - temperature: Controls randomness (0.0=deterministic, 2.0=creative)
+
+    Returns job_id immediately for async processing. Use /status/{job_id} to monitor progress.
     """
     # Validate file
     if not file.filename:

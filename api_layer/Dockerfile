@@ -8,8 +8,9 @@ COPY .. /app/
 # Try to install main project dependencies (may fail due to complex deps)
 RUN pip install --no-cache-dir -r requirements.txt || echo "Main requirements failed, continuing..."
 
-# Set working directory to api_layer
+# Set working directory to api_layer and copy its requirements
 WORKDIR /app/api_layer
+COPY requirements.txt /app/api_layer/requirements.txt
 
 # Install API layer specific dependencies
 RUN pip install --no-cache-dir -r requirements.txt
