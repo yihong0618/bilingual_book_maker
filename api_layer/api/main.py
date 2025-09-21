@@ -22,6 +22,7 @@ from .models import (
 from .async_translator import async_translator
 from .job_manager import job_manager
 from .progress_monitor import global_progress_tracker
+from .config import settings, HttpStatusConstants
 
 
 # Configure logging
@@ -57,94 +58,28 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Environment-based CORS configuration
-def get_cors_origins():
-    """Get CORS origins based on environment"""
-    env = os.environ.get("ENVIRONMENT", "development").lower()
+# Configure security settings using configuration system
+logger.info(f"Environment: {settings.environment}")
+logger.info(f"CORS Origins: {settings.get_cors_origins()}")
+logger.info(f"CORS Methods: {settings.get_cors_methods()}")
+logger.info(f"Trusted Hosts: {settings.get_trusted_hosts()}")
+logger.info(f"API Host: {settings.api_host}:{settings.api_port}")
+logger.info(f"Max Workers: {settings.max_workers}")
+logger.info(f"Job TTL: {settings.job_ttl_hours}h")
 
-    if env == "production":
-        # Production: restrict to specific domains
-        # TODO: Replace with your actual frontend domains
-        return [
-            "https://yourfrontend.com",        # Your main frontend
-            "https://www.yourfrontend.com",    # www version
-            "https://app.yourfrontend.com"     # app subdomain if needed
-        ]
-    elif env == "staging":
-        # Staging: allow staging domains
-        return [
-            "https://staging.yourdomain.com",
-            "http://localhost:3000",
-            "http://localhost:8080"
-        ]
-    else:
-        # Development: allow local development
-        return [
-            "http://localhost:3000",
-            "http://localhost:8080",
-            "http://localhost:8000",
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:8080",
-            "http://127.0.0.1:8000"
-        ]
-
-def get_cors_methods():
-    """Get allowed CORS methods"""
-    env = os.environ.get("ENVIRONMENT", "development").lower()
-
-    if env == "production":
-        # Production: only necessary methods
-        return ["GET", "POST", "DELETE", "OPTIONS"]
-    else:
-        # Development/Staging: allow all methods for testing
-        return ["*"]
-
-def get_trusted_hosts():
-    """Get trusted hosts based on environment"""
-    env = os.environ.get("ENVIRONMENT", "development").lower()
-
-    if env == "production":
-        # Production: restrict to specific hosts
-        return [
-            "yourdomain.com",
-            "www.yourdomain.com",
-            "api.yourdomain.com"
-        ]
-    elif env == "staging":
-        # Staging: allow staging hosts
-        return [
-            "staging.yourdomain.com",
-            "localhost",
-            "127.0.0.1"
-        ]
-    else:
-        # Development: allow all hosts for local testing
-        return ["*"]
-
-# Configure and log security settings
-env = os.environ.get("ENVIRONMENT", "development").lower()
-cors_origins = get_cors_origins()
-cors_methods = get_cors_methods()
-trusted_hosts = get_trusted_hosts()
-
-logger.info(f"Environment: {env}")
-logger.info(f"CORS Origins: {cors_origins}")
-logger.info(f"CORS Methods: {cors_methods}")
-logger.info(f"Trusted Hosts: {trusted_hosts}")
-
-# Add CORS middleware with environment-specific configuration
+# Add CORS middleware with configuration-based settings
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origins=settings.get_cors_origins(),
     allow_credentials=True,
-    allow_methods=cors_methods,
-    allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
+    allow_methods=settings.get_cors_methods(),
+    allow_headers=settings.get_cors_headers(),
 )
 
-# Add trusted host middleware with environment-specific configuration
+# Add trusted host middleware with configuration-based settings
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=trusted_hosts
+    allowed_hosts=settings.get_trusted_hosts()
 )
 
 
@@ -153,7 +88,7 @@ async def global_exception_handler(request, exc):
     """Global exception handler"""
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
     return JSONResponse(
-        status_code=500,
+        status_code=HttpStatusConstants.INTERNAL_SERVER_ERROR,
         content=ErrorResponse(
             error="Internal server error",
             detail=str(exc),
@@ -248,7 +183,7 @@ async def start_translation(
     """
     # Validate file
     if not file.filename:
-        raise HTTPException(status_code=400, detail="No file provided")
+        raise HTTPException(status_code=HttpStatusConstants.BAD_REQUEST, detail="No file provided")
 
     # Check supported file formats
     supported_formats = ['.epub', '.txt', '.srt', '.md']
@@ -256,17 +191,17 @@ async def start_translation(
 
     if file_ext not in supported_formats:
         raise HTTPException(
-            status_code=400,
+            status_code=HttpStatusConstants.BAD_REQUEST,
             detail=f"Unsupported file format. Supported formats: {', '.join(supported_formats)}"
         )
 
     # Validate required parameters
     if not key:
-        raise HTTPException(status_code=400, detail="API key is required")
+        raise HTTPException(status_code=HttpStatusConstants.BAD_REQUEST, detail="API key is required")
 
     # Validate temperature
     if not 0.0 <= temperature <= 2.0:
-        raise HTTPException(status_code=400, detail="Temperature must be between 0.0 and 2.0")
+        raise HTTPException(status_code=HttpStatusConstants.BAD_REQUEST, detail="Temperature must be between 0.0 and 2.0")
 
     try:
         # Create unique upload path to avoid conflicts
@@ -283,7 +218,7 @@ async def start_translation(
             resume_file_path = f"{unique_upload_path.parent}/.{unique_upload_path.stem}.temp.bin"
             if not os.path.exists(resume_file_path):
                 raise HTTPException(
-                    status_code=400,
+                    status_code=HttpStatusConstants.BAD_REQUEST,
                     detail=f"Resume requested but no resume file found. Start a new translation without resume option first."
                 )
 
@@ -317,12 +252,12 @@ async def start_translation(
         )
 
     except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=HttpStatusConstants.NOT_FOUND, detail=str(e))
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=HttpStatusConstants.BAD_REQUEST, detail=str(e))
     except Exception as e:
         logger.error(f"Error starting translation: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to start translation: {str(e)}")
+        raise HTTPException(status_code=HttpStatusConstants.INTERNAL_SERVER_ERROR, detail=f"Failed to start translation: {str(e)}")
 
 
 @app.get("/status/{job_id}", response_model=JobStatusResponse)
@@ -331,7 +266,7 @@ async def get_job_status(job_id: str):
     job = async_translator.get_job_status(job_id)
 
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=HttpStatusConstants.NOT_FOUND, detail="Job not found")
 
     # Build download URL if job is completed
     download_url = None
@@ -409,7 +344,7 @@ async def cancel_job(job_id: str):
     if not success:
         job = async_translator.get_job_status(job_id)
         if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
+            raise HTTPException(status_code=HttpStatusConstants.NOT_FOUND, detail="Job not found")
         else:
             raise HTTPException(
                 status_code=400,
@@ -427,7 +362,7 @@ async def download_result(job_id: str):
     if not file_path:
         job = async_translator.get_job_status(job_id)
         if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
+            raise HTTPException(status_code=HttpStatusConstants.NOT_FOUND, detail="Job not found")
         elif job.status != JobStatus.COMPLETED:
             raise HTTPException(
                 status_code=400,
@@ -466,7 +401,7 @@ async def delete_job(job_id: str):
     """Delete a job and its associated files"""
     job = async_translator.get_job_status(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=HttpStatusConstants.NOT_FOUND, detail="Job not found")
 
     # Can only delete completed, failed, or cancelled jobs
     if job.status in [JobStatus.PENDING, JobStatus.PROCESSING]:
@@ -523,11 +458,11 @@ async def get_system_stats():
 
 
 if __name__ == "__main__":
-    # Development server
+    # Development server with configurable settings
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
+        host=settings.api_host,
+        port=settings.api_port,
+        reload=settings.reload,
+        log_level=settings.log_level.lower()
     )

@@ -10,11 +10,11 @@ from typing import Dict, List, Optional, Callable
 from concurrent.futures import ThreadPoolExecutor, Future
 import logging
 import os
-import shutil
 from pathlib import Path
 
 from .models import TranslationJob, JobStatus
 from .progress_monitor import ProgressUpdate, global_progress_tracker
+from .config import settings
 
 
 logger = logging.getLogger(__name__)
@@ -26,32 +26,39 @@ class JobManager:
     Handles job storage, lifecycle management, and cleanup
     """
 
-    def __init__(self, max_workers: int = 4, job_ttl_hours: int = 3):
+    def __init__(self, max_workers: int = None, job_ttl_hours: int = None, cleanup_interval_minutes: int = None):
         """
-        Initialize job manager
+        Initialize job manager with configurable settings
 
         Args:
-            max_workers: Maximum number of concurrent translation jobs
-            job_ttl_hours: Time-to-live for completed jobs in hours
+            max_workers: Maximum number of concurrent translation jobs (uses config default if None)
+            job_ttl_hours: Time-to-live for completed jobs in hours (uses config default if None)
+            cleanup_interval_minutes: Cleanup interval in minutes (uses config default if None)
         """
+        # Use configuration defaults if not provided
+        max_workers = max_workers or settings.max_workers
+        job_ttl_hours = job_ttl_hours or settings.job_ttl_hours
+        cleanup_interval_minutes = cleanup_interval_minutes or settings.cleanup_interval_minutes
+
         self._jobs: Dict[str, TranslationJob] = {}
         self._job_futures: Dict[str, Future] = {}
         self._lock = threading.RLock()
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="translation-")
         self._job_ttl = timedelta(hours=job_ttl_hours)
-        self._cleanup_interval = timedelta(minutes=30)
+        self._cleanup_interval = timedelta(minutes=cleanup_interval_minutes)
         self._last_cleanup = datetime.now()
 
-        # Storage paths
-        self._upload_dir = Path("uploads")
-        self._output_dir = Path("outputs")
-        self._temp_dir = Path("temp")
+        # Storage paths from configuration
+        self._upload_dir = Path(settings.upload_dir)
+        self._output_dir = Path(settings.output_dir)
+        self._temp_dir = Path(settings.temp_dir)
 
         # Create directories
         for directory in [self._upload_dir, self._output_dir, self._temp_dir]:
             directory.mkdir(exist_ok=True)
 
-        logger.info(f"JobManager initialized with {max_workers} workers, {job_ttl_hours}h TTL")
+        logger.info(f"JobManager initialized with {max_workers} workers, {job_ttl_hours}h TTL, {cleanup_interval_minutes}min cleanup interval")
+        logger.info(f"Storage paths - Upload: {self._upload_dir}, Output: {self._output_dir}, Temp: {self._temp_dir}")
 
     def create_job(
         self,
@@ -377,5 +384,5 @@ class JobManager:
         self.shutdown()
 
 
-# Global job manager instance
+# Global job manager instance with configuration-based settings
 job_manager = JobManager()
