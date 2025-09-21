@@ -57,19 +57,94 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware
+# Environment-based CORS configuration
+def get_cors_origins():
+    """Get CORS origins based on environment"""
+    env = os.environ.get("ENVIRONMENT", "development").lower()
+
+    if env == "production":
+        # Production: restrict to specific domains
+        # TODO: Replace with your actual frontend domains
+        return [
+            "https://yourfrontend.com",        # Your main frontend
+            "https://www.yourfrontend.com",    # www version
+            "https://app.yourfrontend.com"     # app subdomain if needed
+        ]
+    elif env == "staging":
+        # Staging: allow staging domains
+        return [
+            "https://staging.yourdomain.com",
+            "http://localhost:3000",
+            "http://localhost:8080"
+        ]
+    else:
+        # Development: allow local development
+        return [
+            "http://localhost:3000",
+            "http://localhost:8080",
+            "http://localhost:8000",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:8080",
+            "http://127.0.0.1:8000"
+        ]
+
+def get_cors_methods():
+    """Get allowed CORS methods"""
+    env = os.environ.get("ENVIRONMENT", "development").lower()
+
+    if env == "production":
+        # Production: only necessary methods
+        return ["GET", "POST", "DELETE", "OPTIONS"]
+    else:
+        # Development/Staging: allow all methods for testing
+        return ["*"]
+
+def get_trusted_hosts():
+    """Get trusted hosts based on environment"""
+    env = os.environ.get("ENVIRONMENT", "development").lower()
+
+    if env == "production":
+        # Production: restrict to specific hosts
+        return [
+            "yourdomain.com",
+            "www.yourdomain.com",
+            "api.yourdomain.com"
+        ]
+    elif env == "staging":
+        # Staging: allow staging hosts
+        return [
+            "staging.yourdomain.com",
+            "localhost",
+            "127.0.0.1"
+        ]
+    else:
+        # Development: allow all hosts for local testing
+        return ["*"]
+
+# Configure and log security settings
+env = os.environ.get("ENVIRONMENT", "development").lower()
+cors_origins = get_cors_origins()
+cors_methods = get_cors_methods()
+trusted_hosts = get_trusted_hosts()
+
+logger.info(f"Environment: {env}")
+logger.info(f"CORS Origins: {cors_origins}")
+logger.info(f"CORS Methods: {cors_methods}")
+logger.info(f"Trusted Hosts: {trusted_hosts}")
+
+# Add CORS middleware with environment-specific configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=cors_methods,
+    allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
 )
 
-# Add trusted host middleware
+# Add trusted host middleware with environment-specific configuration
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["*"]  # Configure appropriately for production
+    allowed_hosts=trusted_hosts
 )
 
 
