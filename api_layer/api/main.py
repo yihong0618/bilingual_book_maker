@@ -181,15 +181,17 @@ async def start_translation(
         raise HTTPException(status_code=400, detail="Temperature must be between 0.0 and 2.0")
 
     try:
-        # Save uploaded file
-        upload_path = Path("uploads") / file.filename
-        with open(upload_path, "wb") as buffer:
+        # Create unique upload path to avoid conflicts
+        unique_upload_path = job_manager.get_upload_path(file.filename)
+
+        # Save uploaded file to unique path
+        with open(unique_upload_path, "wb") as buffer:
             content = await file.read()
             buffer.write(content)
 
         # Start translation job
         job_id = async_translator.start_translation(
-            file_path=str(upload_path),
+            file_path=str(unique_upload_path),
             model=model,
             key=key,
             language=language,

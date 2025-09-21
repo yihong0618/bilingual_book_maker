@@ -116,9 +116,8 @@ class AsyncEPUBTranslator:
             test_num=kwargs.get('test_num', 5),
         )
 
-        # Copy file to uploads directory
-        upload_path = job_manager.get_upload_path(filename)
-        shutil.copy2(file_path, upload_path)
+        # File is already saved at the correct path, no need to copy again
+        upload_path = file_path
 
         # Set up progress callback
         def progress_callback(update: ProgressUpdate):

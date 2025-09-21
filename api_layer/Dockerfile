@@ -18,6 +18,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Try to install essential packages individually
 RUN pip install --no-cache-dir beautifulsoup4 ebooklib tqdm langdetect requests bs4 rich lxml || echo "Some deps failed"
 
+# Ensure API dependencies are available
+RUN pip install --no-cache-dir fastapi uvicorn[standard] python-multipart pydantic
+
 # Expose the port the app runs on
 EXPOSE 8000
 
