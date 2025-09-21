@@ -189,6 +189,16 @@ async def start_translation(
             content = await file.read()
             buffer.write(content)
 
+        # Validate resume functionality
+        if resume:
+            # Check if resume file exists for this EPUB
+            resume_file_path = f"{unique_upload_path.parent}/.{unique_upload_path.stem}.temp.bin"
+            if not os.path.exists(resume_file_path):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Resume requested but no resume file found. Start a new translation without resume option first."
+                )
+
         # Start translation job
         job_id = async_translator.start_translation(
             file_path=str(unique_upload_path),
