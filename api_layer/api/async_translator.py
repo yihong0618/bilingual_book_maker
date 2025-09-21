@@ -47,6 +47,7 @@ class AsyncEPUBTranslator:
         TranslationModel.CLAUDE: Claude,
         TranslationModel.GEMINI: Gemini,
         TranslationModel.DEEPL: DeepL,
+        TranslationModel.DEEPL_FREE: DeepLFree,
         TranslationModel.GOOGLE: Google,
         TranslationModel.GROQ: GroqClient,
         TranslationModel.QWEN: QwenTranslator,

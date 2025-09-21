@@ -119,7 +119,7 @@ async def health_check():
 async def start_translation(
     file: UploadFile = File(..., description="File to translate (EPUB, TXT, SRT, MD formats supported)"),
     model: TranslationModel = Form(default=TranslationModel.GOOGLE, description="Translation model to use"),
-    key: str = Form(default="no-key-required", description="API key for the translation service (not required for Google Translate)"),
+    key: str = Form(default="no-key-required", description="API key for the translation service (not required for Google Translate, required for DeepL Free)"),
     language: str = Form(default="zh-cn", description="Target language code"),
     model_api_base: Optional[str] = Form(default=None, description="Custom API base URL (optional)"),
     resume: bool = Form(default=False, description="Resume from previous translation"),
@@ -135,14 +135,15 @@ async def start_translation(
     Start a new translation job
 
     **Models Available:**
-    - chatgpt: OpenAI ChatGPT/GPT-4
-    - claude: Anthropic Claude
-    - gemini: Google Gemini
-    - deepl: DeepL Translator
-    - google: Google Translate
-    - groq: Groq API
-    - qwen: Alibaba Qwen
-    - xai: xAI Grok
+    - chatgpt: OpenAI ChatGPT/GPT-4 (requires API key)
+    - claude: Anthropic Claude (requires API key)
+    - gemini: Google Gemini (requires API key)
+    - deepl: DeepL Translator Pro (requires API key)
+    - deepl_free: DeepL Free API (requires free API key from https://www.deepl.com/pro-api)
+    - google: Google Translate (free, no API key required)
+    - groq: Groq API (requires API key)
+    - qwen: Alibaba Qwen (requires API key)
+    - xai: xAI Grok (requires API key)
 
     **Common Language Codes:**
     - zh-cn: Chinese (Simplified)
@@ -158,10 +159,15 @@ async def start_translation(
     **Parameters:**
     - file: File to translate (supports EPUB, TXT, SRT, MD formats)
     - model: Choose translation model
-    - key: Your API key for the selected model
+    - key: Your API key for the selected model (not required for Google Translate)
     - language: Target language code
     - is_test: Enable for testing (translates only 5 paragraphs)
     - temperature: Controls randomness (0.0=deterministic, 2.0=creative)
+
+    **API Key Requirements:**
+    - Most models require an API key from their respective providers
+    - DeepL Free: Get free API key from https://www.deepl.com/pro-api
+    - Google Translate: No API key required (use "no-key-required" or leave default)
 
     Returns job_id immediately for async processing. Use /status/{job_id} to monitor progress.
     """

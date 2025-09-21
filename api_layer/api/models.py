@@ -23,6 +23,7 @@ class TranslationModel(str, Enum):
     CLAUDE = "claude"
     GEMINI = "gemini"
     DEEPL = "deepl"
+    DEEPL_FREE = "deepl_free"
     GOOGLE = "google"
     GROQ = "groq"
     QWEN = "qwen"
