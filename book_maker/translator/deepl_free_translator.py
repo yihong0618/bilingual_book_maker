@@ -29,27 +29,46 @@ class DeepLFree(Base):
             "Content-Type": "application/x-www-form-urlencoded"
         }
 
-        # Map language to DeepL format
-        l = language if language in LANGUAGES else TO_LANGUAGE_CODE.get(language)
-
-        # DeepL supported languages (updated list)
-        supported_languages = [
-            "bg", "cs", "da", "de", "el", "en", "en-US", "en-GB",
-            "es", "et", "fi", "fr", "hu", "id", "it", "ja", "ko",
-            "lt", "lv", "nb", "nl", "pl", "pt", "pt-PT", "pt-BR",
-            "ro", "ru", "sk", "sl", "sv", "tr", "uk", "zh", "zh-CN"
-        ]
-
-        # Handle Chinese language variants
-        if l in ["zh-cn", "zh"]:
-            l = "zh-CN"
-        elif l == "pt":
-            l = "pt-PT"
-        elif l == "en":
-            l = "en-US"
-
-        if l not in supported_languages:
-            raise Exception(f"DeepL does not support language: {l}")
+        # Handle common language variants manually first
+        if language == "zh-cn":
+            l = "zh"
+        else:
+            # Use same language mapping as regular DeepL translator
+            l = language if language in LANGUAGES else TO_LANGUAGE_CODE.get(language)
+        if l not in [
+            "bg",
+            "zh",
+            "cs",
+            "da",
+            "nl",
+            "en-US",
+            "en-GB",
+            "et",
+            "fi",
+            "fr",
+            "de",
+            "el",
+            "hu",
+            "id",
+            "it",
+            "ja",
+            "lv",
+            "lt",
+            "pl",
+            "pt-PT",
+            "pt-BR",
+            "ro",
+            "ru",
+            "sk",
+            "sl",
+            "es",
+            "sv",
+            "tr",
+            "uk",
+            "ko",
+            "nb",
+        ]:
+            raise Exception(f"DeepL does not support {l}")
 
         self.language = l
         self.time_random = [0.5, 0.8, 1.0, 1.2, 1.5]  # Reduced delays for API
