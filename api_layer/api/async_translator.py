@@ -15,7 +15,7 @@ import threading
 # Add book_maker to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from book_maker.loader.epub_loader import EPUBBookLoader
+from book_maker.loader import BOOK_LOADER_DICT
 from book_maker.translator import (
     ChatGPTAPI, Claude, Gemini, DeepL, Google,
     GroqClient, QwenTranslator, XAIClient, Caiyun, TencentTranSmart,
@@ -93,8 +93,12 @@ class AsyncEPUBTranslator:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Input file not found: {file_path}")
 
-        if not file_path.lower().endswith('.epub'):
-            raise ValueError("Only EPUB files are supported")
+        # Check supported file formats
+        supported_formats = ['.epub', '.txt', '.srt', '.md']
+        file_ext = '.' + file_path.lower().split('.')[-1] if '.' in file_path else ''
+
+        if file_ext not in supported_formats:
+            raise ValueError(f"Unsupported file format. Supported formats: {', '.join(supported_formats)}")
 
         # Validate model
         if model not in self.MODEL_CLASSES:
@@ -250,7 +254,7 @@ class AsyncEPUBTranslator:
             # Execute translation with progress monitoring
             with global_progress_tracker.create_tqdm_patch(job_id):
                 self._translate_with_loader(
-                    epub_path=str(upload_path),
+                    input_path=str(upload_path),
                     output_path=str(output_path),
                     model=model,
                     key=key,
@@ -287,7 +291,7 @@ class AsyncEPUBTranslator:
 
     def _translate_with_loader(
         self,
-        epub_path: str,
+        input_path: str,
         output_path: str,
         model: TranslationModel,
         key: str,
@@ -295,10 +299,10 @@ class AsyncEPUBTranslator:
         **kwargs
     ) -> None:
         """
-        Execute translation using EPUBBookLoader
+        Execute translation using appropriate loader
 
         Args:
-            epub_path: Path to input EPUB file
+            input_path: Path to input file (EPUB, TXT, SRT, MD)
             output_path: Path for output file
             model: Translation model
             key: API key
@@ -310,9 +314,16 @@ class AsyncEPUBTranslator:
         if not model_class:
             raise ValueError(f"Unsupported model: {model}")
 
-        # Prepare parameters for EPUBBookLoader
+        # Determine file type and get appropriate loader
+        file_ext = '.' + input_path.lower().split('.')[-1] if '.' in input_path else ''
+        file_type = file_ext[1:]  # Remove the dot
+
+        loader_class = BOOK_LOADER_DICT.get(file_type)
+        if not loader_class:
+            raise ValueError(f"No loader found for file type: {file_type}")
+
+        # Prepare parameters for the loader
         loader_kwargs = {
-            'epub_name': epub_path,
             'model': model_class,
             'key': key,
             'resume': kwargs.get('resume', False),
@@ -327,34 +338,68 @@ class AsyncEPUBTranslator:
             'source_lang': job.source_language,
         }
 
+        # Add file-specific parameter based on loader type
+        if file_type == 'epub':
+            loader_kwargs['epub_name'] = input_path
+        elif file_type == 'txt':
+            loader_kwargs['txt_name'] = input_path
+        elif file_type == 'srt':
+            loader_kwargs['srt_name'] = input_path
+        elif file_type == 'md':
+            loader_kwargs['md_name'] = input_path
+
         # Add any additional prompt config
         if 'prompt_config' in kwargs:
             loader_kwargs['prompt_config'] = kwargs['prompt_config']
 
         try:
             # Create loader instance
-            loader = EPUBBookLoader(**loader_kwargs)
+            loader = loader_class(**loader_kwargs)
 
-            # Monkey patch the loader to use our output path
-            original_make_bilingual_book = loader.make_bilingual_book
+            # Execute translation with format-specific handling
+            if file_type == 'epub':
+                # Monkey patch the loader to use our output path
+                original_make_bilingual_book = loader.make_bilingual_book
 
-            def patched_make_bilingual_book():
-                # Call original method
-                original_make_bilingual_book()
+                def patched_make_bilingual_book():
+                    # Call original method
+                    original_make_bilingual_book()
 
-                # Move the generated file to our desired output path
-                name, _ = os.path.splitext(epub_path)
-                generated_file = f"{name}_bilingual.epub"
+                    # Move the generated file to our desired output path
+                    name, _ = os.path.splitext(input_path)
+                    generated_file = f"{name}_bilingual.epub"
+
+                    if os.path.exists(generated_file):
+                        shutil.move(generated_file, output_path)
+                    else:
+                        raise RuntimeError("Translation completed but bilingual file was not generated")
+
+                loader.make_bilingual_book = patched_make_bilingual_book
+                loader.make_bilingual_book()
+            else:
+                # For TXT, SRT, MD files, they typically generate files directly
+                # Call the make_bilingual_book method
+                loader.make_bilingual_book()
+
+                # Find the generated file and move it to output path
+                name, ext = os.path.splitext(input_path)
+                generated_file = f"{name}_bilingual{ext}"
 
                 if os.path.exists(generated_file):
                     shutil.move(generated_file, output_path)
                 else:
-                    raise RuntimeError("Translation completed but bilingual file was not generated")
-
-            loader.make_bilingual_book = patched_make_bilingual_book
-
-            # Execute translation
-            loader.make_bilingual_book()
+                    # Fallback: try different naming conventions
+                    possible_files = [
+                        f"{name}.txt",
+                        f"{name}_translated{ext}",
+                        f"{name}_bilingual{ext}"
+                    ]
+                    for possible_file in possible_files:
+                        if os.path.exists(possible_file):
+                            shutil.move(possible_file, output_path)
+                            break
+                    else:
+                        raise RuntimeError(f"Translation completed but output file was not found. Expected: {generated_file}")
 
         except KeyboardInterrupt:
             raise RuntimeError("Translation was interrupted")

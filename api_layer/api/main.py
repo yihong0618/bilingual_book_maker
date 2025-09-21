@@ -117,7 +117,7 @@ async def health_check():
 
 @app.post("/translate", response_model=TranslationResponse)
 async def start_translation(
-    file: UploadFile = File(..., description="EPUB file to translate"),
+    file: UploadFile = File(..., description="File to translate (EPUB, TXT, SRT, MD formats supported)"),
     model: TranslationModel = Form(default=TranslationModel.GOOGLE, description="Translation model to use"),
     key: str = Form(default="no-key-required", description="API key for the translation service (not required for Google Translate)"),
     language: str = Form(default="zh-cn", description="Target language code"),
@@ -156,7 +156,7 @@ async def start_translation(
     - ru: Russian
 
     **Parameters:**
-    - file: EPUB file to translate
+    - file: File to translate (supports EPUB, TXT, SRT, MD formats)
     - model: Choose translation model
     - key: Your API key for the selected model
     - language: Target language code
@@ -169,8 +169,15 @@ async def start_translation(
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
 
-    if not file.filename.lower().endswith('.epub'):
-        raise HTTPException(status_code=400, detail="Only EPUB files are supported")
+    # Check supported file formats
+    supported_formats = ['.epub', '.txt', '.srt', '.md']
+    file_ext = '.' + file.filename.lower().split('.')[-1] if '.' in file.filename else ''
+
+    if file_ext not in supported_formats:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file format. Supported formats: {', '.join(supported_formats)}"
+        )
 
     # Validate required parameters
     if not key:
@@ -353,13 +360,23 @@ async def download_result(job_id: str):
     if job:
         name, ext = os.path.splitext(job.filename)
         download_filename = f"{name}_bilingual{ext}"
+
+        # Set appropriate media type based on file extension
+        media_type_map = {
+            '.epub': 'application/epub+zip',
+            '.txt': 'text/plain',
+            '.srt': 'application/x-subrip',
+            '.md': 'text/markdown'
+        }
+        media_type = media_type_map.get(ext.lower(), 'application/octet-stream')
     else:
         download_filename = f"translated_{job_id}.epub"
+        media_type = "application/epub+zip"
 
     return FileResponse(
         path=file_path,
         filename=download_filename,
-        media_type="application/epub+zip"
+        media_type=media_type
     )
 
 
