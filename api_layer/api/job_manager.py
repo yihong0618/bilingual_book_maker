@@ -26,6 +26,11 @@ class JobManager:
     Handles job storage, lifecycle management, and cleanup
     """
 
+    # Class constants for magic numbers
+    INITIAL_COUNT = 0
+    INCREMENT_STEP = 1
+    UUID_PREFIX_LENGTH = 8
+
     def __init__(self, max_workers: int = None, job_ttl_hours: int = None, cleanup_interval_minutes: int = None):
         """
         Initialize job manager with configurable settings
@@ -251,12 +256,12 @@ class JobManager:
                     jobs_to_remove.append(job_id)
 
         # Remove expired jobs
-        cleaned_count = 0
+        cleaned_count = self.INITIAL_COUNT
         for job_id in jobs_to_remove:
             if self._remove_job(job_id):
-                cleaned_count += 1
+                cleaned_count += self.INCREMENT_STEP
 
-        if cleaned_count > 0:
+        if cleaned_count > self.INITIAL_COUNT:
             logger.info(f"Cleaned up {cleaned_count} expired jobs")
 
         self._last_cleanup = datetime.now()
@@ -317,27 +322,27 @@ class JobManager:
         with self._lock:
             stats = {
                 "total": len(self._jobs),
-                "pending": 0,
-                "processing": 0,
-                "completed": 0,
-                "failed": 0,
-                "cancelled": 0,
-                "active": 0
+                "pending": self.INITIAL_COUNT,
+                "processing": self.INITIAL_COUNT,
+                "completed": self.INITIAL_COUNT,
+                "failed": self.INITIAL_COUNT,
+                "cancelled": self.INITIAL_COUNT,
+                "active": self.INITIAL_COUNT
             }
 
             for job in self._jobs.values():
                 status_key = job.status.value
-                stats[status_key] = stats.get(status_key, 0) + 1
+                stats[status_key] = stats.get(status_key, self.INITIAL_COUNT) + self.INCREMENT_STEP
 
                 if job.status in [JobStatus.PENDING, JobStatus.PROCESSING]:
-                    stats["active"] += 1
+                    stats["active"] += self.INCREMENT_STEP
 
             return stats
 
     def get_upload_path(self, filename: str) -> Path:
         """Get upload path for a file with unique prefix to avoid conflicts"""
         import uuid
-        unique_filename = f"{uuid.uuid4().hex[:8]}_{filename}"
+        unique_filename = f"{uuid.uuid4().hex[:self.UUID_PREFIX_LENGTH]}_{filename}"
         return self._upload_dir / unique_filename
 
     def get_output_path(self, job_id: str, filename: str) -> Path:
