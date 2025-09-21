@@ -130,7 +130,7 @@ class AsyncEPUBTranslator:
         # Start the translation job
         success = job_manager.start_job(
             job_id=job.job_id,
-            translation_func=lambda j: self._execute_translation(j, model, key, **kwargs),
+            translation_func=lambda j: self._execute_translation(j, model, key, upload_path, **kwargs),
             progress_callback=progress_callback
         )
 
@@ -208,6 +208,7 @@ class AsyncEPUBTranslator:
         job: TranslationJob,
         model: TranslationModel,
         key: str,
+        file_path: str,
         **kwargs
     ) -> str:
         """
@@ -217,6 +218,7 @@ class AsyncEPUBTranslator:
             job: Translation job to execute
             model: Translation model to use
             key: API key
+            file_path: Path to the uploaded file
             **kwargs: Additional parameters
 
         Returns:
@@ -227,7 +229,7 @@ class AsyncEPUBTranslator:
             Exception: For other translation errors
         """
         job_id = job.job_id
-        upload_path = job_manager.get_upload_path(job.filename)
+        upload_path = file_path
 
         # Set up timeout handling
         timeout_occurred = threading.Event()
@@ -278,7 +280,7 @@ class AsyncEPUBTranslator:
                 import time
                 time.sleep(2 ** job.retry_count)
 
-                return self._execute_translation(job, model, key, **kwargs)
+                return self._execute_translation(job, model, key, file_path, **kwargs)
             else:
                 logger.error(f"Translation failed for job {job_id} after {job.retry_count + 1} attempts: {e}")
                 raise
