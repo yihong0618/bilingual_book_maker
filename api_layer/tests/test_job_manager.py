@@ -91,15 +91,18 @@ class TestJobManager:
         """Test successful job start"""
         job = job_manager.create_job("test.epub", "chatgpt", "zh-cn")
 
-        # Mock translation function
-        mock_translation_func = Mock(return_value="/path/to/output.epub")
+        # Mock translation function that takes some time
+        def slow_translation_func(job):
+            time.sleep(0.05)  # Small delay to ensure we can check PROCESSING status
+            return "/path/to/output.epub"
 
         success = job_manager.start_job(
             job_id=job.job_id,
-            translation_func=mock_translation_func
+            translation_func=slow_translation_func
         )
 
         assert success is True
+        # Job should be PROCESSING immediately after start
         assert job.status == JobStatus.PROCESSING
 
         # Wait for job to complete
@@ -228,7 +231,10 @@ class TestJobManager:
     def test_path_generation(self, job_manager, cleanup_dirs):
         """Test path generation methods"""
         upload_path = job_manager.get_upload_path("test.epub")
-        assert upload_path == Path("uploads") / "test.epub"
+        # Upload path now includes unique prefix to avoid conflicts
+        assert upload_path.parent == Path("uploads")
+        assert upload_path.name.endswith("_test.epub")
+        assert len(upload_path.name) == len("12345678_test.epub")  # 8-char prefix + underscore + filename
 
         output_path = job_manager.get_output_path("job123", "test.epub")
         assert output_path == Path("outputs") / "test_bilingual_job123.epub"
