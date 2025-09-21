@@ -126,6 +126,7 @@ class AsyncEPUBTranslator:
 
         # Set up progress callback
         def progress_callback(update: ProgressUpdate):
+            logger.info(f"Progress callback triggered for job {update.job_id}: {update.current}/{update.total} ({update.percentage:.1f}%)")
             job_manager.update_job_progress(
                 job_id=update.job_id,
                 processed=update.current,
@@ -133,6 +134,7 @@ class AsyncEPUBTranslator:
             )
 
         # Start the translation job
+        logger.info(f"Registering progress callback and starting job {job.job_id}")
         success = job_manager.start_job(
             job_id=job.job_id,
             translation_func=lambda j: self._execute_translation(j, model, key, upload_path, **kwargs),
@@ -253,7 +255,9 @@ class AsyncEPUBTranslator:
             output_path = job_manager.get_output_path(job_id, job.filename)
 
             # Execute translation with progress monitoring
+            logger.info(f"Starting translation with progress monitoring for job {job_id}")
             with global_progress_tracker.create_tqdm_patch(job_id):
+                logger.info(f"TqdmInterceptor patch applied for job {job_id}")
                 self._translate_with_loader(
                     input_path=str(upload_path),
                     output_path=str(output_path),
@@ -262,6 +266,7 @@ class AsyncEPUBTranslator:
                     job=job,
                     **kwargs
                 )
+                logger.info(f"Translation completed for job {job_id}")
 
             # Signal successful completion
             timeout_occurred.set()

@@ -69,9 +69,9 @@ class DeepLFree(Base):
             )
 
             if response.status_code == 403:
-                raise Exception("Invalid DeepL API key. Please check your API key.")
+                raise Exception(f"Invalid DeepL API key. Please check your API key. Response: {response.text}")
             elif response.status_code == 456:
-                raise Exception("DeepL quota exceeded. Please check your usage limits.")
+                raise Exception(f"DeepL quota exceeded. Please check your usage limits. Response: {response.text}")
             elif response.status_code != 200:
                 raise Exception(f"DeepL API error: {response.status_code} - {response.text}")
 

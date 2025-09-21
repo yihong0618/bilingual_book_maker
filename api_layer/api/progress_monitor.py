@@ -3,6 +3,7 @@ Progress monitoring system that intercepts tqdm progress from bilingual_book_mak
 """
 import threading
 import time
+import logging
 from typing import Callable, Optional, Dict, Any
 from datetime import datetime, timedelta
 import uuid
@@ -10,6 +11,8 @@ from dataclasses import dataclass
 from contextlib import contextmanager
 
 from tqdm import tqdm as original_tqdm
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -53,7 +56,10 @@ class ProgressMonitor:
 
     def update_progress(self, job_id: str, current: int, total: int, description: Optional[str] = None) -> None:
         """Update progress for a specific job"""
+        logger.debug(f"update_progress called for job {job_id}: {current}/{total} ({description})")
+
         if job_id not in self._callbacks:
+            logger.debug(f"No callback registered for job {job_id}")
             return
 
         percentage = (current / total * 100) if total > 0 else 0
@@ -81,9 +87,12 @@ class ProgressMonitor:
         callback = self._callbacks.get(job_id)
         if callback:
             try:
+                logger.debug(f"Calling progress callback for job {job_id}")
                 callback(update)
             except Exception as e:
-                print(f"Error in progress callback for job {job_id}: {e}")
+                logger.error(f"Error in progress callback for job {job_id}: {e}")
+        else:
+            logger.debug(f"No callback found for job {job_id}")
 
     def get_job_progress(self, job_id: str) -> Optional[Dict[str, Any]]:
         """Get current progress information for a job"""
@@ -135,6 +144,7 @@ class TqdmInterceptor(original_tqdm):
 
         # Send progress update if monitor is set
         if self._monitor and self._job_id:
+            logger.debug(f"TqdmInterceptor: update called for job {self._job_id}: {self.n}/{self.total}")
             now = datetime.now()
 
             # Always send update if it's the first one or if enough time has passed
@@ -149,6 +159,7 @@ class TqdmInterceptor(original_tqdm):
             )
 
             if should_update:
+                logger.debug(f"TqdmInterceptor: Sending progress update for job {self._job_id}")
                 self._monitor.update_progress(
                     job_id=self._job_id,
                     current=self.n,
@@ -156,6 +167,10 @@ class TqdmInterceptor(original_tqdm):
                     description=self.desc
                 )
                 self._last_update_time = now
+            else:
+                logger.debug(f"TqdmInterceptor: Skipping update for job {self._job_id}")
+        else:
+            logger.debug(f"TqdmInterceptor: No monitor or job_id set (monitor={self._monitor}, job_id={self._job_id})")
 
         return result
 
