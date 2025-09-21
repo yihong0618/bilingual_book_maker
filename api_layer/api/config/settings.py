@@ -22,9 +22,9 @@ class SecurityConfig:
     ]
 
     DEV_TRUSTED_HOSTS = [
-        DomainConstants.get_localhost_with_port(NetworkConstants.API_PORT),
-        DomainConstants.get_localhost_ip_with_port(NetworkConstants.API_PORT),
-        DomainConstants.get_all_interfaces_with_port(NetworkConstants.API_PORT)
+        NetworkConstants.LOCALHOST,
+        NetworkConstants.LOCALHOST_IP,
+        NetworkConstants.ALL_INTERFACES
     ]
 
     # Staging environment settings

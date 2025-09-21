@@ -341,7 +341,64 @@ python make_book.py --book_name 'animal_farm.epub' --openai_key XXXXX --api_base
 
 ## Docker
 
-You can use [Docker](https://www.docker.com/) if you don't want to deal with setting up the environment.
+You can use [Docker](https://www.docker.com/) if you don't want to deal with setting up the environment. We provide two ways to use Docker:
+
+### Option 1: FastAPI Web Service (Recommended)
+
+Run the bilingual book maker as a web API service with a user-friendly interface:
+
+```shell
+# Build the API image
+docker build -f Dockerfile.minimal -t bilingual-book-maker .
+
+# Run the API container
+docker run -d -p 8000:8000 -e ENVIRONMENT=development --name bilingual-api bilingual-book-maker
+
+# Check if it's running
+docker logs bilingual-api
+
+# Test the API
+curl -X GET http://localhost:8000/health
+```
+
+Once running, you can:
+- **Access API Documentation**: `http://localhost:8000/docs`
+- **Check API Health**: `http://localhost:8000/health`
+- **View Available Models**: `http://localhost:8000/models`
+
+**Example API Usage:**
+```shell
+# Upload and translate a book using DeepL Free API
+curl -X POST "http://localhost:8000/translate" \
+  -F "file=@your_book.epub" \
+  -F "model=deepl_free" \
+  -F "key=your-deepl-api-key" \
+  -F "language=zh" \
+  -F "is_test=true" \
+  -F "test_num=3"
+
+# Check translation status
+curl -X GET "http://localhost:8000/status/{job_id}"
+
+# Download translated file
+curl -X GET "http://localhost:8000/download/{job_id}" -o translated_book.epub
+```
+
+**Container Management:**
+```shell
+# Stop the container
+docker stop bilingual-api
+
+# Remove the container
+docker rm bilingual-api
+
+# Restart the container
+docker restart bilingual-api
+```
+
+### Option 2: CLI Mode (Legacy)
+
+Run the traditional command-line interface directly in Docker:
 
 ```shell
 # Build image
