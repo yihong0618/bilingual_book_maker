@@ -108,39 +108,54 @@ class TqdmInterceptor(original_tqdm):
 
     _monitor: Optional[ProgressMonitor] = None
     _job_id: Optional[str] = None
+    _update_interval_seconds: int = 5  # Default update interval in seconds
 
     @classmethod
-    def set_monitor(cls, monitor: ProgressMonitor, job_id: str):
+    def set_monitor(cls, monitor: ProgressMonitor, job_id: str, update_interval_seconds: int = 5):
         """Set the progress monitor and job ID for this tqdm instance"""
         cls._monitor = monitor
         cls._job_id = job_id
+        cls._update_interval_seconds = update_interval_seconds
 
     @classmethod
     def clear_monitor(cls):
         """Clear the progress monitor"""
         cls._monitor = None
         cls._job_id = None
+        cls._update_interval_seconds = 5  # Reset to default
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._last_update_time = datetime.now()
-        self._update_interval = timedelta(seconds=1)  # Update every second
+        self._last_update_time = None  # Start with None to ensure first update is sent
+        self._update_interval = timedelta(seconds=self._update_interval_seconds)
 
     def update(self, n=1):
         """Override update method to intercept progress"""
         result = super().update(n)
 
         # Send progress update if monitor is set
-        if (self._monitor and self._job_id and
-            datetime.now() - self._last_update_time >= self._update_interval):
+        if self._monitor and self._job_id:
+            now = datetime.now()
 
-            self._monitor.update_progress(
-                job_id=self._job_id,
-                current=self.n,
-                total=self.total or 0,
-                description=self.desc
+            # Always send update if it's the first one or if enough time has passed
+            # Also send updates at milestone percentages (every 5%)
+            should_update = (
+                self._last_update_time is None or
+                now - self._last_update_time >= self._update_interval or
+                self.n == 1 or  # First update
+                (self.total and self.n >= self.total) or  # Last update
+                (self.total and (self.n * 100 // self.total) % 5 == 0 and
+                 (self.n - n) * 100 // self.total != self.n * 100 // self.total)  # Every 5% milestone
             )
-            self._last_update_time = datetime.now()
+
+            if should_update:
+                self._monitor.update_progress(
+                    job_id=self._job_id,
+                    current=self.n,
+                    total=self.total or 0,
+                    description=self.desc
+                )
+                self._last_update_time = now
 
         return result
 
@@ -156,7 +171,7 @@ class TqdmInterceptor(original_tqdm):
         super().close()
 
 
-def patch_tqdm_for_job(monitor: ProgressMonitor, job_id: str):
+def patch_tqdm_for_job(monitor: ProgressMonitor, job_id: str, update_interval_seconds: int = 5):
     """
     Patch tqdm to use our interceptor for a specific job
     Returns a context manager to restore original tqdm
@@ -168,7 +183,7 @@ def patch_tqdm_for_job(monitor: ProgressMonitor, job_id: str):
         original_tqdm_class = tqdm_module.tqdm
 
         # Set up interceptor
-        TqdmInterceptor.set_monitor(monitor, job_id)
+        TqdmInterceptor.set_monitor(monitor, job_id, update_interval_seconds)
 
         # Patch tqdm module
         tqdm_module.tqdm = TqdmInterceptor
@@ -225,9 +240,9 @@ class AsyncProgressTracker:
 
         return (progress["current"] / progress["total"]) * 100
 
-    def create_tqdm_patch(self, job_id: str):
+    def create_tqdm_patch(self, job_id: str, update_interval_seconds: int = 5):
         """Create a tqdm patch context manager for a specific job"""
-        return patch_tqdm_for_job(self.monitor, job_id)
+        return patch_tqdm_for_job(self.monitor, job_id, update_interval_seconds)
 
 
 # Global progress tracker instance

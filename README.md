@@ -349,7 +349,7 @@ Run the bilingual book maker as a web API service with a user-friendly interface
 
 ```shell
 # Build the API image
-docker build -f Dockerfile.minimal -t bilingual-book-maker .
+docker build -t bilingual-book-maker .
 
 # Run the API container
 docker run -d -p 8000:8000 -e ENVIRONMENT=development --name bilingual-api bilingual-book-maker
