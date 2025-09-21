@@ -118,8 +118,8 @@ async def health_check():
 @app.post("/translate", response_model=TranslationResponse)
 async def start_translation(
     file: UploadFile = File(..., description="EPUB file to translate"),
-    model: TranslationModel = Form(..., description="Translation model to use"),
-    key: str = Form(..., description="API key for the translation service"),
+    model: TranslationModel = Form(default=TranslationModel.GOOGLE, description="Translation model to use"),
+    key: str = Form(default="no-key-required", description="API key for the translation service (not required for Google Translate)"),
     language: str = Form(default="zh-cn", description="Target language code"),
     model_api_base: Optional[str] = Form(default=None, description="Custom API base URL (optional)"),
     resume: bool = Form(default=False, description="Resume from previous translation"),
