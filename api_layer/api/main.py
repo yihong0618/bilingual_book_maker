@@ -347,7 +347,7 @@ async def cancel_job(job_id: str):
             raise HTTPException(status_code=HttpStatusConstants.NOT_FOUND, detail="Job not found")
         else:
             raise HTTPException(
-                status_code=400,
+                status_code=HttpStatusConstants.BAD_REQUEST,
                 detail=f"Cannot cancel job in {job.status} status"
             )
 
@@ -365,11 +365,11 @@ async def download_result(job_id: str):
             raise HTTPException(status_code=HttpStatusConstants.NOT_FOUND, detail="Job not found")
         elif job.status != JobStatus.COMPLETED:
             raise HTTPException(
-                status_code=400,
+                status_code=HttpStatusConstants.BAD_REQUEST,
                 detail=f"Job is not completed. Current status: {job.status}"
             )
         else:
-            raise HTTPException(status_code=404, detail="Translated file not found")
+            raise HTTPException(status_code=HttpStatusConstants.NOT_FOUND, detail="Translated file not found")
 
     # Get original filename and create download filename
     job = async_translator.get_job_status(job_id)
@@ -406,7 +406,7 @@ async def delete_job(job_id: str):
     # Can only delete completed, failed, or cancelled jobs
     if job.status in [JobStatus.PENDING, JobStatus.PROCESSING]:
         raise HTTPException(
-            status_code=400,
+            status_code=HttpStatusConstants.BAD_REQUEST,
             detail="Cannot delete active job. Cancel it first."
         )
 
@@ -414,7 +414,7 @@ async def delete_job(job_id: str):
     success = job_manager._remove_job(job_id)
 
     if not success:
-        raise HTTPException(status_code=500, detail="Failed to delete job")
+        raise HTTPException(status_code=HttpStatusConstants.INTERNAL_SERVER_ERROR, detail="Failed to delete job")
 
     return {"message": f"Job {job_id} deleted successfully"}
 
