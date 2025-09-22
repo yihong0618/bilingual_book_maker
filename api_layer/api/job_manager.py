@@ -149,7 +149,10 @@ class JobManager:
 
         # Set up progress tracking
         if progress_callback:
+            logger.warning(f"DEBUG: Registering progress callback for job {job_id}")
             global_progress_tracker.start_tracking(job_id, progress_callback)
+        else:
+            logger.warning(f"DEBUG: No progress callback provided for job {job_id}")
 
         # Update job status
         with self._lock:

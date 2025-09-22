@@ -90,6 +90,7 @@ class AsyncEPUBTranslator:
             FileNotFoundError: If the input file doesn't exist
             ValueError: If invalid parameters are provided
         """
+        logger.warning(f"DEBUG: start_translation called with file_path={file_path}, model={model}")
         # Validate input file
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Input file not found: {file_path}")
@@ -134,7 +135,7 @@ class AsyncEPUBTranslator:
             )
 
         # Start the translation job
-        logger.info(f"Registering progress callback and starting job {job.job_id}")
+        logger.warning(f"DEBUG: Registering progress callback and starting job {job.job_id}, callback: {progress_callback}")
         success = job_manager.start_job(
             job_id=job.job_id,
             translation_func=lambda j: self._execute_translation(j, model, key, upload_path, **kwargs),
@@ -342,8 +343,11 @@ class AsyncEPUBTranslator:
             'context_paragraph_limit': job.context_paragraph_limit,
             'temperature': job.temperature,
             'source_lang': job.source_language,
-            'job_id': job.job_id,
         }
+
+        # Only add job_id for EPUB loader (other loaders don't support it yet)
+        if file_type == 'epub':
+            loader_kwargs['job_id'] = job.job_id
 
         # Add file-specific parameter based on loader type
         if file_type == 'epub':

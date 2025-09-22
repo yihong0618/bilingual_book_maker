@@ -16,7 +16,7 @@ class ProgressLogParser:
     # Regex pattern to match progress logs: PROGRESS: job_id current/total (percentage%)
     PROGRESS_PATTERN = r'PROGRESS:\s+([a-f0-9-]+)\s+(\d+)/(\d+)\s+\((\d+)%\)'
 
-    def __init__(self, container_name: str = "bilingual-test-v2"):
+    def __init__(self, container_name: str = "bilingual-api"):
         self.container_name = container_name
 
     def get_docker_logs(self, tail_lines: int = 100) -> str:

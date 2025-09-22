@@ -56,10 +56,10 @@ class ProgressMonitor:
 
     def update_progress(self, job_id: str, current: int, total: int, description: Optional[str] = None) -> None:
         """Update progress for a specific job"""
-        logger.debug(f"update_progress called for job {job_id}: {current}/{total} ({description})")
+        logger.warning(f"DEBUG: update_progress called for job {job_id}: {current}/{total} ({description})")
 
         if job_id not in self._callbacks:
-            logger.debug(f"No callback registered for job {job_id}")
+            logger.warning(f"DEBUG: No callback registered for job {job_id}")
             return
 
         percentage = (current / total * 100) if total > 0 else 0
@@ -87,12 +87,12 @@ class ProgressMonitor:
         callback = self._callbacks.get(job_id)
         if callback:
             try:
-                logger.debug(f"Calling progress callback for job {job_id}")
+                logger.warning(f"DEBUG: Calling progress callback for job {job_id}")
                 callback(update)
             except Exception as e:
                 logger.error(f"Error in progress callback for job {job_id}: {e}")
         else:
-            logger.debug(f"No callback found for job {job_id}")
+            logger.warning(f"DEBUG: No callback found for job {job_id}")
 
     def get_job_progress(self, job_id: str) -> Optional[Dict[str, Any]]:
         """Get current progress information for a job"""
