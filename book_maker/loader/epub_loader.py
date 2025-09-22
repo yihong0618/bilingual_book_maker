@@ -3,9 +3,12 @@ import pickle
 import string
 import sys
 import time
+import logging
 from copy import copy
 from pathlib import Path
 import traceback
+
+logger = logging.getLogger(__name__)
 
 from bs4 import BeautifulSoup as bs
 from bs4 import Tag
@@ -37,9 +40,12 @@ class EPUBBookLoader(BaseBookLoader):
         context_paragraph_limit=0,
         temperature=1.0,
         source_lang="auto",
+        job_id=None,
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
+        self.job_id = job_id
+        logger.warning(f"EPUBBookLoader initialized with job_id: {self.job_id}")
         self.translate_model = model(
             key,
             language,
@@ -440,6 +446,11 @@ class EPUBBookLoader(BaseBookLoader):
                     break
                 if not p.text or self._is_special_text(p.text):
                     pbar.update(1)
+                    # Log progress for API tracking
+                    logger.warning(f"DEBUG: At progress point - job_id={self.job_id}")
+                    if self.job_id and pbar.total:
+                        progress = int((pbar.n / pbar.total) * 100) if pbar.total > 0 else 0
+                        logger.warning(f"PROGRESS: {self.job_id} {pbar.n}/{pbar.total} ({progress}%)")
                     continue
 
                 new_p = self._extract_paragraph(copy(p))
@@ -461,6 +472,12 @@ class EPUBBookLoader(BaseBookLoader):
 
                 # pbar.update(delta) not pbar.update(index)?
                 pbar.update(1)
+
+                # Log progress for API tracking
+                logger.warning(f"DEBUG: At progress point 2 - job_id={self.job_id}")
+                if self.job_id and pbar.total:
+                    progress = int((pbar.n / pbar.total) * 100) if pbar.total > 0 else 0
+                    logger.warning(f"PROGRESS: {self.job_id} {pbar.n}/{pbar.total} ({progress}%)")
 
                 if self.is_test and index >= self.test_num:
                     break

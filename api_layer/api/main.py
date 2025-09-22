@@ -263,7 +263,12 @@ async def start_translation(
 @app.get("/status/{job_id}", response_model=JobStatusResponse)
 async def get_job_status(job_id: str):
     """Get status and progress of a translation job"""
+    # Try to update progress from logs for processing jobs
     job = async_translator.get_job_status(job_id)
+    if job and job.status == JobStatus.PROCESSING:
+        job_manager.update_progress_from_logs(job_id)
+        # Get updated job status
+        job = async_translator.get_job_status(job_id)
 
     if not job:
         raise HTTPException(status_code=HttpStatusConstants.NOT_FOUND, detail="Job not found")

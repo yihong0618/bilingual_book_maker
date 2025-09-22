@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 
 from .models import TranslationJob, JobStatus
+from .log_parser import progress_parser
 from .progress_monitor import ProgressUpdate, global_progress_tracker
 from .config import settings
 
@@ -237,6 +238,28 @@ class JobManager:
         if job:
             with self._lock:
                 job.update_progress(processed, total)
+
+    def update_progress_from_logs(self, job_id: str) -> bool:
+        """
+        Update job progress by parsing Docker logs
+
+        Returns:
+            True if progress was updated, False otherwise
+        """
+        try:
+            progress_info = progress_parser.get_job_progress(job_id)
+            if progress_info:
+                self.update_job_progress(
+                    job_id=job_id,
+                    processed=progress_info['current'],
+                    total=progress_info['total']
+                )
+                logger.debug(f"Updated progress from logs for job {job_id}: {progress_info['current']}/{progress_info['total']} ({progress_info['percentage']}%)")
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Error updating progress from logs for job {job_id}: {e}")
+            return False
 
     def cleanup_expired_jobs(self) -> int:
         """

@@ -342,6 +342,7 @@ class AsyncEPUBTranslator:
             'context_paragraph_limit': job.context_paragraph_limit,
             'temperature': job.temperature,
             'source_lang': job.source_language,
+            'job_id': job.job_id,
         }
 
         # Add file-specific parameter based on loader type
