@@ -47,6 +47,7 @@ class ProgressMonitor:
                 "total": 0,
                 "current": 0
             }
+        logger.warning(f"DEBUG: Registered callback for job {job_id}. Total callbacks: {len(self._callbacks)}")
 
     def unregister_callback(self, job_id: str) -> None:
         """Unregister progress callback for a job"""
@@ -59,7 +60,7 @@ class ProgressMonitor:
         logger.warning(f"DEBUG: update_progress called for job {job_id}: {current}/{total} ({description})")
 
         if job_id not in self._callbacks:
-            logger.warning(f"DEBUG: No callback registered for job {job_id}")
+            logger.warning(f"DEBUG: No callback registered for job {job_id}. Registered jobs: {list(self._callbacks.keys())}")
             return
 
         percentage = (current / total * 100) if total > 0 else 0

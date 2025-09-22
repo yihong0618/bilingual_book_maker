@@ -19,8 +19,7 @@ from tqdm import tqdm
 
 from book_maker.utils import num_tokens_from_text, prompt_config_to_kwargs
 
-# Will import global progress tracker dynamically to avoid circular imports
-global_progress_tracker = None
+# Progress tracker will be passed as parameter to avoid circular imports
 
 from .base_loader import BaseBookLoader
 from .helper import EPUBBookLoaderHelper, is_text_link, not_trans
@@ -44,11 +43,13 @@ class EPUBBookLoader(BaseBookLoader):
         temperature=1.0,
         source_lang="auto",
         job_id=None,
+        progress_tracker=None,
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
         self.job_id = job_id
-        logger.info(f"EPUBBookLoader initialized with job_id: {self.job_id}")
+        self.progress_tracker = progress_tracker
+        logger.info(f"EPUBBookLoader initialized with job_id: {self.job_id}, progress_tracker: {progress_tracker}")
         self.translate_model = model(
             key,
             language,
@@ -140,22 +141,11 @@ class EPUBBookLoader(BaseBookLoader):
     def _update_global_progress(self, current, total):
         """Update global progress tracker for API integration (dynamic import to avoid circular imports)"""
         try:
-            if not hasattr(self, '_global_progress_tracker'):
-                # Dynamically import to avoid circular import issues
-                from api_layer.api.progress_monitor import global_progress_tracker
-                self._global_progress_tracker = global_progress_tracker
-                logger.warning(f"DEBUG: Dynamically imported global_progress_tracker: {global_progress_tracker}")
-
-            if self._global_progress_tracker and hasattr(self, 'job_id') and self.job_id:
-                logger.warning(f"DEBUG: Calling global_progress_tracker.monitor.update_progress({self.job_id}, {current}, {total})")
-                self._global_progress_tracker.monitor.update_progress(self.job_id, current, total)
+            if self.progress_tracker and hasattr(self, 'job_id') and self.job_id:
+                logger.warning(f"DEBUG: Calling progress_tracker.monitor.update_progress({self.job_id}, {current}, {total}) on instance {self.progress_tracker}")
+                self.progress_tracker.monitor.update_progress(self.job_id, current, total)
             else:
-                logger.warning(f"DEBUG: Cannot update progress - tracker: {self._global_progress_tracker}, job_id: {getattr(self, 'job_id', None)}")
-        except ImportError as e:
-            # Running standalone without API layer
-            if not hasattr(self, '_import_failed'):
-                logger.warning(f"DEBUG: Failed to import global_progress_tracker: {e}")
-                self._import_failed = True
+                logger.warning(f"DEBUG: Cannot update progress - tracker: {self.progress_tracker}, job_id: {getattr(self, 'job_id', None)}")
         except Exception as e:
             logger.error(f"Error updating global progress: {e}")
 

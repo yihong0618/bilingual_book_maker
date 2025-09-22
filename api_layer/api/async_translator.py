@@ -348,6 +348,8 @@ class AsyncEPUBTranslator:
         # Only add job_id for EPUB loader (other loaders don't support it yet)
         if file_type == 'epub':
             loader_kwargs['job_id'] = job.job_id
+            # Pass the same progress tracker instance used for callback registration
+            loader_kwargs['progress_tracker'] = global_progress_tracker
 
         # Add file-specific parameter based on loader type
         if file_type == 'epub':
