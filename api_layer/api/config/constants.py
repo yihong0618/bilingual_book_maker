@@ -198,6 +198,35 @@ class ValidationConstants:
     MAX_TEMPERATURE = 2.0
     DEFAULT_TEMPERATURE = 1.0
 
+    # File validation constants
+    SUPPORTED_FILE_EXTENSIONS = [".epub", ".txt", ".srt", ".md"]
+    ALLOWED_MIME_TYPES = {
+        ".epub": ["application/epub+zip"],
+        ".txt": ["text/plain", "text/plain; charset=utf-8"],
+        ".srt": ["application/x-subrip", "text/plain", "text/plain; charset=utf-8"],
+        ".md": ["text/markdown", "text/plain", "text/plain; charset=utf-8"]
+    }
+
+    # Content validation
+    MAX_CONTENT_SCAN_BYTES = 1024  # First 1KB to scan for malicious content
+    SUSPICIOUS_CONTENT_PATTERNS = [
+        b"<script",  # JavaScript
+        b"<?php",    # PHP code
+        b"#!/bin/",  # Shell scripts
+        b"eval(",    # Code evaluation
+        b"exec(",    # Code execution
+        b"\x4d\x5a",  # PE executable header (MZ)
+        b"\x7f\x45\x4c\x46",  # ELF executable header
+    ]
+
+    # File magic bytes for validation
+    FILE_MAGIC_BYTES = {
+        ".epub": [b"PK\x03\x04"],  # ZIP file signature (EPUB is ZIP-based)
+        ".txt": [],  # Text files don't have magic bytes
+        ".srt": [],  # SRT files are plain text
+        ".md": []    # Markdown files are plain text
+    }
+
     # Common defaults
     INITIAL_VALUE = 0  # For progress, counts, retries, etc.
     PROGRESS_COMPLETE = 100

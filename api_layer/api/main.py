@@ -65,14 +65,14 @@ async def lifespan(app: FastAPI):
 
 
 # Dependencies
-async def validate_file_size(
+async def validate_file_comprehensive(
     file: UploadFile = File(
         ...,
         description=f"File to translate (EPUB, TXT, SRT, MD formats supported). Maximum size: {ValidationConstants.MAX_FILE_SIZE_MB}MB"
     )
 ) -> UploadFile:
     """
-    Dependency to validate uploaded file size
+    Comprehensive file validation including size, format, content, and security checks
 
     Args:
         file: Uploaded file to validate
@@ -81,16 +81,47 @@ async def validate_file_size(
         The file if validation passes
 
     Raises:
-        HTTPException: If file size exceeds limit
+        HTTPException: If validation fails (size, format, content, security)
     """
+    # 1. Basic file checks
+    if not file.filename:
+        raise HTTPException(
+            status_code=HttpStatusConstants.BAD_REQUEST,
+            detail="Filename is required"
+        )
+
+    # 2. File extension validation
+    file_ext = "." + file.filename.lower().split(".")[-1] if "." in file.filename else ""
+    if file_ext not in ValidationConstants.SUPPORTED_FILE_EXTENSIONS:
+        supported_formats = ", ".join(ValidationConstants.SUPPORTED_FILE_EXTENSIONS)
+        raise HTTPException(
+            status_code=HttpStatusConstants.BAD_REQUEST,
+            detail=f"Unsupported file format '{file_ext}'. Supported formats: {supported_formats}"
+        )
+
+    # 3. MIME type validation
+    if file.content_type:
+        allowed_mime_types = ValidationConstants.ALLOWED_MIME_TYPES.get(file_ext, [])
+        # Remove charset and other parameters for comparison
+        content_type_base = file.content_type.split(';')[0].strip()
+        if allowed_mime_types and content_type_base not in allowed_mime_types:
+            raise HTTPException(
+                status_code=HttpStatusConstants.BAD_REQUEST,
+                detail=f"Invalid content type '{file.content_type}' for {file_ext} file"
+            )
+
+    # 4. File size validation
     if file.size is None:
         # If size is not available, read content to get size
         content = await file.read()
         file_size = len(content)
         # Reset file pointer
-        await file.seek(0)
+        await file.seek(ValidationConstants.INITIAL_VALUE)
     else:
         file_size = file.size
+        # Read content for further validation
+        content = await file.read()
+        await file.seek(ValidationConstants.INITIAL_VALUE)
 
     if file_size > ValidationConstants.MAX_FILE_SIZE_BYTES:
         file_size_mb = file_size / ValidationConstants.BYTES_PER_MB
@@ -98,6 +129,32 @@ async def validate_file_size(
         raise HTTPException(
             status_code=HttpStatusConstants.PAYLOAD_TOO_LARGE,
             detail=f"File too large: {file_size_mb:.1f}MB exceeds {max_size_mb}MB limit"
+        )
+
+    # 5. File magic bytes validation (for formats that have them)
+    magic_bytes = ValidationConstants.FILE_MAGIC_BYTES.get(file_ext, [])
+    if magic_bytes:
+        file_header = content[:10]  # First 10 bytes should be enough for magic byte detection
+        if not any(file_header.startswith(magic) for magic in magic_bytes):
+            raise HTTPException(
+                status_code=HttpStatusConstants.BAD_REQUEST,
+                detail=f"File content doesn't match {file_ext} format (invalid file header)"
+            )
+
+    # 6. Content security scanning
+    scan_bytes = content[:ValidationConstants.MAX_CONTENT_SCAN_BYTES]
+    for pattern in ValidationConstants.SUSPICIOUS_CONTENT_PATTERNS:
+        if pattern in scan_bytes:
+            raise HTTPException(
+                status_code=HttpStatusConstants.BAD_REQUEST,
+                detail="File contains potentially malicious content and cannot be processed"
+            )
+
+    # 7. Filename length validation
+    if len(file.filename) > ValidationConstants.MAX_FILENAME_LENGTH:
+        raise HTTPException(
+            status_code=HttpStatusConstants.BAD_REQUEST,
+            detail=f"Filename too long: {len(file.filename)} chars exceeds {ValidationConstants.MAX_FILENAME_LENGTH} limit"
         )
 
     return file
@@ -175,7 +232,7 @@ async def health_check():
 
 @app.post("/translate", response_model=TranslationResponse)
 async def start_translation(
-    file: UploadFile = Depends(validate_file_size),
+    file: UploadFile = Depends(validate_file_comprehensive),
     model: TranslationModel = Form(
         default=TranslationModel.GOOGLE, description="Translation model to use"
     ),
@@ -242,23 +299,7 @@ async def start_translation(
 
     Returns job_id immediately for async processing. Use /status/{job_id} to monitor progress.
     """
-    # Validate file
-    if not file.filename:
-        raise HTTPException(
-            status_code=HttpStatusConstants.BAD_REQUEST, detail="No file provided"
-        )
-
-    # Check supported file formats
-    supported_formats = [".epub", ".txt", ".srt", ".md"]
-    file_ext = (
-        "." + file.filename.lower().split(".")[-1] if "." in file.filename else ""
-    )
-
-    if file_ext not in supported_formats:
-        raise HTTPException(
-            status_code=HttpStatusConstants.BAD_REQUEST,
-            detail=f"Unsupported file format. Supported formats: {', '.join(supported_formats)}",
-        )
+    # Note: File validation is now handled by validate_file_comprehensive dependency
 
     # Validate required parameters
     if not key:
@@ -266,11 +307,11 @@ async def start_translation(
             status_code=HttpStatusConstants.BAD_REQUEST, detail="API key is required"
         )
 
-    # Validate temperature
-    if not 0.0 <= temperature <= 2.0:
+    # Validate temperature using constants
+    if not ValidationConstants.MIN_TEMPERATURE <= temperature <= ValidationConstants.MAX_TEMPERATURE:
         raise HTTPException(
             status_code=HttpStatusConstants.BAD_REQUEST,
-            detail="Temperature must be between 0.0 and 2.0",
+            detail=f"Temperature must be between {ValidationConstants.MIN_TEMPERATURE} and {ValidationConstants.MAX_TEMPERATURE}",
         )
 
     try:
