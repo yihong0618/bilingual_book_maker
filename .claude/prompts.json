@@ -1,0 +1,44 @@
+{
+  "prompts": [
+    {
+      "name": "API Test",
+      "description": "Test the FastAPI backend endpoints",
+      "content": "Test the translation API endpoints. Start with a health check, then test file upload and translation with a small file in test mode."
+    },
+    {
+      "name": "Docker Build",
+      "description": "Build and run the Docker container",
+      "content": "Build the Docker image and run the container. Test that the API is accessible and working properly."
+    },
+    {
+      "name": "Progress Debug",
+      "description": "Debug progress tracking issues",
+      "content": "Debug any issues with progress tracking for translation jobs. Check that callbacks are working and progress updates are being sent correctly."
+    },
+    {
+      "name": "Add Translation Model",
+      "description": "Add support for a new translation model",
+      "content": "Add support for a new translation model. Update the TranslationModel enum, add the model class mapping, and test the integration."
+    },
+    {
+      "name": "Deploy to AWS",
+      "description": "Help with AWS deployment",
+      "content": "Help deploy this FastAPI application to AWS. Discuss the best deployment options and help set up the necessary infrastructure."
+    },
+    {
+      "name": "Performance Optimization",
+      "description": "Optimize API performance",
+      "content": "Review the API performance and suggest optimizations. Look at database queries, file handling, and async operations."
+    },
+    {
+      "name": "Add Tests",
+      "description": "Add comprehensive tests",
+      "content": "Add comprehensive tests for the API endpoints and translation functionality. Include unit tests, integration tests, and error handling tests."
+    },
+    {
+      "name": "Security Review",
+      "description": "Review security aspects",
+      "content": "Review the API for security issues. Check authentication, file upload validation, input sanitization, and potential vulnerabilities."
+    }
+  ]
+}

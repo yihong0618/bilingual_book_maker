@@ -1,0 +1,84 @@
+# Claude Code ignore file
+# Files and directories to exclude from Claude Code context
+
+# Build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Large files and directories
+*.epub
+*.pdf
+*.zip
+test_books/
+uploads/
+outputs/
+temp/
+
+# Logs
+*.log
+logs/
+
+# Environment files with secrets
+.env.local
+.env.production
+secrets.json
+
+# Compiled documentation
+site/
+_build/
+
+# Coverage reports
+htmlcov/
+.coverage
+.pytest_cache/
+
+# Node modules (if any)
+node_modules/
+
+# Docker volumes
+docker-compose.override.yml
+
+# Large binary files
+*.bin
+*.tar.gz
+*.tgz
