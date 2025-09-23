@@ -27,5 +27,5 @@ EXPOSE 8000
 # Set Python path to include the parent directory
 ENV PYTHONPATH=/app:$PYTHONPATH
 
-# Run the original API server
+# Run the original API server (using environment variables for host/port)
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

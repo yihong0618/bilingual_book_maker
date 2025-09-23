@@ -85,8 +85,8 @@ class DefaultValues:
     # API Server Defaults
     DEFAULT_API_HOST = "0.0.0.0"
     DEFAULT_API_PORT = 8000
-    DEFAULT_RELOAD = True
-    DEFAULT_DEBUG = True
+    DEFAULT_RELOAD = False  # Changed to False for production safety
+    DEFAULT_DEBUG = False   # Changed to False for production safety
 
     # Storage Defaults
     DEFAULT_UPLOAD_DIR = "uploads"
@@ -206,6 +206,21 @@ class ValidationConstants:
         ".srt": ["application/x-subrip", "text/plain", "text/plain; charset=utf-8"],
         ".md": ["text/markdown", "text/plain", "text/plain; charset=utf-8"]
     }
+
+    # Filename sanitization constants
+    ALLOWED_FILENAME_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.()"
+    PATH_TRAVERSAL_PATTERNS = ["../", "..\\", "/..", "\\..", "..", "/etc/", "/usr/", "/var/", "/root/", "\\windows\\", "\\system32\\", "c:\\"]
+    FORBIDDEN_FILENAMES = [
+        # Windows reserved names
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        # Unix reserved names
+        ".", "..", "/", "\\",
+        # Other dangerous names
+        "desktop.ini", "thumbs.db", ".htaccess", ".htpasswd"
+    ]
+    REPLACEMENT_CHAR = "_"  # Character to replace invalid chars with
 
     # Content validation
     MAX_CONTENT_SCAN_BYTES = 1024  # First 1KB to scan for malicious content

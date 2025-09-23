@@ -37,7 +37,7 @@ from .models import (
 from .async_translator import async_translator
 from .job_manager import job_manager
 from .progress_monitor import global_progress_tracker
-from .config import settings, HttpStatusConstants, ValidationConstants
+from .config import settings, HttpStatusConstants, ValidationConstants, StorageConstants
 
 
 # Configure logging
@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Bilingual Book Maker API")
 
     # Create necessary directories
-    for directory in ["uploads", "outputs", "temp"]:
+    for directory in [settings.upload_dir, settings.output_dir, settings.temp_dir]:
         Path(directory).mkdir(exist_ok=True)
 
     yield
@@ -62,6 +62,87 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down Bilingual Book Maker API")
     job_manager.shutdown(wait=False)
+
+
+# Utility functions
+def sanitize_filename(filename: str) -> str:
+    """
+    Sanitize filename to prevent path traversal and other security issues
+
+    Args:
+        filename: Original filename from upload
+
+    Returns:
+        Sanitized filename safe for storage
+
+    Raises:
+        HTTPException: If filename cannot be sanitized safely
+    """
+    if not filename:
+        raise HTTPException(
+            status_code=HttpStatusConstants.BAD_REQUEST,
+            detail="Filename cannot be empty"
+        )
+
+    # Extract extension first to preserve it
+    if "." in filename:
+        name_part, ext = filename.rsplit(".", 1)
+        ext = "." + ext.lower()
+    else:
+        name_part = filename
+        ext = ""
+
+    # Check for path traversal patterns
+    for pattern in ValidationConstants.PATH_TRAVERSAL_PATTERNS:
+        if pattern in filename:
+            raise HTTPException(
+                status_code=HttpStatusConstants.BAD_REQUEST,
+                detail=f"Filename contains invalid path pattern: {pattern}"
+            )
+
+    # Check for forbidden filenames (case-insensitive)
+    name_upper = name_part.upper()
+    full_name_upper = filename.upper()
+    for forbidden in ValidationConstants.FORBIDDEN_FILENAMES:
+        if name_upper == forbidden.upper() or full_name_upper == forbidden.upper():
+            raise HTTPException(
+                status_code=HttpStatusConstants.BAD_REQUEST,
+                detail=f"Filename '{filename}' is reserved and cannot be used"
+            )
+
+    # Sanitize characters - replace invalid chars with replacement char
+    sanitized_name = ""
+    for char in name_part:
+        if char in ValidationConstants.ALLOWED_FILENAME_CHARS:
+            sanitized_name += char
+        else:
+            sanitized_name += ValidationConstants.REPLACEMENT_CHAR
+
+    # Remove multiple consecutive replacement chars
+    while ValidationConstants.REPLACEMENT_CHAR * 2 in sanitized_name:
+        sanitized_name = sanitized_name.replace(
+            ValidationConstants.REPLACEMENT_CHAR * 2,
+            ValidationConstants.REPLACEMENT_CHAR
+        )
+
+    # Remove leading/trailing replacement chars
+    sanitized_name = sanitized_name.strip(ValidationConstants.REPLACEMENT_CHAR)
+
+    # Ensure we still have a valid name
+    if not sanitized_name:
+        sanitized_name = "file"
+
+    # Reconstruct filename with extension
+    sanitized_filename = sanitized_name + ext
+
+    # Final length check
+    if len(sanitized_filename) > ValidationConstants.MAX_FILENAME_LENGTH:
+        # Truncate name part while preserving extension
+        max_name_length = ValidationConstants.MAX_FILENAME_LENGTH - len(ext)
+        sanitized_name = sanitized_name[:max_name_length]
+        sanitized_filename = sanitized_name + ext
+
+    return sanitized_filename
 
 
 # Dependencies
@@ -90,7 +171,12 @@ async def validate_file_comprehensive(
             detail="Filename is required"
         )
 
-    # 2. File extension validation
+    # 2. Filename sanitization (includes path traversal prevention)
+    sanitized_filename = sanitize_filename(file.filename)
+    # Update the file object with sanitized name for downstream processing
+    file.filename = sanitized_filename
+
+    # 3. File extension validation
     file_ext = "." + file.filename.lower().split(".")[-1] if "." in file.filename else ""
     if file_ext not in ValidationConstants.SUPPORTED_FILE_EXTENSIONS:
         supported_formats = ", ".join(ValidationConstants.SUPPORTED_FILE_EXTENSIONS)
@@ -99,7 +185,7 @@ async def validate_file_comprehensive(
             detail=f"Unsupported file format '{file_ext}'. Supported formats: {supported_formats}"
         )
 
-    # 3. MIME type validation
+    # 4. MIME type validation
     if file.content_type:
         allowed_mime_types = ValidationConstants.ALLOWED_MIME_TYPES.get(file_ext, [])
         # Remove charset and other parameters for comparison
@@ -110,7 +196,7 @@ async def validate_file_comprehensive(
                 detail=f"Invalid content type '{file.content_type}' for {file_ext} file"
             )
 
-    # 4. File size validation
+    # 5. File size validation
     if file.size is None:
         # If size is not available, read content to get size
         content = await file.read()
@@ -131,7 +217,7 @@ async def validate_file_comprehensive(
             detail=f"File too large: {file_size_mb:.1f}MB exceeds {max_size_mb}MB limit"
         )
 
-    # 5. File magic bytes validation (for formats that have them)
+    # 6. File magic bytes validation (for formats that have them)
     magic_bytes = ValidationConstants.FILE_MAGIC_BYTES.get(file_ext, [])
     if magic_bytes:
         file_header = content[:10]  # First 10 bytes should be enough for magic byte detection
@@ -141,7 +227,7 @@ async def validate_file_comprehensive(
                 detail=f"File content doesn't match {file_ext} format (invalid file header)"
             )
 
-    # 6. Content security scanning
+    # 7. Content security scanning
     scan_bytes = content[:ValidationConstants.MAX_CONTENT_SCAN_BYTES]
     for pattern in ValidationConstants.SUSPICIOUS_CONTENT_PATTERNS:
         if pattern in scan_bytes:
@@ -150,7 +236,7 @@ async def validate_file_comprehensive(
                 detail="File contains potentially malicious content and cannot be processed"
             )
 
-    # 7. Filename length validation
+    # 8. Final filename length validation (after sanitization)
     if len(file.filename) > ValidationConstants.MAX_FILENAME_LENGTH:
         raise HTTPException(
             status_code=HttpStatusConstants.BAD_REQUEST,
@@ -502,19 +588,19 @@ async def download_result(job_id: str):
     job = async_translator.get_job_status(job_id)
     if job:
         name, ext = os.path.splitext(job.filename)
-        download_filename = f"{name}_bilingual{ext}"
+        download_filename = f"{name}{StorageConstants.BILINGUAL_SUFFIX}{ext}"
 
         # Set appropriate media type based on file extension
         media_type_map = {
-            ".epub": "application/epub+zip",
-            ".txt": "text/plain",
-            ".srt": "application/x-subrip",
-            ".md": "text/markdown",
+            StorageConstants.EPUB_EXT: StorageConstants.EPUB_MIME,
+            StorageConstants.TXT_EXT: StorageConstants.TXT_MIME,
+            StorageConstants.SRT_EXT: StorageConstants.SRT_MIME,
+            StorageConstants.MD_EXT: StorageConstants.MD_MIME,
         }
-        media_type = media_type_map.get(ext.lower(), "application/octet-stream")
+        media_type = media_type_map.get(ext.lower(), StorageConstants.OCTET_STREAM_MIME)
     else:
         download_filename = f"translated_{job_id}.epub"
-        media_type = "application/epub+zip"
+        media_type = StorageConstants.EPUB_MIME
 
     return FileResponse(
         path=file_path, filename=download_filename, media_type=media_type
