@@ -46,8 +46,8 @@ echo -e "${YELLOW}Starting container for load testing...${NC}"
 docker run -d \
     --name ${CONTAINER_NAME} \
     -p ${API_PORT}:8000 \
-    -e ENVIRONMENT=production \
-    -e DEBUG=false \
+    -e ENVIRONMENT=development \
+    -e DEBUG=true \
     ${IMAGE_NAME}
 
 # Wait for API to be ready
