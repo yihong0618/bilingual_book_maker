@@ -38,7 +38,7 @@ from .async_translator import async_translator
 from .job_manager import job_manager
 from .progress_monitor import global_progress_tracker
 from .config import settings, HttpStatusConstants, ValidationConstants, StorageConstants
-from .auth import get_current_api_key, add_security_headers, init_demo_api_keys
+from .auth import auth_optional, add_security_headers
 
 
 # Configure logging
@@ -58,8 +58,13 @@ async def lifespan(app: FastAPI):
     for directory in [settings.upload_dir, settings.output_dir, settings.temp_dir]:
         Path(directory).mkdir(exist_ok=True)
 
-    # Initialize demo API keys for testing
-    init_demo_api_keys()
+    # TODO: Future authentication features
+    # - Add user registration system for API key management
+    # - Implement credit/token system for paid translations
+    # - Add rate limiting for premium models using your API keys
+    # - Create user tiers: free (Google only) vs paid (premium models with credits)
+    # - Add billing integration for credit purchases
+    # - Implement basic rate limiting as foundation for future paid tiers
 
     yield
 
@@ -253,10 +258,27 @@ async def validate_file_comprehensive(
 # Create FastAPI app
 app = FastAPI(
     title="Bilingual Book Maker API",
-    description="Async translation API for EPUB books with job tracking and progress monitoring",
+    description="""
+    Async translation API for EPUB, TXT, SRT, and Markdown files.
+
+    **Free Usage (No Registration):**
+    - Google Translate model (unlimited)
+    - All file formats supported
+
+    **Registered Users:**
+    - Access to premium models (ChatGPT, Claude, Gemini, etc.)
+    - Use your own API keys for translation services
+    - Higher quality translations
+
+    **Authentication:** Optional - only required for premium models
+    Use `Authorization: Bearer your_api_key` header for premium model access.
+    """,
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Add security headers middleware
+app.middleware("http")(add_security_headers)
 
 # Configure security settings using configuration system
 logger.info(f"Environment: {settings.environment}")
@@ -320,9 +342,10 @@ async def health_check():
     )
 
 
-@app.post("/translate", response_model=TranslationResponse)
+@app.post("/translate", response_model=TranslationResponse, tags=["Translation"])
 async def start_translation(
     file: UploadFile = Depends(validate_file_comprehensive),
+    current_api_key: Optional[str] = Depends(auth_optional),
     model: TranslationModel = Form(
         default=TranslationModel.GOOGLE, description="Translation model to use"
     ),
@@ -391,10 +414,23 @@ async def start_translation(
     """
     # Note: File validation is now handled by validate_file_comprehensive dependency
 
-    # Validate required parameters
-    if not key:
+    # Business logic: Check model access permissions
+    premium_models = [TranslationModel.CHATGPT, TranslationModel.CLAUDE, TranslationModel.GEMINI,
+                     TranslationModel.DEEPL, TranslationModel.GROQ, TranslationModel.QWEN, TranslationModel.XAI]
+
+    if model in premium_models and not current_api_key:
+        available_models = "Google Translate (free)"
+        premium_models_str = ", ".join([m.value for m in premium_models])
         raise HTTPException(
-            status_code=HttpStatusConstants.BAD_REQUEST, detail="API key is required"
+            status_code=HttpStatusConstants.UNAUTHORIZED,
+            detail=f"Authentication required for premium models ({premium_models_str}). Available without auth: {available_models}"
+        )
+
+    # Validate required parameters for translation service API keys
+    if model != TranslationModel.GOOGLE and not key:
+        raise HTTPException(
+            status_code=HttpStatusConstants.BAD_REQUEST,
+            detail=f"Translation service API key is required for {model.value}"
         )
 
     # Validate temperature using constants
