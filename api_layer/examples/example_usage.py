@@ -2,6 +2,7 @@
 Example usage of the Async Translation API
 Demonstrates how to use the async wrapper for translation jobs
 """
+
 import asyncio
 import time
 import requests
@@ -16,7 +17,9 @@ class AsyncTranslationClient:
     def __init__(self, base_url: str = "http://localhost:8000"):
         self.base_url = base_url
 
-    def start_translation(self, file_path: str, model: str, api_key: str, **kwargs) -> str:
+    def start_translation(
+        self, file_path: str, model: str, api_key: str, **kwargs
+    ) -> str:
         """
         Start a translation job
 
@@ -29,19 +32,17 @@ class AsyncTranslationClient:
         Returns:
             Job ID for tracking
         """
-        with open(file_path, 'rb') as f:
-            files = {'file': f}
-            data = {
-                'model': model,
-                'key': api_key,
-                **kwargs
-            }
+        with open(file_path, "rb") as f:
+            files = {"file": f}
+            data = {"model": model, "key": api_key, **kwargs}
 
-            response = requests.post(f"{self.base_url}/translate", files=files, data=data)
+            response = requests.post(
+                f"{self.base_url}/translate", files=files, data=data
+            )
             response.raise_for_status()
 
             result = response.json()
-            return result['job_id']
+            return result["job_id"]
 
     def get_job_status(self, job_id: str) -> dict:
         """Get job status and progress"""
@@ -65,10 +66,12 @@ class AsyncTranslationClient:
         while True:
             status = self.get_job_status(job_id)
 
-            print(f"Status: {status['status']}, Progress: {status['progress']}% "
-                  f"({status['processed_paragraphs']}/{status['total_paragraphs']} paragraphs)")
+            print(
+                f"Status: {status['status']}, Progress: {status['progress']}% "
+                f"({status['processed_paragraphs']}/{status['total_paragraphs']} paragraphs)"
+            )
 
-            if status['status'] in ['completed', 'failed', 'cancelled']:
+            if status["status"] in ["completed", "failed", "cancelled"]:
                 return status
 
             time.sleep(poll_interval)
@@ -78,7 +81,7 @@ class AsyncTranslationClient:
         response = requests.get(f"{self.base_url}/download/{job_id}")
         response.raise_for_status()
 
-        with open(output_path, 'wb') as f:
+        with open(output_path, "wb") as f:
             f.write(response.content)
 
         print(f"Downloaded translated file to: {output_path}")
@@ -97,7 +100,7 @@ class AsyncTranslationClient:
         """List all jobs"""
         params = {}
         if status_filter:
-            params['status'] = status_filter
+            params["status"] = status_filter
 
         response = requests.get(f"{self.base_url}/jobs", params=params)
         response.raise_for_status()
@@ -124,7 +127,9 @@ def example_basic_translation():
         print(f"API Status: {health['status']}")
         print(f"Active Jobs: {health['active_jobs']}")
     except requests.exceptions.ConnectionError:
-        print("ERROR: API server is not running. Please start it with: python api/main.py")
+        print(
+            "ERROR: API server is not running. Please start it with: python api/main.py"
+        )
         return
 
     # Example file path (you would use your actual EPUB file)
@@ -143,7 +148,7 @@ def example_basic_translation():
             api_key="your-api-key-here",
             language="zh-cn",
             is_test=True,  # Enable test mode for faster testing
-            test_num=5
+            test_num=5,
         )
 
         print(f"Started translation job: {job_id}")
@@ -151,14 +156,16 @@ def example_basic_translation():
         # Monitor progress
         final_status = client.wait_for_completion(job_id)
 
-        if final_status['status'] == 'completed':
+        if final_status["status"] == "completed":
             # Download result
             output_file = f"translated_{epub_file}"
             client.download_result(job_id, output_file)
             print(f"Translation completed! Output saved as: {output_file}")
 
-        elif final_status['status'] == 'failed':
-            print(f"Translation failed: {final_status.get('error_message', 'Unknown error')}")
+        elif final_status["status"] == "failed":
+            print(
+                f"Translation failed: {final_status.get('error_message', 'Unknown error')}"
+            )
 
     except requests.exceptions.HTTPError as e:
         print(f"API Error: {e}")
@@ -187,7 +194,7 @@ def example_multiple_jobs():
                     api_key="your-api-key-here",
                     language="zh-cn",
                     is_test=True,
-                    test_num=3
+                    test_num=3,
                 )
                 job_ids.append(job_id)
                 print(f"Started job {job_id} for {epub_file}")
@@ -208,7 +215,7 @@ def example_multiple_jobs():
             status = client.get_job_status(job_id)
             print(f"Job {job_id}: {status['status']} ({status['progress']}%)")
 
-            if status['status'] in ['completed', 'failed', 'cancelled']:
+            if status["status"] in ["completed", "failed", "cancelled"]:
                 completed_jobs.append(job_id)
 
         if len(completed_jobs) < len(job_ids):
@@ -219,8 +226,8 @@ def example_multiple_jobs():
     # List final status
     jobs_list = client.list_jobs()
     print(f"\nFinal status summary:")
-    for job in jobs_list['jobs']:
-        if job['job_id'] in job_ids:
+    for job in jobs_list["jobs"]:
+        if job["job_id"] in job_ids:
             print(f"  {job['filename']}: {job['status']}")
 
 
@@ -235,9 +242,7 @@ def example_error_handling():
     try:
         # Try to start a job with invalid parameters
         job_id = client.start_translation(
-            file_path="nonexistent.epub",
-            model="invalid_model",
-            api_key="invalid-key"
+            file_path="nonexistent.epub", model="invalid_model", api_key="invalid-key"
         )
     except requests.exceptions.HTTPError as e:
         print(f"Expected error for invalid file: {e}")
@@ -250,7 +255,7 @@ def example_error_handling():
                 file_path=epub_file,
                 model="chatgpt",
                 api_key="your-api-key-here",
-                language="zh-cn"
+                language="zh-cn",
             )
 
             print(f"Started job {job_id}")
@@ -286,12 +291,12 @@ async def example_async_workflow():
 
             try:
                 status = client.get_job_status(job_id)
-                progress = status['progress']
-                job_status = status['status']
+                progress = status["progress"]
+                job_status = status["status"]
 
                 print(f"{name}: {job_status} ({progress}%)")
 
-                if job_status in ['completed', 'failed', 'cancelled']:
+                if job_status in ["completed", "failed", "cancelled"]:
                     return status
 
             except Exception as e:

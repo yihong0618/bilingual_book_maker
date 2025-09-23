@@ -2,6 +2,7 @@
 Job management system for async translation operations
 Handles job lifecycle, storage, and cleanup with thread safety
 """
+
 import threading
 import time
 import uuid
@@ -32,7 +33,12 @@ class JobManager:
     INCREMENT_STEP = 1
     UUID_PREFIX_LENGTH = 8
 
-    def __init__(self, max_workers: int = None, job_ttl_hours: int = None, cleanup_interval_minutes: int = None):
+    def __init__(
+        self,
+        max_workers: int = None,
+        job_ttl_hours: int = None,
+        cleanup_interval_minutes: int = None,
+    ):
         """
         Initialize job manager with configurable settings
 
@@ -44,12 +50,16 @@ class JobManager:
         # Use configuration defaults if not provided
         max_workers = max_workers or settings.max_workers
         job_ttl_hours = job_ttl_hours or settings.job_ttl_hours
-        cleanup_interval_minutes = cleanup_interval_minutes or settings.cleanup_interval_minutes
+        cleanup_interval_minutes = (
+            cleanup_interval_minutes or settings.cleanup_interval_minutes
+        )
 
         self._jobs: Dict[str, TranslationJob] = {}
         self._job_futures: Dict[str, Future] = {}
         self._lock = threading.RLock()
-        self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="translation-")
+        self._executor = ThreadPoolExecutor(
+            max_workers=max_workers, thread_name_prefix="translation-"
+        )
         self._job_ttl = timedelta(hours=job_ttl_hours)
         self._cleanup_interval = timedelta(minutes=cleanup_interval_minutes)
         self._last_cleanup = datetime.now()
@@ -63,15 +73,15 @@ class JobManager:
         for directory in [self._upload_dir, self._output_dir, self._temp_dir]:
             directory.mkdir(exist_ok=True)
 
-        logger.info(f"JobManager initialized with {max_workers} workers, {job_ttl_hours}h TTL, {cleanup_interval_minutes}min cleanup interval")
-        logger.info(f"Storage paths - Upload: {self._upload_dir}, Output: {self._output_dir}, Temp: {self._temp_dir}")
+        logger.info(
+            f"JobManager initialized with {max_workers} workers, {job_ttl_hours}h TTL, {cleanup_interval_minutes}min cleanup interval"
+        )
+        logger.info(
+            f"Storage paths - Upload: {self._upload_dir}, Output: {self._output_dir}, Temp: {self._temp_dir}"
+        )
 
     def create_job(
-        self,
-        filename: str,
-        model: str,
-        target_language: str,
-        **kwargs
+        self, filename: str, model: str, target_language: str, **kwargs
     ) -> TranslationJob:
         """
         Create a new translation job
@@ -94,7 +104,7 @@ class JobManager:
             created_at=datetime.now(),
             model=model,
             target_language=target_language,
-            **kwargs
+            **kwargs,
         )
 
         with self._lock:
@@ -117,7 +127,8 @@ class JobManager:
         """Get all active (pending or processing) jobs"""
         with self._lock:
             return [
-                job for job in self._jobs.values()
+                job
+                for job in self._jobs.values()
                 if job.status in [JobStatus.PENDING, JobStatus.PROCESSING]
             ]
 
@@ -125,7 +136,7 @@ class JobManager:
         self,
         job_id: str,
         translation_func: Callable[[TranslationJob], str],
-        progress_callback: Optional[Callable[[ProgressUpdate], None]] = None
+        progress_callback: Optional[Callable[[ProgressUpdate], None]] = None,
     ) -> bool:
         """
         Start executing a translation job
@@ -178,7 +189,11 @@ class JobManager:
             return False
 
         with self._lock:
-            if job.status in [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED]:
+            if job.status in [
+                JobStatus.COMPLETED,
+                JobStatus.FAILED,
+                JobStatus.CANCELLED,
+            ]:
                 return False
 
             job.mark_cancelled()
@@ -194,7 +209,9 @@ class JobManager:
         logger.info(f"Cancelled job {job_id}")
         return True
 
-    def _execute_job(self, job: TranslationJob, translation_func: Callable[[TranslationJob], str]) -> None:
+    def _execute_job(
+        self, job: TranslationJob, translation_func: Callable[[TranslationJob], str]
+    ) -> None:
         """
         Execute a translation job in the thread pool
 
@@ -232,7 +249,9 @@ class JobManager:
             # Trigger cleanup if needed
             self._cleanup_if_needed()
 
-    def update_job_progress(self, job_id: str, processed: int, total: Optional[int] = None) -> None:
+    def update_job_progress(
+        self, job_id: str, processed: int, total: Optional[int] = None
+    ) -> None:
         """Update job progress"""
         job = self.get_job(job_id)
         if job:
@@ -251,10 +270,12 @@ class JobManager:
             if progress_info:
                 self.update_job_progress(
                     job_id=job_id,
-                    processed=progress_info['current'],
-                    total=progress_info['total']
+                    processed=progress_info["current"],
+                    total=progress_info["total"],
                 )
-                logger.debug(f"Updated progress from logs for job {job_id}: {progress_info['current']}/{progress_info['total']} ({progress_info['percentage']}%)")
+                logger.debug(
+                    f"Updated progress from logs for job {job_id}: {progress_info['current']}/{progress_info['total']} ({progress_info['percentage']}%)"
+                )
                 return True
             return False
         except Exception as e:
@@ -274,8 +295,12 @@ class JobManager:
         with self._lock:
             for job_id, job in self._jobs.items():
                 # Only clean up completed, failed, or cancelled jobs
-                if (job.status in [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED] and
-                    job.completed_at and job.completed_at < cutoff_time):
+                if (
+                    job.status
+                    in [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED]
+                    and job.completed_at
+                    and job.completed_at < cutoff_time
+                ):
                     jobs_to_remove.append(job_id)
 
         # Remove expired jobs
@@ -350,12 +375,14 @@ class JobManager:
                 "completed": self.INITIAL_COUNT,
                 "failed": self.INITIAL_COUNT,
                 "cancelled": self.INITIAL_COUNT,
-                "active": self.INITIAL_COUNT
+                "active": self.INITIAL_COUNT,
             }
 
             for job in self._jobs.values():
                 status_key = job.status.value
-                stats[status_key] = stats.get(status_key, self.INITIAL_COUNT) + self.INCREMENT_STEP
+                stats[status_key] = (
+                    stats.get(status_key, self.INITIAL_COUNT) + self.INCREMENT_STEP
+                )
 
                 if job.status in [JobStatus.PENDING, JobStatus.PROCESSING]:
                     stats["active"] += self.INCREMENT_STEP
@@ -365,6 +392,7 @@ class JobManager:
     def get_upload_path(self, filename: str) -> Path:
         """Get upload path for a file with unique prefix to avoid conflicts"""
         import uuid
+
         unique_filename = f"{uuid.uuid4().hex[:self.UUID_PREFIX_LENGTH]}_{filename}"
         return self._upload_dir / unique_filename
 

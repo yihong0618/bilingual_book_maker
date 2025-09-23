@@ -73,8 +73,8 @@ User Request → FastAPI → Job Creation → Thread Pool → Translation Engine
 2. File Upload & Validation
    ↓
 3. Job Creation (UUID generation)
-   ↓
-4. Thread Submission (async execution)
+   ↓ 
+4. Thread Submission (async execution) 
    ↓
 5. File Processing (EPUB/TXT/SRT/MD)
    ↓

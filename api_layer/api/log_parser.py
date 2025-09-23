@@ -1,6 +1,7 @@
 """
 Log parser utility to extract progress information from Docker logs
 """
+
 import re
 import subprocess
 import logging
@@ -14,7 +15,7 @@ class ProgressLogParser:
     """Parse Docker logs to extract translation progress"""
 
     # Regex pattern to match progress logs: PROGRESS: job_id current/total (percentage%)
-    PROGRESS_PATTERN = r'PROGRESS:\s+([a-f0-9-]+)\s+(\d+)/(\d+)\s+\((\d+)%\)'
+    PROGRESS_PATTERN = r"PROGRESS:\s+([a-f0-9-]+)\s+(\d+)/(\d+)\s+\((\d+)%\)"
 
     def __init__(self, container_name: str = "bilingual-api"):
         self.container_name = container_name
@@ -26,7 +27,7 @@ class ProgressLogParser:
                 ["docker", "logs", "--tail", str(tail_lines), self.container_name],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=10,
             )
             if result.returncode == 0:
                 return result.stdout
@@ -40,7 +41,9 @@ class ProgressLogParser:
             logger.error(f"Error getting Docker logs: {e}")
             return ""
 
-    def parse_progress_from_logs(self, logs: str, job_id: str) -> Optional[Dict[str, Any]]:
+    def parse_progress_from_logs(
+        self, logs: str, job_id: str
+    ) -> Optional[Dict[str, Any]]:
         """
         Parse progress information for a specific job from logs
 
@@ -50,17 +53,19 @@ class ProgressLogParser:
         """
         progress_entries = []
 
-        for line in logs.split('\n'):
+        for line in logs.split("\n"):
             match = re.search(self.PROGRESS_PATTERN, line)
             if match and match.group(1) == job_id:
-                progress_entries.append({
-                    'job_id': match.group(1),
-                    'current': int(match.group(2)),
-                    'total': int(match.group(3)),
-                    'percentage': int(match.group(4)),
-                    'log_line': line.strip(),
-                    'timestamp': datetime.now()  # We could parse actual timestamp from log line if needed
-                })
+                progress_entries.append(
+                    {
+                        "job_id": match.group(1),
+                        "current": int(match.group(2)),
+                        "total": int(match.group(3)),
+                        "percentage": int(match.group(4)),
+                        "log_line": line.strip(),
+                        "timestamp": datetime.now(),  # We could parse actual timestamp from log line if needed
+                    }
+                )
 
         # Return the most recent progress entry
         if progress_entries:
@@ -97,15 +102,15 @@ class ProgressLogParser:
 
         job_progress = {}
 
-        for line in logs.split('\n'):
+        for line in logs.split("\n"):
             match = re.search(self.PROGRESS_PATTERN, line)
             if match:
                 job_id = match.group(1)
                 progress_info = {
-                    'current': int(match.group(2)),
-                    'total': int(match.group(3)),
-                    'percentage': int(match.group(4)),
-                    'timestamp': datetime.now()
+                    "current": int(match.group(2)),
+                    "total": int(match.group(3)),
+                    "percentage": int(match.group(4)),
+                    "timestamp": datetime.now(),
                 }
                 # Keep only the latest progress for each job
                 job_progress[job_id] = progress_info

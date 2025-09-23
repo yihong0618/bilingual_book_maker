@@ -11,37 +11,33 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent))
 
 # Mock book_maker modules before importing
-sys.modules['book_maker'] = Mock()
-sys.modules['book_maker.loader'] = Mock()
-sys.modules['book_maker.translator'] = Mock()
-sys.modules['book_maker.utils'] = Mock()
+sys.modules["book_maker"] = Mock()
+sys.modules["book_maker.loader"] = Mock()
+sys.modules["book_maker.translator"] = Mock()
+sys.modules["book_maker.utils"] = Mock()
 
 # Mock the specific imports
-book_loader_dict = {
-    'epub': Mock(),
-    'txt': Mock(),
-    'srt': Mock(),
-    'md': Mock()
-}
+book_loader_dict = {"epub": Mock(), "txt": Mock(), "srt": Mock(), "md": Mock()}
 
 translator_classes = {
-    'ChatGPTAPI': Mock(),
-    'Claude': Mock(),
-    'Gemini': Mock(),
-    'DeepL': Mock(),
-    'Google': Mock(),
-    'GroqClient': Mock(),
-    'QwenTranslator': Mock(),
-    'XAIClient': Mock(),
-    'Caiyun': Mock(),
-    'TencentTranSmart': Mock(),
-    'DeepLFree': Mock(),
-    'CustomAPI': Mock()
+    "ChatGPTAPI": Mock(),
+    "Claude": Mock(),
+    "Gemini": Mock(),
+    "DeepL": Mock(),
+    "Google": Mock(),
+    "GroqClient": Mock(),
+    "QwenTranslator": Mock(),
+    "XAIClient": Mock(),
+    "Caiyun": Mock(),
+    "TencentTranSmart": Mock(),
+    "DeepLFree": Mock(),
+    "CustomAPI": Mock(),
 }
 
-sys.modules['book_maker.loader'].BOOK_LOADER_DICT = book_loader_dict
+sys.modules["book_maker.loader"].BOOK_LOADER_DICT = book_loader_dict
 for name, cls in translator_classes.items():
-    setattr(sys.modules['book_maker.translator'], name, cls)
+    setattr(sys.modules["book_maker.translator"], name, cls)
+
 
 def test_api_imports():
     """Test that API modules can be imported"""
@@ -49,11 +45,13 @@ def test_api_imports():
         from api.models import TranslationModel, JobStatus, TranslationJob
         from api.job_manager import JobManager
         from api.progress_monitor import AsyncProgressTracker
+
         print("✅ All API modules imported successfully")
         return True
     except Exception as e:
         print(f"❌ Import failed: {e}")
         return False
+
 
 def test_models():
     """Test data models"""
@@ -73,7 +71,7 @@ def test_models():
         job_id="test-123",
         status=JobStatus.PENDING,
         filename="test.epub",
-        created_at=datetime.now()
+        created_at=datetime.now(),
     )
 
     assert job.job_id == "test-123"
@@ -88,6 +86,7 @@ def test_models():
 
     print("✅ Models tests passed")
 
+
 def test_job_manager():
     """Test job manager functionality"""
     from api.job_manager import JobManager
@@ -99,9 +98,7 @@ def test_job_manager():
 
     # Test job creation
     job = manager.create_job(
-        filename="test.epub",
-        model="google",
-        target_language="zh-cn"
+        filename="test.epub", model="google", target_language="zh-cn"
     )
 
     assert job.filename == "test.epub"
@@ -120,6 +117,7 @@ def test_job_manager():
 
     print("✅ Job manager tests passed")
 
+
 def test_progress_monitor():
     """Test progress monitoring"""
     from api.progress_monitor import AsyncProgressTracker, ProgressUpdate
@@ -134,7 +132,7 @@ def test_progress_monitor():
         total=100,
         percentage=25.0,
         timestamp=datetime.now(),
-        description="Processing..."
+        description="Processing...",
     )
 
     assert update.job_id == "test-123"
@@ -147,6 +145,7 @@ def test_progress_monitor():
     assert "minutes" in duration or "seconds" in duration
 
     print("✅ Progress monitor tests passed")
+
 
 if __name__ == "__main__":
     print("🧪 Running simplified API tests...\n")
@@ -164,6 +163,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"❌ Test execution failed: {e}")
         import traceback
+
         traceback.print_exc()
         success = False
 

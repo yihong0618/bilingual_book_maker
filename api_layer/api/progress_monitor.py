@@ -1,6 +1,7 @@
 """
 Progress monitoring system that intercepts tqdm progress from bilingual_book_maker
 """
+
 import threading
 import time
 import logging
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ProgressUpdate:
     """Progress update event"""
+
     job_id: str
     current: int
     total: int
@@ -37,7 +39,9 @@ class ProgressMonitor:
         self._lock = threading.Lock()
         self._active_jobs: Dict[str, Dict[str, Any]] = {}
 
-    def register_callback(self, job_id: str, callback: Callable[[ProgressUpdate], None]) -> None:
+    def register_callback(
+        self, job_id: str, callback: Callable[[ProgressUpdate], None]
+    ) -> None:
         """Register a progress callback for a specific job"""
         with self._lock:
             self._callbacks[job_id] = callback
@@ -45,7 +49,7 @@ class ProgressMonitor:
                 "start_time": datetime.now(),
                 "last_update": datetime.now(),
                 "total": 0,
-                "current": 0
+                "current": 0,
             }
 
     def unregister_callback(self, job_id: str) -> None:
@@ -54,7 +58,9 @@ class ProgressMonitor:
             self._callbacks.pop(job_id, None)
             self._active_jobs.pop(job_id, None)
 
-    def update_progress(self, job_id: str, current: int, total: int, description: Optional[str] = None) -> None:
+    def update_progress(
+        self, job_id: str, current: int, total: int, description: Optional[str] = None
+    ) -> None:
         """Update progress for a specific job"""
         if job_id not in self._callbacks:
             return
@@ -64,11 +70,9 @@ class ProgressMonitor:
         # Update job tracking
         with self._lock:
             if job_id in self._active_jobs:
-                self._active_jobs[job_id].update({
-                    "current": current,
-                    "total": total,
-                    "last_update": datetime.now()
-                })
+                self._active_jobs[job_id].update(
+                    {"current": current, "total": total, "last_update": datetime.now()}
+                )
 
         # Create progress update
         update = ProgressUpdate(
@@ -77,7 +81,7 @@ class ProgressMonitor:
             total=total,
             percentage=percentage,
             timestamp=datetime.now(),
-            description=description
+            description=description,
         )
 
         # Call registered callback
@@ -114,7 +118,9 @@ class TqdmInterceptor(original_tqdm):
     _update_interval_seconds: int = 5  # Default update interval in seconds
 
     @classmethod
-    def set_monitor(cls, monitor: ProgressMonitor, job_id: str, update_interval_seconds: int = 5):
+    def set_monitor(
+        cls, monitor: ProgressMonitor, job_id: str, update_interval_seconds: int = 5
+    ):
         """Set the progress monitor and job ID for this tqdm instance"""
         cls._monitor = monitor
         cls._job_id = job_id
@@ -138,33 +144,42 @@ class TqdmInterceptor(original_tqdm):
 
         # Send progress update if monitor is set
         if self._monitor and self._job_id:
-            logger.debug(f"TqdmInterceptor: update called for job {self._job_id}: {self.n}/{self.total}")
+            logger.debug(
+                f"TqdmInterceptor: update called for job {self._job_id}: {self.n}/{self.total}"
+            )
             now = datetime.now()
 
             # Always send update if it's the first one or if enough time has passed
             # Also send updates at milestone percentages (every 5%)
             should_update = (
-                self._last_update_time is None or
-                now - self._last_update_time >= self._update_interval or
-                self.n == 1 or  # First update
-                (self.total and self.n >= self.total) or  # Last update
-                (self.total and (self.n * 100 // self.total) % 5 == 0 and
-                 (self.n - n) * 100 // self.total != self.n * 100 // self.total)  # Every 5% milestone
+                self._last_update_time is None
+                or now - self._last_update_time >= self._update_interval
+                or self.n == 1  # First update
+                or (self.total and self.n >= self.total)  # Last update
+                or (
+                    self.total
+                    and (self.n * 100 // self.total) % 5 == 0
+                    and (self.n - n) * 100 // self.total != self.n * 100 // self.total
+                )  # Every 5% milestone
             )
 
             if should_update:
-                logger.debug(f"TqdmInterceptor: Sending progress update for job {self._job_id}")
+                logger.debug(
+                    f"TqdmInterceptor: Sending progress update for job {self._job_id}"
+                )
                 self._monitor.update_progress(
                     job_id=self._job_id,
                     current=self.n,
                     total=self.total or 0,
-                    description=self.desc
+                    description=self.desc,
                 )
                 self._last_update_time = now
             else:
                 logger.debug(f"TqdmInterceptor: Skipping update for job {self._job_id}")
         else:
-            logger.debug(f"TqdmInterceptor: No monitor or job_id set (monitor={self._monitor}, job_id={self._job_id})")
+            logger.debug(
+                f"TqdmInterceptor: No monitor or job_id set (monitor={self._monitor}, job_id={self._job_id})"
+            )
 
         return result
 
@@ -175,20 +190,24 @@ class TqdmInterceptor(original_tqdm):
                 job_id=self._job_id,
                 current=self.n,
                 total=self.total or 0,
-                description=f"Completed: {self.desc}" if self.desc else "Completed"
+                description=f"Completed: {self.desc}" if self.desc else "Completed",
             )
         super().close()
 
 
-def patch_tqdm_for_job(monitor: ProgressMonitor, job_id: str, update_interval_seconds: int = 5):
+def patch_tqdm_for_job(
+    monitor: ProgressMonitor, job_id: str, update_interval_seconds: int = 5
+):
     """
     Patch tqdm to use our interceptor for a specific job
     Returns a context manager to restore original tqdm
     """
+
     @contextmanager
     def tqdm_patch():
         # Store original tqdm
         import tqdm as tqdm_module
+
         original_tqdm_class = tqdm_module.tqdm
 
         # Set up interceptor
@@ -217,7 +236,9 @@ class AsyncProgressTracker:
         self.monitor = ProgressMonitor()
         self._job_estimations: Dict[str, Dict[str, Any]] = {}
 
-    def start_tracking(self, job_id: str, callback: Callable[[ProgressUpdate], None]) -> None:
+    def start_tracking(
+        self, job_id: str, callback: Callable[[ProgressUpdate], None]
+    ) -> None:
         """Start tracking progress for a job"""
         self.monitor.register_callback(job_id, callback)
 

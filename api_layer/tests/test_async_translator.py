@@ -1,6 +1,7 @@
 """
 Unit tests for AsyncEPUBTranslator
 """
+
 import pytest
 import os
 import tempfile
@@ -9,6 +10,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from api.async_translator import AsyncEPUBTranslator
@@ -27,8 +29,8 @@ class TestAsyncEPUBTranslator:
     @pytest.fixture
     def temp_epub_file(self):
         """Create a temporary EPUB file for testing"""
-        with tempfile.NamedTemporaryFile(suffix='.epub', delete=False) as f:
-            f.write(b'mock epub content')
+        with tempfile.NamedTemporaryFile(suffix=".epub", delete=False) as f:
+            f.write(b"mock epub content")
             temp_path = f.name
 
         yield temp_path
@@ -49,9 +51,11 @@ class TestAsyncEPUBTranslator:
 
     def test_start_translation_success(self, translator, temp_epub_file, cleanup_dirs):
         """Test successful translation start"""
-        with patch.object(job_manager, 'create_job') as mock_create, \
-             patch.object(job_manager, 'start_job') as mock_start, \
-             patch('shutil.copy2') as mock_copy:
+        with (
+            patch.object(job_manager, "create_job") as mock_create,
+            patch.object(job_manager, "start_job") as mock_start,
+            patch("shutil.copy2") as mock_copy,
+        ):
 
             # Mock job creation
             mock_job = Mock()
@@ -63,7 +67,7 @@ class TestAsyncEPUBTranslator:
                 file_path=temp_epub_file,
                 model=TranslationModel.CHATGPT,
                 key="test-key",
-                language="zh-cn"
+                language="zh-cn",
             )
 
             assert job_id == "test-job-123"
@@ -77,35 +81,32 @@ class TestAsyncEPUBTranslator:
             translator.start_translation(
                 file_path="/non/existent/file.epub",
                 model=TranslationModel.CHATGPT,
-                key="test-key"
+                key="test-key",
             )
 
     def test_start_translation_invalid_file_type(self, translator):
         """Test translation start with invalid file type"""
-        with tempfile.NamedTemporaryFile(suffix='.txt') as f:
+        with tempfile.NamedTemporaryFile(suffix=".txt") as f:
             with pytest.raises(ValueError, match="Only EPUB files are supported"):
                 translator.start_translation(
-                    file_path=f.name,
-                    model=TranslationModel.CHATGPT,
-                    key="test-key"
+                    file_path=f.name, model=TranslationModel.CHATGPT, key="test-key"
                 )
 
     def test_start_translation_unsupported_model(self, translator, temp_epub_file):
         """Test translation start with unsupported model"""
+
         # Create a mock unsupported model
         class UnsupportedModel:
             pass
 
         with pytest.raises(ValueError, match="Unsupported model"):
             translator.start_translation(
-                file_path=temp_epub_file,
-                model=UnsupportedModel(),
-                key="test-key"
+                file_path=temp_epub_file, model=UnsupportedModel(), key="test-key"
             )
 
     def test_get_job_status(self, translator):
         """Test getting job status"""
-        with patch.object(job_manager, 'get_job') as mock_get:
+        with patch.object(job_manager, "get_job") as mock_get:
             mock_job = Mock()
             mock_get.return_value = mock_job
 
@@ -116,7 +117,7 @@ class TestAsyncEPUBTranslator:
 
     def test_cancel_translation(self, translator):
         """Test translation cancellation"""
-        with patch.object(job_manager, 'cancel_job') as mock_cancel:
+        with patch.object(job_manager, "cancel_job") as mock_cancel:
             mock_cancel.return_value = True
 
             result = translator.cancel_translation("test-job-123")
@@ -126,8 +127,10 @@ class TestAsyncEPUBTranslator:
 
     def test_get_download_path_success(self, translator):
         """Test getting download path for completed job"""
-        with patch.object(job_manager, 'get_job') as mock_get, \
-             patch('os.path.exists') as mock_exists:
+        with (
+            patch.object(job_manager, "get_job") as mock_get,
+            patch("os.path.exists") as mock_exists,
+        ):
 
             mock_job = Mock()
             mock_job.status = JobStatus.COMPLETED
@@ -141,7 +144,7 @@ class TestAsyncEPUBTranslator:
 
     def test_get_download_path_job_not_completed(self, translator):
         """Test getting download path for non-completed job"""
-        with patch.object(job_manager, 'get_job') as mock_get:
+        with patch.object(job_manager, "get_job") as mock_get:
             mock_job = Mock()
             mock_job.status = JobStatus.PROCESSING
             mock_get.return_value = mock_job
@@ -152,8 +155,10 @@ class TestAsyncEPUBTranslator:
 
     def test_get_download_path_file_not_exists(self, translator):
         """Test getting download path when file doesn't exist"""
-        with patch.object(job_manager, 'get_job') as mock_get, \
-             patch('os.path.exists') as mock_exists:
+        with (
+            patch.object(job_manager, "get_job") as mock_get,
+            patch("os.path.exists") as mock_exists,
+        ):
 
             mock_job = Mock()
             mock_job.status = JobStatus.COMPLETED
@@ -167,7 +172,7 @@ class TestAsyncEPUBTranslator:
 
     def test_list_jobs(self, translator):
         """Test listing jobs"""
-        with patch.object(job_manager, 'get_all_jobs') as mock_get_all:
+        with patch.object(job_manager, "get_all_jobs") as mock_get_all:
             mock_jobs = [Mock(), Mock(), Mock()]
             mock_jobs[0].status = JobStatus.PENDING
             mock_jobs[1].status = JobStatus.COMPLETED
@@ -185,7 +190,7 @@ class TestAsyncEPUBTranslator:
 
     def test_get_system_stats(self, translator):
         """Test getting system statistics"""
-        with patch.object(job_manager, 'get_job_stats') as mock_stats:
+        with patch.object(job_manager, "get_job_stats") as mock_stats:
             mock_stats.return_value = {"total": 5, "active": 2}
 
             result = translator.get_system_stats()
@@ -194,10 +199,12 @@ class TestAsyncEPUBTranslator:
             assert result["job_stats"]["total"] == 5
             assert result["job_stats"]["active"] == 2
 
-    @patch('api.async_translator.EPUBBookLoader')
-    @patch('shutil.move')
-    @patch('os.path.exists')
-    def test_translate_with_loader_success(self, mock_exists, mock_move, mock_loader_class, translator):
+    @patch("api.async_translator.EPUBBookLoader")
+    @patch("shutil.move")
+    @patch("os.path.exists")
+    def test_translate_with_loader_success(
+        self, mock_exists, mock_move, mock_loader_class, translator
+    ):
         """Test successful translation execution with loader"""
         # Mock the loader and its methods
         mock_loader = Mock()
@@ -222,14 +229,14 @@ class TestAsyncEPUBTranslator:
             output_path="/output/test_bilingual.epub",
             model=TranslationModel.CHATGPT,
             key="test-key",
-            job=mock_job
+            job=mock_job,
         )
 
         # Verify loader was created and called
         mock_loader_class.assert_called_once()
         mock_loader.make_bilingual_book.assert_called_once()
 
-    @patch('api.async_translator.EPUBBookLoader')
+    @patch("api.async_translator.EPUBBookLoader")
     def test_translate_with_loader_error(self, mock_loader_class, translator):
         """Test translation execution with loader error"""
         # Mock the loader to raise an exception
@@ -256,7 +263,7 @@ class TestAsyncEPUBTranslator:
                 output_path="/output/test_bilingual.epub",
                 model=TranslationModel.CHATGPT,
                 key="test-key",
-                job=mock_job
+                job=mock_job,
             )
 
     def test_execute_translation_with_retry(self, translator):
@@ -267,10 +274,12 @@ class TestAsyncEPUBTranslator:
         mock_job.filename = "test.epub"
         mock_job.retry_count = 0
 
-        with patch.object(translator, '_translate_with_loader') as mock_translate, \
-             patch.object(job_manager, 'get_upload_path') as mock_upload_path, \
-             patch.object(job_manager, 'get_output_path') as mock_output_path, \
-             patch('os.path.exists') as mock_exists:
+        with (
+            patch.object(translator, "_translate_with_loader") as mock_translate,
+            patch.object(job_manager, "get_upload_path") as mock_upload_path,
+            patch.object(job_manager, "get_output_path") as mock_output_path,
+            patch("os.path.exists") as mock_exists,
+        ):
 
             mock_upload_path.return_value = "/uploads/test.epub"
             mock_output_path.return_value = "/outputs/test_bilingual.epub"
@@ -280,9 +289,7 @@ class TestAsyncEPUBTranslator:
             mock_translate.side_effect = [ValueError("API error"), None]
 
             result = translator._execute_translation(
-                job=mock_job,
-                model=TranslationModel.CHATGPT,
-                key="test-key"
+                job=mock_job, model=TranslationModel.CHATGPT, key="test-key"
             )
 
             # Should have retried and succeeded
@@ -298,9 +305,11 @@ class TestAsyncEPUBTranslator:
         mock_job.filename = "test.epub"
         mock_job.retry_count = 0
 
-        with patch.object(translator, '_translate_with_loader') as mock_translate, \
-             patch.object(job_manager, 'get_upload_path') as mock_upload_path, \
-             patch.object(job_manager, 'get_output_path') as mock_output_path:
+        with (
+            patch.object(translator, "_translate_with_loader") as mock_translate,
+            patch.object(job_manager, "get_upload_path") as mock_upload_path,
+            patch.object(job_manager, "get_output_path") as mock_output_path,
+        ):
 
             mock_upload_path.return_value = "/uploads/test.epub"
             mock_output_path.return_value = "/outputs/test_bilingual.epub"
@@ -310,9 +319,7 @@ class TestAsyncEPUBTranslator:
 
             with pytest.raises(ValueError, match="Persistent error"):
                 translator._execute_translation(
-                    job=mock_job,
-                    model=TranslationModel.CHATGPT,
-                    key="test-key"
+                    job=mock_job, model=TranslationModel.CHATGPT, key="test-key"
                 )
 
             # Should have attempted max retries + 1
@@ -321,7 +328,9 @@ class TestAsyncEPUBTranslator:
     def test_model_classes_mapping(self, translator):
         """Test that all model types have corresponding classes"""
         for model in TranslationModel:
-            assert model in translator.MODEL_CLASSES, f"Model {model} not in MODEL_CLASSES"
+            assert (
+                model in translator.MODEL_CLASSES
+            ), f"Model {model} not in MODEL_CLASSES"
 
 
 if __name__ == "__main__":

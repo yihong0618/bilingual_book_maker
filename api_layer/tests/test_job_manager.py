@@ -1,6 +1,7 @@
 """
 Unit tests for JobManager
 """
+
 import pytest
 import time
 import threading
@@ -9,6 +10,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from api.job_manager import JobManager
@@ -32,14 +34,13 @@ class TestJobManager:
             path = Path(directory)
             if path.exists():
                 import shutil
+
                 shutil.rmtree(path, ignore_errors=True)
 
     def test_create_job(self, job_manager):
         """Test job creation"""
         job = job_manager.create_job(
-            filename="test.epub",
-            model="chatgpt",
-            target_language="zh-cn"
+            filename="test.epub", model="chatgpt", target_language="zh-cn"
         )
 
         assert job.filename == "test.epub"
@@ -97,8 +98,7 @@ class TestJobManager:
             return "/path/to/output.epub"
 
         success = job_manager.start_job(
-            job_id=job.job_id,
-            translation_func=slow_translation_func
+            job_id=job.job_id, translation_func=slow_translation_func
         )
 
         assert success is True
@@ -115,8 +115,7 @@ class TestJobManager:
         mock_translation_func = Mock()
 
         success = job_manager.start_job(
-            job_id="non-existent-id",
-            translation_func=mock_translation_func
+            job_id="non-existent-id", translation_func=mock_translation_func
         )
 
         assert success is False
@@ -129,8 +128,7 @@ class TestJobManager:
         mock_translation_func = Mock()
 
         success = job_manager.start_job(
-            job_id=job.job_id,
-            translation_func=mock_translation_func
+            job_id=job.job_id, translation_func=mock_translation_func
         )
 
         assert success is False
@@ -234,7 +232,9 @@ class TestJobManager:
         # Upload path now includes unique prefix to avoid conflicts
         assert upload_path.parent == Path("uploads")
         assert upload_path.name.endswith("_test.epub")
-        assert len(upload_path.name) == len("12345678_test.epub")  # 8-char prefix + underscore + filename
+        assert len(upload_path.name) == len(
+            "12345678_test.epub"
+        )  # 8-char prefix + underscore + filename
 
         output_path = job_manager.get_output_path("job123", "test.epub")
         assert output_path == Path("outputs") / "test_bilingual_job123.epub"
@@ -276,8 +276,7 @@ class TestJobManager:
             raise ValueError("Translation failed")
 
         success = job_manager.start_job(
-            job_id=job.job_id,
-            translation_func=failing_translation_func
+            job_id=job.job_id, translation_func=failing_translation_func
         )
 
         assert success is True

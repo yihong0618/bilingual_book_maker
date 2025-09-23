@@ -1,6 +1,7 @@
 """
 Unit tests for ProgressMonitor
 """
+
 import pytest
 import time
 import threading
@@ -9,11 +10,15 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from api.progress_monitor import (
-    ProgressMonitor, ProgressUpdate, TqdmInterceptor,
-    AsyncProgressTracker, patch_tqdm_for_job
+    ProgressMonitor,
+    ProgressUpdate,
+    TqdmInterceptor,
+    AsyncProgressTracker,
+    patch_tqdm_for_job,
 )
 
 
@@ -53,7 +58,9 @@ class TestProgressMonitor:
         job_id = "test-job-123"
 
         progress_monitor.register_callback(job_id, callback)
-        progress_monitor.update_progress(job_id, current=50, total=100, description="Processing")
+        progress_monitor.update_progress(
+            job_id, current=50, total=100, description="Processing"
+        )
 
         # Verify callback was called
         callback.assert_called_once()
@@ -101,6 +108,7 @@ class TestProgressMonitor:
 
     def test_callback_error_handling(self, progress_monitor):
         """Test error handling in callback execution"""
+
         def failing_callback(update):
             raise ValueError("Callback error")
 
@@ -261,6 +269,7 @@ class TestAsyncProgressTracker:
         with patch_context:
             # Import tqdm here to get the patched version
             import tqdm
+
             pbar = tqdm.tqdm(total=100)
             pbar.update(25)
             pbar.close()
@@ -288,6 +297,7 @@ def test_patch_tqdm_for_job():
 
     # After context, tqdm should be restored
     import tqdm
+
     assert tqdm.tqdm != TqdmInterceptor
 
 

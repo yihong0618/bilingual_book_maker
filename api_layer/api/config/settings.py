@@ -2,13 +2,18 @@
 Configuration settings for the Bilingual Book Maker API
 Environment-based configuration with security defaults
 """
+
 import os
 from typing import List, Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings
 from .constants import (
-    NetworkConstants, EnvironmentConstants, SecurityConstants,
-    DefaultValues, DomainConstants, TimeConstants
+    NetworkConstants,
+    EnvironmentConstants,
+    SecurityConstants,
+    DefaultValues,
+    DomainConstants,
+    TimeConstants,
 )
 
 
@@ -17,39 +22,45 @@ class SecurityConfig:
 
     # Development environment settings
     DEV_CORS_ORIGINS = [
-        DomainConstants.get_http_url(NetworkConstants.LOCALHOST, NetworkConstants.API_PORT),
-        DomainConstants.get_http_url(NetworkConstants.LOCALHOST_IP, NetworkConstants.API_PORT)
+        DomainConstants.get_http_url(
+            NetworkConstants.LOCALHOST, NetworkConstants.API_PORT
+        ),
+        DomainConstants.get_http_url(
+            NetworkConstants.LOCALHOST_IP, NetworkConstants.API_PORT
+        ),
     ]
 
     DEV_TRUSTED_HOSTS = [
         NetworkConstants.LOCALHOST,
         NetworkConstants.LOCALHOST_IP,
-        NetworkConstants.ALL_INTERFACES
+        NetworkConstants.ALL_INTERFACES,
     ]
 
     # Staging environment settings
     STAGING_CORS_ORIGINS = [
         DomainConstants.get_https_url(DomainConstants.STAGING_DOMAIN),
-        DomainConstants.get_http_url(NetworkConstants.LOCALHOST, NetworkConstants.FRONTEND_ALT_PORT)
+        DomainConstants.get_http_url(
+            NetworkConstants.LOCALHOST, NetworkConstants.FRONTEND_ALT_PORT
+        ),
     ]
 
     STAGING_TRUSTED_HOSTS = [
         DomainConstants.STAGING_DOMAIN,
         DomainConstants.get_localhost_with_port(NetworkConstants.API_PORT),
-        DomainConstants.get_localhost_ip_with_port(NetworkConstants.API_PORT)
+        DomainConstants.get_localhost_ip_with_port(NetworkConstants.API_PORT),
     ]
 
     # Production environment settings (customize these for your domains)
     PRODUCTION_CORS_ORIGINS = [
         DomainConstants.get_https_url(DomainConstants.YOUR_FRONTEND_DOMAIN),
         DomainConstants.get_https_url(DomainConstants.YOUR_FRONTEND_WWW),
-        DomainConstants.get_https_url(DomainConstants.YOUR_FRONTEND_APP)
+        DomainConstants.get_https_url(DomainConstants.YOUR_FRONTEND_APP),
     ]
 
     PRODUCTION_TRUSTED_HOSTS = [
         DomainConstants.YOUR_FRONTEND_DOMAIN,
         DomainConstants.YOUR_FRONTEND_WWW,
-        DomainConstants.YOUR_API_DOMAIN
+        DomainConstants.YOUR_API_DOMAIN,
     ]
 
     # CORS methods by environment
@@ -57,7 +68,7 @@ class SecurityConfig:
         SecurityConstants.GET_METHOD,
         SecurityConstants.POST_METHOD,
         SecurityConstants.DELETE_METHOD,
-        SecurityConstants.OPTIONS_METHOD
+        SecurityConstants.OPTIONS_METHOD,
     ]
     DEV_STAGING_CORS_METHODS = [SecurityConstants.ALL_METHODS]
 
@@ -67,7 +78,7 @@ class SecurityConfig:
         SecurityConstants.AUTHORIZATION_HEADER,
         SecurityConstants.ACCEPT_HEADER,
         SecurityConstants.ORIGIN_HEADER,
-        SecurityConstants.X_REQUESTED_WITH_HEADER
+        SecurityConstants.X_REQUESTED_WITH_HEADER,
     ]
 
 
@@ -75,7 +86,9 @@ class Settings(BaseSettings):
     """Main application settings with environment-based defaults"""
 
     # Environment
-    environment: str = Field(default=EnvironmentConstants.DEVELOPMENT, env="ENVIRONMENT")
+    environment: str = Field(
+        default=EnvironmentConstants.DEVELOPMENT, env="ENVIRONMENT"
+    )
     debug: bool = Field(default=DefaultValues.DEFAULT_DEBUG, env="DEBUG")
 
     # API Server settings
@@ -84,9 +97,16 @@ class Settings(BaseSettings):
     reload: bool = Field(default=DefaultValues.DEFAULT_RELOAD, env="API_RELOAD")
 
     # Job Manager settings
-    max_workers: int = Field(default=DefaultValues.DEFAULT_MAX_WORKERS, env="MAX_WORKERS")
-    job_ttl_hours: int = Field(default=DefaultValues.DEFAULT_JOB_TTL_HOURS, env="JOB_TTL_HOURS")
-    cleanup_interval_minutes: int = Field(default=DefaultValues.DEFAULT_CLEANUP_INTERVAL_MINUTES, env="CLEANUP_INTERVAL_MINUTES")
+    max_workers: int = Field(
+        default=DefaultValues.DEFAULT_MAX_WORKERS, env="MAX_WORKERS"
+    )
+    job_ttl_hours: int = Field(
+        default=DefaultValues.DEFAULT_JOB_TTL_HOURS, env="JOB_TTL_HOURS"
+    )
+    cleanup_interval_minutes: int = Field(
+        default=DefaultValues.DEFAULT_CLEANUP_INTERVAL_MINUTES,
+        env="CLEANUP_INTERVAL_MINUTES",
+    )
 
     # Storage paths
     upload_dir: str = Field(default=DefaultValues.DEFAULT_UPLOAD_DIR, env="UPLOAD_DIR")

@@ -11,6 +11,7 @@ from pathlib import Path
 # API configuration
 API_BASE = "http://localhost:8000"
 
+
 def test_translation_api():
     """Test the full translation workflow"""
     print("🚀 Testing Bilingual Book Maker API...")
@@ -54,14 +55,14 @@ def test_translation_api():
 
     # Prepare the translation request
     files = {
-        'file': ('test_book.epub', open(test_file_path, 'rb'), 'application/epub+zip')
+        "file": ("test_book.epub", open(test_file_path, "rb"), "application/epub+zip")
     }
 
     data = {
-        'model': 'chatgpt',  # Using ChatGPT as test model
-        'key': 'test-key',   # This would need to be a real API key
-        'language': 'zh-cn',
-        'is_test': 'true'    # Enable test mode to limit processing
+        "model": "chatgpt",  # Using ChatGPT as test model
+        "key": "test-key",  # This would need to be a real API key
+        "language": "zh-cn",
+        "is_test": "true",  # Enable test mode to limit processing
     }
 
     try:
@@ -71,7 +72,7 @@ def test_translation_api():
 
         if response.status_code == 200:
             job_data = response.json()
-            job_id = job_data.get('job_id')
+            job_id = job_data.get("job_id")
             print(f"✅ Translation job started successfully!")
             print(f"   Job ID: {job_id}")
 
@@ -82,9 +83,11 @@ def test_translation_api():
                 status_response = requests.get(f"{API_BASE}/status/{job_id}")
                 if status_response.status_code == 200:
                     status_data = status_response.json()
-                    print(f"   Status: {status_data['status']} - Progress: {status_data.get('progress', 0)}%")
+                    print(
+                        f"   Status: {status_data['status']} - Progress: {status_data.get('progress', 0)}%"
+                    )
 
-                    if status_data['status'] in ['completed', 'failed', 'cancelled']:
+                    if status_data["status"] in ["completed", "failed", "cancelled"]:
                         break
                 else:
                     print(f"   Failed to get status: {status_response.status_code}")
@@ -108,9 +111,12 @@ def test_translation_api():
 
     print("\n✅ API testing completed!")
     print("   The translation API is properly configured and ready to use.")
-    print("   To perform actual translations, provide valid API keys for your chosen model.")
+    print(
+        "   To perform actual translations, provide valid API keys for your chosen model."
+    )
 
     return True
+
 
 if __name__ == "__main__":
     test_translation_api()

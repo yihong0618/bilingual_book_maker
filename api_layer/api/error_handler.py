@@ -1,6 +1,7 @@
 """
 Comprehensive error handling and timeout management for async translation
 """
+
 import logging
 import traceback
 import functools
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 class ErrorType(str, Enum):
     """Error type classification"""
+
     TIMEOUT = "timeout"
     NETWORK = "network"
     API_ERROR = "api_error"
@@ -32,7 +34,13 @@ class ErrorType(str, Enum):
 
 class TranslationError(Exception):
     """Base exception for translation errors"""
-    def __init__(self, message: str, error_type: ErrorType, details: Optional[Dict[str, Any]] = None):
+
+    def __init__(
+        self,
+        message: str,
+        error_type: ErrorType,
+        details: Optional[Dict[str, Any]] = None,
+    ):
         super().__init__(message)
         self.error_type = error_type
         self.details = details or {}
@@ -41,32 +49,45 @@ class TranslationError(Exception):
 
 class TimeoutError(TranslationError):
     """Timeout error"""
+
     def __init__(self, message: str, timeout_duration: float):
-        super().__init__(message, ErrorType.TIMEOUT, {"timeout_duration": timeout_duration})
+        super().__init__(
+            message, ErrorType.TIMEOUT, {"timeout_duration": timeout_duration}
+        )
 
 
 class NetworkError(TranslationError):
     """Network-related error"""
+
     def __init__(self, message: str, status_code: Optional[int] = None):
         super().__init__(message, ErrorType.NETWORK, {"status_code": status_code})
 
 
 class APIError(TranslationError):
     """API-related error"""
+
     def __init__(self, message: str, api_name: str, error_code: Optional[str] = None):
-        super().__init__(message, ErrorType.API_ERROR, {"api_name": api_name, "error_code": error_code})
+        super().__init__(
+            message,
+            ErrorType.API_ERROR,
+            {"api_name": api_name, "error_code": error_code},
+        )
 
 
 class FileError(TranslationError):
     """File-related error"""
+
     def __init__(self, message: str, file_path: str):
         super().__init__(message, ErrorType.FILE_ERROR, {"file_path": file_path})
 
 
 class ValidationError(TranslationError):
     """Validation error"""
+
     def __init__(self, message: str, field: str, value: Any):
-        super().__init__(message, ErrorType.VALIDATION_ERROR, {"field": field, "value": value})
+        super().__init__(
+            message, ErrorType.VALIDATION_ERROR, {"field": field, "value": value}
+        )
 
 
 class TimeoutManager:
@@ -80,7 +101,12 @@ class TimeoutManager:
         self._lock = threading.Lock()
 
     @contextmanager
-    def timeout_context(self, job_id: str, timeout_seconds: Optional[float] = None, callback: Optional[Callable] = None):
+    def timeout_context(
+        self,
+        job_id: str,
+        timeout_seconds: Optional[float] = None,
+        callback: Optional[Callable] = None,
+    ):
         """
         Context manager for timeout handling
 
@@ -92,7 +118,9 @@ class TimeoutManager:
         timeout_duration = timeout_seconds or self.default_timeout
 
         def timeout_handler():
-            logger.warning(f"Timeout occurred for job {job_id} after {timeout_duration} seconds")
+            logger.warning(
+                f"Timeout occurred for job {job_id} after {timeout_duration} seconds"
+            )
             if callback:
                 try:
                     callback()
@@ -135,14 +163,16 @@ class RetryManager:
     Manages retry logic for failed operations
     """
 
-    def __init__(self, max_retries: int = 3, base_delay: float = 1.0, max_delay: float = 60.0):
+    def __init__(
+        self, max_retries: int = 3, base_delay: float = 1.0, max_delay: float = 60.0
+    ):
         self.max_retries = max_retries
         self.base_delay = base_delay
         self.max_delay = max_delay
 
     def calculate_delay(self, attempt: int) -> float:
         """Calculate delay for exponential backoff"""
-        delay = self.base_delay * (2 ** attempt)
+        delay = self.base_delay * (2**attempt)
         return min(delay, self.max_delay)
 
     def should_retry(self, error: Exception, attempt: int) -> bool:
@@ -152,12 +182,20 @@ class RetryManager:
 
         # Don't retry certain error types
         if isinstance(error, TranslationError):
-            non_retryable = [ErrorType.VALIDATION_ERROR, ErrorType.FILE_ERROR, ErrorType.CANCELLED]
+            non_retryable = [
+                ErrorType.VALIDATION_ERROR,
+                ErrorType.FILE_ERROR,
+                ErrorType.CANCELLED,
+            ]
             if error.error_type in non_retryable:
                 return False
 
         # Don't retry if it's a permanent API error (401, 403, etc.)
-        if isinstance(error, APIError) and error.details.get("status_code") in [401, 403, 404]:
+        if isinstance(error, APIError) and error.details.get("status_code") in [
+            401,
+            403,
+            404,
+        ]:
             return False
 
         return True
@@ -184,7 +222,9 @@ class RetryManager:
                 attempt += 1
 
                 if not self.should_retry(e, attempt):
-                    logger.error(f"Operation {operation_name} for job {job_id} failed permanently: {e}")
+                    logger.error(
+                        f"Operation {operation_name} for job {job_id} failed permanently: {e}"
+                    )
                     raise
 
                 if attempt <= self.max_retries:
@@ -211,7 +251,9 @@ class ErrorHandler:
         self._error_stats: Dict[str, int] = {}
         self._lock = threading.Lock()
 
-    def handle_error(self, error: Exception, job_id: str, context: str) -> TranslationError:
+    def handle_error(
+        self, error: Exception, job_id: str, context: str
+    ) -> TranslationError:
         """
         Process and classify an error
 
@@ -229,7 +271,9 @@ class ErrorHandler:
         # Update error statistics
         error_type_name = type(error).__name__
         with self._lock:
-            self._error_stats[error_type_name] = self._error_stats.get(error_type_name, 0) + 1
+            self._error_stats[error_type_name] = (
+                self._error_stats.get(error_type_name, 0) + 1
+            )
 
         # Classify and convert error
         if isinstance(error, TranslationError):
@@ -245,20 +289,30 @@ class ErrorHandler:
         elif "connection" in error_lower or "network" in error_lower:
             return NetworkError(f"Network error in {context}: {error_str}")
 
-        elif "api" in error_lower or "unauthorized" in error_lower or "forbidden" in error_lower:
+        elif (
+            "api" in error_lower
+            or "unauthorized" in error_lower
+            or "forbidden" in error_lower
+        ):
             return APIError(f"API error in {context}: {error_str}", "unknown")
 
-        elif "file" in error_lower or "path" in error_lower or isinstance(error, (FileNotFoundError, IOError)):
+        elif (
+            "file" in error_lower
+            or "path" in error_lower
+            or isinstance(error, (FileNotFoundError, IOError))
+        ):
             return FileError(f"File error in {context}: {error_str}", "unknown")
 
         elif "validation" in error_lower or isinstance(error, ValueError):
-            return ValidationError(f"Validation error in {context}: {error_str}", "unknown", None)
+            return ValidationError(
+                f"Validation error in {context}: {error_str}", "unknown", None
+            )
 
         else:
             return TranslationError(
                 f"System error in {context}: {error_str}",
                 ErrorType.SYSTEM_ERROR,
-                {"original_type": type(error).__name__}
+                {"original_type": type(error).__name__},
             )
 
     def get_error_stats(self) -> Dict[str, int]:
@@ -280,14 +334,15 @@ def with_error_handling(error_handler: ErrorHandler, context: str):
         error_handler: ErrorHandler instance
         context: Context description for error logging
     """
+
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             # Try to extract job_id from arguments
-            job_id = kwargs.get('job_id', 'unknown')
+            job_id = kwargs.get("job_id", "unknown")
             if not job_id and args:
                 # Check if first argument has job_id attribute
-                if hasattr(args[0], 'job_id'):
+                if hasattr(args[0], "job_id"):
                     job_id = args[0].job_id
 
             try:
@@ -297,10 +352,13 @@ def with_error_handling(error_handler: ErrorHandler, context: str):
                 raise translation_error
 
         return wrapper
+
     return decorator
 
 
-def with_timeout(timeout_manager: TimeoutManager, timeout_seconds: Optional[float] = None):
+def with_timeout(
+    timeout_manager: TimeoutManager, timeout_seconds: Optional[float] = None
+):
     """
     Decorator for automatic timeout handling
 
@@ -308,22 +366,28 @@ def with_timeout(timeout_manager: TimeoutManager, timeout_seconds: Optional[floa
         timeout_manager: TimeoutManager instance
         timeout_seconds: Timeout duration in seconds
     """
+
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             # Try to extract job_id from arguments
-            job_id = kwargs.get('job_id', 'unknown')
+            job_id = kwargs.get("job_id", "unknown")
             if not job_id and args:
-                if hasattr(args[0], 'job_id'):
+                if hasattr(args[0], "job_id"):
                     job_id = args[0].job_id
 
             def timeout_callback():
-                raise TimeoutError(f"Function {func.__name__} timed out", timeout_seconds or 1800)
+                raise TimeoutError(
+                    f"Function {func.__name__} timed out", timeout_seconds or 1800
+                )
 
-            with timeout_manager.timeout_context(job_id, timeout_seconds, timeout_callback):
+            with timeout_manager.timeout_context(
+                job_id, timeout_seconds, timeout_callback
+            ):
                 return func(*args, **kwargs)
 
         return wrapper
+
     return decorator
 
 
@@ -335,20 +399,22 @@ def with_retry(retry_manager: RetryManager, operation_name: str):
         retry_manager: RetryManager instance
         operation_name: Name of the operation for logging
     """
+
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             # Try to extract job_id from arguments
-            job_id = kwargs.get('job_id', 'unknown')
+            job_id = kwargs.get("job_id", "unknown")
             if not job_id and args:
-                if hasattr(args[0], 'job_id'):
+                if hasattr(args[0], "job_id"):
                     job_id = args[0].job_id
 
             with retry_manager.retry_context(job_id, operation_name) as attempt:
-                kwargs['_retry_attempt'] = attempt
+                kwargs["_retry_attempt"] = attempt
                 return func(*args, **kwargs)
 
         return wrapper
+
     return decorator
 
 

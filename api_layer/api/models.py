@@ -1,6 +1,7 @@
 """
 Enhanced data models for async translation API
 """
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -10,6 +11,7 @@ from pydantic import BaseModel, Field
 
 class JobStatus(str, Enum):
     """Translation job status enumeration"""
+
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
@@ -19,6 +21,7 @@ class JobStatus(str, Enum):
 
 class TranslationModel(str, Enum):
     """Supported translation models"""
+
     CHATGPT = "chatgpt"
     CLAUDE = "claude"
     GEMINI = "gemini"
@@ -35,6 +38,7 @@ class TranslationJob:
     """
     Translation job data class for tracking async translation state
     """
+
     job_id: str
     status: JobStatus
     filename: str
@@ -100,22 +104,32 @@ class TranslationJob:
 # Pydantic models for API requests/responses
 class TranslationRequest(BaseModel):
     """Request model for translation endpoint"""
+
     model: TranslationModel
     key: str
     language: str = Field(default="zh-cn", description="Target language code")
-    model_api_base: Optional[str] = Field(default=None, description="Custom API base URL")
+    model_api_base: Optional[str] = Field(
+        default=None, description="Custom API base URL"
+    )
     resume: bool = Field(default=False, description="Resume from previous translation")
-    is_test: bool = Field(default=False, description="Test mode with limited paragraphs")
+    is_test: bool = Field(
+        default=False, description="Test mode with limited paragraphs"
+    )
     test_num: int = Field(default=5, description="Number of paragraphs for test mode")
     single_translate: bool = Field(default=False, description="Single translation mode")
     context_flag: bool = Field(default=False, description="Use context for translation")
-    context_paragraph_limit: int = Field(default=0, description="Context paragraph limit")
-    temperature: float = Field(default=1.0, ge=0.0, le=2.0, description="Translation temperature")
+    context_paragraph_limit: int = Field(
+        default=0, description="Context paragraph limit"
+    )
+    temperature: float = Field(
+        default=1.0, ge=0.0, le=2.0, description="Translation temperature"
+    )
     source_lang: str = Field(default="auto", description="Source language detection")
 
 
 class TranslationResponse(BaseModel):
     """Response model for translation request"""
+
     job_id: str
     status: JobStatus
     message: str
@@ -124,6 +138,7 @@ class TranslationResponse(BaseModel):
 
 class JobStatusResponse(BaseModel):
     """Response model for job status endpoint"""
+
     job_id: str
     status: JobStatus
     progress: int = Field(ge=0, le=100, description="Progress percentage (0-100)")
@@ -142,13 +157,12 @@ class JobStatusResponse(BaseModel):
     target_language: str = "zh-cn"
 
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class JobListResponse(BaseModel):
     """Response model for listing jobs"""
+
     jobs: list[JobStatusResponse]
     total_count: int
     active_count: int
@@ -158,19 +172,19 @@ class JobListResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     """Standard error response model"""
+
     error: str
     detail: Optional[str] = None
     job_id: Optional[str] = None
     timestamp: datetime = Field(default_factory=datetime.now)
 
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class HealthResponse(BaseModel):
     """Health check response model"""
+
     status: str
     timestamp: datetime = Field(default_factory=datetime.now)
     active_jobs: int = 0
@@ -178,6 +192,4 @@ class HealthResponse(BaseModel):
     system_info: Dict[str, Any] = Field(default_factory=dict)
 
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        json_encoders = {datetime: lambda v: v.isoformat()}

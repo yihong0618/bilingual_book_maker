@@ -1,6 +1,7 @@
 """
 Integration test to verify async wrapper works with bilingual_book_maker
 """
+
 import sys
 import tempfile
 import shutil
@@ -26,8 +27,8 @@ def test_async_wrapper_integration():
     translator = AsyncEPUBTranslator(timeout_minutes=1, max_retries=0)
 
     # Create a mock EPUB file
-    with tempfile.NamedTemporaryFile(suffix='.epub', delete=False) as temp_file:
-        temp_file.write(b'mock epub content')
+    with tempfile.NamedTemporaryFile(suffix=".epub", delete=False) as temp_file:
+        temp_file.write(b"mock epub content")
         temp_epub_path = temp_file.name
 
     try:
@@ -35,7 +36,9 @@ def test_async_wrapper_integration():
         print("✓ Testing model class mapping...")
         for model in TranslationModel:
             if model in translator.MODEL_CLASSES:
-                print(f"  ✓ {model.value} -> {translator.MODEL_CLASSES[model].__name__}")
+                print(
+                    f"  ✓ {model.value} -> {translator.MODEL_CLASSES[model].__name__}"
+                )
             else:
                 print(f"  ✗ {model.value} not mapped")
 
@@ -43,7 +46,7 @@ def test_async_wrapper_integration():
         print("✓ Testing job creation...")
 
         # Mock the translation execution to avoid actual API calls
-        with patch.object(translator, '_execute_translation') as mock_execute:
+        with patch.object(translator, "_execute_translation") as mock_execute:
             mock_execute.return_value = "/mock/output/path.epub"
 
             # Test starting a translation job
@@ -53,7 +56,7 @@ def test_async_wrapper_integration():
                 key="mock-api-key",
                 language="zh-cn",
                 is_test=True,
-                test_num=3
+                test_num=3,
             )
 
             print(f"  ✓ Created job: {job_id}")
@@ -73,6 +76,7 @@ def test_async_wrapper_integration():
     except Exception as e:
         print(f"✗ Integration test failed: {e}")
         import traceback
+
         traceback.print_exc()
 
     finally:
@@ -103,7 +107,9 @@ def test_progress_monitoring():
 
         def test_callback(update: ProgressUpdate):
             progress_updates.append(update)
-            print(f"  Progress: {update.percentage:.1f}% ({update.current}/{update.total})")
+            print(
+                f"  Progress: {update.percentage:.1f}% ({update.current}/{update.total})"
+            )
 
         job_id = "test-progress-job"
 
@@ -111,8 +117,12 @@ def test_progress_monitoring():
         global_progress_tracker.start_tracking(job_id, test_callback)
 
         # Simulate progress updates
-        global_progress_tracker.monitor.update_progress(job_id, 25, 100, "Processing...")
-        global_progress_tracker.monitor.update_progress(job_id, 50, 100, "Halfway done...")
+        global_progress_tracker.monitor.update_progress(
+            job_id, 25, 100, "Processing..."
+        )
+        global_progress_tracker.monitor.update_progress(
+            job_id, 50, 100, "Halfway done..."
+        )
         global_progress_tracker.monitor.update_progress(job_id, 100, 100, "Completed!")
 
         # Stop tracking
@@ -141,7 +151,9 @@ def test_error_handling():
     try:
         # Test error classification
         test_error = ValueError("Test validation error")
-        classified_error = global_error_handler.handle_error(test_error, "test-job", "test-context")
+        classified_error = global_error_handler.handle_error(
+            test_error, "test-job", "test-context"
+        )
 
         print(f"  ✓ Error classified as: {classified_error.error_type}")
         print(f"  ✓ Error message: {classified_error}")
@@ -165,9 +177,7 @@ def test_job_manager():
     try:
         # Test job creation
         job = job_manager.create_job(
-            filename="test.epub",
-            model="chatgpt",
-            target_language="zh-cn"
+            filename="test.epub", model="chatgpt", target_language="zh-cn"
         )
 
         print(f"  ✓ Created job: {job.job_id}")
