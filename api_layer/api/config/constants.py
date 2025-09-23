@@ -181,7 +181,7 @@ class ValidationConstants:
     BYTES_PER_MB = 1024 * 1024
 
     # Size limits
-    MAX_FILE_SIZE_MB = 1  # 1MB limit for all users
+    MAX_FILE_SIZE_MB = 0.5  # 500KB limit for all users
     MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * BYTES_PER_MB  # Convert MB to bytes
     MAX_FILENAME_LENGTH = 255
 
