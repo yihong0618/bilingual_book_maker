@@ -90,7 +90,6 @@ class AsyncEPUBTranslator:
             FileNotFoundError: If the input file doesn't exist
             ValueError: If invalid parameters are provided
         """
-        logger.warning(f"DEBUG: start_translation called with file_path={file_path}, model={model}")
         # Validate input file
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Input file not found: {file_path}")
@@ -135,7 +134,6 @@ class AsyncEPUBTranslator:
             )
 
         # Start the translation job
-        logger.warning(f"DEBUG: Registering progress callback and starting job {job.job_id}, callback: {progress_callback}")
         success = job_manager.start_job(
             job_id=job.job_id,
             translation_func=lambda j: self._execute_translation(j, model, key, upload_path, **kwargs),
