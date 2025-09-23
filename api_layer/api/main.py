@@ -38,6 +38,7 @@ from .async_translator import async_translator
 from .job_manager import job_manager
 from .progress_monitor import global_progress_tracker
 from .config import settings, HttpStatusConstants, ValidationConstants, StorageConstants
+from .auth import get_current_api_key, add_security_headers, init_demo_api_keys
 
 
 # Configure logging
@@ -56,6 +57,9 @@ async def lifespan(app: FastAPI):
     # Create necessary directories
     for directory in [settings.upload_dir, settings.output_dir, settings.temp_dir]:
         Path(directory).mkdir(exist_ok=True)
+
+    # Initialize demo API keys for testing
+    init_demo_api_keys()
 
     yield
 
