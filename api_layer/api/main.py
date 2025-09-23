@@ -65,7 +65,12 @@ async def lifespan(app: FastAPI):
 
 
 # Dependencies
-async def validate_file_size(file: UploadFile = File(...)) -> UploadFile:
+async def validate_file_size(
+    file: UploadFile = File(
+        ...,
+        description=f"File to translate (EPUB, TXT, SRT, MD formats supported). Maximum size: {ValidationConstants.MAX_FILE_SIZE_MB}MB"
+    )
+) -> UploadFile:
     """
     Dependency to validate uploaded file size
 
@@ -290,11 +295,13 @@ async def start_translation(
                 )
 
         # Start translation job
+        file_size = file.size if file.size is not None else ValidationConstants.INITIAL_VALUE
         job_id = async_translator.start_translation(
             file_path=str(unique_upload_path),
             model=model,
             key=key,
             language=language,
+            file_size_bytes=file_size,
             model_api_base=model_api_base,
             resume=resume,
             is_test=is_test,
