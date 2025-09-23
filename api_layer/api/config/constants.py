@@ -64,6 +64,7 @@ class HttpStatusConstants:
     NOT_FOUND = 404
     METHOD_NOT_ALLOWED = 405
     CONFLICT = 409
+    PAYLOAD_TOO_LARGE = 413
     UNPROCESSABLE_ENTITY = 422
 
     # 5xx Server Error
@@ -175,9 +176,18 @@ class TimeConstants:
 class ValidationConstants:
     """Validation-related constants"""
 
+    # Size conversion constants
+    BYTES_PER_KB = 1024
+    BYTES_PER_MB = 1024 * 1024
+
     # Size limits
-    MAX_FILE_SIZE_MB = 100
+    MAX_FILE_SIZE_MB = 1  # 1MB limit for all users
+    MAX_FILE_SIZE_BYTES = 1 * BYTES_PER_MB  # 1MB in bytes
     MAX_FILENAME_LENGTH = 255
+
+    # TODO: Future user-based file size limits
+    # MAX_FILE_SIZE_REGISTERED_MB = 3  # For registered users
+    # MAX_FILE_SIZE_PAID_MB = 10       # For paid users
 
     # String lengths
     MIN_PASSWORD_LENGTH = 8
@@ -186,3 +196,13 @@ class ValidationConstants:
     # Temperature ranges for AI models
     MIN_TEMPERATURE = 0.0
     MAX_TEMPERATURE = 2.0
+    DEFAULT_TEMPERATURE = 1.0
+
+    # Common defaults
+    INITIAL_VALUE = 0  # For progress, counts, retries, etc.
+    PROGRESS_COMPLETE = 100
+    DEFAULT_TEST_PARAGRAPH_COUNT = 5
+
+    # Language defaults
+    DEFAULT_SOURCE_LANGUAGE = "auto"
+    DEFAULT_TARGET_LANGUAGE = "zh-cn"

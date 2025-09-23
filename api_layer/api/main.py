@@ -37,7 +37,7 @@ from .models import (
 from .async_translator import async_translator
 from .job_manager import job_manager
 from .progress_monitor import global_progress_tracker
-from .config import settings, HttpStatusConstants
+from .config import settings, HttpStatusConstants, ValidationConstants
 
 
 # Configure logging
@@ -62,6 +62,40 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down Bilingual Book Maker API")
     job_manager.shutdown(wait=False)
+
+
+# Dependencies
+async def validate_file_size(file: UploadFile = File(...)) -> UploadFile:
+    """
+    Dependency to validate uploaded file size
+
+    Args:
+        file: Uploaded file to validate
+
+    Returns:
+        The file if validation passes
+
+    Raises:
+        HTTPException: If file size exceeds limit
+    """
+    if file.size is None:
+        # If size is not available, read content to get size
+        content = await file.read()
+        file_size = len(content)
+        # Reset file pointer
+        await file.seek(0)
+    else:
+        file_size = file.size
+
+    if file_size > ValidationConstants.MAX_FILE_SIZE_BYTES:
+        file_size_mb = file_size / ValidationConstants.BYTES_PER_MB
+        max_size_mb = ValidationConstants.MAX_FILE_SIZE_MB
+        raise HTTPException(
+            status_code=HttpStatusConstants.PAYLOAD_TOO_LARGE,
+            detail=f"File too large: {file_size_mb:.1f}MB exceeds {max_size_mb}MB limit"
+        )
+
+    return file
 
 
 # Create FastAPI app
@@ -136,9 +170,7 @@ async def health_check():
 
 @app.post("/translate", response_model=TranslationResponse)
 async def start_translation(
-    file: UploadFile = File(
-        ..., description="File to translate (EPUB, TXT, SRT, MD formats supported)"
-    ),
+    file: UploadFile = Depends(validate_file_size),
     model: TranslationModel = Form(
         default=TranslationModel.GOOGLE, description="Translation model to use"
     ),

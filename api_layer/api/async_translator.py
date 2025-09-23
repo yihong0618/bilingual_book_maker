@@ -33,6 +33,7 @@ from book_maker.translator import (
 )
 
 from .models import TranslationJob, JobStatus, TranslationModel
+from .config import ValidationConstants
 from .job_manager import job_manager
 from .progress_monitor import global_progress_tracker, ProgressUpdate
 
@@ -82,6 +83,7 @@ class AsyncEPUBTranslator:
         model: TranslationModel,
         key: str,
         language: str = "zh-cn",
+        file_size_bytes: int = ValidationConstants.INITIAL_VALUE,
         **kwargs,
     ) -> str:
         """
@@ -92,6 +94,7 @@ class AsyncEPUBTranslator:
             model: Translation model to use
             key: API key for the translation service
             language: Target language code
+            file_size_bytes: File size in bytes for monitoring (default: 0)
             **kwargs: Additional translation parameters
 
         Returns:
@@ -122,16 +125,17 @@ class AsyncEPUBTranslator:
         filename = os.path.basename(file_path)
         job = job_manager.create_job(
             filename=filename,
+            file_size_bytes=file_size_bytes,
             model=model.value,
             target_language=language,
-            source_language=kwargs.get("source_lang", "auto"),
+            source_language=kwargs.get("source_lang", ValidationConstants.DEFAULT_SOURCE_LANGUAGE),
             model_api_base=kwargs.get("model_api_base"),
-            temperature=kwargs.get("temperature", 1.0),
+            temperature=kwargs.get("temperature", ValidationConstants.DEFAULT_TEMPERATURE),
             context_flag=kwargs.get("context_flag", False),
-            context_paragraph_limit=kwargs.get("context_paragraph_limit", 0),
+            context_paragraph_limit=kwargs.get("context_paragraph_limit", ValidationConstants.INITIAL_VALUE),
             single_translate=kwargs.get("single_translate", False),
             is_test=kwargs.get("is_test", False),
-            test_num=kwargs.get("test_num", 5),
+            test_num=kwargs.get("test_num", ValidationConstants.DEFAULT_TEST_PARAGRAPH_COUNT),
         )
 
         # File is already saved at the correct path, no need to copy again
