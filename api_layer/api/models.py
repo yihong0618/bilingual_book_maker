@@ -44,8 +44,8 @@ class TranslationJob:
     job_id: str
     status: JobStatus
     filename: str
-    file_size_bytes: int = ValidationConstants.INITIAL_VALUE  # File size in bytes for monitoring
     created_at: datetime
+    file_size_bytes: int = ValidationConstants.INITIAL_VALUE  # File size in bytes for monitoring
     progress: int = ValidationConstants.INITIAL_VALUE  # 0-100%
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None

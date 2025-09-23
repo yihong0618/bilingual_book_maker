@@ -142,10 +142,7 @@ class EPUBBookLoader(BaseBookLoader):
         """Update global progress tracker for API integration (dynamic import to avoid circular imports)"""
         try:
             if self.progress_tracker and hasattr(self, 'job_id') and self.job_id:
-                logger.warning(f"DEBUG: Calling progress_tracker.monitor.update_progress({self.job_id}, {current}, {total}) on instance {self.progress_tracker}")
                 self.progress_tracker.monitor.update_progress(self.job_id, current, total)
-            else:
-                logger.warning(f"DEBUG: Cannot update progress - tracker: {self.progress_tracker}, job_id: {getattr(self, 'job_id', None)}")
         except Exception as e:
             logger.error(f"Error updating global progress: {e}")
 
@@ -461,11 +458,10 @@ class EPUBBookLoader(BaseBookLoader):
                     break
                 if not p.text or self._is_special_text(p.text):
                     pbar.update(1)
-                    # Log progress for API tracking
-                    logger.warning(f"DEBUG: At progress point - job_id={self.job_id}")
+                    # Update progress for API tracking
                     if self.job_id and pbar.total:
                         progress = int((pbar.n / pbar.total) * 100) if pbar.total > 0 else 0
-                        logger.warning(f"PROGRESS: {self.job_id} {pbar.n}/{pbar.total} ({progress}%)")
+                        logger.info(f"PROGRESS: {self.job_id} {pbar.n}/{pbar.total} ({progress}%)")
                         # Also update global progress tracker for direct API callback
                         self._update_global_progress(pbar.n, pbar.total)
                     continue
@@ -491,10 +487,9 @@ class EPUBBookLoader(BaseBookLoader):
                 pbar.update(1)
 
                 # Log progress for API tracking
-                logger.warning(f"DEBUG: At progress point 2 - job_id={self.job_id}")
                 if self.job_id and pbar.total:
                     progress = int((pbar.n / pbar.total) * 100) if pbar.total > 0 else 0
-                    logger.warning(f"PROGRESS: {self.job_id} {pbar.n}/{pbar.total} ({progress}%)")
+                    logger.info(f"PROGRESS: {self.job_id} {pbar.n}/{pbar.total} ({progress}%)")
                     # Also update global progress tracker for direct API callback
                     self._update_global_progress(pbar.n, pbar.total)
 
