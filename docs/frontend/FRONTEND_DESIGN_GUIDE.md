@@ -296,58 +296,61 @@ frontend/
 
 ---
 
-## User Experience Flows
+## User Experience Flows (MVP)
 
 ### Anonymous User Journey
 **Initial Landing**
 1. User arrives at landing page
-2. Sees clear value proposition and features
-3. Views pricing comparison (free vs premium)
-4. Clicks "Try Free Translation" CTA
+2. Sees clear value proposition: "Translate books instantly"
+3. Views simple upload form with Google Translate (free)
+4. Sees signup prompt for access to better models
 
 **Free Translation Flow**
-1. Redirected to upload page
-2. Drags/selects file for upload
-3. File validation occurs client-side
-4. Selects source and target languages
-5. Confirms Google Translate usage
+1. User drags/selects file for upload
+2. File validation occurs client-side
+3. Selects source and target languages
+4. Only Google Translate available (no premium options)
+5. Clicks "Start Translation"
 6. Uploads file and receives job ID
 7. Redirected to progress tracking page
-8. Monitors real-time progress updates
+8. Monitors basic progress updates
 9. Downloads completed translation
-10. Sees premium upsell messaging
+10. Sees signup prompt for premium models
 
-**Premium Upgrade Consideration**
-1. Views premium features during process
-2. Sees quality comparison examples
-3. Option to create account at any step
-4. Account creation leads to immediate premium trial
+**Signup Consideration**
+1. User sees "Want better translations?" section
+2. Views benefits: ChatGPT-4, Claude, Gemini Pro
+3. Understands they bring their own API keys
+4. No payment required, just account creation
 
 ### Registered User Journey
 **Authentication Flow**
-1. User clicks "Sign In" from header
-2. Modal or page with login form
-3. Option for social login or email/password
-4. Successful login redirects to dashboard
+1. User clicks "Sign Up/Login" from header
+2. Simple form with email/password
+3. No social login complexity in MVP
+4. Successful login redirects to main page (same layout)
 5. Failed login shows clear error messages
 
-**Premium Translation Flow**
-1. User accesses upload from dashboard
-2. Sees expanded model options
-3. Selects premium translation model
-4. Configures advanced options
-5. Uploads file with priority processing
-6. Receives enhanced progress tracking
-7. Downloads higher quality translation
-8. File saved to translation history
+**Enhanced Translation Flow**
+1. User sees same upload form but with all models available
+2. Models with 🔑 icon require API keys
+3. Can select premium models if API keys configured
+4. Same upload → progress → download flow
+5. No file storage or history tracking
 
-**Account Management**
-1. User accesses account settings
-2. Views translation history with filters
-3. Manages billing and subscription
-4. Updates profile and preferences
-5. Downloads previous translations
-6. Manages API keys (if applicable)
+**API Key Setup**
+1. User clicks "API Keys" in navigation
+2. Views simple setup page for each provider
+3. Adds API keys for desired models
+4. Keys are encrypted and not stored permanently
+5. Can test keys and update as needed
+
+**No Complex Management**
+- No dashboards or analytics
+- No translation history or file management
+- No billing or subscription flows
+- No complex user preferences
+- Files automatically cleaned up after hours
 
 ### Error Recovery Flows
 **File Upload Errors**

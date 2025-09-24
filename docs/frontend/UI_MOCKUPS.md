@@ -174,7 +174,7 @@ This document contains simplified UI mockups for the MVP version of the bilingua
 │  ┌───────────────────────────────────────────────────────────────────────────────┐  │
 │  │                                                                               │  │
 │  │  📖 "Pride and Prejudice.epub"                                               │  │
-│  │  English → Spanish • Using ChatGPT-4                                         │  │
+│  │  English → Spanish • Using ChatGPT-4 • 342 KB EPUB • 12 chapters            │  │
 │  │  Started: Today, 3:15 PM                                                     │  │
 │  │                                                                               │  │
 │  │  ┌─────────────────────────────────────────────────────────────────────────┐ │  │
@@ -186,14 +186,6 @@ This document contains simplified UI mockups for the MVP version of the bilingua
 │  │  ⏱️ Estimated Time Remaining: 2 minutes                                      │  │
 │  │                                                                               │  │
 │  └───────────────────────────────────────────────────────────────────────────────┘  │
-│                                                                                     │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐                   │
-│  │ File Info       │  │ Status          │  │ Actions         │                   │
-│  │                 │  │                 │  │                 │                   │
-│  │ Size: 342 KB    │  │ Words: 89,432   │  │ [❌ Cancel]      │                   │
-│  │ Type: EPUB      │  │ Progress: 83%   │  │ [🔄 Refresh]     │                   │
-│  │ Chapters: 12    │  │ Speed: 450 w/m  │  │                 │                   │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘                   │
 │                                                                                     │
 │  ┌───────────────────────────────────────────────────────────────────────────────┐  │
 │  │                             💡 Note                                           │  │
@@ -212,10 +204,11 @@ This document contains simplified UI mockups for the MVP version of the bilingua
 
 **Key Elements:**
 - Large progress bar with percentage
-- Basic file information and status
-- Simple cancel/refresh actions
+- File details integrated into the title line (size, type, chapters)
+- Current processing status and time estimate
 - Job ID for reference (no dashboard to track in)
 - Clear messaging about file cleanup policy
+- No action buttons during translation - keep it simple
 
 ---
 
@@ -237,7 +230,7 @@ This document contains simplified UI mockups for the MVP version of the bilingua
 │  │  🎉 Your translation is ready!                                               │  │
 │  │                                                                               │  │
 │  │  📖 "Pride and Prejudice.epub" → "Orgullo y Prejuicio.epub"                │  │
-│  │  English → Spanish • Using ChatGPT-4                                         │  │
+│  │  English → Spanish • Using ChatGPT-4 • 342→378 KB EPUB • 12 chapters       │  │
 │  │  Completed: Today, 3:47 PM • Processing time: 32 minutes                    │  │
 │  │                                                                               │  │
 │  │  ┌─────────────────────────────────────────────────────────────────────────┐ │  │
@@ -249,14 +242,6 @@ This document contains simplified UI mockups for the MVP version of the bilingua
 │  │                           (Large Green Button)                               │  │
 │  │                                                                               │  │
 │  └───────────────────────────────────────────────────────────────────────────────┘  │
-│                                                                                     │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐                   │
-│  │ File Details    │  │ Translation     │  │ Actions         │                   │
-│  │                 │  │ Stats           │  │                 │                   │
-│  │ Original: 342KB │  │ Words: 89,432   │  │ [🔄 New Trans]  │                   │
-│  │ Translated: 378KB│ │ Chapters: 12    │  │ [💬 Report Bug] │                   │
-│  │ Format: EPUB    │  │ Total Time: 32m │  │                 │                   │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘                   │
 │                                                                                     │
 │  ┌───────────────────────────────────────────────────────────────────────────────┐  │
 │  │                             💡 Important                                      │  │
@@ -275,10 +260,10 @@ This document contains simplified UI mockups for the MVP version of the bilingua
 
 **Key Elements:**
 - Large download button as primary action
-- Basic file details and statistics
+- File details integrated into the title line (original→translated size, type, chapters)
 - Clear messaging about temporary file storage
 - Quick action to start new translation
-- No feedback collection or sharing features
+- No feedback collection, sharing features, or detailed statistics cards
 
 ---
 
