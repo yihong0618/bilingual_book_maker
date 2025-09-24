@@ -378,7 +378,7 @@ async def start_translation(
     **Models Available:**
     - chatgpt: OpenAI ChatGPT/GPT-4 (requires API key)
     - claude: Anthropic Claude (requires API key)
-    - gemini: Google Gemini (requires API key)
+    - gemini: Google Gemini Flash (requires API key)
     - deepl: DeepL Translator Pro (requires API key)
     - deepl_free: DeepL Free API (requires free API key from https://www.deepl.com/pro-api)
     - google: Google Translate (free, no API key required)
