@@ -57,7 +57,7 @@ class AsyncEPUBTranslator:
     MODEL_CLASSES = {
         TranslationModel.CHATGPT: ChatGPTAPI,
         TranslationModel.CLAUDE: Claude,
-        TranslationModel.GEMINI: Gemini,
+        TranslationModel.GEMINI_FLASH: Gemini,
         TranslationModel.DEEPL: DeepL,
         TranslationModel.DEEPL_FREE: DeepLFree,
         TranslationModel.GOOGLE: Google,
@@ -347,19 +347,6 @@ class AsyncEPUBTranslator:
         if not model_class:
             raise ValueError(f"Unsupported model: {model}")
 
-        # Create and configure model instance
-        model_instance = model_class(
-            key=key,
-            language=job.target_language,
-            temperature=job.temperature,
-            context_flag=job.context_flag,
-        )
-
-        # Configure model-specific settings BEFORE creating loader
-        if model == TranslationModel.GEMINI:
-            # Configure Gemini Flash models (not Pro)
-            model_instance.set_geminiflash_models()
-
         # Determine file type and get appropriate loader
         file_ext = "." + input_path.lower().split(".")[-1] if "." in input_path else ""
         file_type = file_ext[1:]  # Remove the dot
@@ -370,7 +357,7 @@ class AsyncEPUBTranslator:
 
         # Prepare parameters for the loader
         loader_kwargs = {
-            "model": model_instance,  # Pass the configured instance, not the class
+            "model": model_class,  # Pass the model class so loader can instantiate it
             "key": key,
             "resume": kwargs.get("resume", False),
             "language": job.target_language,
@@ -407,6 +394,10 @@ class AsyncEPUBTranslator:
         try:
             # Create loader instance
             loader = loader_class(**loader_kwargs)
+
+            # For Gemini model, configure Flash models after loader creation
+            if model == TranslationModel.GEMINI_FLASH:
+                loader.translate_model.set_geminiflash_models()
 
             # Execute translation with format-specific handling
             if file_type == "epub":

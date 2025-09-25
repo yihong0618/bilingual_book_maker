@@ -26,7 +26,7 @@ class TranslationModel(str, Enum):
 
     CHATGPT = "chatgpt"
     CLAUDE = "claude"
-    GEMINI = "gemini"
+    GEMINI_FLASH = "gemini_flash"
     DEEPL = "deepl"
     DEEPL_FREE = "deepl_free"
     GOOGLE = "google"
