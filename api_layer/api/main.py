@@ -255,27 +255,43 @@ async def validate_file_comprehensive(
     return file
 
 
-# Create FastAPI app
-app = FastAPI(
-    title="Bilingual Book Maker API",
-    description="""
+# Create FastAPI app with conditional docs based on environment
+app_kwargs = {
+    "title": "Bilingual Book Maker API",
+    "description": """
     Async translation API for EPUB, TXT, SRT, and Markdown files.
 
-    **Free Usage (No Registration):**
-    - Google Translate model (unlimited)
+    **MVP: All models available to everyone!**
+    - Google Translate: Free, no API key required
+    - Premium models (ChatGPT, Claude, Gemini, etc.): Use your own API keys
     - All file formats supported
+    - No cost to the service provider since you use your own API keys
 
-    **Registered Users:**
-    - Access to premium models (ChatGPT, Claude, Gemini, etc.)
-    - Use your own API keys for translation services
-    - Higher quality translations
+    **How it works:**
+    1. Choose any translation model
+    2. Provide your API key (except for Google Translate)
+    3. Upload your file and start translation
+    4. Monitor progress and download results
 
-    **Authentication:** Optional - only required for premium models
-    Use `Authorization: Bearer your_api_key` header for premium model access.
+    **Authentication:** Optional - only affects frontend UI visibility
+    API access is unrestricted in MVP phase.
     """,
-    version="1.0.0",
-    lifespan=lifespan,
-)
+    "version": "1.0.0",
+    "lifespan": lifespan,
+}
+
+# Disable docs in production for security
+if settings.is_production:
+    app_kwargs.update({
+        "docs_url": None,
+        "redoc_url": None,
+        "openapi_url": None,
+    })
+    logger.info("🔒 Production mode: API documentation disabled")
+else:
+    logger.info("🔓 Development mode: API documentation enabled at /docs and /redoc")
+
+app = FastAPI(**app_kwargs)
 
 # Add security headers middleware
 app.middleware("http")(add_security_headers)
@@ -375,16 +391,20 @@ async def start_translation(
     """
     Start a new translation job
 
+    **MVP: All models are available to everyone!**
+    Since users provide their own API keys, all models are accessible through the API.
+    Authentication only affects frontend UI visibility.
+
     **Models Available:**
-    - chatgpt: OpenAI ChatGPT/GPT-4 (requires API key)
-    - claude: Anthropic Claude (requires API key)
-    - gemini: Google Gemini Flash (requires API key)
-    - deepl: DeepL Translator Pro (requires API key)
-    - deepl_free: DeepL Free API (requires free API key from https://www.deepl.com/pro-api)
+    - chatgpt: OpenAI ChatGPT/GPT-4 (requires your API key)
+    - claude: Anthropic Claude (requires your API key)
+    - gemini: Google Gemini Flash (requires your API key)
+    - deepl: DeepL Translator Pro (requires your API key)
+    - deepl_free: DeepL Free API (requires your free API key from https://www.deepl.com/pro-api)
     - google: Google Translate (free, no API key required)
-    - groq: Groq API (requires API key)
-    - qwen: Alibaba Qwen (requires API key)
-    - xai: xAI Grok (requires API key)
+    - groq: Groq API (requires your API key)
+    - qwen: Alibaba Qwen (requires your API key)
+    - xai: xAI Grok (requires your API key)
 
     **Common Language Codes:**
     - zh-cn: Chinese (Simplified)
@@ -414,17 +434,8 @@ async def start_translation(
     """
     # Note: File validation is now handled by validate_file_comprehensive dependency
 
-    # Business logic: Check model access permissions
-    premium_models = [TranslationModel.CHATGPT, TranslationModel.CLAUDE, TranslationModel.GEMINI,
-                     TranslationModel.DEEPL, TranslationModel.GROQ, TranslationModel.QWEN, TranslationModel.XAI]
-
-    if model in premium_models and not current_api_key:
-        available_models = "Google Translate (free)"
-        premium_models_str = ", ".join([m.value for m in premium_models])
-        raise HTTPException(
-            status_code=HttpStatusConstants.UNAUTHORIZED,
-            detail=f"Authentication required for premium models ({premium_models_str}). Available without auth: {available_models}"
-        )
+    # MVP: All models are accessible to everyone since users provide their own API keys
+    # Authentication only controls UI visibility, not API access
 
     # Validate required parameters for translation service API keys
     if model != TranslationModel.GOOGLE and not key:

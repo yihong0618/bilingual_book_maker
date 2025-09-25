@@ -228,13 +228,29 @@ def init_demo_api_keys():
 # Security middleware for additional headers
 async def add_security_headers(request: Request, call_next):
     """Add security headers to all responses"""
+    from .config import settings  # Import here to avoid circular import
+
     response = await call_next(request)
 
-    # Add security headers
+    # Add basic security headers
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Content-Security-Policy"] = "default-src 'self'"
+
+    # Environment-specific CSP
+    if settings.is_production:
+        # Strict CSP for production (docs disabled anyway)
+        response.headers["Content-Security-Policy"] = "default-src 'self'"
+    else:
+        # Permissive CSP for development (allows all sources for Swagger UI)
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self' *; "
+            "style-src 'self' 'unsafe-inline' *; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' *; "
+            "img-src 'self' data: *; "
+            "connect-src 'self' *; "
+            "font-src 'self' *"
+        )
 
     return response
