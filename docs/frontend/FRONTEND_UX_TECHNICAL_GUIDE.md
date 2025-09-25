@@ -108,13 +108,13 @@ The service implements a freemium business model with two distinct user tiers:
 #### Registered Users (Premium Tier)
 ```json
 {
-  "authentication": "Bearer token required",
+  "authentication": "Bearer token optional (MVP: unrestricted access)",
   "models_available": [
-    "chatgpt", "claude", "gemini", "deepl",
+    "chatgpt", "claude", "gemini_flash", "deepl",
     "deepl_free", "groq", "qwen", "xai"
   ],
   "api_key_required": true,
-  "rate_limits": "Per-user configurable",
+  "rate_limits": "None in MVP (users provide own API keys)",
   "quality": "High-quality AI translation",
   "features": ["All free features", "Premium models", "API management"]
 }
@@ -133,13 +133,13 @@ const response = await fetch('/translate', {
 
 **For Premium Users:**
 ```javascript
-// Bearer token required for premium models
+// Bearer token optional in MVP (all models accessible with valid translation service API keys)
 const response = await fetch('/translate', {
   method: 'POST',
   headers: {
     'Authorization': 'Bearer bbm_your_api_key_here'
   },
-  body: formData // model: 'chatgpt', 'claude', etc.
+  body: formData // model: 'chatgpt', 'claude', 'gemini_flash', etc.
 });
 ```
 
@@ -164,10 +164,10 @@ The backend enforces business rules automatically:
 ```http
 POST /translate HTTP/1.1
 Content-Type: multipart/form-data
-Authorization: Bearer bbm_api_key (optional, required for premium models)
+Authorization: Bearer bbm_api_key (optional in MVP - all models accessible with valid translation service keys)
 
 file: [EPUB/TXT/SRT/MD file, max 500KB]
-model: "google" | "chatgpt" | "claude" | "gemini" | "deepl" | "deepl_free" | "groq" | "qwen" | "xai"
+model: "google" | "chatgpt" | "claude" | "gemini_flash" | "deepl" | "deepl_free" | "groq" | "qwen" | "xai"
 key: "translation_service_api_key" (default: "no-key-required")
 language: "zh-cn" (default, target language code)
 is_test: false (boolean, test mode with 5 paragraphs)
@@ -198,10 +198,10 @@ source_lang: "auto" (source language detection)
   "timestamp": "2024-01-15T10:30:00Z"
 }
 
-// Authentication required (401)
+// Authentication required (401) - Note: In MVP, all models accessible with valid service API keys
 {
   "error": "Authentication required",
-  "detail": "Authentication required for premium models (chatgpt, claude, gemini, deepl, groq, qwen, xai). Available without auth: Google Translate (free)",
+  "detail": "Authentication required for premium models (chatgpt, claude, gemini_flash, deepl, groq, qwen, xai). Available without auth: Google Translate (free)",
   "timestamp": "2024-01-15T10:30:00Z"
 }
 
@@ -264,6 +264,7 @@ POST /cancel/{job_id} # Cancel running job
 DELETE /jobs/{job_id} # Delete completed job
 GET /models          # List available models
 GET /stats           # System statistics
+POST /cleanup        # Manual cleanup of expired jobs (admin)
 ```
 
 ---
@@ -1062,6 +1063,7 @@ const testFiles = {
 const testScenarios = [
   {name: 'Anonymous + Google', file: testFiles.small_epub, model: 'google'},
   {name: 'Premium + ChatGPT', file: testFiles.text_file, model: 'chatgpt'},
+  {name: 'Premium + Gemini Flash', file: testFiles.text_file, model: 'gemini_flash'},
   {name: 'Test Mode', file: testFiles.small_epub, model: 'google', is_test: true},
   {name: 'Large File Error', file: 'large-file.epub'} // > 500KB
 ];
@@ -1086,6 +1088,10 @@ const errorTests = [
   {
     test: 'Missing translation API key',
     action: () => translate({model: 'chatgpt', key: ''})
+  },
+  {
+    test: 'Invalid Gemini Flash API key',
+    action: () => translate({model: 'gemini_flash', key: 'invalid-key'})
   }
 ];
 ```

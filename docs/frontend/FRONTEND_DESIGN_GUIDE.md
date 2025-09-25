@@ -319,7 +319,7 @@ frontend/
 
 **Signup Consideration**
 1. User sees "Want better translations?" section
-2. Views benefits: ChatGPT-4, Claude, Gemini Pro
+2. Views benefits: ChatGPT-4, Claude, Gemini Flash
 3. Understands they bring their own API keys
 4. No payment required, just account creation
 
