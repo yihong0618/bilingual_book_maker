@@ -398,6 +398,13 @@ So you are close to reaching the limit. You have to choose your own value, there
         default=0.01,
         help="Request interval in seconds (e.g., 0.1 for 100ms). Currently only supported for Gemini models. Default: 0.01",
     )
+    parser.add_argument(
+        "--parallel-workers",
+        dest="parallel_workers",
+        type=int,
+        default=1,
+        help="Number of parallel workers for EPUB chapter processing. Use 2-4 for better performance. Default: 1",
+    )
 
     options = parser.parse_args()
 
@@ -523,6 +530,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         context_paragraph_limit=options.context_paragraph_limit,
         temperature=options.temperature,
         source_lang=options.source_lang,
+        parallel_workers=options.parallel_workers,
     )
     # other options
     if options.allow_navigable_strings:
