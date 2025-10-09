@@ -323,8 +323,9 @@ class EPUBBookLoader(BaseBookLoader):
         matching_items = []
 
         for item in book.get_items_of_type(ITEM_DOCUMENT):
-            content = item.get_content().decode("utf-8")
-            if search_string in content:
+            content = item.get_content()
+            soup = bs(content, "html.parser")
+            if search_string in soup.get_text():
                 matching_items.append(item)
 
         return matching_items
@@ -358,8 +359,10 @@ class EPUBBookLoader(BaseBookLoader):
         if ori_item is None:
             return
 
-        soup_complete = bs(complete_item.content, "html.parser")
-        soup_ori = bs(ori_item.content, "html.parser")
+        content_complete = complete_item.content
+        content_ori = ori_item.content
+        soup_complete = bs(content_complete, "html.parser")
+        soup_ori = bs(content_ori, "html.parser")
 
         p_list_complete = soup_complete.findAll(trans_taglist)
         p_list_ori = soup_ori.findAll(trans_taglist)
@@ -458,7 +461,8 @@ class EPUBBookLoader(BaseBookLoader):
         if not os.path.exists("log"):
             os.makedirs("log")
 
-        soup = bs(item.content, "html.parser")
+        content = item.content
+        soup = bs(content, "html.parser")
         p_list = soup.findAll(trans_taglist)
 
         p_list = self.filter_nest_list(p_list, trans_taglist)
@@ -531,7 +535,7 @@ class EPUBBookLoader(BaseBookLoader):
                 )
 
         if soup:
-            item.content = soup.encode()
+            item.content = soup.encode(encoding="utf-8")
         new_book.add_item(item)
 
         return index
@@ -574,8 +578,6 @@ class EPUBBookLoader(BaseBookLoader):
             thread_translator = self._create_chapter_translator()
 
             content = item.content
-            if isinstance(content, bytes):
-                content = content.decode("utf-8")
             soup = bs(content, "html.parser")
             p_list = soup.findAll(trans_taglist)
             p_list = self.filter_nest_list(p_list, trans_taglist)
@@ -987,7 +989,8 @@ class EPUBBookLoader(BaseBookLoader):
         try:
             for item in origin_book_temp.get_items():
                 if item.get_type() == ITEM_DOCUMENT:
-                    soup = bs(item.content, "html.parser")
+                    content = item.content
+                    soup = bs(content, "html.parser")
                     p_list = soup.findAll(trans_taglist)
                     if self.allow_navigable_strings:
                         p_list.extend(soup.findAll(text=True))
