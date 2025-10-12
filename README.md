@@ -215,6 +215,10 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 
   Use `--context_paragraph_limit` to set a limit on the number of context paragraphs when using the `--use_context` option.
 
+- `--parallel-workers`:
+
+  Use `--parallel-workers` to enable parallel EPUB chapter processing. Values greater than `1` spin up multiple workers (recommended: `2-4`) and automatically fall back to sequential mode for single-chapter books.
+
 - `--temperature`:
 
   Use `--temperature` to set the temperature parameter for `chatgptapi`/`gpt4`/`claude` models.
@@ -263,6 +267,9 @@ python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${open
 
 # Or translate the whole book using Gemini flash
 python3 make_book.py --book_name test_books/animal_farm.epub --gemini_key ${gemini_key} --model gemini
+
+# Translate an EPUB with parallel chapter processing
+python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --parallel-workers 4
 
 # Use a specific list of Gemini model aliases
 python3 make_book.py --book_name test_books/animal_farm.epub --gemini_key ${gemini_key} --model gemini --model_list gemini-1.5-flash-002,gemini-1.5-flash-8b-exp-0924
