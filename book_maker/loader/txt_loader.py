@@ -23,6 +23,7 @@ class TXTBookLoader(BaseBookLoader):
         context_paragraph_limit=0,
         temperature=1.0,
         source_lang="auto",
+        parallel_workers=1,
     ) -> None:
         self.txt_name = txt_name
         self.translate_model = model(
@@ -40,6 +41,7 @@ class TXTBookLoader(BaseBookLoader):
         self.test_num = test_num
         self.batch_size = 10
         self.single_translate = single_translate
+        self.parallel_workers = max(1, parallel_workers)
 
         try:
             with open(f"{txt_name}", encoding="utf-8") as f:

@@ -6,6 +6,7 @@ from copy import copy
 from os import environ
 from itertools import cycle
 import json
+from threading import Lock
 
 from openai import AzureOpenAI, OpenAI, RateLimitError
 from rich import print
@@ -114,12 +115,16 @@ class ChatGPTAPI(Base):
         self.batch_text_list = []
         self.batch_info_cache = None
         self.result_content_cache = {}
+        self._api_lock = Lock()
 
     def rotate_key(self):
-        self.openai_client.api_key = next(self.keys)
+        with self._api_lock:
+            self.openai_client.api_key = next(self.keys)
 
     def rotate_model(self):
-        self.model = next(self.model_list)
+        with self._api_lock:
+            if self.model_list:
+                self.model = next(self.model_list)
 
     def create_messages(self, text, intermediate_messages=None):
         content = self.prompt_template.format(
