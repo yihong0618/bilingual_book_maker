@@ -138,7 +138,47 @@ class EPUBBookLoader(BaseBookLoader):
 
     def _make_new_book(self, book):
         new_book = epub.EpubBook()
-        new_book.metadata = book.metadata
+        allowed_ns = set(epub.NAMESPACES.keys()) | set(epub.NAMESPACES.values())
+
+        for namespace, metas in book.metadata.items():
+            # Only keep namespaces recognized by ebooklib
+            if namespace not in allowed_ns:
+                continue
+
+            if isinstance(metas, dict):
+                entries = (
+                    (name, value, others)
+                    for name, values in metas.items()
+                    for value, others in (
+                        (item if isinstance(item, tuple) else (item, None))
+                        for item in values
+                    )
+                )
+            else:
+                entries = metas
+
+            for entry in entries:
+                if not entry:
+                    continue
+
+                if isinstance(entry, tuple):
+                    if len(entry) == 3:
+                        name, value, others = entry
+                    elif len(entry) == 2:
+                        name, value = entry
+                        others = None
+                    else:
+                        continue
+                else:
+                    # Unexpected metadata format; skip gracefully
+                    continue
+
+                # `others` can be {} or None
+                if others:
+                    new_book.add_metadata(namespace, name, value, others)
+                else:
+                    new_book.add_metadata(namespace, name, value)
+
         new_book.spine = book.spine
         new_book.toc = book.toc
         return new_book
