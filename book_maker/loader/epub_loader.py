@@ -608,10 +608,7 @@ class EPUBBookLoader(BaseBookLoader):
                     index = self._get_next_translation_index()
 
                     if self.resume and index < p_to_save_len:
-                        if type(p) == NavigableString:
-                            new_p = self.p_to_save[index]
-                        else:
-                            p.string = self.p_to_save[index]
+                        t_text = self.p_to_save[index]
                     else:
                         # Use chapter-specific context for translation
                         t_text = self._translate_with_chapter_context(
@@ -620,18 +617,18 @@ class EPUBBookLoader(BaseBookLoader):
                             chapter_context_list,
                             chapter_translated_list,
                         )
-                        if type(p) == NavigableString:
-                            new_p = t_text
-                            with self._progress_lock:
-                                self.p_to_save.append(new_p)
-                        else:
-                            p.string = t_text
-                            with self._progress_lock:
-                                self.p_to_save.append(p.text)
+                        t_text = "" if t_text is None else t_text
+                        with self._progress_lock:
+                            self.p_to_save.append(t_text)
 
-                    if type(p) != NavigableString:
+                    if isinstance(p, NavigableString):
+                        translated_node = NavigableString(t_text)
+                        p.insert_after(translated_node)
+                        if self.single_translate:
+                            p.extract()
+                    else:
                         self.helper.insert_trans(
-                            p, p.string, self.translation_style, self.single_translate
+                            p, t_text, self.translation_style, self.single_translate
                         )
 
                     with self._progress_lock:
