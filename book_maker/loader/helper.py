@@ -19,6 +19,18 @@ class EPUBBookLoaderHelper:
     def insert_trans(self, p, text, translation_style="", single_translate=False):
         if text is None:
             text = ""
+
+        # If translation text is empty/None and original text exists,
+        # preserve the original text instead of inserting empty translation
+        if not text or not text.strip():
+            # For empty translations, keep original text
+            if single_translate:
+                # In single-translate mode, don't remove original if translation failed
+                return
+            else:
+                # In bilingual mode, don't insert empty translation
+                return
+
         if (
             p.string is not None
             and p.string.replace(" ", "").strip() == text.replace(" ", "").strip()
