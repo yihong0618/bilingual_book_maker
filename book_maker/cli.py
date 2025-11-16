@@ -192,6 +192,14 @@ def main():
         help="You can get Qwen Key from  https://bailian.console.aliyun.com/?tab=model#/api-key",
     )
 
+    # for Zhipu GLM
+    parser.add_argument(
+        "--glm_key",
+        dest="glm_key",
+        type=str,
+        help="You can get GLM Key from  https://open.bigmodel.cn/usercenter/apikeys",
+    )
+
     parser.add_argument(
         "--test",
         dest="test",
@@ -476,6 +484,10 @@ So you are close to reaching the limit. You have to choose your own value, there
         API_KEY = options.xai_key or env.get("BBM_XAI_API_KEY")
     elif options.model.startswith("qwen-"):
         API_KEY = options.qwen_key or env.get("BBM_QWEN_API_KEY")
+    elif options.model.startswith("glm") or options.model == "glm":
+        API_KEY = options.glm_key or env.get("BBM_GLM_API_KEY")
+        if not API_KEY:
+            raise Exception("Please provide GLM API key via --glm_key or BBM_GLM_API_KEY environment variable")
     else:
         API_KEY = ""
 
@@ -599,6 +611,8 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.translate_model.set_claude_model(options.model)
     if options.model.startswith("qwen-"):
         e.translate_model.set_qwen_model(options.model)
+    if options.model.startswith("glm") or options.model == "glm":
+        e.translate_model.set_glm_model(options.model)
     if options.block_size > 0:
         e.block_size = options.block_size
     if options.batch_flag:

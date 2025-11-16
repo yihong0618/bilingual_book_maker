@@ -408,3 +408,7 @@ Thank you, that's enough.
 
 [^token]: https://platform.openai.com/account/api-keys
 [^black]: https://github.com/psf/black
+
+
+# 我的习惯使用命令
+python make_book.py --book_name 'test_books/The Theory of Poker -- David Sklansky.epub' -m glm-4-flash --glm_key 'a5f10c98eddf47b38baf055963917ba8.ZP7xvGivBXb8GDUr' --use_context --context_paragraph_limit 5

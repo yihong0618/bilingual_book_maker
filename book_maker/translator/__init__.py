@@ -10,6 +10,7 @@ from book_maker.translator.tencent_transmart_translator import TencentTranSmart
 from book_maker.translator.custom_api_translator import CustomAPI
 from book_maker.translator.xai_translator import XAIClient
 from book_maker.translator.qwen_translator import QwenTranslator
+from book_maker.translator.zhipu_translator import ZhipuTranslator
 
 MODEL_DICT = {
     "openai": ChatGPTAPI,
@@ -40,5 +41,11 @@ MODEL_DICT = {
     "qwen": QwenTranslator,
     "qwen-mt-turbo": QwenTranslator,
     "qwen-mt-plus": QwenTranslator,
+    "glm": ZhipuTranslator,
+    "glm-4-flash": ZhipuTranslator,
+    "glm-4-air": ZhipuTranslator,
+    "glm-4-airx": ZhipuTranslator,
+    "glm-4-plus": ZhipuTranslator,
+    "glm-4-0520": ZhipuTranslator,
     # add more here
 }
