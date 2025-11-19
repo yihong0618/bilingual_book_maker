@@ -71,6 +71,17 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   python3 make_book.py --book_name test_books/animal_farm.epub --model gemini --gemini_key ${gemini_key}
   ```
 
+* Qwen
+
+  使用 [Qwen](https://www.aliyun.com/product/dashscope) 模型进行翻译，支持 qwen-mt-turbo 和 qwen-mt-plus 模型。
+
+  使用 `--source_lang` 指定源语言，留空为自动检测。
+
+  ```shell
+  python3 make_book.py --book_name test_books/animal_farm.epub --qwen_key ${qwen_key} --model qwen-mt-turbo --language "Simplified Chinese"
+  python3 make_book.py --book_name test_books/animal_farm.epub --qwen_key ${qwen_key} --model qwen-mt-plus --language "Japanese" --source_lang "English"
+  ```
+
 * 腾讯交互翻译
 
   ```shell
@@ -297,7 +308,7 @@ python make_book.py --book_name 'animal_farm.epub' --openai_key XXXXX --api_base
 
 # 其它推荐项目
 
-- 书译 iOS -> [AI 全书翻译工具](https://apps.apple.com/cn/app/%E4%B9%A6%E8%AF%91-ai-%E5%85%A8%E4%B9%A6%E7%BF%BB%E8%AF%91%E5%B7%A5%E5%85%B7/id6447665417)
+- 书译 BookTranslator -> [Book Translator](https://www.booktranslator.app)
 
 ## 赞赏
 

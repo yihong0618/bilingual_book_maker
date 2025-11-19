@@ -13,7 +13,60 @@ def parse_prompt_arg(prompt_arg):
     if prompt_arg is None:
         return prompt
 
-    if not any(prompt_arg.endswith(ext) for ext in [".json", ".txt"]):
+    # Check if it's a path to a markdown file (PromptDown format)
+    if prompt_arg.endswith(".md") and os.path.exists(prompt_arg):
+        try:
+            from promptdown import StructuredPrompt
+
+            structured_prompt = StructuredPrompt.from_promptdown_file(prompt_arg)
+
+            # Initialize our prompt structure
+            prompt = {}
+
+            # Handle developer_message or system_message
+            # Developer message takes precedence if both are present
+            if (
+                hasattr(structured_prompt, "developer_message")
+                and structured_prompt.developer_message
+            ):
+                prompt["system"] = structured_prompt.developer_message
+            elif (
+                hasattr(structured_prompt, "system_message")
+                and structured_prompt.system_message
+            ):
+                prompt["system"] = structured_prompt.system_message
+
+            # Extract user message from conversation
+            if (
+                hasattr(structured_prompt, "conversation")
+                and structured_prompt.conversation
+            ):
+                for message in structured_prompt.conversation:
+                    if message.role.lower() == "user":
+                        prompt["user"] = message.content
+                        break
+
+            # Ensure we found a user message
+            if "user" not in prompt or not prompt["user"]:
+                raise ValueError(
+                    "PromptDown file must contain at least one user message"
+                )
+
+            print(f"Successfully loaded PromptDown file: {prompt_arg}")
+
+            # Validate required placeholders
+            if any(c not in prompt["user"] for c in ["{text}"]):
+                raise ValueError(
+                    "User message in PromptDown must contain `{text}` placeholder"
+                )
+
+            return prompt
+        except Exception as e:
+            print(f"Error parsing PromptDown file: {e}")
+            # Fall through to other parsing methods
+
+    # Existing parsing logic for JSON strings and other formats
+    if not any(prompt_arg.endswith(ext) for ext in [".json", ".txt", ".md"]):
         try:
             # user can define prompt by passing a json string
             # eg: --prompt '{"system": "You are a professional translator who translates computer technology books", "user": "Translate \`{text}\` to {language}"}'
@@ -129,6 +182,14 @@ def main():
         dest="xai_key",
         type=str,
         help="You can get xAI Key from  https://console.x.ai/",
+    )
+
+    # for Qwen
+    parser.add_argument(
+        "--qwen_key",
+        dest="qwen_key",
+        type=str,
+        help="You can get Qwen Key from  https://bailian.console.aliyun.com/?tab=model#/api-key",
     )
 
     parser.add_argument(
@@ -302,6 +363,12 @@ So you are close to reaching the limit. You have to choose your own value, there
         help="temperature parameter for `chatgptapi`/`gpt4`/`claude`/`gemini`",
     )
     parser.add_argument(
+        "--source_lang",
+        type=str,
+        default="auto",
+        help="source language for translation models like `qwen` (default: auto-detect)",
+    )
+    parser.add_argument(
         "--block_size",
         type=int,
         default=-1,
@@ -331,11 +398,18 @@ So you are close to reaching the limit. You have to choose your own value, there
         default=0.01,
         help="Request interval in seconds (e.g., 0.1 for 100ms). Currently only supported for Gemini models. Default: 0.01",
     )
+    parser.add_argument(
+        "--parallel-workers",
+        dest="parallel_workers",
+        type=int,
+        default=1,
+        help="Number of parallel workers for EPUB chapter processing. Use 2-4 for better performance. Default: 1",
+    )
 
     options = parser.parse_args()
 
     if not options.book_name:
-        print(f"Error: please provide the path of your book using --book_name <path>")
+        print("Error: please provide the path of your book using --book_name <path>")
         exit(1)
     if not os.path.isfile(options.book_name):
         print(f"Error: the book {options.book_name!r} does not exist.")
@@ -349,7 +423,17 @@ So you are close to reaching the limit. You have to choose your own value, there
     translate_model = MODEL_DICT.get(options.model)
     assert translate_model is not None, "unsupported model"
     API_KEY = ""
-    if options.model in ["openai", "chatgptapi", "gpt4", "gpt4omini", "gpt4o"]:
+    if options.model in [
+        "openai",
+        "chatgptapi",
+        "gpt4",
+        "gpt4omini",
+        "gpt4o",
+        "o1preview",
+        "o1",
+        "o1mini",
+        "o3mini",
+    ]:
         if OPENAI_API_KEY := (
             options.openai_key
             or env.get(
@@ -390,6 +474,8 @@ So you are close to reaching the limit. You have to choose your own value, there
         API_KEY = options.groq_key or env.get("BBM_GROQ_API_KEY")
     elif options.model == "xai":
         API_KEY = options.xai_key or env.get("BBM_XAI_API_KEY")
+    elif options.model.startswith("qwen-"):
+        API_KEY = options.qwen_key or env.get("BBM_QWEN_API_KEY")
     else:
         API_KEY = ""
 
@@ -443,6 +529,8 @@ So you are close to reaching the limit. You have to choose your own value, there
         context_flag=options.context_flag,
         context_paragraph_limit=options.context_paragraph_limit,
         temperature=options.temperature,
+        source_lang=options.source_lang,
+        parallel_workers=options.parallel_workers,
     )
     # other options
     if options.allow_navigable_strings:
@@ -471,6 +559,10 @@ So you are close to reaching the limit. You have to choose your own value, there
             "gpt4",
             "gpt4omini",
             "gpt4o",
+            "o1",
+            "o1preview",
+            "o1mini",
+            "o3mini",
         ], "only support chatgptapi for deployment_id"
         if not options.api_base:
             raise ValueError("`api_base` must be provided when using `deployment_id`")
@@ -495,8 +587,18 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.translate_model.set_gpt4omini_models()
     if options.model == "gpt4o":
         e.translate_model.set_gpt4o_models()
+    if options.model == "o1preview":
+        e.translate_model.set_o1preview_models()
+    if options.model == "o1":
+        e.translate_model.set_o1_models()
+    if options.model == "o1mini":
+        e.translate_model.set_o1mini_models()
+    if options.model == "o3mini":
+        e.translate_model.set_o3mini_models()
     if options.model.startswith("claude-"):
         e.translate_model.set_claude_model(options.model)
+    if options.model.startswith("qwen-"):
+        e.translate_model.set_qwen_model(options.model)
     if options.block_size > 0:
         e.block_size = options.block_size
     if options.batch_flag:

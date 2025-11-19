@@ -22,6 +22,7 @@ class MarkdownBookLoader(BaseBookLoader):
         context_flag=False,
         context_paragraph_limit=0,
         temperature=1.0,
+        source_lang="auto",
     ) -> None:
         self.md_name = md_name
         self.translate_model = model(
@@ -29,6 +30,7 @@ class MarkdownBookLoader(BaseBookLoader):
             language,
             api_base=model_api_base,
             temperature=temperature,
+            source_lang=source_lang,
             **prompt_config_to_kwargs(prompt_config),
         )
         self.is_test = is_test
@@ -158,8 +160,8 @@ class MarkdownBookLoader(BaseBookLoader):
         try:
             with open(self.bin_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(self.p_to_save))
-        except:
-            raise Exception("can not save resume file")
+        except Exception as e:
+            raise Exception("can not save resume file") from e
 
     def load_state(self):
         try:
@@ -172,5 +174,5 @@ class MarkdownBookLoader(BaseBookLoader):
         try:
             with open(book_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(content))
-        except:
-            raise Exception("can not save file")
+        except Exception as e:
+            raise Exception("can not save file") from e

@@ -22,6 +22,8 @@ class TXTBookLoader(BaseBookLoader):
         context_flag=False,
         context_paragraph_limit=0,
         temperature=1.0,
+        source_lang="auto",
+        parallel_workers=1,
     ) -> None:
         self.txt_name = txt_name
         self.translate_model = model(
@@ -29,6 +31,7 @@ class TXTBookLoader(BaseBookLoader):
             language,
             api_base=model_api_base,
             temperature=temperature,
+            source_lang=source_lang,
             **prompt_config_to_kwargs(prompt_config),
         )
         self.is_test = is_test
@@ -38,6 +41,7 @@ class TXTBookLoader(BaseBookLoader):
         self.test_num = test_num
         self.batch_size = 10
         self.single_translate = single_translate
+        self.parallel_workers = max(1, parallel_workers)
 
         try:
             with open(f"{txt_name}", encoding="utf-8") as f:
@@ -123,8 +127,8 @@ class TXTBookLoader(BaseBookLoader):
         try:
             with open(self.bin_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(self.p_to_save))
-        except:
-            raise Exception("can not save resume file")
+        except Exception as e:
+            raise Exception("can not save resume file") from e
 
     def load_state(self):
         try:
@@ -137,5 +141,5 @@ class TXTBookLoader(BaseBookLoader):
         try:
             with open(book_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(content))
-        except:
-            raise Exception("can not save file")
+        except Exception as e:
+            raise Exception("can not save file") from e

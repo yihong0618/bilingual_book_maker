@@ -27,6 +27,7 @@ class SRTBookLoader(BaseBookLoader):
         context_flag=False,
         context_paragraph_limit=0,
         temperature=1.0,
+        source_lang="auto",
     ) -> None:
         self.srt_name = srt_name
         self.translate_model = model(
@@ -34,6 +35,7 @@ class SRTBookLoader(BaseBookLoader):
             language,
             api_base=model_api_base,
             temperature=temperature,
+            source_lang=source_lang,
             **prompt_config_to_kwargs(
                 {
                     "system": "You are a srt subtitle file translator.",
@@ -213,7 +215,7 @@ class SRTBookLoader(BaseBookLoader):
                                 translated_blocks, self.blocks[begin:end]
                             ):
                                 raise Exception(
-                                    f"retry failed, adjust the srt manually."
+                                    "retry failed, adjust the srt manually."
                                 )
 
                     for i, block in enumerate(translated_blocks):
@@ -274,8 +276,8 @@ class SRTBookLoader(BaseBookLoader):
         try:
             with open(self.bin_path, "w", encoding="utf-8") as f:
                 f.write("===".join(self.p_to_save))
-        except:
-            raise Exception("can not save resume file")
+        except Exception as e:
+            raise Exception("can not save resume file") from e
 
     def load_state(self):
         try:
@@ -293,5 +295,5 @@ class SRTBookLoader(BaseBookLoader):
         try:
             with open(book_path, "w", encoding="utf-8") as f:
                 f.write("\n\n".join(content))
-        except:
-            raise Exception("can not save file")
+        except Exception as e:
+            raise Exception("can not save file") from e

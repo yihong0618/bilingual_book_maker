@@ -44,6 +44,7 @@ GEMINIFLASH_MODEL_LIST = [
     "gemini-1.5-flash-001",
     "gemini-1.5-flash-002",
     "gemini-2.0-flash-exp",
+    "gemini-2.5-flash-preview-04-17",
 ]
 
 
