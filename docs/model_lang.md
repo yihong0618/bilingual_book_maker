@@ -2,12 +2,12 @@
 ## Models
 `-m, --model <Model>` <br>
 
-Currently `bbook_maker` supports these models: `chatgptapi` , `gpt3` , `google` , `caiyun` , `deepl` , `deeplfree` , `gpt4` , `gpt4omini` , `o1-preview` , `o1` , `o1-mini` , `o3-mini` , `claude` , `customapi`.
+Currently `bbook_maker` supports these models: `chatgptapi` , `gpt3` , `google` , `caiyun` , `deepl` , `deeplfree` , `gpt4` , `gpt4omini` , `gpt5mini` , `o1-preview` , `o1` , `o1-mini` , `o3-mini` , `claude` , `customapi`.
 Default model is `chatgptapi` . 
 
 ### OPENAI models
 
-There are three models you can choose from.
+There are several models you can choose from.
 
 * gpt3
 
@@ -46,6 +46,12 @@ There are three models you can choose from.
     
 
     If it has any proceeding passage, it will amend the summary to include details from the most recent passage, creating a running one-paragraph context payload of the important details of the entire translated work, which improves consistency of flow and tone of each translation.
+
+* gpt5mini
+
+    `gpt5mini` uses the `gpt-5-mini` model.
+
+        bbook_maker --book_name test_books/animal_farm.epub --model gpt5mini --openai_key ${openai_key}
 
 **Note 1: Use `--openai_key` option to specify OpenAI API key. If you have multiple keys, separate them by commas (xxx, xxx, xxx) to reduce errors caused by API call limits.**
 

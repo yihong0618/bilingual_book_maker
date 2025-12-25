@@ -17,6 +17,7 @@ MODEL_DICT = {
     "gpt4": ChatGPTAPI,
     "gpt4omini": ChatGPTAPI,
     "gpt4o": ChatGPTAPI,
+    "gpt5mini": ChatGPTAPI,
     "o1preview": ChatGPTAPI,
     "o1": ChatGPTAPI,
     "o1mini": ChatGPTAPI,

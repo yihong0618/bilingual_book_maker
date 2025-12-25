@@ -9,7 +9,7 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 
 ## Supported Models
 
-gpt-4, gpt-3.5-turbo, claude-2, palm, llama-2, azure-openai, command-nightly, gemini, qwen-mt-turbo, qwen-mt-plus
+gpt-5-mini, gpt-4, gpt-3.5-turbo, claude-2, palm, llama-2, azure-openai, command-nightly, gemini, qwen-mt-turbo, qwen-mt-plus
 For using Non-OpenAI models, use class `liteLLM()` - liteLLM supports all models above.
 Find more info here for using liteLLM: https://github.com/BerriAI/litellm/blob/main/setup.py
 

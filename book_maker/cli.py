@@ -360,7 +360,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         "--temperature",
         type=float,
         default=1.0,
-        help="temperature parameter for `chatgptapi`/`gpt4`/`claude`/`gemini`",
+        help="temperature parameter for `chatgptapi`/`gpt4`/`gpt4omini`/`gpt4o`/`gpt5mini`/`claude`/`gemini`",
     )
     parser.add_argument(
         "--source_lang",
@@ -429,6 +429,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         "gpt4",
         "gpt4omini",
         "gpt4o",
+        "gpt5mini",
         "o1preview",
         "o1",
         "o1mini",
@@ -559,6 +560,7 @@ So you are close to reaching the limit. You have to choose your own value, there
             "gpt4",
             "gpt4omini",
             "gpt4o",
+            "gpt5mini",
             "o1",
             "o1preview",
             "o1mini",
@@ -573,7 +575,7 @@ So you are close to reaching the limit. You have to choose your own value, there
             e.translate_model.set_model_list(options.model_list.split(","))
         else:
             raise ValueError(
-                "When using `openai` model, you must also provide `--model_list`. For default model sets use `--model chatgptapi` or `--model gpt4` or `--model gpt4omini`",
+                "When using `openai` model, you must also provide `--model_list`. For default model sets use `--model chatgptapi` or `--model gpt4` or `--model gpt4omini` or `--model gpt5mini`",
             )
     # TODO refactor, quick fix for gpt4 model
     if options.model == "chatgptapi":
@@ -587,6 +589,8 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.translate_model.set_gpt4omini_models()
     if options.model == "gpt4o":
         e.translate_model.set_gpt4o_models()
+    if options.model == "gpt5mini":
+        e.translate_model.set_gpt5mini_models()
     if options.model == "o1preview":
         e.translate_model.set_o1preview_models()
     if options.model == "o1":
