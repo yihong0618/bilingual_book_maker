@@ -180,8 +180,34 @@ class EPUBBookLoader(BaseBookLoader):
                     new_book.add_metadata(namespace, name, value)
 
         new_book.spine = book.spine
-        new_book.toc = book.toc
+        new_book.toc = self._fix_toc_uids(book.toc)
         return new_book
+
+    def _fix_toc_uids(self, toc, counter=None):
+        """Fix TOC items that have uid=None to prevent TypeError when writing NCX."""
+        if counter is None:
+            counter = [0]  # Use list to allow mutation in nested calls
+
+        fixed_toc = []
+        for item in toc:
+            if isinstance(item, tuple):
+                # Section with sub-items: (Section, [sub-items])
+                section, sub_items = item
+                if hasattr(section, "uid") and section.uid is None:
+                    section.uid = f"navpoint-{counter[0]}"
+                    counter[0] += 1
+                fixed_sub_items = self._fix_toc_uids(sub_items, counter)
+                fixed_toc.append((section, fixed_sub_items))
+            elif hasattr(item, "uid"):
+                # Link or EpubHtml item
+                if item.uid is None:
+                    item.uid = f"navpoint-{counter[0]}"
+                    counter[0] += 1
+                fixed_toc.append(item)
+            else:
+                fixed_toc.append(item)
+
+        return fixed_toc
 
     def _extract_paragraph(self, p):
         for p_exclude in self.exclude_translate_tags.split(","):
