@@ -6,9 +6,8 @@ from book_maker.utils import prompt_config_to_kwargs
 from .base_loader import BaseBookLoader
 
 import fitz
-    
-from ebooklib import epub
 
+from ebooklib import epub
 
 
 class PDFBookLoader(BaseBookLoader):
