@@ -3,7 +3,7 @@
 
 # bilingual_book_maker
 
-The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist users in creating multi-language versions of epub/txt/srt files and books. This tool is exclusively designed for translating epub books that have entered the public domain and is not intended for copyrighted works. Before using this tool, please review the project's **[disclaimer](./disclaimer.md)**.
+The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist users in creating multi-language versions of epub/txt/srt/pdf files and books. This tool is exclusively designed for translating epub and other public domain works and is not intended for copyrighted works. Before using this tool, please review the project's **[disclaimer](./disclaimer.md)**.
 
 ![image](https://user-images.githubusercontent.com/15976103/222317531-a05317c5-4eee-49de-95cd-04063d9539d9.png)
 
@@ -16,7 +16,7 @@ Find more info here for using liteLLM: https://github.com/BerriAI/litellm/blob/m
 ## Preparation
 
 1. ChatGPT or OpenAI token [^token]
-2. epub/txt books
+2. epub/txt/pdf books
 3. Environment with internet access or proxy
 4. Python 3.8+
 
@@ -127,8 +127,8 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 
 ## Use
 
-- Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated.
-- If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`. A book named `{book_name}_bilingual_temp.epub` would be generated. You can simply rename it to any desired name.
+- Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated for EPUB inputs; for TXT/MD/SRT inputs a bilingual text (or subtitle) file named `${book_name}_bilingual.txt` (or `_bilingual.srt`) will be generated. For **PDF inputs** the tool will produce a bilingual `.txt` fallback and will also attempt to create `${book_name}_bilingual.epub` — if EPUB creation fails, the TXT fallback remains so you do not need to retranslate.
+- If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`, a temporary bilingual file (for example `{book_name}_bilingual_temp.epub` or `{book_name}_bilingual_temp.txt`) would be generated. You can simply rename it to any desired name.
 
 ## Params
 
