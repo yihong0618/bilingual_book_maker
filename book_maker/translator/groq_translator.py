@@ -3,7 +3,6 @@ from .chatgptapi_translator import ChatGPTAPI
 from os import linesep
 from itertools import cycle
 
-
 GROQ_MODEL_LIST = [
     "llama3-8b-8192",
     "llama3-70b-8192",

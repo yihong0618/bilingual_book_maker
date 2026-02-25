@@ -1,7 +1,6 @@
 from openai import OpenAI
 from .chatgptapi_translator import ChatGPTAPI
 
-
 XAI_MODEL_LIST = [
     "grok-beta",
 ]

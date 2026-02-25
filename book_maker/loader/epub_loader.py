@@ -221,7 +221,9 @@ class EPUBBookLoader(BaseBookLoader):
     def _process_paragraph(self, p, new_p, index, p_to_save_len, thread_safe=False):
         if self.resume and index < p_to_save_len:
             p.string = self.p_to_save[index]
-            new_p.string = self.p_to_save[index]  # Fix: also update new_p to cached translation
+            new_p.string = self.p_to_save[
+                index
+            ]  # Fix: also update new_p to cached translation
         else:
             t_text = ""
             if self.batch_flag:
