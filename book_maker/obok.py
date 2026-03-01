@@ -223,10 +223,10 @@ def _load_crypto_libcrypto():
     POINTER(c_char_p)
     POINTER(c_int)
 
-    class AES_KEY(Structure):
+    class AESKey(Structure):
         _fields_ = [("rd_key", c_long * (4 * (AES_MAXNR + 1))), ("rounds", c_int)]
 
-    AES_KEY_p = POINTER(AES_KEY)
+    AESKey_p = POINTER(AESKey)
 
     def F(restype, name, argtypes):
         func = getattr(libcrypto, name)
@@ -234,15 +234,15 @@ def _load_crypto_libcrypto():
         func.argtypes = argtypes
         return func
 
-    AES_set_decrypt_key = F(c_int, "AES_set_decrypt_key", [c_char_p, c_int, AES_KEY_p])
-    AES_ecb_encrypt = F(None, "AES_ecb_encrypt", [c_char_p, c_char_p, AES_KEY_p, c_int])
+    AES_set_decrypt_key = F(c_int, "AES_set_decrypt_key", [c_char_p, c_int, AESKey_p])
+    AES_ecb_encrypt = F(None, "AES_ecb_encrypt", [c_char_p, c_char_p, AESKey_p, c_int])
 
-    class AES:
+    class AESCipher:
         def __init__(self, userkey) -> None:
             self._blocksize = len(userkey)
             if self._blocksize not in [16, 24, 32]:
                 raise ENCRYPTIONError(_("AES improper key used"))
-            key = self._key = AES_KEY()
+            key = self._key = AESKey()
             rv = AES_set_decrypt_key(userkey, len(userkey) * 8, key)
             if rv < 0:
                 raise ENCRYPTIONError(_("Failed to initialize AES key"))
@@ -257,30 +257,30 @@ def _load_crypto_libcrypto():
                 clear += out.raw
             return clear
 
-    return AES
+    return AESCipher
 
 
 def _load_crypto_pycrypto():
     from Crypto.Cipher import AES as _AES
 
-    class AES:
+    class CryptoAES:
         def __init__(self, key) -> None:
             self._aes = _AES.new(key, _AES.MODE_ECB)
 
         def decrypt(self, data):
             return self._aes.decrypt(data)
 
-    return AES
+    return CryptoAES
 
 
 def _load_crypto():
-    AES = None
+    crypto_aes = None
     cryptolist = (_load_crypto_pycrypto, _load_crypto_libcrypto)
     for loader in cryptolist:
         with contextlib.suppress(ImportError, ENCRYPTIONError):
-            AES = loader()
+            crypto_aes = loader()
             break
-    return AES
+    return crypto_aes
 
 
 AES = _load_crypto()
