@@ -86,7 +86,7 @@ class ChatGPTAPI(Base):
     ) -> None:
         super().__init__(key, language)
         self.key_len = len(key.split(","))
-        self.openai_client = OpenAI(api_key=next(self.keys), base_url=api_base, timeout=60.0)
+        self.openai_client = OpenAI(api_key=next(self.keys), base_url=api_base, timeout=60.0, max_retries=3)
         self.api_base = api_base
 
         self.prompt_template = (
@@ -442,6 +442,7 @@ class ChatGPTAPI(Base):
             api_version="2023-07-01-preview",
             azure_deployment=self.deployment_id,
             timeout=60.0,
+            max_retries=3,
         )
 
     def set_gpt35_models(self, ollama_model=""):
