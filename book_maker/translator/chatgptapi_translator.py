@@ -82,6 +82,7 @@ class ChatGPTAPI(Base):
         temperature=1.0,
         context_flag=False,
         context_paragraph_limit=0,
+        extra_body=None,
         **kwargs,
     ) -> None:
         super().__init__(key, language)
@@ -119,6 +120,7 @@ class ChatGPTAPI(Base):
         self.batch_info_cache = None
         self.result_content_cache = {}
         self._api_lock = Lock()
+        self.extra_body = extra_body or {}
 
     def rotate_key(self):
         with self._api_lock:
@@ -163,6 +165,7 @@ class ChatGPTAPI(Base):
             model=self.model,
             messages=messages,
             temperature=self.temperature,
+            extra_body=self.extra_body if self.extra_body else None,
         )
         return completion
 

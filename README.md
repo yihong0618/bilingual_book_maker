@@ -251,6 +251,14 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which'
   ```
 
+- `--extra_body`:
+
+  Pass additional JSON parameters to the API. This is useful for models that support extra configuration options. Provide a JSON string with the desired parameters.
+
+  ```shell
+  python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --extra_body '{"chat_template_kwargs": {"enable_thinking": false}}'
+  ```
+
 ### Examples
 
 **Note if use `pip install bbook_maker` all commands can change to `bbook_maker args`**
