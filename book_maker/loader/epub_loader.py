@@ -220,10 +220,9 @@ class EPUBBookLoader(BaseBookLoader):
 
     def _process_paragraph(self, p, new_p, index, p_to_save_len, thread_safe=False):
         if self.resume and index < p_to_save_len:
-            p.string = self.p_to_save[index]
-            new_p.string = self.p_to_save[
-                index
-            ]  # Fix: also update new_p to cached translation
+            # When resuming, keep original text in p, only restore translation
+            # p.string should remain as original text from source EPUB
+            new_p.string = self.p_to_save[index]
         else:
             t_text = ""
             if self.batch_flag:
@@ -261,10 +260,12 @@ class EPUBBookLoader(BaseBookLoader):
         self, p_block, index, p_to_save_len, thread_safe=False
     ):
         text = []
+        translated_cache = []  # Cache translated text for resumed paragraphs
 
         for p in p_block:
             if self.resume and index < p_to_save_len:
-                p.string = self.p_to_save[index]
+                # When resuming, cache the translation but don't modify p yet
+                translated_cache.append(self.p_to_save[index])
             else:
                 p_text = p.text.rstrip()
                 text.append(p_text)
@@ -295,6 +296,15 @@ class EPUBBookLoader(BaseBookLoader):
                 self.helper.insert_trans(
                     p, p.string, self.translation_style, self.single_translate
                 )
+        else:
+            # Handle resumed paragraphs - insert translations without modifying originals
+            for i, p in enumerate(p_block):
+                if i < len(translated_cache):
+                    new_p = copy(p)
+                    new_p.string = translated_cache[i]
+                    self.helper.insert_trans(
+                        p, new_p.string, self.translation_style, self.single_translate
+                    )
 
         if thread_safe:
             with self._progress_lock:
