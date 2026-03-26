@@ -405,6 +405,13 @@ So you are close to reaching the limit. You have to choose your own value, there
         default=1,
         help="Number of parallel workers for EPUB chapter processing. Use 2-4 for better performance. Default: 1",
     )
+    parser.add_argument(
+        "--extra_body",
+        dest="extra_body",
+        type=str,
+        default="",
+        help='JSON string of extra body parameters to pass to the API. Example: --extra_body \'{"chat_template_kwargs": {"enable_thinking": false}}\'',
+    )
 
     options = parser.parse_args()
 
@@ -533,6 +540,17 @@ So you are close to reaching the limit. You have to choose your own value, there
         source_lang=options.source_lang,
         parallel_workers=options.parallel_workers,
     )
+    # Parse and set extra_body if provided
+    if options.extra_body:
+        try:
+            import json
+
+            extra_body = json.loads(options.extra_body)
+            e.translate_model.extra_body = extra_body
+            print(f"[bold blue]Extra body parameters:[/bold blue] {extra_body}")
+        except json.JSONDecodeError as e:
+            print(f"[bold red]Error:[/bold red] Invalid JSON in --extra_body: {e}")
+            exit(1)
     # other options
     if options.allow_navigable_strings:
         e.allow_navigable_strings = True
