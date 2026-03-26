@@ -544,6 +544,7 @@ So you are close to reaching the limit. You have to choose your own value, there
     if options.extra_body:
         try:
             import json
+
             extra_body = json.loads(options.extra_body)
             e.translate_model.extra_body = extra_body
             print(f"[bold blue]Extra body parameters:[/bold blue] {extra_body}")

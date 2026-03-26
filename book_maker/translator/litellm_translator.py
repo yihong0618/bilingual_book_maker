@@ -39,13 +39,13 @@ class liteLLM(ChatGPTAPI):
 
         # Prepare completion kwargs
         completion_kwargs = {
-            "model": self.model if hasattr(self, 'model') else "gpt-3.5-turbo",
+            "model": self.model if hasattr(self, "model") else "gpt-3.5-turbo",
             "messages": messages,
             "temperature": self.temperature,
         }
 
         # Add extra_body if provided
-        if hasattr(self, 'extra_body') and self.extra_body:
+        if hasattr(self, "extra_body") and self.extra_body:
             completion_kwargs.update(self.extra_body)
 
         return completion(**completion_kwargs)
