@@ -71,7 +71,7 @@ class EPUBBookLoader(BaseBookLoader):
         self.exclude_filelist = ""
         self.only_filelist = ""
         self.single_translate = single_translate
-        self.block_size = -1
+        self.block_size = 1  # Default to 1 for better translation quality with delimiter-based batching
         self.batch_use_flag = False
         self.batch_flag = False
         self.parallel_workers = 1
@@ -259,43 +259,43 @@ class EPUBBookLoader(BaseBookLoader):
     def _process_combined_paragraph(
         self, p_block, index, p_to_save_len, thread_safe=False
     ):
+        """Returns (new_index, processed_count)."""
         text = []
+        text_paragraphs = []  # Track which paragraphs correspond to text[]
         translated_cache = []  # Cache translated text for resumed paragraphs
+        processed_count = 0
 
         for p in p_block:
+            if self.is_test and index >= self.test_num:
+                break
+
             if self.resume and index < p_to_save_len:
                 # When resuming, cache the translation but don't modify p yet
                 translated_cache.append(self.p_to_save[index])
             else:
                 p_text = p.text.rstrip()
                 text.append(p_text)
-
-            if self.is_test and index >= self.test_num:
-                break
+                text_paragraphs.append(p)
 
             index += 1
+            processed_count += 1
 
         if len(text) > 0:
-            translated_text = self.translate_model.translate("\n".join(text))
-            translated_text = translated_text.split("\n")
-            text_len = len(translated_text)
+            # Use translate_list with delimiter for proper paragraph separation
+            translated_text_list = self.translate_model.translate_list(text)
 
-            for i in range(text_len):
-                t = translated_text[i]
-
-                if i >= len(p_block):
-                    p = p_block[-1]
-                else:
-                    p = p_block[i]
-
-                if type(p) is NavigableString:
-                    p = t
-                else:
-                    p.string = t
-
-                self.helper.insert_trans(
-                    p, p.string, self.translation_style, self.single_translate
+            for i, t in enumerate(translated_text_list):
+                p = (
+                    text_paragraphs[i]
+                    if i < len(text_paragraphs)
+                    else text_paragraphs[-1]
                 )
+                self.helper.insert_trans(
+                    p, t, self.translation_style, self.single_translate
+                )
+                print(text[i])
+                print(f"[bold green]{t}[/bold green]")
+                print()
         else:
             # Handle resumed paragraphs - insert translations without modifying originals
             for i, p in enumerate(p_block):
@@ -311,7 +311,7 @@ class EPUBBookLoader(BaseBookLoader):
                 self._save_progress()
         else:
             self._save_progress()
-        return index
+        return index, processed_count
 
     def translate_paragraphs_acc(self, p_list, send_num):
         count = 0
@@ -534,44 +534,46 @@ class EPUBBookLoader(BaseBookLoader):
             print(f"dealing {item.file_name} ...")
             self.translate_paragraphs_acc(p_list, send_num)
         else:
-            is_test_done = self.is_test and index > self.test_num
+            is_test_done = self.is_test and index >= self.test_num
             p_block = []
             block_len = 0
             for p in p_list:
                 if is_test_done:
                     break
                 if not p.text or self._is_special_text(p.text):
-                    pbar.update(1)
+                    # Skip empty/special paragraphs without updating progress bar
                     continue
 
                 new_p = self._extract_paragraph(copy(p))
-                if self.single_translate and self.block_size > 0:
-                    p_len = num_tokens_from_text(new_p.text)
-                    block_len += p_len
-                    if block_len > self.block_size:
-                        index = self._process_combined_paragraph(
+                if self.block_size >= 1:
+                    # Collect paragraphs for batch translation
+                    p_block.append(p)
+
+                    # Process when we have enough paragraphs
+                    if len(p_block) >= self.block_size:
+                        index, n = self._process_combined_paragraph(
                             p_block, index, p_to_save_len, thread_safe=False
                         )
-                        p_block = [p]
-                        block_len = p_len
+                        pbar.update(n)
+                        p_block = []
                         print()
-                    else:
-                        p_block.append(p)
                 else:
                     index = self._process_paragraph(
                         p, new_p, index, p_to_save_len, thread_safe=False
                     )
                     print()
-
-                # pbar.update(delta) not pbar.update(index)?
-                pbar.update(1)
+                    pbar.update(1)
 
                 if self.is_test and index >= self.test_num:
+                    is_test_done = True
                     break
-            if self.single_translate and self.block_size > 0 and len(p_block) > 0:
-                index = self._process_combined_paragraph(
+
+            # Process remaining paragraphs in the batch
+            if self.block_size >= 1 and len(p_block) > 0:
+                index, n = self._process_combined_paragraph(
                     p_block, index, p_to_save_len, thread_safe=False
                 )
+                pbar.update(n)
 
         if soup:
             item.content = soup.encode(encoding="utf-8")
@@ -901,7 +903,11 @@ class EPUBBookLoader(BaseBookLoader):
             )
             for i in all_items
         )
-        pbar = tqdm(total=self.test_num) if self.is_test else tqdm(total=all_p_length)
+        # Use leave=False in test mode to prevent duplicate progress bar display
+        pbar = tqdm(
+            total=self.test_num if self.is_test else all_p_length,
+            leave=not self.is_test,
+        )
         print()
         index = 0
         p_to_save_len = len(self.p_to_save)
@@ -986,9 +992,19 @@ class EPUBBookLoader(BaseBookLoader):
                     print(f"📄 Single chapter detected - using sequential processing")
 
                 for item in document_items:
+                    # Continue processing all chapters (to add them to book)
+                    # but skip translation after test limit
+                    if self.is_test and index >= self.test_num:
+                        # Just add the chapter without translation
+                        new_book.add_item(item)
+                        continue
+
                     index = self.process_item(
                         item, index, p_to_save_len, pbar, new_book, trans_taglist
                     )
+
+                # Close progress bar
+                pbar.close()
 
                 if self.accumulated_num > 1:
                     name, _ = os.path.splitext(self.epub_name)
@@ -998,8 +1014,6 @@ class EPUBBookLoader(BaseBookLoader):
                 self.translate_model.batch()
             else:
                 epub.write_epub(f"{name}_bilingual.epub", new_book, {})
-            if self.accumulated_num == 1:
-                pbar.close()
         except KeyboardInterrupt as e:
             print(e)
             if self.accumulated_num == 1:
