@@ -40,9 +40,7 @@ class TXTBookLoader(BaseBookLoader):
         self.bilingual_result = []
         self.bilingual_temp_result = []
         self.test_num = test_num
-        self.batch_size = (
-            batch_size if batch_size is not None and batch_size > 0 else 10
-        )
+        self.batch_size = batch_size if batch_size is not None and batch_size > 0 else 1
         self.single_translate = single_translate
         self.parallel_workers = max(1, parallel_workers)
 
@@ -75,39 +73,64 @@ class TXTBookLoader(BaseBookLoader):
     def make_bilingual_book(self):
         index = 0
         p_to_save_len = len(self.p_to_save)
+        trans_index = 0  # Track translated paragraphs separately
 
         try:
-            sliced_list = [
-                self.origin_book[i : i + self.batch_size]
-                for i in range(0, len(self.origin_book), self.batch_size)
+            # Process lines, keeping track of which ones need translation
+            lines_to_translate = [
+                line
+                for line in self.origin_book
+                if line.strip() and not self._is_special_text(line)
             ]
-            for i, batch_lines in enumerate(sliced_list):
-                # Skip batches that have no content (all numbers/whitespace/empty)
-                if not self._batch_has_content(batch_lines):
-                    index += self.batch_size
-                    if self.is_test and index > self.test_num:
-                        break
+
+            # Create batches for translation
+            sliced_list = [
+                lines_to_translate[i : i + self.batch_size]
+                for i in range(0, len(lines_to_translate), self.batch_size)
+            ]
+
+            # Translate batches and store results
+            translated_results = []
+            for batch_lines in sliced_list:
+                if not batch_lines:
                     continue
 
-                if not self.resume or index >= p_to_save_len:
-                    try:
-                        # Use translate_list for batch translation with delimiter support
-                        # This preserves paragraph structure for bilingual output
-                        temp_list = self.translate_model.translate_list(batch_lines)
-                        # Join translated paragraphs with newlines
-                        temp = "\n".join(temp_list)
-                    except Exception as e:
-                        print(e)
-                        raise Exception("Something is wrong when translate") from e
-                    self.p_to_save.append(temp)
-                    if not self.single_translate:
-                        # Join original lines with newlines for bilingual output
-                        batch_text = "\n".join(batch_lines)
-                        self.bilingual_result.append(batch_text)
-                    self.bilingual_result.append(temp)
-                index += self.batch_size
-                if self.is_test and index > self.test_num:
+                if trans_index >= self.test_num and self.is_test:
+                    # Stop translating but continue processing original file
                     break
+
+                try:
+                    temp_list = self.translate_model.translate_list(batch_lines)
+                    translated_results.extend(temp_list)
+                except Exception as e:
+                    print(e)
+                    raise Exception("Something is wrong when translate") from e
+
+                trans_index += len(batch_lines)
+                if self.is_test and trans_index >= self.test_num:
+                    break
+
+            # Reconstruct output preserving original structure
+            trans_idx = 0
+            for line in self.origin_book:
+                if line.strip() and not self._is_special_text(line):
+                    # This line should be translated
+                    if trans_idx < len(translated_results):
+                        # Use translated version
+                        if not self.single_translate:
+                            print(line)
+                            print(translated_results[trans_idx])
+                            print()
+                            self.bilingual_result.append(line)
+                        self.bilingual_result.append(translated_results[trans_idx])
+                        self.p_to_save.append(translated_results[trans_idx])
+                        trans_idx += 1
+                    else:
+                        # No translation (beyond test limit), keep original
+                        self.bilingual_result.append(line)
+                else:
+                    # Preserve empty/special lines as-is
+                    self.bilingual_result.append(line)
 
             self.save_file(
                 f"{Path(self.txt_name).parent}/{Path(self.txt_name).stem}_bilingual.txt",

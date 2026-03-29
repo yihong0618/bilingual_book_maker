@@ -1,8 +1,8 @@
 import itertools
 from abc import ABC, abstractmethod
 
-# Special delimiter for batch translation - unlikely to appear in normal text
-BATCH_DELIMITER = "%%"
+# Special delimiter for batch translation - unique pattern unlikely to be removed
+BATCH_DELIMITER = "|||SEP|||"
 
 
 class Base(ABC):

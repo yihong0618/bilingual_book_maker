@@ -361,20 +361,18 @@ class ChatGPTAPI(Base):
         # Set up batch translation prompt
         batch_prompt = (
             "Translate the following text to {language}. "
-            f"The text contains multiple paragraphs separated by the delimiter '{BATCH_DELIMITER}'. "
-            f"You MUST preserve '{BATCH_DELIMITER}' between each translated paragraph. "
-            f"Do NOT remove, merge, skip, or rearrange the delimiters. "
-            f"Each paragraph between delimiters should be translated independently. "
-            f"Output ONLY the translated text with delimiters preserved, no additional explanation or formatting.\n\n"
+            f"The text contains {plist_len} paragraphs separated by '{BATCH_DELIMITER}'. "
+            f"You MUST output EXACTLY {plist_len} translated paragraphs, separated by '{BATCH_DELIMITER}'. "
+            f"DO NOT remove, merge, or skip ANY '{BATCH_DELIMITER}' delimiters. "
+            f"Count: if input has {plist_len} paragraphs, output MUST have {plist_len} paragraphs. "
+            f"Translate each paragraph independently. Output ONLY the translation.\n\n"
             "```{text}```"
         )
 
         batch_sys_msg = (
-            f"You are a professional translator. The input contains multiple paragraphs "
-            f"separated by '{BATCH_DELIMITER}'. You must preserve these delimiters exactly "
-            f"in your translation output. Translate each paragraph independently while "
-            f"maintaining consistency across all paragraphs. "
-            f"IMPORTANT: Output the same number of paragraphs as input, separated by '{BATCH_DELIMITER}'."
+            f"Professional translator. Input: {plist_len} paragraphs separated by '{BATCH_DELIMITER}'. "
+            f"Output: EXACTLY {plist_len} translated paragraphs with '{BATCH_DELIMITER}' between each. "
+            f"DO NOT merge or remove delimiters. Preserve paragraph count exactly."
         )
 
         try:
