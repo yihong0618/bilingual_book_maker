@@ -40,7 +40,9 @@ class TXTBookLoader(BaseBookLoader):
         self.bilingual_result = []
         self.bilingual_temp_result = []
         self.test_num = test_num
-        self.batch_size = batch_size if batch_size > 0 else 10
+        self.batch_size = (
+            batch_size if batch_size is not None and batch_size > 0 else 10
+        )
         self.single_translate = single_translate
         self.parallel_workers = max(1, parallel_workers)
 
