@@ -1,6 +1,9 @@
 import itertools
 from abc import ABC, abstractmethod
 
+# Special delimiter for batch translation - UUID-based token unlikely to appear in any text
+BATCH_DELIMITER = "\n\n@@\n\n"
+
 
 class Base(ABC):
     def __init__(self, key, language) -> None:
@@ -17,3 +20,10 @@ class Base(ABC):
 
     def set_deployment_id(self, deployment_id):
         pass
+
+    def translate_list(self, text_list):
+        """
+        Translate a list of texts. Default implementation translates one by one.
+        Subclasses can override for batch efficiency.
+        """
+        return [self.translate(t) for t in text_list]

@@ -504,11 +504,6 @@ So you are close to reaching the limit. You have to choose your own value, there
             f"now only support files of these formats: {','.join(support_type_list)}",
         )
 
-    if options.block_size > 0 and not options.single_translate:
-        raise Exception(
-            "block_size must be used with `--single_translate` because it disturbs the original format",
-        )
-
     book_loader = BOOK_LOADER_DICT.get(book_type)
     assert book_loader is not None, "unsupported loader"
     language = options.language
@@ -568,6 +563,9 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.translation_style = options.translation_style
     if options.batch_size:
         e.batch_size = options.batch_size
+    if options.block_size > 0:
+        e.block_size = options.block_size
+    # Note: Default block_size is now 1 (delimiter-based translation) for better quality
     if options.retranslate:
         e.retranslate = options.retranslate
     if options.deployment_id:
