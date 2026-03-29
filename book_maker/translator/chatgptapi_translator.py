@@ -361,11 +361,11 @@ class ChatGPTAPI(Base):
         # Set up batch translation prompt
         batch_prompt = (
             "Translate the following text to {language}. "
-            f"The text contains multiple paragraphs separated by '{BATCH_DELIMITER}'. "
-            f"You MUST preserve '{BATCH_DELIMITER}' between translated paragraphs. "
-            f"Do NOT remove, merge, or rearrange the delimiters. "
+            f"The text contains multiple paragraphs separated by the delimiter '{BATCH_DELIMITER}'. "
+            f"You MUST preserve '{BATCH_DELIMITER}' between each translated paragraph. "
+            f"Do NOT remove, merge, skip, or rearrange the delimiters. "
             f"Each paragraph between delimiters should be translated independently. "
-            f"Output ONLY the translated text with delimiters preserved, no additional explanation.\n\n"
+            f"Output ONLY the translated text with delimiters preserved, no additional explanation or formatting.\n\n"
             "```{text}```"
         )
 
@@ -373,7 +373,8 @@ class ChatGPTAPI(Base):
             f"You are a professional translator. The input contains multiple paragraphs "
             f"separated by '{BATCH_DELIMITER}'. You must preserve these delimiters exactly "
             f"in your translation output. Translate each paragraph independently while "
-            f"maintaining consistency across all paragraphs."
+            f"maintaining consistency across all paragraphs. "
+            f"IMPORTANT: Output the same number of paragraphs as input, separated by '{BATCH_DELIMITER}'."
         )
 
         try:
@@ -399,21 +400,38 @@ class ChatGPTAPI(Base):
                 f"Attempting recovery..."
             )
 
-            # If we got fewer, pad with empty strings
-            if len(translated_paragraphs) < plist_len:
-                # Try to split by newlines as fallback
-                fallback_split = translated_text.split("\n")
-                if len(fallback_split) >= plist_len:
-                    translated_paragraphs = [
-                        p.strip() for p in fallback_split[:plist_len]
-                    ]
-                else:
+            # Try splitting by newlines and filtering empty lines
+            fallback_split = [
+                line.strip()
+                for line in translated_text.split("\n")
+                if line.strip() and not line.strip().startswith("```")
+            ]
+
+            if len(fallback_split) >= plist_len:
+                # Try to group lines into paragraphs proportionally
+                translated_paragraphs = []
+                lines_per_para = max(1, len(fallback_split) // plist_len)
+                for i in range(plist_len):
+                    start = i * lines_per_para
+                    end = (
+                        start + lines_per_para
+                        if i < plist_len - 1
+                        else len(fallback_split)
+                    )
+                    translated_paragraphs.append("\n".join(fallback_split[start:end]))
+            elif len(fallback_split) > 0 and len(fallback_split) < plist_len:
+                # Use fallback if we got some results
+                translated_paragraphs = fallback_split + [""] * (
+                    plist_len - len(fallback_split)
+                )
+            else:
+                # Pad or truncate original split
+                if len(translated_paragraphs) < plist_len:
                     translated_paragraphs.extend(
                         [""] * (plist_len - len(translated_paragraphs))
                     )
-            # If we got more, truncate
-            elif len(translated_paragraphs) > plist_len:
-                translated_paragraphs = translated_paragraphs[:plist_len]
+                elif len(translated_paragraphs) > plist_len:
+                    translated_paragraphs = translated_paragraphs[:plist_len]
 
         return translated_paragraphs
 
