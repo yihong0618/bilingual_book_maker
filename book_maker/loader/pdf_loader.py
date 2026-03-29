@@ -28,6 +28,7 @@ class PDFBookLoader(BaseBookLoader):
         temperature=1.0,
         source_lang="auto",
         parallel_workers=1,
+        batch_size=0,
     ) -> None:
         if fitz is None:
             raise Exception("PyMuPDF (fitz) is required to use PDF loader")
@@ -46,7 +47,7 @@ class PDFBookLoader(BaseBookLoader):
         self.bilingual_result = []
         self.bilingual_temp_result = []
         self.test_num = test_num
-        self.batch_size = 10
+        self.batch_size = batch_size if batch_size > 0 else 10
         self.single_translate = single_translate
         self.parallel_workers = max(1, parallel_workers)
 
@@ -163,14 +164,21 @@ class PDFBookLoader(BaseBookLoader):
                 self.origin_book[i : i + self.batch_size]
                 for i in range(0, len(self.origin_book), self.batch_size)
             ]
-            for i in sliced_list:
+            for i, batch_lines in enumerate(sliced_list):
                 # fix the format thanks https://github.com/tudoujunha
-                batch_text = "\n".join(i)
+                batch_text = "\n".join(batch_lines)
                 if not batch_text.strip():
+                    index += self.batch_size
+                    if self.is_test and index > self.test_num:
+                        break
                     continue
                 if not self.resume or index >= p_to_save_len:
                     try:
-                        temp = self.translate_model.translate(batch_text)
+                        # Use translate_list for batch translation with delimiter support
+                        # This preserves paragraph structure for bilingual output
+                        temp_list = self.translate_model.translate_list(batch_lines)
+                        # Join translated paragraphs with newlines
+                        temp = "\n".join(temp_list)
                     except Exception as e:
                         print(e)
                         raise Exception("Something is wrong when translate") from e
@@ -187,7 +195,7 @@ class PDFBookLoader(BaseBookLoader):
             )
             self.save_file(txt_out, self.bilingual_result)
 
-            # try to create an EPUB alongside the TXT fallback; if EPUB fails we still keep the TXT file
+            # try to create an EPUB alongside the TXT fallback; if EPUB creation fails we still keep the TXT file
             epub_ok = self._try_create_epub()
             if epub_ok:
                 print(f"created epub: {Path(self.pdf_name).stem}_bilingual.epub")

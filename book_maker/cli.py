@@ -539,6 +539,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         temperature=options.temperature,
         source_lang=options.source_lang,
         parallel_workers=options.parallel_workers,
+        batch_size=options.batch_size,
     )
     # Parse and set extra_body if provided
     if options.extra_body:

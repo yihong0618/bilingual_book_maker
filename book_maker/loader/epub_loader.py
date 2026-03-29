@@ -40,6 +40,7 @@ class EPUBBookLoader(BaseBookLoader):
         temperature=1.0,
         source_lang="auto",
         parallel_workers=1,
+        batch_size=0,
     ):
         self.epub_name = epub_name
         self.new_epub = epub.EpubBook()
@@ -58,6 +59,7 @@ class EPUBBookLoader(BaseBookLoader):
         self.translate_tags = "p"
         self.exclude_translate_tags = "sup"
         self.allow_navigable_strings = False
+        self.batch_size = batch_size if batch_size is not None else 1
         self.accumulated_num = 1
         self.translation_style = ""
         self.context_flag = context_flag
@@ -255,6 +257,76 @@ class EPUBBookLoader(BaseBookLoader):
             if index % 20 == 0:
                 self._save_progress()
         return index
+
+    def _process_batch_paragraphs(
+        self, p_list, index, p_to_save_len, thread_safe=False
+    ):
+        """Process multiple paragraphs in a single batch translation."""
+        if not p_list:
+            return index, 0
+
+        # Check test limit and trim batch if needed
+        if self.is_test and index + len(p_list) > self.test_num:
+            # Trim the batch to not exceed test_num
+            trim_count = index + len(p_list) - self.test_num
+            p_list = p_list[:-trim_count]
+            if not p_list:
+                return index, 0
+
+        # Extract text from paragraphs
+        text_list = []
+        for p in p_list:
+            new_p = self._extract_paragraph(copy(p))
+            text_list.append(new_p.text)
+
+        # Translate the batch
+        if self.resume and index < p_to_save_len:
+            # When resuming, use cached translations
+            result_list = []
+            for i in range(len(p_list)):
+                if index + i < p_to_save_len:
+                    result_list.append(self.p_to_save[index + i])
+                else:
+                    # Need to translate remaining paragraphs
+                    remaining_p_list = p_list[i:]
+                    remaining_texts = text_list[i:]
+                    translated_remaining = self.translate_model.translate_list(
+                        remaining_texts
+                    )
+                    result_list.extend(translated_remaining)
+                    break
+        else:
+            # Use translate_list for batch translation
+            result_list = self.translate_model.translate_list(text_list)
+
+        # Apply translations and print
+        for i, p in enumerate(p_list):
+            if index < len(self.p_to_save):
+                # Already saved during translation
+                pass
+            else:
+                self.p_to_save.append(result_list[i])
+
+            # Print original and translation
+            print(text_list[i])
+            print(result_list[i])
+            print()
+
+            # Insert translation into the paragraph
+            self.helper.insert_trans(
+                p, result_list[i], self.translation_style, self.single_translate
+            )
+
+            index += 1
+
+        if thread_safe:
+            with self._progress_lock:
+                if index % 20 == 0:
+                    self._save_progress()
+        else:
+            if index % 20 == 0:
+                self._save_progress()
+        return index, len(p_list)
 
     def _process_combined_paragraph(
         self, p_block, index, p_to_save_len, thread_safe=False
@@ -534,44 +606,59 @@ class EPUBBookLoader(BaseBookLoader):
             print(f"dealing {item.file_name} ...")
             self.translate_paragraphs_acc(p_list, send_num)
         else:
-            is_test_done = self.is_test and index > self.test_num
+            is_test_done = self.is_test and index >= self.test_num
             p_block = []
             block_len = 0
+
+            # Batch mode: collect paragraphs and translate in batches
+            batch_p_list = []
+
             for p in p_list:
                 if is_test_done:
                     break
+
                 if not p.text or self._is_special_text(p.text):
-                    pbar.update(1)
+                    # Don't update progress bar for skipped paragraphs
+                    # The progress bar should only count actual translations
                     continue
 
+                # Check if we've reached test limit BEFORE adding to batch
+                if self.is_test and index >= self.test_num:
+                    is_test_done = True
+                    break
+
                 new_p = self._extract_paragraph(copy(p))
-                if self.single_translate and self.block_size > 0:
-                    p_len = num_tokens_from_text(new_p.text)
-                    block_len += p_len
-                    if block_len > self.block_size:
-                        index = self._process_combined_paragraph(
-                            p_block, index, p_to_save_len, thread_safe=False
-                        )
-                        p_block = [p]
-                        block_len = p_len
-                        print()
-                    else:
-                        p_block.append(p)
-                else:
-                    index = self._process_paragraph(
-                        p, new_p, index, p_to_save_len, thread_safe=False
+
+                # Batch mode: collect paragraphs and translate in batches
+                batch_p_list.append(p)
+
+                if len(batch_p_list) >= self.batch_size:
+                    # Process the batch
+                    index, translated_count = self._process_batch_paragraphs(
+                        batch_p_list, index, p_to_save_len, thread_safe=False
                     )
+                    batch_p_list = []
                     print()
 
-                # pbar.update(delta) not pbar.update(index)?
-                pbar.update(1)
+                    # Update progress bar for each paragraph translated
+                    pbar.update(translated_count)
 
-                if self.is_test and index >= self.test_num:
-                    break
-            if self.single_translate and self.block_size > 0 and len(p_block) > 0:
-                index = self._process_combined_paragraph(
-                    p_block, index, p_to_save_len, thread_safe=False
-                )
+                    # Check test limit after processing batch
+                    if self.is_test and index >= self.test_num:
+                        is_test_done = True
+                        break
+
+            # Process remaining batch only if test is not done
+            if len(batch_p_list) > 0 and not is_test_done:
+                # Trim batch if it would exceed test_num
+                if self.is_test and index + len(batch_p_list) > self.test_num:
+                    trim_count = index + len(batch_p_list) - self.test_num
+                    batch_p_list = batch_p_list[:-trim_count]
+                if batch_p_list:
+                    index, translated_count = self._process_batch_paragraphs(
+                        batch_p_list, index, p_to_save_len, thread_safe=False
+                    )
+                    pbar.update(translated_count)
 
         if soup:
             item.content = soup.encode(encoding="utf-8")
@@ -736,6 +823,9 @@ class EPUBBookLoader(BaseBookLoader):
         count = 0
         wait_p_list = []
 
+        # Batch mode: collect paragraphs and translate in batches
+        batch_size = self.batch_size if self.batch_size is not None else 1
+
         # Create chapter-specific helper instance with context-aware translation
         class ChapterHelper:
             def __init__(
@@ -752,8 +842,28 @@ class EPUBBookLoader(BaseBookLoader):
                 )
 
             def deal_old(self, wait_p_list, single_translate):
+                nonlocal translated_count
+
                 if not wait_p_list:
                     return
+
+                # Trim batch if it would exceed test_num
+                if (
+                    self.parent_loader.is_test
+                    and translated_count + len(wait_p_list)
+                    > self.parent_loader.test_num
+                ):
+                    trim_count = (
+                        translated_count
+                        + len(wait_p_list)
+                        - self.parent_loader.test_num
+                    )
+                    wait_p_list = wait_p_list[:-trim_count]
+                    if not wait_p_list:
+                        return
+
+                # Update translated count for test mode
+                translated_count += len(wait_p_list)
 
                 # Use the same translate_list logic as sequential processing
                 # Create a temporary translator with chapter context
@@ -810,6 +920,8 @@ class EPUBBookLoader(BaseBookLoader):
             self, translator, chapter_context_list, chapter_translated_list
         )
 
+        translated_count = 0  # Track translated paragraphs for test mode
+
         for i in range(len(p_list)):
             p = p_list[i]
             temp_p = copy(p)
@@ -827,26 +939,25 @@ class EPUBBookLoader(BaseBookLoader):
                     chapter_helper.deal_old(wait_p_list, self.single_translate)
                 continue
 
-            length = num_tokens_from_text(temp_p.text)
-            if length > send_num:
-                chapter_helper.deal_new(p, wait_p_list, self.single_translate)
-                continue
+            # Check test limit before processing
+            if self.is_test and translated_count >= self.test_num:
+                break
 
+            # Batch mode: use paragraph count
             if i == len(p_list) - 1:
-                if count + length < send_num:
+                if len(wait_p_list) < batch_size:
                     wait_p_list.append(p)
                     chapter_helper.deal_old(wait_p_list, self.single_translate)
                 else:
                     chapter_helper.deal_new(p, wait_p_list, self.single_translate)
                 break
 
-            if count + length < send_num:
-                count += length
+            if len(wait_p_list) < batch_size:
                 wait_p_list.append(p)
             else:
                 chapter_helper.deal_old(wait_p_list, self.single_translate)
+                translated_count += len(wait_p_list)
                 wait_p_list.append(p)
-                count = length
 
     def batch_init_then_wait(self):
         name, _ = os.path.splitext(self.epub_name)

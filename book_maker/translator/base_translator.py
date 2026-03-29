@@ -1,6 +1,9 @@
 import itertools
 from abc import ABC, abstractmethod
 
+# Special delimiter for batch translation - unlikely to appear in normal text
+BATCH_DELIMITER = "%%"
+
 
 class Base(ABC):
     def __init__(self, key, language) -> None:
@@ -17,3 +20,15 @@ class Base(ABC):
 
     def set_deployment_id(self, deployment_id):
         pass
+
+    def translate_list(self, text_list):
+        """
+        Translate multiple texts in a single batch request.
+        Uses special delimiters to preserve paragraph structure.
+        Returns a list of translated texts.
+
+        Default implementation falls back to individual translations.
+        Subclasses should override for true batch support.
+        """
+        # Fallback: translate individually
+        return [self.translate(text) for text in text_list]
