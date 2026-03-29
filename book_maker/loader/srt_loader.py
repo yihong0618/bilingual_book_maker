@@ -28,6 +28,7 @@ class SRTBookLoader(BaseBookLoader):
         context_paragraph_limit=0,
         temperature=1.0,
         source_lang="auto",
+        parallel_workers=1,
     ) -> None:
         self.srt_name = srt_name
         self.translate_model = model(
@@ -51,6 +52,7 @@ class SRTBookLoader(BaseBookLoader):
         self.accumulated_num = 1
         self.blocks = []
         self.single_translate = single_translate
+        self.parallel_workers = max(1, parallel_workers)
 
         self.resume = resume
         self.bin_path = f"{Path(srt_name).parent}/.{Path(srt_name).stem}.temp.bin"
