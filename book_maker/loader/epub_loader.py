@@ -282,7 +282,11 @@ class EPUBBookLoader(BaseBookLoader):
 
         if len(text) > 0:
             # Use translate_list with delimiter for proper paragraph separation
-            translated_text_list = self.translate_model.translate_list(text)
+            try:
+                translated_text_list = self.translate_model.translate_list(text)
+            except Exception as e:
+                print(f"[bold red]Translation error: {str(e)}[/bold red]")
+                raise
 
             for i, t in enumerate(translated_text_list):
                 p = (
@@ -1021,8 +1025,20 @@ class EPUBBookLoader(BaseBookLoader):
                 self._save_progress()
                 self._save_temp_book()
             sys.exit(0)
-        except Exception:
-            traceback.print_exc()
+        except Exception as e:
+            # Handle connection errors gracefully
+            error_msg = str(e)
+            if "Connection" in error_msg or "connection" in error_msg:
+                print(
+                    f"[bold red]Translation failed: Connection error - {error_msg}[/bold red]"
+                )
+                print("Please check your network connection or API server status.")
+            else:
+                traceback.print_exc()
+            if self.accumulated_num == 1:
+                print("Saving progress...")
+                self._save_progress()
+                self._save_temp_book()
             sys.exit(0)
 
     def load_state(self):

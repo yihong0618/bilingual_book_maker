@@ -205,6 +205,7 @@ class ChatGPTAPI(Base):
         attempt_count = 0
         max_attempts = 3
         t_text = ""
+        last_exception = None
 
         while attempt_count < max_attempts:
             try:
@@ -223,8 +224,12 @@ class ChatGPTAPI(Base):
                     print(f"Get {attempt_count} consecutive exceptions")
                     raise
             except Exception as e:
+                last_exception = e
                 print(str(e))
-                return
+                attempt_count += 1
+                if attempt_count == max_attempts:
+                    print(f"Get {attempt_count} consecutive exceptions, raising error")
+                    raise e
 
         # todo: Determine whether to print according to the cli option
         if needprint:
@@ -347,6 +352,13 @@ class ChatGPTAPI(Base):
         finally:
             self.prompt_template = original_prompt
             self.system_content = original_sys_msg
+
+        # Handle None or empty response from translate
+        if not translated_text:
+            print(
+                f"[bold red]Error: Translation API returned empty response for batch request.[/bold red]"
+            )
+            raise Exception("Translation API returned empty response")
 
         translated_paragraphs = [
             p.strip() for p in translated_text.split(BATCH_DELIMITER)
