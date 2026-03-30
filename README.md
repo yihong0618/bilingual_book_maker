@@ -226,8 +226,8 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 
 - `--block_size`:
 
-  Use `--block_size` to merge multiple paragraphs into one block. This may increase accuracy and speed up the process but can disturb the original format. Must be used with `--single_translate`.
-  For example: `--block_size 5 --single_translate`.
+  Use `--block_size` to merge multiple paragraphs into one block. This may increase accuracy and speed up the process.
+  For example: `--block_size 5`.
 
 - `--single_translate`:
 
