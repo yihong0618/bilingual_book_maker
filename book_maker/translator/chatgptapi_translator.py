@@ -372,14 +372,21 @@ class ChatGPTAPI(Base):
             )
             raise Exception("Translation API returned empty response")
 
-        translated_paragraphs = [
-            p.strip() for p in translated_text.split(BATCH_DELIMITER)
-        ]
+        translated_paragraphs = self.extract_paragraphs(translated_text, plist_len)
 
         if len(translated_paragraphs) != plist_len:
             print(
                 f"Warning: Expected {plist_len} translations, got {len(translated_paragraphs)}. Falling back to one-by-one translation."
             )
+            print(f"\n[Debug] Input text_list ({plist_len} items):")
+            for i, t in enumerate(text_list, 1):
+                print(f"  [{i}] {str(t).strip()!r}")
+            print(f"\n[Debug] Model response ({len(translated_text)} chars):")
+            print(translated_text)
+            print(f"\n[Debug] Split result ({len(translated_paragraphs)} items):")
+            for i, p in enumerate(translated_paragraphs, 1):
+                print(f"  [{i}] {p!r}")
+            print()
             return [self.translate(str(t).strip(), False) for t in text_list]
 
         return translated_paragraphs
@@ -403,7 +410,35 @@ class ChatGPTAPI(Base):
                 matches.sort(key=lambda x: int(x[0]))
                 result_list = [match[1].strip() for match in matches]
 
-        # Fallback to original line-splitting approach
+        # Fallback: try splitting by BATCH_DELIMITER with flexible whitespace
+        if len(result_list) != paragraph_count:
+            # Extract the core delimiter (e.g., '@@' from BATCH_DELIMITER)
+            core_delimiter = BATCH_DELIMITER.strip()
+            # First try exact split by the delimiter
+            parts = text.split(BATCH_DELIMITER)
+            # If that doesn't work well, try splitting by variations
+            if len(parts) < paragraph_count:
+                # Try splitting by the core delimiter with flexible surrounding
+                # whitespace/newlines and filter out lines that are only the delimiter
+                lines = text.splitlines()
+                parts = []
+                current = []
+                for line in lines:
+                    stripped = line.strip()
+                    if stripped == core_delimiter or re.fullmatch(
+                        r"\s*" + re.escape(core_delimiter) + r"\s*", stripped
+                    ):
+                        if current:
+                            parts.append("\n".join(current).strip())
+                            current = []
+                    else:
+                        current.append(line)
+                if current:
+                    parts.append("\n".join(current).strip())
+            # Filter out empty strings
+            result_list = [p.strip() for p in parts if p.strip()]
+
+        # Final fallback: split by double newlines if still not matching
         if len(result_list) != paragraph_count:
             lines = text.splitlines()
             result_list = [line.strip() for line in lines if line.strip() != ""]
