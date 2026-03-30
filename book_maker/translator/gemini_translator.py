@@ -107,7 +107,6 @@ class Gemini(Base):
         max_attempts = 7
 
         t_text = ""
-        print(text)
         # same for caiyun translate src issue #279 gemini for #374
         text_list = text.splitlines()
         num = None
@@ -127,13 +126,7 @@ class Gemini(Base):
                 )
                 tag_match = re.search(tag_pattern, t_text, re.DOTALL)
                 if tag_match:
-                    print(
-                        "[bold green]"
-                        + re.sub("\n{3,}", "\n\n", t_text)
-                        + "[/bold green]"
-                    )
                     t_text = tag_match.group(1).strip()
-                    # print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
                 break
             except StopCandidateException as e:
                 print(
@@ -168,8 +161,7 @@ class Gemini(Base):
         else:
             self.convo.history = []
 
-        print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
-        # for rate limit(RPM)
+        # for rate limit (RPM)
         time.sleep(self.interval)
         if num:
             t_text = str(num) + "\n" + t_text
