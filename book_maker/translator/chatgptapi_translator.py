@@ -333,17 +333,29 @@ class ChatGPTAPI(Base):
         original_prompt = self.prompt_template
         original_sys_msg = self.system_content
 
-        batch_prompt = (
+        # Build batch prompt that respects the user's custom prompt
+        # Add batch-specific instructions while preserving the original prompt structure
+        batch_instruction = (
             f"Translate the following {plist_len} text segments to {{language}}. "
             f"Separate each translation with '{BATCH_DELIMITER}'. "
             f"Output EXACTLY {plist_len} translations.\n\n"
-            "```{text}```"
         )
 
-        batch_sys_msg = (
-            f"Professional translator. Input has {plist_len} segments separated by '{BATCH_DELIMITER}'. "
-            f"Output {plist_len} translations with '{BATCH_DELIMITER}' between each."
-        )
+        # Use the user's custom prompt template, or fall back to default if not set
+        user_prompt = original_prompt if original_prompt else self.DEFAULT_PROMPT
+        batch_prompt = batch_instruction + user_prompt
+
+        # Preserve user's system message, adding batch-specific context if needed
+        if original_sys_msg:
+            batch_sys_msg = (
+                f"{original_sys_msg} Input has {plist_len} segments separated by '{BATCH_DELIMITER}'. "
+                f"Output {plist_len} translations with '{BATCH_DELIMITER}' between each."
+            )
+        else:
+            batch_sys_msg = (
+                f"Professional translator. Input has {plist_len} segments separated by '{BATCH_DELIMITER}'. "
+                f"Output {plist_len} translations with '{BATCH_DELIMITER}' between each."
+            )
 
         try:
             self.prompt_template = batch_prompt
