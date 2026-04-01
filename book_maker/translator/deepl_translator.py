@@ -65,7 +65,6 @@ class DeepL(Base):
 
     def translate(self, text):
         self.rotate_key()
-        print(text)
         payload = {"text": text, "source": "EN", "target": self.language}
         try:
             response = requests.request(
@@ -84,5 +83,4 @@ class DeepL(Base):
                 headers=self.headers,
             )
         t_text = response.json().get("text", "")
-        print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
         return t_text

@@ -197,9 +197,6 @@ class ChatGPTAPI(Base):
 
     def translate(self, text, needprint=True):
         start_time = time.time()
-        # todo: Determine whether to print according to the cli option
-        if needprint:
-            print(re.sub("\n{3,}", "\n\n", text))
 
         attempt_count = 0
         max_attempts = 3
@@ -229,10 +226,6 @@ class ChatGPTAPI(Base):
                 if attempt_count == max_attempts:
                     print(f"Get {attempt_count} consecutive exceptions, raising error")
                     raise e
-
-        # todo: Determine whether to print according to the cli option
-        if needprint:
-            print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
 
         time.time() - start_time
         # print(f"translation time: {elapsed_time:.1f}s")

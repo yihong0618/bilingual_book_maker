@@ -164,12 +164,9 @@ class QwenTranslator(Base):
             self.context_list.pop(0)
             self.context_translated_list.pop(0)
 
-    def translate(self, text, needprint=True):
+    def translate(self, text):
         """Main translation method"""
         start_time = time.time()
-
-        if needprint:
-            print(re.sub(r"\n{3,}", "\n\n", text))
 
         attempt_count = 0
         max_attempts = 3
@@ -217,9 +214,6 @@ class QwenTranslator(Base):
                     t_text = text  # Fallback to original text
                 else:
                     time.sleep(1)  # Wait before retry
-
-        if needprint:
-            print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
 
         end_time = time.time()
         print(f"[dim]Translation time: {end_time - start_time:.2f}s[/dim]")

@@ -32,7 +32,6 @@ class TencentTranSmart(Base):
         pass
 
     def translate(self, text):
-        print(text)
         source_language, text_list = self.text_analysis(text)
         client_key = self.get_client_key()
         api_form_data = {
@@ -53,7 +52,6 @@ class TencentTranSmart(Base):
             self.api_url, json=api_form_data, headers=self.header, timeout=3
         )
         t_text = "".join(response.json()["auto_translation"])
-        print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
         return t_text
 
     def text_analysis(self, text):

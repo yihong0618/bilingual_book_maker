@@ -88,7 +88,6 @@ class Claude(Base):
             self.context_translated_list.pop(0)
 
     def translate(self, text):
-        print(text)
         self.rotate_key()
 
         # Create messages with context
@@ -106,5 +105,4 @@ class Claude(Base):
         if self.context_flag:
             self.save_context(text, t_text)
 
-        print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
         return t_text
