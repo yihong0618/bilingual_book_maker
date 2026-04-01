@@ -2,7 +2,6 @@ import re
 import time
 import os
 import shutil
-from copy import copy
 from os import environ
 from itertools import cycle
 import json

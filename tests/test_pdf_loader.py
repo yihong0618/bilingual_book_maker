@@ -1,6 +1,3 @@
-import os
-from pathlib import Path
-
 import pytest
 
 fitz = pytest.importorskip("fitz")
