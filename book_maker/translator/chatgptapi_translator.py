@@ -327,8 +327,11 @@ class ChatGPTAPI(Base):
         if plist_len == 1:
             return [self.translate(str(text_list[0]).strip(), False)]
 
+        # Build stripped texts list once to avoid redundant str(t).strip() calls
+        stripped_texts = [str(t).strip() for t in text_list]
+
         # Join with delimiter
-        batch_text = BATCH_DELIMITER.join(str(t).strip() for t in text_list)
+        batch_text = BATCH_DELIMITER.join(stripped_texts)
 
         original_prompt = self.prompt_template
         original_sys_msg = self.system_content
@@ -379,15 +382,15 @@ class ChatGPTAPI(Base):
                 f"Warning: Expected {plist_len} translations, got {len(translated_paragraphs)}. Falling back to one-by-one translation."
             )
             print(f"\n[Debug] Input text_list ({plist_len} items):")
-            for i, t in enumerate(text_list, 1):
-                print(f"  [{i}] {str(t).strip()!r}")
+            for i, t in enumerate(stripped_texts, 1):
+                print(f"  [{i}] {t!r}")
             print(f"\n[Debug] Model response ({len(translated_text)} chars):")
             print(translated_text)
             print(f"\n[Debug] Split result ({len(translated_paragraphs)} items):")
             for i, p in enumerate(translated_paragraphs, 1):
                 print(f"  [{i}] {p!r}")
             print()
-            return [self.translate(str(t).strip(), False) for t in text_list]
+            return [self.translate(t, False) for t in stripped_texts]
 
         return translated_paragraphs
 
