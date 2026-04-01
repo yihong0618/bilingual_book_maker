@@ -10,7 +10,7 @@ from google.generativeai.types.generation_types import (
 )
 from rich import print
 
-from .base_translator import Base
+from .base_translator import Base, BATCH_DELIMITER
 
 generation_config = {
     "temperature": 1.0,
@@ -89,12 +89,10 @@ class Gemini(Base):
             system_instruction=self.prompt_sys_msg,
         )
         self.convo = model.start_chat()
-        # print(model)  # Uncomment to debug and inspect the model details.
 
     def rotate_model(self):
         self.model = next(self.model_list)
         self.create_convo()
-        print(f"Using model {self.model}")
 
     def rotate_key(self):
         genai.configure(api_key=next(self.keys))
@@ -167,6 +165,8 @@ class Gemini(Base):
             t_text = str(num) + "\n" + t_text
         return t_text
 
+    _available_models_cache = None
+
     def set_interval(self, interval):
         self.interval = interval
 
@@ -177,9 +177,14 @@ class Gemini(Base):
         self.set_models(GEMINIFLASH_MODEL_LIST)
 
     def set_models(self, allowed_models):
-        available_models = [
-            re.sub(r"^models/", "", i.name) for i in genai.list_models()
-        ]
+        if Gemini._available_models_cache is None:
+            available_models = [
+                re.sub(r"^models/", "", i.name) for i in genai.list_models()
+            ]
+            Gemini._available_models_cache = available_models
+        else:
+            available_models = Gemini._available_models_cache
+
         model_list = sorted(
             list(set(available_models) & set(allowed_models)),
             key=allowed_models.index,
@@ -194,3 +199,67 @@ class Gemini(Base):
         print(f"Using model list {model_list}")
         self.model_list = cycle(model_list)
         self.rotate_model()
+
+    def translate_list(self, text_list):
+        """
+        Translate multiple texts in a single batch request using delimiters.
+        Returns a list of translated texts.
+        """
+        plist_len = len(text_list)
+
+        if plist_len == 0:
+            return []
+
+        if plist_len == 1:
+            return [self.translate(str(text_list[0]).strip())]
+
+        # Join with delimiter
+        batch_text = BATCH_DELIMITER.join(str(t).strip() for t in text_list)
+
+        # Build batch prompt
+        batch_instruction = (
+            f"Translate the following {plist_len} text segments to {self.language}. "
+            f"Separate each translation with '{BATCH_DELIMITER}'. "
+            f"Output EXACTLY {plist_len} translations.\n\n"
+        )
+
+        original_prompt = self.prompt
+        original_sys_msg = self.prompt_sys_msg
+
+        batch_prompt = batch_instruction + self.prompt
+        if original_sys_msg:
+            batch_sys_msg = (
+                f"{original_sys_msg} Input has {plist_len} segments separated by '{BATCH_DELIMITER}'. "
+                f"Output {plist_len} translations with '{BATCH_DELIMITER}' between each."
+            )
+        else:
+            batch_sys_msg = (
+                f"Professional translator. Input has {plist_len} segments separated by '{BATCH_DELIMITER}'. "
+                f"Output {plist_len} translations with '{BATCH_DELIMITER}' between each."
+            )
+
+        try:
+            self.prompt = batch_prompt
+            self.prompt_sys_msg = batch_sys_msg
+            self.create_convo()
+            self.convo.send_message(
+                self.prompt.format(text=batch_text, language=self.language)
+            )
+            t_text = self.convo.last.text.strip()
+        finally:
+            self.prompt = original_prompt
+            self.prompt_sys_msg = original_sys_msg
+            self.create_convo()
+
+        # Split results
+        results = [r.strip() for r in t_text.split(BATCH_DELIMITER) if r.strip()]
+
+        # Ensure we have the right number of results
+        if len(results) != plist_len:
+            print(
+                f"[bold red]Warning: Expected {plist_len} translations, got {len(results)}. "
+                "Falling back to individual translation.[/bold red]"
+            )
+            return [self.translate(str(t).strip()) for t in text_list]
+
+        return results
