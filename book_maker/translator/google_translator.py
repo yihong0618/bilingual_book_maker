@@ -33,7 +33,6 @@ class Google(Base):
         pass
 
     def translate(self, text):
-        print(text)
         """r = self.session.post(
             self.api_url,
             headers=self.headers,
@@ -45,7 +44,6 @@ class Google(Base):
             [sentence.get("trans", "") for sentence in r.json()["sentences"]],
         )"""
         t_text = self._retry_translate(text)
-        print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
         return t_text
 
     def _retry_translate(self, text, timeout=3):

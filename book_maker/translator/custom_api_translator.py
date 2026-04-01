@@ -20,12 +20,10 @@ class CustomAPI(Base):
         pass
 
     def translate(self, text):
-        print(text)
         custom_api = self.custom_api
         data = {"text": text, "source_lang": "auto", "target_lang": self.language}
         post_data = json.dumps(data)
         r = requests.post(url=custom_api, data=post_data, timeout=10).text
         t_text = json.loads(r)["data"]
-        print("[bold green]" + re.sub("\n{3,}", "\n\n", t_text) + "[/bold green]")
         time.sleep(5)
         return t_text
