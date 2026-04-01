@@ -414,27 +414,8 @@ class ChatGPTAPI(Base):
         if len(result_list) != paragraph_count:
             # Extract the core delimiter (e.g., '@@' from BATCH_DELIMITER)
             core_delimiter = BATCH_DELIMITER.strip()
-            # First try exact split by the delimiter
-            parts = text.split(BATCH_DELIMITER)
-            # If that doesn't work well, try splitting by variations
-            if len(parts) < paragraph_count:
-                # Try splitting by the core delimiter with flexible surrounding
-                # whitespace/newlines and filter out lines that are only the delimiter
-                lines = text.splitlines()
-                parts = []
-                current = []
-                for line in lines:
-                    stripped = line.strip()
-                    if stripped == core_delimiter or re.fullmatch(
-                        r"\s*" + re.escape(core_delimiter) + r"\s*", stripped
-                    ):
-                        if current:
-                            parts.append("\n".join(current).strip())
-                            current = []
-                    else:
-                        current.append(line)
-                if current:
-                    parts.append("\n".join(current).strip())
+            # Split by the core delimiter with any surrounding whitespace/newlines
+            parts = re.split(r"\s*" + re.escape(core_delimiter) + r"\s*", text)
             # Filter out empty strings
             result_list = [p.strip() for p in parts if p.strip()]
 
