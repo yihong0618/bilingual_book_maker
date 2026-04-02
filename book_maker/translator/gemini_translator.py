@@ -212,4 +212,3 @@ class Gemini(Base):
             self.DEFAULT_PROMPT,
             lambda text: self.translate(text),
         )
-
