@@ -159,12 +159,13 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   Use `--translate-tags` to specify tags need for translation. Use comma to separate multiple tags.
   For example: `--translate-tags h1,h2,h3,p,div`
 
-- `--exclude-content-tags`:
+- `--exclude-translate-tags`:
 
-  Use `--exclude-content-tags` to exclude content within specified HTML tags from translation. This is useful for preserving code blocks, preformatted text, or other special content. Use comma to separate multiple tags.
-  For example: `--exclude-content-tags code,pre`
-  
-  **Tip**: Use `--exclude-content-tags ""` to translate all content including code blocks (overrides the default exclusion).
+  Use `--exclude-translate-tags` to exclude content within specified HTML tags from translation. This is useful for preserving code blocks, preformatted text, or other special content. Use comma to separate multiple tags.
+  Default: `sup,code`.
+  For example: `--exclude-translate-tags code,pre`
+
+  **Tip**: Use `--exclude-translate-tags ""` to translate all content including code blocks (overrides the default exclusion).
 
 - `--book_from`:
 

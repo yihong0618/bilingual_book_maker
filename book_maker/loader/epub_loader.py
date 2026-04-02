@@ -56,10 +56,7 @@ class EPUBBookLoader(BaseBookLoader):
         self.is_test = is_test
         self.test_num = test_num
         self.translate_tags = "p"
-        self.exclude_translate_tags = "sup"
-        self.exclude_content_tags = (
-            "code"  # Tags whose content should be excluded from translation
-        )
+        self.exclude_translate_tags = "sup,code"
         self.allow_navigable_strings = False
         self.accumulated_num = 1
         self.translation_style = ""
@@ -220,7 +217,7 @@ class EPUBBookLoader(BaseBookLoader):
             for pt in p.find_all(p_exclude):
                 pt.extract()
         # Exclude content within specified tags from translation (e.g., code, pre)
-        exclude_tags_list = [t for t in self.exclude_content_tags.split(",") if t]
+        exclude_tags_list = [t for t in self.exclude_translate_tags.split(",") if t]
         for tag_name in exclude_tags_list:
             if type(p) is NavigableString:
                 continue
@@ -239,7 +236,7 @@ class EPUBBookLoader(BaseBookLoader):
         # Check if paragraph contains only excluded content tags
         temp_p = copy(p)
         # Remove excluded tags
-        exclude_tags_list = [t for t in self.exclude_content_tags.split(",") if t]
+        exclude_tags_list = [t for t in self.exclude_translate_tags.split(",") if t]
         for tag_name in exclude_tags_list:
             for pt in temp_p.find_all(tag_name):
                 pt.extract()
@@ -292,7 +289,7 @@ class EPUBBookLoader(BaseBookLoader):
             translated_text = ""
 
         # Check if paragraph has excluded content tags
-        exclude_tags_list = [t for t in self.exclude_content_tags.split(",") if t]
+        exclude_tags_list = [t for t in self.exclude_translate_tags.split(",") if t]
         has_code_tags = any(p.find(tag) for tag in exclude_tags_list)
 
         if not has_code_tags:
@@ -461,7 +458,7 @@ class EPUBBookLoader(BaseBookLoader):
                     pt.extract()
 
             # Also exclude content tags (code, pre, etc.)
-            exclude_tags_list = [t for t in self.exclude_content_tags.split(",") if t]
+            exclude_tags_list = [t for t in self.exclude_translate_tags.split(",") if t]
             for tag_name in exclude_tags_list:
                 if type(p) is NavigableString:
                     continue
@@ -1005,7 +1002,7 @@ class EPUBBookLoader(BaseBookLoader):
                     pt.extract()
 
             # Exclude content within specified tags from translation (e.g., code, pre)
-            exclude_tags_list = [t for t in self.exclude_content_tags.split(",") if t]
+            exclude_tags_list = [t for t in self.exclude_translate_tags.split(",") if t]
             for tag_name in exclude_tags_list:
                 if isinstance(p, NavigableString):
                     continue
