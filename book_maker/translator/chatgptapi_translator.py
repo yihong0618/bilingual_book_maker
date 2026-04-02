@@ -10,7 +10,7 @@ from threading import Lock
 from openai import AzureOpenAI, OpenAI, RateLimitError
 from rich import print
 
-from .base_translator import Base, BATCH_DELIMITER
+from .base_translator import Base
 from ..config import config
 
 CHATGPT_CONFIG = config["translator"]["chatgptapi"]
@@ -311,115 +311,13 @@ class ChatGPTAPI(Base):
         Translate multiple texts in a single batch request using delimiters.
         Returns a list of translated texts.
         """
-        plist_len = len(text_list)
-
-        if plist_len == 0:
-            return []
-
-        if plist_len == 1:
-            return [self.translate(str(text_list[0]).strip(), False)]
-
-        # Build stripped texts list once to avoid redundant str(t).strip() calls
-        stripped_texts = [str(t).strip() for t in text_list]
-
-        # Join with delimiter
-        batch_text = BATCH_DELIMITER.join(stripped_texts)
-
-        original_prompt = self.prompt_template
-        original_sys_msg = self.system_content
-
-        # Build batch prompt that respects the user's custom prompt
-        # Add batch-specific instructions while preserving the original prompt structure
-        batch_instruction = (
-            f"Translate the following {plist_len} text segments to {{language}}. "
-            f"Separate each translation with '{BATCH_DELIMITER}'. "
-            f"Output EXACTLY {plist_len} translations.\n\n"
+        return self._do_batch_translate(
+            text_list,
+            self.prompt_template,
+            self.system_content,
+            self.DEFAULT_PROMPT,
+            lambda text: self.translate(text, False),
         )
-
-        # Use the user's custom prompt template, or fall back to default if not set
-        user_prompt = original_prompt if original_prompt else self.DEFAULT_PROMPT
-        batch_prompt = batch_instruction + user_prompt
-
-        # Preserve user's system message, adding batch-specific context if needed
-        if original_sys_msg:
-            batch_sys_msg = (
-                f"{original_sys_msg} Input has {plist_len} segments separated by '{BATCH_DELIMITER}'. "
-                f"Output {plist_len} translations with '{BATCH_DELIMITER}' between each."
-            )
-        else:
-            batch_sys_msg = (
-                f"Professional translator. Input has {plist_len} segments separated by '{BATCH_DELIMITER}'. "
-                f"Output {plist_len} translations with '{BATCH_DELIMITER}' between each."
-            )
-
-        try:
-            self.prompt_template = batch_prompt
-            self.system_content = batch_sys_msg
-            translated_text = self.translate(batch_text, False)
-        finally:
-            self.prompt_template = original_prompt
-            self.system_content = original_sys_msg
-
-        # Handle None or empty response from translate
-        if not translated_text:
-            print(
-                f"[bold red]Error: Translation API returned empty response for batch request.[/bold red]"
-            )
-            raise Exception("Translation API returned empty response")
-
-        translated_paragraphs = self.extract_paragraphs(translated_text, plist_len)
-
-        if len(translated_paragraphs) != plist_len:
-            print(
-                f"Warning: Expected {plist_len} translations, got {len(translated_paragraphs)}. Falling back to one-by-one translation."
-            )
-            print(f"\n[Debug] Input text_list ({plist_len} items):")
-            for i, t in enumerate(stripped_texts, 1):
-                print(f"  [{i}] {t!r}")
-            print(f"\n[Debug] Model response ({len(translated_text)} chars):")
-            print(translated_text)
-            print(f"\n[Debug] Split result ({len(translated_paragraphs)} items):")
-            for i, p in enumerate(translated_paragraphs, 1):
-                print(f"  [{i}] {p!r}")
-            print()
-            return [self.translate(t, False) for t in stripped_texts]
-
-        return translated_paragraphs
-
-    def extract_paragraphs(self, text, paragraph_count):
-        """Extract paragraphs from translated text, ensuring paragraph count is preserved."""
-        # First try to extract by paragraph numbers (1), (2), etc.
-        result_list = []
-        for i in range(1, paragraph_count + 1):
-            pattern = rf"\({i}\)\s*(.*?)(?=\s*\({i + 1}\)|\Z)"
-            match = re.search(pattern, text, re.DOTALL)
-            if match:
-                result_list.append(match.group(1).strip())
-
-        # If exact pattern matching failed, try another approach
-        if len(result_list) != paragraph_count:
-            pattern = r"\((\d+)\)\s*(.*?)(?=\s*\(\d+\)|\Z)"
-            matches = re.findall(pattern, text, re.DOTALL)
-            if matches:
-                # Sort by paragraph number
-                matches.sort(key=lambda x: int(x[0]))
-                result_list = [match[1].strip() for match in matches]
-
-        # Fallback: try splitting by BATCH_DELIMITER with flexible whitespace
-        if len(result_list) != paragraph_count:
-            # Extract the core delimiter (e.g., '@@' from BATCH_DELIMITER)
-            core_delimiter = BATCH_DELIMITER.strip()
-            # Split by the core delimiter with any surrounding whitespace/newlines
-            parts = re.split(r"\s*" + re.escape(core_delimiter) + r"\s*", text)
-            # Filter out empty strings
-            result_list = [p.strip() for p in parts if p.strip()]
-
-        # Final fallback: split by double newlines if still not matching
-        if len(result_list) != paragraph_count:
-            lines = text.splitlines()
-            result_list = [line.strip() for line in lines if line.strip() != ""]
-
-        return result_list
 
     def set_deployment_id(self, deployment_id):
         self.deployment_id = deployment_id

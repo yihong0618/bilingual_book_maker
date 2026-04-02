@@ -205,61 +205,10 @@ class Gemini(Base):
         Translate multiple texts in a single batch request using delimiters.
         Returns a list of translated texts.
         """
-        plist_len = len(text_list)
-
-        if plist_len == 0:
-            return []
-
-        if plist_len == 1:
-            return [self.translate(str(text_list[0]).strip())]
-
-        # Join with delimiter
-        batch_text = BATCH_DELIMITER.join(str(t).strip() for t in text_list)
-
-        # Build batch prompt
-        batch_instruction = (
-            f"Translate the following {plist_len} text segments to {self.language}. "
-            f"Separate each translation with '{BATCH_DELIMITER}'. "
-            f"Output EXACTLY {plist_len} translations.\n\n"
+        return super()._do_batch_translate(
+            text_list,
+            self.prompt,
+            self.prompt_sys_msg,
+            self.DEFAULT_PROMPT,
+            lambda text: self.translate(text),
         )
-
-        original_prompt = self.prompt
-        original_sys_msg = self.prompt_sys_msg
-
-        batch_prompt = batch_instruction + self.prompt
-        if original_sys_msg:
-            batch_sys_msg = (
-                f"{original_sys_msg} Input has {plist_len} segments separated by '{BATCH_DELIMITER}'. "
-                f"Output {plist_len} translations with '{BATCH_DELIMITER}' between each."
-            )
-        else:
-            batch_sys_msg = (
-                f"Professional translator. Input has {plist_len} segments separated by '{BATCH_DELIMITER}'. "
-                f"Output {plist_len} translations with '{BATCH_DELIMITER}' between each."
-            )
-
-        try:
-            self.prompt = batch_prompt
-            self.prompt_sys_msg = batch_sys_msg
-            self.create_convo()
-            self.convo.send_message(
-                self.prompt.format(text=batch_text, language=self.language)
-            )
-            t_text = self.convo.last.text.strip()
-        finally:
-            self.prompt = original_prompt
-            self.prompt_sys_msg = original_sys_msg
-            self.create_convo()
-
-        # Split results
-        results = [r.strip() for r in t_text.split(BATCH_DELIMITER) if r.strip()]
-
-        # Ensure we have the right number of results
-        if len(results) != plist_len:
-            print(
-                f"[bold red]Warning: Expected {plist_len} translations, got {len(results)}. "
-                "Falling back to individual translation.[/bold red]"
-            )
-            return [self.translate(str(t).strip()) for t in text_list]
-
-        return results
