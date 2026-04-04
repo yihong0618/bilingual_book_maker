@@ -1,5 +1,7 @@
+import json
 import re
 import time
+import typing
 from os import environ
 from itertools import cycle
 
@@ -55,6 +57,12 @@ GEMINIFLASH_MODEL_LIST = [
     "gemini-2.0-flash-exp",
     "gemini-2.5-flash-preview-04-17",
 ]
+
+
+class TranslationResponse(typing.TypedDict):
+    """Schema for batch translation response."""
+
+    translated_paragraphs: list[str]
 
 
 class Gemini(Base):
@@ -234,15 +242,118 @@ class Gemini(Base):
         self.model_list = cycle(model_list)
         self.rotate_model()
 
-    def translate_list(self, text_list):
+    def translate_list(self, text_list: list[str]) -> list[str]:
         """
-        Translate multiple texts in a single batch request using delimiters.
-        Returns a list of translated texts.
+        Translate multiple texts using JSON Schema for structured output.
+
+        This method sends all paragraphs in a single batch request with JSON schema
+        enforcement to ensure reliable parsing. It respects custom prompt templates
+        and system messages if provided.
+
+        Args:
+            text_list: List of text strings to translate.
+
+        Returns:
+            List of translated text strings in the same order as input.
+
+        Note:
+            Falls back to one-by-one translation if batch translation fails
+            after all retry attempts.
         """
-        return super()._do_batch_translate(
-            text_list,
-            self.prompt,
-            self.prompt_sys_msg,
-            self.DEFAULT_PROMPT,
-            lambda text: self.translate(text),
+        plist_len = len(text_list)
+
+        if plist_len == 0:
+            return []
+
+        if plist_len == 1:
+            return [self.translate(str(text_list[0]).strip())]
+
+        # Build prompt for batch translation
+        stripped_texts = [str(t).strip() for t in text_list]
+        batch_text = "\n\n".join(
+            f"[{i+1}] {text}" for i, text in enumerate(stripped_texts)
         )
+
+        # Use user's prompt template (or default if not provided)
+        prompt = self.prompt.format(text=batch_text, language=self.language)
+        # Add JSON schema instruction if not already present
+        if "translated_paragraphs" not in prompt.lower():
+            prompt += (
+                f"\n\nReturn the translations as a JSON object with a 'translated_paragraphs' "
+                f"field containing exactly {plist_len} translated texts in order."
+            )
+
+        delay = 1
+        exponential_base = 2
+        attempt_count = 0
+        max_attempts = 7
+
+        while attempt_count < max_attempts:
+            try:
+                # Use JSON schema enforcement for reliable parsing
+                response = self.convo.send_message(
+                    prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=TranslationResponse,
+                        temperature=generation_config.temperature,
+                        max_output_tokens=generation_config.max_output_tokens,
+                        system_instruction=self.prompt_sys_msg,
+                    ),
+                )
+
+                # Parse JSON response (should always be valid due to schema enforcement)
+                try:
+                    result = json.loads(response.text)
+                    translated = result.get("translated_paragraphs", [])
+
+                    if len(translated) == plist_len:
+                        # for rate limit (RPM)
+                        time.sleep(self.interval)
+                        return translated
+                    else:
+                        print(
+                            f"Warning: Expected {plist_len} translations, got {len(translated)}. "
+                            f"Retrying..."
+                        )
+                except json.JSONDecodeError as e:
+                    print(f"Failed to parse JSON response: {e}. Retrying...")
+                    print(f"Response text: {response.text[:200]}")
+
+            except errors.APIError as e:
+                error_msg = str(e).lower()
+                if "blocked" in error_msg or "stop" in error_msg:
+                    print(
+                        f"Batch translation failed due to API error: {e} "
+                        f"Attempting to switch model..."
+                    )
+                    self.rotate_model()
+                else:
+                    print(
+                        f"Batch translation failed due to API error: {e} "
+                        f"Will sleep {delay} seconds"
+                    )
+                    time.sleep(delay)
+                    delay *= exponential_base
+                    self.rotate_key()
+                    if attempt_count >= 1:
+                        self.rotate_model()
+            except Exception as e:
+                print(
+                    f"Batch translation failed due to {type(e).__name__}: {e} "
+                    f"Will sleep {delay} seconds"
+                )
+                time.sleep(delay)
+                delay *= exponential_base
+                self.rotate_key()
+                if attempt_count >= 1:
+                    self.rotate_model()
+
+            attempt_count += 1
+
+        # Fallback to one-by-one translation if batch fails
+        print(
+            f"Batch translation failed after {max_attempts} attempts. "
+            f"Falling back to one-by-one translation."
+        )
+        return [self.translate(t) for t in stripped_texts]
