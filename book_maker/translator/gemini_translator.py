@@ -274,25 +274,13 @@ class Gemini(Base):
             f"[{i+1}] {text}" for i, text in enumerate(stripped_texts)
         )
 
-        # Use user's prompt template if available, otherwise use default batch instruction
-        if self.prompt and self.prompt != self.DEFAULT_PROMPT:
-            # User has defined a custom prompt, use it for batch translation
-            prompt = self.prompt.format(text=batch_text, language=self.language)
-            # Add JSON schema instruction if not already present
-            if "translated_paragraphs" not in prompt.lower():
-                prompt += (
-                    f"\n\nReturn the translations as a JSON object with a 'translated_paragraphs' "
-                    f"field containing exactly {plist_len} translated texts in order."
-                )
-        else:
-            # Default batch translation prompt
-            prompt = (
-                f"Translate these {plist_len} numbered paragraphs into {self.language}. "
-                f"Return ONLY a valid JSON object with a 'translated_paragraphs' field containing "
-                f"a list of exactly {plist_len} translated texts in the same order. "
-                f"Do not include the original text, only the translations. "
-                f"Return ONLY the JSON object, no other text.\n\n"
-                f"{batch_text}"
+        # Use user's prompt template (or default if not provided)
+        prompt = self.prompt.format(text=batch_text, language=self.language)
+        # Add JSON schema instruction if not already present
+        if "translated_paragraphs" not in prompt.lower():
+            prompt += (
+                f"\n\nReturn the translations as a JSON object with a 'translated_paragraphs' "
+                f"field containing exactly {plist_len} translated texts in order."
             )
 
         delay = 1
