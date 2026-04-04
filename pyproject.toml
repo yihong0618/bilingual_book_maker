@@ -18,7 +18,7 @@ dependencies = [
     "backoff",
     "bs4",
     "ebooklib",
-    "google-generativeai",
+    "google-genai",
     "langdetect",
     "litellm",
     "openai>=1.1.1",

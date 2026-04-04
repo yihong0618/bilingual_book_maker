@@ -3,28 +3,37 @@ import time
 from os import environ
 from itertools import cycle
 
-import google.generativeai as genai
-from google.generativeai.types.generation_types import (
-    StopCandidateException,
-    BlockedPromptException,
-)
+from google import genai
+from google.genai import types, errors
 from rich import print
 
 from .base_translator import Base, BATCH_DELIMITER
 
-generation_config = {
-    "temperature": 1.0,
-    "top_p": 1,
-    "top_k": 1,
-    "max_output_tokens": 8192,
-}
+generation_config = types.GenerateContentConfig(
+    temperature=1.0,
+    top_p=1,
+    top_k=1,
+    max_output_tokens=8192,
+)
 
-safety_settings = {
-    "HATE": "BLOCK_NONE",
-    "HARASSMENT": "BLOCK_NONE",
-    "SEXUAL": "BLOCK_NONE",
-    "DANGEROUS": "BLOCK_NONE",
-}
+safety_settings = [
+    types.SafetySetting(
+        category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+    ),
+    types.SafetySetting(
+        category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+    ),
+    types.SafetySetting(
+        category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+    ),
+    types.SafetySetting(
+        category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+    ),
+]
 
 PROMPT_ENV_MAP = {
     "user": "BBM_GEMINIAPI_USER_MSG_TEMPLATE",
@@ -78,24 +87,28 @@ class Gemini(Base):
             or None  # Allow None, but not empty string
         )
         self.interval = 3
-        genai.configure(api_key=next(self.keys))
-        generation_config["temperature"] = temperature
+        self.client = genai.Client(api_key=next(self.keys))
+        generation_config.temperature = temperature
 
     def create_convo(self):
-        model = genai.GenerativeModel(
-            model_name=self.model,
-            generation_config=generation_config,
-            safety_settings=safety_settings,
-            system_instruction=self.prompt_sys_msg,
+        self.convo = self.client.chats.create(
+            model=self.model,
+            config=types.GenerateContentConfig(
+                temperature=generation_config.temperature,
+                top_p=generation_config.top_p,
+                top_k=generation_config.top_k,
+                max_output_tokens=generation_config.max_output_tokens,
+                safety_settings=safety_settings,
+                system_instruction=self.prompt_sys_msg,
+            ),
         )
-        self.convo = model.start_chat()
 
     def rotate_model(self):
         self.model = next(self.model_list)
         self.create_convo()
 
     def rotate_key(self):
-        genai.configure(api_key=next(self.keys))
+        self.client = genai.Client(api_key=next(self.keys))
         self.create_convo()
 
     def translate(self, text):
@@ -114,10 +127,10 @@ class Gemini(Base):
 
         while attempt_count < max_attempts:
             try:
-                self.convo.send_message(
+                response = self.convo.send_message(
                     self.prompt.format(text=text, language=self.language)
                 )
-                t_text = self.convo.last.text.strip()
+                t_text = response.text.strip()
                 # 检查是否包含特定标签,如果有则只返回标签内的内容
                 tag_pattern = (
                     r"<step3_refined_translation>(.*?)</step3_refined_translation>"
@@ -126,16 +139,23 @@ class Gemini(Base):
                 if tag_match:
                     t_text = tag_match.group(1).strip()
                 break
-            except StopCandidateException as e:
-                print(
-                    f"Translation failed due to StopCandidateException: {e} Attempting to switch model..."
-                )
-                self.rotate_model()
-            except BlockedPromptException as e:
-                print(
-                    f"Translation failed due to BlockedPromptException: {e} Attempting to switch model..."
-                )
-                self.rotate_model()
+            except errors.APIError as e:
+                # Check if it's a blocked prompt or stop candidate issue
+                error_msg = str(e).lower()
+                if "blocked" in error_msg or "stop" in error_msg:
+                    print(
+                        f"Translation failed due to API error: {e} Attempting to switch model..."
+                    )
+                    self.rotate_model()
+                else:
+                    print(
+                        f"Translation failed due to API error: {e} Will sleep {delay} seconds"
+                    )
+                    time.sleep(delay)
+                    delay *= exponential_base
+                    self.rotate_key()
+                    if attempt_count >= 1:
+                        self.rotate_model()
             except Exception as e:
                 print(
                     f"Translation failed due to {type(e).__name__}: {e} Will sleep {delay} seconds"
@@ -154,10 +174,24 @@ class Gemini(Base):
             return
 
         if self.context_flag:
-            if len(self.convo.history) > 10:
-                self.convo.history = self.convo.history[2:]
+            if len(self.convo.get_history()) > 10:
+                # Trim history to keep only recent messages
+                history = self.convo.get_history()
+                self.convo = self.client.chats.create(
+                    model=self.model,
+                    config=types.GenerateContentConfig(
+                        temperature=generation_config.temperature,
+                        top_p=generation_config.top_p,
+                        top_k=generation_config.top_k,
+                        max_output_tokens=generation_config.max_output_tokens,
+                        safety_settings=safety_settings,
+                        system_instruction=self.prompt_sys_msg,
+                    ),
+                    history=history[-8:],  # Keep last 8 messages (4 exchanges)
+                )
         else:
-            self.convo.history = []
+            # Clear history by creating new chat
+            self.create_convo()
 
         # for rate limit (RPM)
         time.sleep(self.interval)
@@ -179,7 +213,7 @@ class Gemini(Base):
     def set_models(self, allowed_models):
         if Gemini._available_models_cache is None:
             available_models = [
-                re.sub(r"^models/", "", i.name) for i in genai.list_models()
+                re.sub(r"^models/", "", m.name) for m in self.client.models.list()
             ]
             Gemini._available_models_cache = available_models
         else:
