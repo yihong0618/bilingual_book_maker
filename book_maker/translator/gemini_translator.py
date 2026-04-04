@@ -9,7 +9,7 @@ from google import genai
 from google.genai import types, errors
 from rich import print
 
-from .base_translator import Base, BATCH_DELIMITER
+from .base_translator import Base
 
 generation_config = types.GenerateContentConfig(
     temperature=1.0,
@@ -72,6 +72,18 @@ class Gemini(Base):
 
     DEFAULT_PROMPT = "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text"
 
+    # Configuration constants
+    DEFAULT_INTERVAL = 3
+    INITIAL_RETRY_DELAY = 1
+    EXPONENTIAL_BACKOFF_BASE = 2
+    MAX_RETRY_ATTEMPTS = 7
+    HISTORY_TRIM_THRESHOLD = 10
+    HISTORY_KEEP_SIZE = 8
+
+    # Regex patterns
+    TAG_PATTERN = r"<step3_refined_translation>(.*?)</step3_refined_translation>"
+    PARAGRAPH_NUMBER_PATTERN = r"^\s*[\[\(]\d+[\]\)]\s*"
+
     def __init__(
         self,
         key,
@@ -94,21 +106,49 @@ class Gemini(Base):
             or environ.get(PROMPT_ENV_MAP["system"])
             or None  # Allow None, but not empty string
         )
-        self.interval = 3
+        self.interval = self.DEFAULT_INTERVAL
         self.client = genai.Client(api_key=next(self.keys))
         generation_config.temperature = temperature
 
+    def _build_config_kwargs(
+        self, response_mime_type: str | None = None, response_schema: type | None = None
+    ) -> dict:
+        """Build configuration kwargs for API calls."""
+        config_kwargs = {
+            "temperature": generation_config.temperature,
+            "top_p": generation_config.top_p,
+            "top_k": generation_config.top_k,
+            "max_output_tokens": generation_config.max_output_tokens,
+            "safety_settings": safety_settings,
+            "system_instruction": self.prompt_sys_msg,
+        }
+
+        if response_mime_type:
+            config_kwargs["response_mime_type"] = response_mime_type
+
+        if response_schema:
+            config_kwargs["response_schema"] = response_schema
+
+        return config_kwargs
+
+    def _remove_paragraph_number(self, text: str) -> str:
+        """Remove leading paragraph numbers like '[1]' or '(1)' from text."""
+        return re.sub(self.PARAGRAPH_NUMBER_PATTERN, "", text)
+
+    def _extract_translation_text(self, response_text: str) -> str:
+        """Extract translation from response, handling custom tags if present."""
+        text = response_text.strip()
+        tag_match = re.search(self.TAG_PATTERN, text, re.DOTALL)
+        if tag_match:
+            text = tag_match.group(1).strip()
+        return self._remove_paragraph_number(text)
+
     def create_convo(self):
+        """Create a new chat conversation with configured model."""
+        config_kwargs = self._build_config_kwargs()
         self.convo = self.client.chats.create(
             model=self.model,
-            config=types.GenerateContentConfig(
-                temperature=generation_config.temperature,
-                top_p=generation_config.top_p,
-                top_k=generation_config.top_k,
-                max_output_tokens=generation_config.max_output_tokens,
-                safety_settings=safety_settings,
-                system_instruction=self.prompt_sys_msg,
-            ),
+            config=types.GenerateContentConfig(**config_kwargs),
         )
 
     def rotate_model(self):
@@ -119,93 +159,88 @@ class Gemini(Base):
         self.client = genai.Client(api_key=next(self.keys))
         self.create_convo()
 
-    def translate(self, text):
-        delay = 1
-        exponential_base = 2
-        attempt_count = 0
-        max_attempts = 7
-
-        t_text = ""
-        # same for caiyun translate src issue #279 gemini for #374
-        text_list = text.splitlines()
-        num = None
-        if len(text_list) > 1:
-            if text_list[0].isdigit():
-                num = text_list[0]
-
-        while attempt_count < max_attempts:
-            try:
-                response = self.convo.send_message(
-                    self.prompt.format(text=text, language=self.language)
-                )
-                t_text = response.text.strip()
-                # 检查是否包含特定标签,如果有则只返回标签内的内容
-                tag_pattern = (
-                    r"<step3_refined_translation>(.*?)</step3_refined_translation>"
-                )
-                tag_match = re.search(tag_pattern, t_text, re.DOTALL)
-                if tag_match:
-                    t_text = tag_match.group(1).strip()
-                break
-            except errors.APIError as e:
-                # Check if it's a blocked prompt or stop candidate issue
-                error_msg = str(e).lower()
-                if "blocked" in error_msg or "stop" in error_msg:
-                    print(
-                        f"Translation failed due to API error: {e} Attempting to switch model..."
-                    )
-                    self.rotate_model()
-                else:
-                    print(
-                        f"Translation failed due to API error: {e} Will sleep {delay} seconds"
-                    )
-                    time.sleep(delay)
-                    delay *= exponential_base
-                    self.rotate_key()
-                    if attempt_count >= 1:
-                        self.rotate_model()
-            except Exception as e:
-                print(
-                    f"Translation failed due to {type(e).__name__}: {e} Will sleep {delay} seconds"
-                )
-                time.sleep(delay)
-                delay *= exponential_base
-
-                self.rotate_key()
-                if attempt_count >= 1:
-                    self.rotate_model()
-
-            attempt_count += 1
-
-        if attempt_count == max_attempts:
-            print(f"Translation failed after {max_attempts} attempts.")
-            return
-
+    def _manage_conversation_history(self) -> None:
+        """Manage conversation history to prevent memory bloat."""
         if self.context_flag:
-            if len(self.convo.get_history()) > 10:
-                # Trim history to keep only recent messages
-                history = self.convo.get_history()
+            history = self.convo.get_history()
+            if len(history) > self.HISTORY_TRIM_THRESHOLD:
+                config_kwargs = self._build_config_kwargs()
                 self.convo = self.client.chats.create(
                     model=self.model,
-                    config=types.GenerateContentConfig(
-                        temperature=generation_config.temperature,
-                        top_p=generation_config.top_p,
-                        top_k=generation_config.top_k,
-                        max_output_tokens=generation_config.max_output_tokens,
-                        safety_settings=safety_settings,
-                        system_instruction=self.prompt_sys_msg,
-                    ),
-                    history=history[-8:],  # Keep last 8 messages (4 exchanges)
+                    config=types.GenerateContentConfig(**config_kwargs),
+                    history=history[-self.HISTORY_KEEP_SIZE :],
                 )
         else:
             # Clear history by creating new chat
             self.create_convo()
 
-        # for rate limit (RPM)
-        time.sleep(self.interval)
-        if num:
-            t_text = str(num) + "\n" + t_text
-        return t_text
+    def translate(self, text: str) -> str | None:
+        """Translate a single text string."""
+        delay = self.INITIAL_RETRY_DELAY
+        attempt_count = 0
+
+        text_list = text.splitlines()
+        paragraph_num = None
+        if len(text_list) > 1 and text_list[0].isdigit():
+            paragraph_num = text_list[0]
+
+        while attempt_count < self.MAX_RETRY_ATTEMPTS:
+            try:
+                response = self.convo.send_message(
+                    self.prompt.format(text=text, language=self.language)
+                )
+                t_text = self._extract_translation_text(response.text)
+
+                # Restore paragraph number if present
+                if paragraph_num:
+                    t_text = f"{paragraph_num}\n{t_text}"
+
+                # Manage history after successful translation
+                self._manage_conversation_history()
+
+                time.sleep(self.interval)
+                return t_text
+
+            except errors.APIError as e:
+                self._handle_api_error(e, delay, attempt_count)
+                delay *= self.EXPONENTIAL_BACKOFF_BASE
+            except Exception as e:
+                self._handle_general_error(e, delay, attempt_count)
+                delay *= self.EXPONENTIAL_BACKOFF_BASE
+
+            attempt_count += 1
+
+        print(f"Translation failed after {self.MAX_RETRY_ATTEMPTS} attempts.")
+        return None
+
+    def _handle_api_error(
+        self, error: errors.APIError, delay: float, attempt: int
+    ) -> None:
+        """Handle API errors with appropriate retry strategy."""
+        error_msg = str(error).lower()
+        if "blocked" in error_msg or "stop" in error_msg:
+            print(f"Translation failed due to API error: {error}. Switching model...")
+            self.rotate_model()
+        else:
+            print(
+                f"Translation failed due to API error: {error}. Retrying in {delay}s..."
+            )
+            time.sleep(delay)
+            self.rotate_key()
+            if attempt >= 1:
+                self.rotate_model()
+
+    def _handle_general_error(
+        self, error: Exception, delay: float, attempt: int
+    ) -> None:
+        """Handle general errors with exponential backoff."""
+        print(
+            f"Translation failed due to {type(error).__name__}: {error}. Retrying in {delay}s..."
+        )
+        time.sleep(delay)
+        self.rotate_key()
+        if attempt >= 1:
+            self.rotate_model()
 
     _available_models_cache = None
 
@@ -266,94 +301,81 @@ class Gemini(Base):
             return []
 
         if plist_len == 1:
-            return [self.translate(str(text_list[0]).strip())]
+            result = self.translate(str(text_list[0]).strip())
+            return [result] if result else []
 
-        # Build prompt for batch translation
+        return self._batch_translate(text_list, plist_len)
+
+    def _batch_translate(self, text_list: list[str], batch_size: int) -> list[str]:
+        """Attempt batch translation with retries and fallback."""
         stripped_texts = [str(t).strip() for t in text_list]
         batch_text = "\n\n".join(
             f"[{i+1}] {text}" for i, text in enumerate(stripped_texts)
         )
 
-        # Use user's prompt template (or default if not provided)
         prompt = self.prompt.format(text=batch_text, language=self.language)
-        # Add JSON schema instruction if not already present
         if "translated_paragraphs" not in prompt.lower():
             prompt += (
                 f"\n\nReturn the translations as a JSON object with a 'translated_paragraphs' "
-                f"field containing exactly {plist_len} translated texts in order."
+                f"field containing exactly {batch_size} translated texts in order."
             )
 
-        delay = 1
-        exponential_base = 2
+        delay = self.INITIAL_RETRY_DELAY
         attempt_count = 0
-        max_attempts = 7
 
-        while attempt_count < max_attempts:
+        while attempt_count < self.MAX_RETRY_ATTEMPTS:
             try:
-                # Use JSON schema enforcement for reliable parsing
                 response = self.convo.send_message(
                     prompt,
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
                         response_schema=TranslationResponse,
                         temperature=generation_config.temperature,
-                        max_output_tokens=generation_config.max_output_tokens,
                         system_instruction=self.prompt_sys_msg,
                     ),
                 )
 
-                # Parse JSON response (should always be valid due to schema enforcement)
-                try:
-                    result = json.loads(response.text)
-                    translated = result.get("translated_paragraphs", [])
-
-                    if len(translated) == plist_len:
-                        # for rate limit (RPM)
-                        time.sleep(self.interval)
-                        return translated
-                    else:
-                        print(
-                            f"Warning: Expected {plist_len} translations, got {len(translated)}. "
-                            f"Retrying..."
-                        )
-                except json.JSONDecodeError as e:
-                    print(f"Failed to parse JSON response: {e}. Retrying...")
-                    print(f"Response text: {response.text[:200]}")
+                result = self._parse_batch_response(response.text, batch_size)
+                if result:
+                    self._manage_conversation_history()
+                    time.sleep(self.interval)
+                    return result
 
             except errors.APIError as e:
-                error_msg = str(e).lower()
-                if "blocked" in error_msg or "stop" in error_msg:
-                    print(
-                        f"Batch translation failed due to API error: {e} "
-                        f"Attempting to switch model..."
-                    )
-                    self.rotate_model()
-                else:
-                    print(
-                        f"Batch translation failed due to API error: {e} "
-                        f"Will sleep {delay} seconds"
-                    )
-                    time.sleep(delay)
-                    delay *= exponential_base
-                    self.rotate_key()
-                    if attempt_count >= 1:
-                        self.rotate_model()
+                self._handle_api_error(e, delay, attempt_count)
+                delay *= self.EXPONENTIAL_BACKOFF_BASE
             except Exception as e:
-                print(
-                    f"Batch translation failed due to {type(e).__name__}: {e} "
-                    f"Will sleep {delay} seconds"
-                )
-                time.sleep(delay)
-                delay *= exponential_base
-                self.rotate_key()
-                if attempt_count >= 1:
-                    self.rotate_model()
+                self._handle_general_error(e, delay, attempt_count)
+                delay *= self.EXPONENTIAL_BACKOFF_BASE
 
             attempt_count += 1
 
-        # Fallback to one-by-one translation if batch fails
+        # Fallback to one-by-one translation
         print(
-            f"Batch translation failed after {max_attempts} attempts. "
+            f"Batch translation failed after {self.MAX_RETRY_ATTEMPTS} attempts. "
             f"Falling back to one-by-one translation."
         )
-        return [self.translate(t) for t in stripped_texts]
+        return [t for t in (self.translate(text) for text in text_list) if t]
+
+    def _parse_batch_response(
+        self, response_text: str, expected_count: int
+    ) -> list[str] | None:
+        """Parse and validate batch translation response."""
+        try:
+            result = json.loads(response_text)
+            translated = result.get("translated_paragraphs", [])
+
+            if len(translated) != expected_count:
+                print(
+                    f"Warning: Expected {expected_count} translations, got {len(translated)}. "
+                    f"Retrying..."
+                )
+                return None
+
+            # Remove leading paragraph numbers
+            return [self._remove_paragraph_number(str(t)) for t in translated]
+
+        except json.JSONDecodeError as e:
+            print(f"Failed to parse JSON response: {e}. Retrying...")
+            print(f"Response text: {response_text[:200]}")
+            return None
