@@ -82,7 +82,6 @@ class Gemini(Base):
 
     # Regex patterns
     TAG_PATTERN = r"<step3_refined_translation>(.*?)</step3_refined_translation>"
-    PARAGRAPH_NUMBER_PATTERN = r"^\s*[\[\(]\d+[\]\)]\s*"
 
     def __init__(
         self,
@@ -131,17 +130,13 @@ class Gemini(Base):
 
         return config_kwargs
 
-    def _remove_paragraph_number(self, text: str) -> str:
-        """Remove leading paragraph numbers like '[1]' or '(1)' from text."""
-        return re.sub(self.PARAGRAPH_NUMBER_PATTERN, "", text)
-
     def _extract_translation_text(self, response_text: str) -> str:
         """Extract translation from response, handling custom tags if present."""
         text = response_text.strip()
         tag_match = re.search(self.TAG_PATTERN, text, re.DOTALL)
         if tag_match:
             text = tag_match.group(1).strip()
-        return self._remove_paragraph_number(text)
+        return text
 
     def create_convo(self):
         """Create a new chat conversation with configured model."""
@@ -309,9 +304,7 @@ class Gemini(Base):
     def _batch_translate(self, text_list: list[str], batch_size: int) -> list[str]:
         """Attempt batch translation with retries and fallback."""
         stripped_texts = [str(t).strip() for t in text_list]
-        batch_text = "\n\n".join(
-            f"[{i+1}] {text}" for i, text in enumerate(stripped_texts)
-        )
+        batch_text = "\n\n".join(stripped_texts)
 
         prompt = self.prompt.format(text=batch_text, language=self.language)
         if "translated_paragraphs" not in prompt.lower():
@@ -372,8 +365,7 @@ class Gemini(Base):
                 )
                 return None
 
-            # Remove leading paragraph numbers
-            return [self._remove_paragraph_number(str(t)) for t in translated]
+            return [str(t) for t in translated]
 
         except json.JSONDecodeError as e:
             print(f"Failed to parse JSON response: {e}. Retrying...")
