@@ -114,8 +114,6 @@ class Gemini(Base):
 
     # Configuration constants
     DEFAULT_INTERVAL = 3
-    INITIAL_RETRY_DELAY = 1
-    EXPONENTIAL_BACKOFF_BASE = 2
     MAX_RETRY_ATTEMPTS = 7
     HISTORY_TRIM_THRESHOLD = 10
     HISTORY_KEEP_SIZE = 8
