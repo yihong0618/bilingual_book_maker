@@ -7,9 +7,13 @@ BATCH_DELIMITER = "\n\n@@\n\n"
 
 
 class Base(ABC):
+    # Default values for fatal error handling - subclasses can override
+    TRANSLATION_ERROR_MARKER = None
+
     def __init__(self, key, language) -> None:
         self.keys = itertools.cycle(key.split(","))
         self.language = language
+        self._fatal_error_detected = False
 
     @abstractmethod
     def rotate_key(self):
