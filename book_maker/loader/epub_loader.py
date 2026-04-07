@@ -288,6 +288,13 @@ class EPUBBookLoader(BaseBookLoader):
         if translated_text is None:
             translated_text = ""
 
+        # Skip insertion if translation failed
+        if (
+            self.translate_model.TRANSLATION_ERROR_MARKER is not None
+            and translated_text == self.translate_model.TRANSLATION_ERROR_MARKER
+        ):
+            return
+
         # Check if paragraph has excluded content tags
         exclude_tags_list = [t for t in self.exclude_translate_tags.split(",") if t]
         has_code_tags = any(p.find(tag) for tag in exclude_tags_list)
@@ -412,13 +419,32 @@ class EPUBBookLoader(BaseBookLoader):
             try:
                 translated_text_list = self.translate_model.translate_list(new_texts)
             except Exception as e:
-                print(f"[bold red]Translation error: {str(e)}[/bold red]")
-                raise
+                # Check if this is a fatal error
+                if self.translate_model._fatal_error_detected:
+                    print(
+                        f"[bold red]Fatal translation error detected. "
+                        f"Aborting translation.[/bold red]"
+                    )
+                    print(f"[bold red]Error: {str(e)}[/bold red]")
+                    # Return early with error markers
+                    translated_text_list = [
+                        self.translate_model.TRANSLATION_ERROR_MARKER
+                    ] * len(new_texts)
+                else:
+                    print(f"[bold red]Translation error: {str(e)}[/bold red]")
+                    raise
         else:
             translated_text_list = []
 
         translate_iter = iter(translated_text_list)
         for p, text, cached in entries:
+            # Check for fatal error and stop immediately
+            if self.translate_model._fatal_error_detected:
+                print(
+                    "[bold red]Fatal translation error detected. Stopping paragraph processing.[/bold red]"
+                )
+                break
+
             if text is not None:
                 # Fresh translation
                 t = next(translate_iter)
@@ -427,7 +453,16 @@ class EPUBBookLoader(BaseBookLoader):
                 )
                 self.p_to_save.append(t)
                 print(text)
-                print(f"[bold green]{t}[/bold green]")
+                # Check if translation failed
+                if (
+                    self.translate_model.TRANSLATION_ERROR_MARKER is not None
+                    and t == self.translate_model.TRANSLATION_ERROR_MARKER
+                ):
+                    print(
+                        f"[bold red][Translation failed for this paragraph][/bold red]"
+                    )
+                else:
+                    print(f"[bold green]{t}[/bold green]")
                 print()
             else:
                 # Resumed from cache
@@ -707,6 +742,14 @@ class EPUBBookLoader(BaseBookLoader):
             for p in p_list:
                 if is_test_done:
                     break
+
+                # Check for fatal error during processing
+                if self.translate_model._fatal_error_detected:
+                    print(
+                        "[bold red]Fatal translation error detected. Stopping chapter processing.[/bold red]"
+                    )
+                    break
+
                 if not p.text or self._is_special_text(p.text):
                     # Skip empty/special paragraphs without updating progress bar
                     continue
@@ -1056,6 +1099,14 @@ class EPUBBookLoader(BaseBookLoader):
             self.translation_style,
             self.context_flag,
         )
+
+        # Check for fatal errors before starting
+        if self.translate_model._fatal_error_detected:
+            print(
+                "[bold red]Fatal translation error detected. Aborting book creation.[/bold red]"
+            )
+            return
+
         self.batch_init_then_wait()
         new_book = self._make_new_book(self.origin_book)
         all_items = list(self.origin_book.get_items())
@@ -1129,6 +1180,14 @@ class EPUBBookLoader(BaseBookLoader):
                     }
 
                     for future in as_completed(future_to_item):
+                        # Check for fatal error
+                        if self.translate_model._fatal_error_detected:
+                            print(
+                                "[bold red]Fatal translation error detected. Stopping book creation.[/bold red]"
+                            )
+                            chapter_pbar.close()
+                            return
+
                         item = future_to_item[future]
                         try:
                             result = future.result()
@@ -1153,6 +1212,13 @@ class EPUBBookLoader(BaseBookLoader):
                     print(f"📄 Single chapter detected - using sequential processing")
 
                 for item in document_items:
+                    # Check for fatal error before processing each item
+                    if self.translate_model._fatal_error_detected:
+                        print(
+                            "[bold red]Fatal translation error detected. Stopping book creation.[/bold red]"
+                        )
+                        return
+
                     # Continue processing all chapters (to add them to book)
                     # but skip translation after test limit
                     if self.is_test and index >= self.test_num:
@@ -1163,6 +1229,14 @@ class EPUBBookLoader(BaseBookLoader):
                     index = self.process_item(
                         item, index, p_to_save_len, pbar, new_book, trans_taglist
                     )
+
+                    # Check for fatal error after processing
+                    if self.translate_model._fatal_error_detected:
+                        print(
+                            "[bold red]Fatal translation error detected. Aborting book creation.[/bold red]"
+                        )
+                        pbar.close()
+                        return
 
                 # Close progress bar
                 pbar.close()
