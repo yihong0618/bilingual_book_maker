@@ -3,6 +3,8 @@ import json
 import os
 from os import environ as env
 
+from rich import print
+
 from book_maker.loader import BOOK_LOADER_DICT
 from book_maker.translator import MODEL_DICT
 from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE
