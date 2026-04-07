@@ -20,6 +20,30 @@ PROMPT_ENV_MAP = {
     "system": "BBM_CHATGPTAPI_SYS_MSG",
 }
 
+# JSON Schema for structured batch translation output (OpenAI compatible)
+TRANSLATION_SCHEMA = {
+    "name": "translation_response",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {"paragraphs": {"type": "array", "items": {"type": "string"}}},
+        "required": ["paragraphs"],
+        "additionalProperties": False,
+    },
+}
+
+# Simpler schema for single translations
+SINGLE_TRANSLATION_SCHEMA = {
+    "name": "single_translation",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {"translated": {"type": "string"}},
+        "required": ["translated"],
+        "additionalProperties": False,
+    },
+}
+
 GPT35_MODEL_LIST = [
     "gpt-3.5-turbo",
     "gpt-3.5-turbo-1106",
@@ -121,6 +145,33 @@ class ChatGPTAPI(Base):
         self._api_lock = Lock()
         self.extra_body = extra_body or {}
 
+        # Structured outputs: auto-detected on first translate_list() call
+        # None means "not yet tested", will be set to True/False after test
+        self._use_structured_outputs = None
+        self.model = (
+            None  # Will be set by rotate_model() after model_list is initialized
+        )
+
+    def _test_structured_outputs(self):
+        """Test if the server supports structured outputs (strict json schema)"""
+        try:
+            test_messages = [{"role": "user", "content": "Say 'test'"}]
+            self.openai_client.chat.completions.create(
+                model=self.model,
+                messages=test_messages,
+                temperature=0.1,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": SINGLE_TRANSLATION_SCHEMA,
+                },
+            )
+            self._use_structured_outputs = True
+        except Exception:
+            self._use_structured_outputs = False
+            print(
+                "[yellow]ℹ Server doesn't support JSON schema, using delimiter method[/yellow]"
+            )
+
     def rotate_key(self):
         with self._api_lock:
             self.openai_client.api_key = next(self.keys)
@@ -160,17 +211,34 @@ class ChatGPTAPI(Base):
 
     def create_chat_completion(self, text):
         messages = self.create_messages(text, self.create_context_messages())
-        completion = self.openai_client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=self.temperature,
-            extra_body=self.extra_body if self.extra_body else None,
-        )
+
+        if self._use_structured_outputs:
+            completion = self.openai_client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=self.temperature,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": SINGLE_TRANSLATION_SCHEMA,
+                },
+                extra_body=self.extra_body if self.extra_body else None,
+            )
+        else:
+            completion = self.openai_client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=self.temperature,
+                extra_body=self.extra_body if self.extra_body else None,
+            )
         return completion
 
     def get_translation(self, text):
         self.rotate_key()
         self.rotate_model()  # rotate all the model to avoid the limit
+
+        # Auto-detect if not yet tested
+        if self._use_structured_outputs is None:
+            self._test_structured_outputs()
 
         completion = self.create_chat_completion(text)
 
@@ -180,6 +248,16 @@ class ChatGPTAPI(Base):
             t_text = completion.choices[0].message.content.encode("utf8").decode() or ""
         else:
             t_text = ""
+
+        # Parse structured output if enabled
+        if self._use_structured_outputs and t_text:
+            try:
+                parsed = json.loads(t_text)
+                t_text = parsed.get("translated", t_text)
+            except json.JSONDecodeError as e:
+                print(
+                    f"[yellow]Warning: Failed to parse structured output: {e}[/yellow]"
+                )
 
         if self.context_flag:
             self.save_context(text, t_text)
@@ -196,12 +274,9 @@ class ChatGPTAPI(Base):
                 self.context_translated_list.pop(0)
 
     def translate(self, text, needprint=True):
-        start_time = time.time()
-
         attempt_count = 0
         max_attempts = 3
         t_text = ""
-        last_exception = None
 
         while attempt_count < max_attempts:
             try:
@@ -220,15 +295,11 @@ class ChatGPTAPI(Base):
                     print(f"Get {attempt_count} consecutive exceptions")
                     raise
             except Exception as e:
-                last_exception = e
                 print(str(e))
                 attempt_count += 1
                 if attempt_count == max_attempts:
                     print(f"Get {attempt_count} consecutive exceptions, raising error")
                     raise e
-
-        time.time() - start_time
-        # print(f"translation time: {elapsed_time:.1f}s")
 
         return t_text
 
@@ -308,9 +379,19 @@ class ChatGPTAPI(Base):
 
     def translate_list(self, text_list):
         """
-        Translate multiple texts in a single batch request using delimiters.
+        Translate multiple texts using the best available method.
+        Priority: 1. Structured Outputs (strict) -> 2. Delimiter-based
         Returns a list of translated texts.
         """
+        # Auto-detect output mode on first use
+        if self._use_structured_outputs is None:
+            self._test_structured_outputs()
+
+        # Use structured outputs if available
+        if self._use_structured_outputs:
+            return self._do_structured_batch_translate(text_list)
+
+        # Fallback to delimiter-based method
         return self._do_batch_translate(
             text_list,
             self.prompt_template,
@@ -318,6 +399,119 @@ class ChatGPTAPI(Base):
             self.DEFAULT_PROMPT,
             lambda text: self.translate(text, False),
         )
+
+    def _create_structured_batch_messages(self, text_list):
+        """Create messages for structured batch translation"""
+        plist_len = len(text_list)
+
+        # Build the user message with all texts, incorporating user's prompt template
+        texts_json = json.dumps(text_list, ensure_ascii=False)
+
+        # Format user's prompt template with the JSON array as {text}
+        user_prompt = self.prompt_template.format(
+            text=texts_json, language=self.language, crlf="\n"
+        )
+
+        # Add structured format instruction
+        content = (
+            f"{user_prompt}\n\n"
+            f"Return a JSON object with a 'paragraphs' array containing EXACTLY {plist_len} translated strings."
+        )
+
+        sys_content = self.system_content or self.prompt_sys_msg.format(crlf="\n")
+
+        messages = [
+            {"role": "system", "content": sys_content},
+        ]
+
+        if self.context_flag:
+            messages.extend(self.create_context_messages())
+
+        messages.append({"role": "user", "content": content})
+        return messages
+
+    def _do_structured_batch_translate(self, text_list):
+        """Batch translate using structured outputs"""
+        plist_len = len(text_list)
+
+        if plist_len == 0:
+            return []
+
+        if plist_len == 1:
+            return [self.get_translation(text_list[0])]
+
+        attempt_count = 0
+        max_attempts = 3
+
+        while attempt_count < max_attempts:
+            try:
+                self.rotate_key()
+                self.rotate_model()
+
+                messages = self._create_structured_batch_messages(text_list)
+
+                completion = self.openai_client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=self.temperature,
+                    response_format={
+                        "type": "json_schema",
+                        "json_schema": TRANSLATION_SCHEMA,
+                    },
+                    extra_body=self.extra_body if self.extra_body else None,
+                )
+
+                t_text = (
+                    completion.choices[0].message.content.encode("utf8").decode() or ""
+                )
+
+                if not t_text:
+                    print(
+                        "[yellow]Warning: Structured output returned empty response.[/yellow]"
+                    )
+                    attempt_count += 1
+                    continue
+
+                try:
+                    parsed = json.loads(t_text)
+                    paragraphs = parsed.get("paragraphs", [])
+                except json.JSONDecodeError as e:
+                    print(
+                        f"[yellow]Warning: Failed to parse structured batch output: {e}. Falling back to one-by-one.[/yellow]"
+                    )
+                    return [self.translate(t, False) for t in text_list]
+
+                if len(paragraphs) != plist_len:
+                    print(
+                        f"[yellow]Warning: Expected {plist_len} translations, got {len(paragraphs)}. "
+                        f"Falling back to one-by-one translation.[/yellow]"
+                    )
+                    return [self.translate(t, False) for t in text_list]
+
+                if self.context_flag:
+                    for orig, trans in zip(text_list, paragraphs):
+                        self.save_context(orig, trans)
+
+                return paragraphs
+
+            except RateLimitError as e:
+                sleep_time = int(60 / self.key_len)
+                print(e, f"will sleep {sleep_time} seconds")
+                time.sleep(sleep_time)
+                attempt_count += 1
+                if attempt_count == max_attempts:
+                    print(f"Get {attempt_count} consecutive exceptions")
+                    print("[yellow]Falling back to one-by-one translation.[/yellow]")
+                    return [self.translate(t, False) for t in text_list]
+            except Exception as e:
+                print(str(e))
+                attempt_count += 1
+                if attempt_count == max_attempts:
+                    print(
+                        f"Get {attempt_count} consecutive exceptions, "
+                        f"falling back to one-by-one translation."
+                    )
+                    return [self.translate(t, False) for t in text_list]
 
     def set_deployment_id(self, deployment_id):
         self.deployment_id = deployment_id
@@ -331,10 +525,12 @@ class ChatGPTAPI(Base):
     def set_gpt35_models(self, ollama_model=""):
         if ollama_model:
             self.model_list = cycle([ollama_model])
+            self.model = ollama_model
             return
         # gpt3 all models for save the limit
         if self.deployment_id:
             self.model_list = cycle(["gpt-35-turbo"])
+            self.model = "gpt-35-turbo"
         else:
             my_model_list = [
                 i["id"] for i in self.openai_client.models.list().model_dump()["data"]
@@ -342,11 +538,13 @@ class ChatGPTAPI(Base):
             model_list = list(set(my_model_list) & set(GPT35_MODEL_LIST))
             print(f"Using model list {model_list}")
             self.model_list = cycle(model_list)
+            self.model = model_list[0]
 
     def set_gpt4_models(self):
         # for issue #375 azure can not use model list
         if self.deployment_id:
             self.model_list = cycle(["gpt-4"])
+            self.model = "gpt-4"
         else:
             my_model_list = [
                 i["id"] for i in self.openai_client.models.list().model_dump()["data"]
@@ -354,11 +552,13 @@ class ChatGPTAPI(Base):
             model_list = list(set(my_model_list) & set(GPT4_MODEL_LIST))
             print(f"Using model list {model_list}")
             self.model_list = cycle(model_list)
+            self.model = model_list[0]
 
     def set_gpt4omini_models(self):
         # for issue #375 azure can not use model list
         if self.deployment_id:
             self.model_list = cycle(["gpt-4o-mini"])
+            self.model = "gpt-4o-mini"
         else:
             my_model_list = [
                 i["id"] for i in self.openai_client.models.list().model_dump()["data"]
@@ -366,11 +566,13 @@ class ChatGPTAPI(Base):
             model_list = list(set(my_model_list) & set(GPT4oMINI_MODEL_LIST))
             print(f"Using model list {model_list}")
             self.model_list = cycle(model_list)
+            self.model = model_list[0]
 
     def set_gpt4o_models(self):
         # for issue #375 azure can not use model list
         if self.deployment_id:
             self.model_list = cycle(["gpt-4o"])
+            self.model = "gpt-4o"
         else:
             my_model_list = [
                 i["id"] for i in self.openai_client.models.list().model_dump()["data"]
@@ -378,11 +580,13 @@ class ChatGPTAPI(Base):
             model_list = list(set(my_model_list) & set(GPT4o_MODEL_LIST))
             print(f"Using model list {model_list}")
             self.model_list = cycle(model_list)
+            self.model = model_list[0]
 
     def set_gpt5mini_models(self):
         # for issue #375 azure can not use model list
         if self.deployment_id:
             self.model_list = cycle(["gpt-5-mini"])
+            self.model = "gpt-5-mini"
         else:
             my_model_list = [
                 i["id"] for i in self.openai_client.models.list().model_dump()["data"]
@@ -390,11 +594,13 @@ class ChatGPTAPI(Base):
             model_list = list(set(my_model_list) & set(GPT5MINI_MODEL_LIST))
             print(f"Using model list {model_list}")
             self.model_list = cycle(model_list)
+            self.model = model_list[0]
 
     def set_o1preview_models(self):
         # for issue #375 azure can not use model list
         if self.deployment_id:
             self.model_list = cycle(["o1-preview"])
+            self.model = "o1-preview"
         else:
             my_model_list = [
                 i["id"] for i in self.openai_client.models.list().model_dump()["data"]
@@ -402,11 +608,13 @@ class ChatGPTAPI(Base):
             model_list = list(set(my_model_list) & set(O1PREVIEW_MODEL_LIST))
             print(f"Using model list {model_list}")
             self.model_list = cycle(model_list)
+            self.model = model_list[0]
 
     def set_o1_models(self):
         # for issue #375 azure can not use model list
         if self.deployment_id:
             self.model_list = cycle(["o1"])
+            self.model = "o1"
         else:
             my_model_list = [
                 i["id"] for i in self.openai_client.models.list().model_dump()["data"]
@@ -414,11 +622,13 @@ class ChatGPTAPI(Base):
             model_list = list(set(my_model_list) & set(O1_MODEL_LIST))
             print(f"Using model list {model_list}")
             self.model_list = cycle(model_list)
+            self.model = model_list[0]
 
     def set_o1mini_models(self):
         # for issue #375 azure can not use model list
         if self.deployment_id:
             self.model_list = cycle(["o1-mini"])
+            self.model = "o1-mini"
         else:
             my_model_list = [
                 i["id"] for i in self.openai_client.models.list().model_dump()["data"]
@@ -426,11 +636,13 @@ class ChatGPTAPI(Base):
             model_list = list(set(my_model_list) & set(O1MINI_MODEL_LIST))
             print(f"Using model list {model_list}")
             self.model_list = cycle(model_list)
+            self.model = model_list[0]
 
     def set_o3mini_models(self):
         # for issue #375 azure can not use model list
         if self.deployment_id:
             self.model_list = cycle(["o3-mini"])
+            self.model = "o3-mini"
         else:
             my_model_list = [
                 i["id"] for i in self.openai_client.models.list().model_dump()["data"]
@@ -438,11 +650,15 @@ class ChatGPTAPI(Base):
             model_list = list(set(my_model_list) & set(O3MINI_MODEL_LIST))
             print(f"Using model list {model_list}")
             self.model_list = cycle(model_list)
+            self.model = model_list[0]
 
     def set_model_list(self, model_list):
         model_list = list(set(model_list))
         print(f"Using model list {model_list}")
         self.model_list = cycle(model_list)
+        self.model = model_list[
+            0
+        ]  # Set initial model so it's available before rotate_model() is called
 
     def batch_init(self, book_name):
         self.book_name = self.sanitize_book_name(book_name)
@@ -514,9 +730,26 @@ class ChatGPTAPI(Base):
             if line.strip():
                 result = json.loads(line)
                 if result["custom_id"] == custom_id:
-                    return result["response"]["body"]["choices"][0]["message"][
+                    content = result["response"]["body"]["choices"][0]["message"][
                         "content"
                     ]
+
+                    # Parse JSON response if using structured outputs
+                    if self._use_structured_outputs:
+                        try:
+                            parsed = json.loads(content)
+                            if "translated" in parsed:
+                                return parsed["translated"]
+                            elif "paragraphs" in parsed:
+                                return (
+                                    parsed["paragraphs"][0]
+                                    if parsed["paragraphs"]
+                                    else content
+                                )
+                        except json.JSONDecodeError:
+                            return content  # Return as-is if parsing fails
+
+                    return content
 
         raise ValueError(f"No result found for custom_id {custom_id}")
 
@@ -555,16 +788,25 @@ class ChatGPTAPI(Base):
         messages = self.create_messages(
             text, self.create_batch_context_messages(book_index)
         )
+
+        batch_body = {
+            "model": self.batch_model,
+            "messages": messages,
+            "temperature": self.temperature,
+        }
+
+        # Add response format for batch requests if using structured outputs
+        if self._use_structured_outputs:
+            batch_body["response_format"] = {
+                "type": "json_schema",
+                "json_schema": SINGLE_TRANSLATION_SCHEMA,
+            }
+
         return {
             "custom_id": self.custom_id(book_index),
             "method": "POST",
             "url": "/v1/chat/completions",
-            "body": {
-                # model shuould not be rotate
-                "model": self.batch_model,
-                "messages": messages,
-                "temperature": self.temperature,
-            },
+            "body": batch_body,
         }
 
     def create_batch_files(self, dest_file_path):
