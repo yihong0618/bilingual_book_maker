@@ -517,12 +517,20 @@ class ChatGPTAPI(Base):
     )
     def _fetch_api_models_with_retry(self):
         """Fetch available models from API with retry logic.
-        Returns list of model IDs or raises Exception after max retries."""
+        Returns list of model IDs, or None if the models API is not available (e.g., 404).
+        """
         try:
             return [
                 i["id"] for i in self.openai_client.models.list().model_dump()["data"]
             ]
         except Exception as e:
+            # Check if it's a 404 error (models endpoint not supported)
+            error_str = str(e).lower()
+            if "404" in error_str or "not found" in error_str:
+                print(
+                    "[yellow]Model availability check skipped: API does not support models endpoint.[/yellow]"
+                )
+                return None
             print(
                 f"[yellow]Error checking model availability: {e}. Retrying...[/yellow]"
             )
@@ -533,6 +541,19 @@ class ChatGPTAPI(Base):
         Returns a dict with 'success', 'available_models', and 'unavailable_models' keys.
         """
         api_models = self._fetch_api_models_with_retry()
+
+        # If models API is not available, skip validation
+        if api_models is None:
+            print(
+                "[yellow]Skipping model validation: API does not support models endpoint.[/yellow]"
+            )
+            return {
+                "success": True,
+                "available_models": custom_model_list,
+                "unavailable_models": [],
+                "api_models": [],
+            }
+
         available_models = list(set(custom_model_list) & set(api_models))
         unavailable_models = list(set(custom_model_list) - set(api_models))
 
@@ -582,11 +603,19 @@ class ChatGPTAPI(Base):
 
         # For regular OpenAI client, fetch and filter available models
         my_model_list = self._fetch_api_models_with_retry()
-        model_list = list(set(my_model_list) & allowed_models)
-        if not self._check_model_availability(model_list, model_family_name):
-            raise Exception(
-                f"No {model_family_name} models available. Available models: {my_model_list}"
+
+        # If models API is not available, skip validation and use allowed models directly
+        if my_model_list is None:
+            print(
+                f"[yellow]Using {model_family_name} models without API validation: {list(allowed_models)}[/yellow]"
             )
+            model_list = list(allowed_models)
+        else:
+            model_list = list(set(my_model_list) & allowed_models)
+            if not self._check_model_availability(model_list, model_family_name):
+                raise Exception(
+                    f"No {model_family_name} models available. Available models: {my_model_list}"
+                )
         print(f"Using model list {model_list}")
         self.model_list = cycle(model_list)
         self.model = model_list[0]
