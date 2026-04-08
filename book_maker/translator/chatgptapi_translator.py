@@ -7,7 +7,7 @@ from itertools import cycle
 import json
 from threading import Lock
 
-from openai import AzureOpenAI, OpenAI, RateLimitError
+from openai import AzureOpenAI, NotFoundError, OpenAI, RateLimitError
 from rich import print
 from tenacity import (
     retry,
@@ -523,14 +523,13 @@ class ChatGPTAPI(Base):
             return [
                 i["id"] for i in self.openai_client.models.list().model_dump()["data"]
             ]
+        except NotFoundError:
+            # 404 — models endpoint not supported by this API provider
+            print(
+                "[yellow]Model availability check skipped: API does not support models endpoint.[/yellow]"
+            )
+            return None
         except Exception as e:
-            # Check if it's a 404 error (models endpoint not supported)
-            error_str = str(e).lower()
-            if "404" in error_str or "not found" in error_str:
-                print(
-                    "[yellow]Model availability check skipped: API does not support models endpoint.[/yellow]"
-                )
-                return None
             print(
                 f"[yellow]Error checking model availability: {e}. Retrying...[/yellow]"
             )
@@ -542,29 +541,38 @@ class ChatGPTAPI(Base):
         """
         api_models = self._fetch_api_models_with_retry()
 
-        # If models API is not available, validate by testing the model directly
+        # If models API is not available, validate by testing each model directly
         if api_models is None:
-            # Test the first custom model to verify it works
-            test_model = custom_model_list[0]
-            try:
-                self._validate_model_with_test(test_model, "custom")
-                print(
-                    "[yellow]Skipping model validation: API does not support models endpoint.[/yellow]"
-                )
-                return {
-                    "success": True,
-                    "available_models": custom_model_list,
-                    "unavailable_models": [],
-                    "api_models": [],
-                }
-            except Exception as e:
-                print(f"[red]{e}[/red]")
+            available_models = []
+            unavailable_models = []
+
+            for model_name in custom_model_list:
+                try:
+                    self._validate_model_with_test(model_name, "custom")
+                    available_models.append(model_name)
+                except Exception as e:
+                    print(f"[red]{e}[/red]")
+                    unavailable_models.append(model_name)
+
+            if not available_models:
                 return {
                     "success": False,
                     "available_models": [],
                     "unavailable_models": custom_model_list,
                     "api_models": [],
                 }
+
+            if unavailable_models:
+                print(
+                    f"[yellow]Warning: {unavailable_models} not accessible, using {available_models}[/yellow]"
+                )
+
+            return {
+                "success": True,
+                "available_models": available_models,
+                "unavailable_models": unavailable_models,
+                "api_models": [],
+            }
 
         available_models = list(set(custom_model_list) & set(api_models))
         unavailable_models = list(set(custom_model_list) - set(api_models))
@@ -616,15 +624,34 @@ class ChatGPTAPI(Base):
         # For regular OpenAI client, fetch and filter available models
         my_model_list = self._fetch_api_models_with_retry()
 
-        # If models API is not available, validate by testing the model directly
+        # If models API is not available, validate by testing each model directly
         if my_model_list is None:
-            # Test the first model in the allowed list to verify it works
-            test_model = list(allowed_models)[0]
-            self._validate_model_with_test(test_model, model_family_name)
+            available_models = []
+            unavailable_models = []
+
+            for model_name in allowed_models:
+                try:
+                    self._validate_model_with_test(model_name, model_family_name)
+                    available_models.append(model_name)
+                except Exception as e:
+                    print(f"[red]{e}[/red]")
+                    unavailable_models.append(model_name)
+
+            if not available_models:
+                raise Exception(
+                    f"No {model_family_name} models are accessible. "
+                    f"Please check the model names and your API permissions."
+                )
+
+            if unavailable_models:
+                print(
+                    f"[yellow]Warning: {unavailable_models} not accessible, using {available_models}[/yellow]"
+                )
+
             print(
-                f"[yellow]Using {model_family_name} models without API validation: {list(allowed_models)}[/yellow]"
+                f"[yellow]Using {model_family_name} models without API validation: {available_models}[/yellow]"
             )
-            model_list = list(allowed_models)
+            model_list = available_models
         else:
             model_list = list(set(my_model_list) & allowed_models)
             if not self._check_model_availability(model_list, model_family_name):
@@ -638,8 +665,14 @@ class ChatGPTAPI(Base):
     def _validate_model_with_test(self, model_name: str, model_family_name: str):
         """Validate a model by making a test request when models API is unavailable.
         Raises Exception if the model is not accessible.
+
+        NOTE: This makes a real API call (~10 tokens) to verify the model works.
+        This adds a small delay on startup but provides early error detection.
         """
-        print(f"[yellow]Testing model '{model_name}' with a simple request...[/yellow]")
+        print(
+            f"[yellow]Model validation: Making a test API call to verify '{model_name}' is accessible. "
+            f"This uses ~10 tokens.[/yellow]"
+        )
         try:
             # Make a minimal test request
             test_messages = [{"role": "user", "content": "Say 'ok'"}]
