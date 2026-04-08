@@ -125,6 +125,53 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   python3 make_book.py --book_name test_books/animal_farm.epub --groq_key [your_key] --model groq --model_list llama3-8b-8192
   ```
 
+* Custom API Provider
+
+  If the built-in models don't cover your needs, you can define custom providers via a JSON config file. This lets you use any OpenAI-compatible API (DeepSeek, SiliconFlow, local proxies, etc.) without modifying source code.
+
+  Create `bbm_providers.json` in the current directory (or `~/.bbm/providers.json` for global config):
+
+  ```json
+  {
+    "providers": {
+      "deepseek": {
+        "api_style": "openai",
+        "base_url": "https://api.deepseek.com/v1",
+        "default_models": ["deepseek-chat", "deepseek-reasoner"],
+        "env_key": "BBM_DEEPSEEK_API_KEY"
+      },
+      "siliconflow": {
+        "api_style": "openai",
+        "base_url": "https://api.siliconflow.cn/v1",
+        "default_models": ["Qwen/Qwen2.5-72B-Instruct"],
+        "env_key": "BBM_SILICONFLOW_API_KEY"
+      }
+    }
+  }
+  ```
+
+  Config fields:
+
+  | Field | Required | Description |
+  |-------|----------|-------------|
+  | `api_style` | Yes | Translator interface style. Supported: `openai`, `claude`, `gemini`, `qwen` |
+  | `base_url` | No | API endpoint URL. Falls back to the api_style's default |
+  | `default_models` | No | Default model list. Required if `--model_list` is not provided |
+  | `env_key` | No | Environment variable name for API key. Required if `--api_key` is not provided |
+
+  Priority: project-level `./bbm_providers.json` overrides global `~/.bbm/providers.json`.
+
+  `--provider` and `--model` are mutually exclusive.
+
+  ```shell
+  python3 make_book.py --provider deepseek --api_key sk-xxx --book_name test_books/animal_farm.epub
+
+  export BBM_DEEPSEEK_API_KEY=sk-xxx
+  python3 make_book.py --provider deepseek --book_name test_books/animal_farm.epub
+
+  python3 make_book.py --provider deepseek --api_key sk-xxx --model_list deepseek-reasoner --book_name test_books/animal_farm.epub
+  ```
+
 ## Use
 
 - Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated for EPUB inputs; for TXT/MD/SRT inputs a bilingual text (or subtitle) file named `${book_name}_bilingual.txt` (or `_bilingual.srt`) will be generated. For **PDF inputs** the tool will produce a bilingual `.txt` fallback and will also attempt to create `${book_name}_bilingual.epub` — if EPUB creation fails, the TXT fallback remains so you do not need to retranslate.
@@ -267,6 +314,14 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --extra_body '{"chat_template_kwargs": {"enable_thinking": false}}'
   ```
 
+- `--provider`:
+
+  Use a custom provider defined in `bbm_providers.json`. Mutually exclusive with `--model`. See the "Custom API Provider" section above.
+
+- `--api_key`:
+
+  API key for custom providers (used with `--provider`). Can also be set via the `env_key` field in the provider config.
+
 ### Examples
 
 **Note if use `pip install bbook_maker` all commands can change to `bbook_maker args`**
@@ -313,6 +368,9 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model claude --cl
 
 # Use the CustomAPI model with Japanese
 python3 make_book.py --book_name test_books/animal_farm.epub --model customapi --custom_api ${custom_api} --language ja
+
+# Use a custom provider (e.g. DeepSeek)
+python3 make_book.py --book_name test_books/animal_farm.epub --provider deepseek --api_key sk-xxx --language ja
 
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p

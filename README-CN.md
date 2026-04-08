@@ -111,6 +111,53 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   python3 make_book.py --book_name test_books/animal_farm.epub --groq_key [your_key] --model groq --model_list llama3-8b-8192
   ```
 
+* 自定义 API Provider
+
+  内置模型不满足需求时，可以通过 JSON 配置文件自定义 provider。不需要改代码，就能使用任何 OpenAI 兼容的 API（DeepSeek、SiliconFlow、本地代理等）。
+
+  在当前目录创建 `bbm_providers.json`（全局配置放在 `~/.bbm/providers.json`）：
+
+  ```json
+  {
+    "providers": {
+      "deepseek": {
+        "api_style": "openai",
+        "base_url": "https://api.deepseek.com/v1",
+        "default_models": ["deepseek-chat", "deepseek-reasoner"],
+        "env_key": "BBM_DEEPSEEK_API_KEY"
+      },
+      "siliconflow": {
+        "api_style": "openai",
+        "base_url": "https://api.siliconflow.cn/v1",
+        "default_models": ["Qwen/Qwen2.5-72B-Instruct"],
+        "env_key": "BBM_SILICONFLOW_API_KEY"
+      }
+    }
+  }
+  ```
+
+  配置字段说明：
+
+  | 字段 | 必填 | 说明 |
+  |------|------|------|
+  | `api_style` | 是 | 翻译器接口风格。支持：`openai`、`claude`、`gemini`、`qwen` |
+  | `base_url` | 否 | API 地址。不填则使用该 api_style 的默认地址 |
+  | `default_models` | 否 | 默认模型列表。不填则必须通过 `--model_list` 指定 |
+  | `env_key` | 否 | 读取 API key 的环境变量名。不填则必须通过 `--api_key` 传入 |
+
+  优先级：项目级 `./bbm_providers.json` 覆盖全局 `~/.bbm/providers.json`。
+
+  `--provider` 和 `--model` 互斥，不能同时使用。
+
+  ```shell
+  python3 make_book.py --provider deepseek --api_key sk-xxx --book_name test_books/animal_farm.epub
+
+  export BBM_DEEPSEEK_API_KEY=sk-xxx
+  python3 make_book.py --provider deepseek --book_name test_books/animal_farm.epub
+
+  python3 make_book.py --provider deepseek --api_key sk-xxx --model_list deepseek-reasoner --book_name test_books/animal_farm.epub
+  ```
+
 ## 使用说明
 
 - 翻译完会生成一本 `{book_name}_bilingual.epub` 的双语书
@@ -220,6 +267,14 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which'
   ```
 
+- `--provider`:
+
+  使用 `bbm_providers.json` 中定义的自定义 provider。与 `--model` 互斥。详见上方「自定义 API Provider」章节。
+
+- `--api_key`:
+
+  自定义 provider 的 API key（与 `--provider` 配合使用）。也可通过配置文件中的 `env_key` 字段指定环境变量。
+
 ### 示范用例
 
 **如果使用 `pip install bbook_maker` 以下命令都可以改成 `bbook args`**
@@ -245,6 +300,9 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model claude --cl
 
 # Use the CustomAPI model with Japanese
 python3 make_book.py --book_name test_books/animal_farm.epub --model customapi --custom_api ${custom_api} --language ja
+
+# 使用自定义 provider（如 DeepSeek）
+python3 make_book.py --book_name test_books/animal_farm.epub --provider deepseek --api_key sk-xxx --language ja
 
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p

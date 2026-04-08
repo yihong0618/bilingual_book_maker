@@ -7,6 +7,7 @@ from rich import print
 
 from book_maker.loader import BOOK_LOADER_DICT
 from book_maker.translator import MODEL_DICT
+from book_maker.provider_loader import get_provider, get_translator_class
 from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE
 
 
@@ -212,7 +213,7 @@ def main():
         "--model",
         dest="model",
         type=str,
-        default="chatgptapi",
+        default=None,
         choices=translate_model_list,  # support DeepL later
         metavar="MODEL",
         help="model to use, available: {%(choices)s}",
@@ -414,8 +415,24 @@ So you are close to reaching the limit. You have to choose your own value, there
         default="",
         help='JSON string of extra body parameters to pass to the API. Example: --extra_body \'{"chat_template_kwargs": {"enable_thinking": false}}\'',
     )
+    parser.add_argument(
+        "--provider",
+        dest="provider",
+        type=str,
+        help="Use a custom provider defined in bbm_providers.json (mutually exclusive with --model)",
+    )
+    parser.add_argument(
+        "--api_key",
+        dest="api_key",
+        type=str,
+        default="",
+        help="API key for custom providers (used with --provider)",
+    )
 
     options = parser.parse_args()
+
+    if options.provider and options.model:
+        parser.error("--provider and --model are mutually exclusive")
 
     if not options.book_name:
         print("Error: please provide the path of your book using --book_name <path>")
@@ -429,7 +446,15 @@ So you are close to reaching the limit. You have to choose your own value, there
         os.environ["http_proxy"] = PROXY
         os.environ["https_proxy"] = PROXY
 
-    translate_model = MODEL_DICT.get(options.model)
+    provider_cfg = None
+    if options.provider:
+        provider_cfg = get_provider(options.provider)
+        translate_model = get_translator_class(provider_cfg["api_style"])
+    elif options.model:
+        translate_model = MODEL_DICT.get(options.model)
+    else:
+        translate_model = MODEL_DICT.get("chatgptapi")
+        options.model = "chatgptapi"
     assert translate_model is not None, "unsupported model"
     API_KEY = ""
     if options.model in [
@@ -486,6 +511,12 @@ So you are close to reaching the limit. You have to choose your own value, there
         API_KEY = options.xai_key or env.get("BBM_XAI_API_KEY")
     elif options.model.startswith("qwen-"):
         API_KEY = options.qwen_key or env.get("BBM_QWEN_API_KEY")
+    elif options.provider:
+        env_key_name = provider_cfg.get("env_key", "") if provider_cfg else ""
+        API_KEY = options.api_key or (env.get(env_key_name) if env_key_name else "")
+        if not API_KEY:
+            hint = f" or set {env_key_name}" if env_key_name else ""
+            raise Exception(f"Please provide API key via --api_key{hint}")
     else:
         API_KEY = ""
 
@@ -519,6 +550,9 @@ So you are close to reaching the limit. You have to choose your own value, there
     if options.ollama_model and not model_api_base:
         # ollama default api_base
         model_api_base = "http://localhost:11434/v1"
+
+    if options.provider and provider_cfg and not model_api_base:
+        model_api_base = provider_cfg.get("base_url")
 
     e = book_loader(
         options.book_name,
@@ -641,6 +675,18 @@ So you are close to reaching the limit. You have to choose your own value, there
             e.translate_model.set_geminiflash_models()
     if options.model == "geminipro":
         e.translate_model.set_geminipro_models()
+
+    if options.provider and provider_cfg:
+        if options.model_list:
+            e.translate_model.set_model_list(options.model_list.split(","))
+        else:
+            default_models = provider_cfg.get("default_models", [])
+            if default_models:
+                e.translate_model.set_model_list(default_models)
+            else:
+                raise ValueError(
+                    "Provider has no default_models. Please provide --model_list"
+                )
 
     e.make_bilingual_book()
 
