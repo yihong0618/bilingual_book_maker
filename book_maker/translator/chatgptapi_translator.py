@@ -9,6 +9,12 @@ from threading import Lock
 
 from openai import AzureOpenAI, OpenAI, RateLimitError
 from rich import print
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 
 from .base_translator import Base
 from ..config import config
@@ -232,6 +238,12 @@ class ChatGPTAPI(Base):
             )
         return completion
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=60),
+        retry=retry_if_exception_type((RateLimitError, Exception)),
+        reraise=True,
+    )
     def get_translation(self, text):
         self.rotate_key()
         self.rotate_model()  # rotate all the model to avoid the limit
@@ -274,34 +286,12 @@ class ChatGPTAPI(Base):
                 self.context_translated_list.pop(0)
 
     def translate(self, text, needprint=True):
-        attempt_count = 0
-        max_attempts = 3
-        t_text = ""
-
-        while attempt_count < max_attempts:
-            try:
-                t_text = self.get_translation(text)
-                break
-            except RateLimitError as e:
-                # todo: better sleep time? why sleep alawys about key_len
-                # 1. openai server error or own network interruption, sleep for a fixed time
-                # 2. an apikey has no money or reach limit, don`t sleep, just replace it with another apikey
-                # 3. all apikey reach limit, then use current sleep
-                sleep_time = int(60 / self.key_len)
-                print(e, f"will sleep {sleep_time} seconds")
-                time.sleep(sleep_time)
-                attempt_count += 1
-                if attempt_count == max_attempts:
-                    print(f"Get {attempt_count} consecutive exceptions")
-                    raise
-            except Exception as e:
-                print(str(e))
-                attempt_count += 1
-                if attempt_count == max_attempts:
-                    print(f"Get {attempt_count} consecutive exceptions, raising error")
-                    raise e
-
-        return t_text
+        try:
+            t_text = self.get_translation(text)
+            return t_text
+        except Exception as e:
+            print(f"Translation failed after retries: {e}")
+            raise
 
     def translate_and_split_lines(self, text):
         result_str = self.translate(text, False)
@@ -440,78 +430,61 @@ class ChatGPTAPI(Base):
         if plist_len == 1:
             return [self.get_translation(text_list[0])]
 
-        attempt_count = 0
-        max_attempts = 3
+        try:
+            result = self._execute_structured_batch_translate(text_list, plist_len)
+            return result
+        except Exception as e:
+            print(
+                f"[yellow]Structured batch translation failed after retries: {e}. "
+                f"Falling back to one-by-one translation.[/yellow]"
+            )
+            return [self.translate(t, False) for t in text_list]
 
-        while attempt_count < max_attempts:
-            try:
-                self.rotate_key()
-                self.rotate_model()
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=60),
+        retry=retry_if_exception_type((RateLimitError, Exception)),
+        reraise=True,
+    )
+    def _execute_structured_batch_translate(self, text_list, plist_len):
+        """Execute the actual structured batch translation with tenacity retry"""
+        self.rotate_key()
+        self.rotate_model()
 
-                messages = self._create_structured_batch_messages(text_list)
+        messages = self._create_structured_batch_messages(text_list)
 
-                completion = self.openai_client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    temperature=self.temperature,
-                    response_format={
-                        "type": "json_schema",
-                        "json_schema": TRANSLATION_SCHEMA,
-                    },
-                    extra_body=self.extra_body if self.extra_body else None,
-                )
+        completion = self.openai_client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            temperature=self.temperature,
+            response_format={
+                "type": "json_schema",
+                "json_schema": TRANSLATION_SCHEMA,
+            },
+            extra_body=self.extra_body if self.extra_body else None,
+        )
 
-                t_text = (
-                    completion.choices[0].message.content.encode("utf8").decode() or ""
-                )
+        t_text = completion.choices[0].message.content.encode("utf8").decode() or ""
 
-                if not t_text:
-                    print(
-                        "[yellow]Warning: Structured output returned empty response.[/yellow]"
-                    )
-                    attempt_count += 1
-                    continue
+        if not t_text:
+            raise ValueError("Structured output returned empty response")
 
-                try:
-                    parsed = json.loads(t_text)
-                    paragraphs = parsed.get("paragraphs", [])
-                except json.JSONDecodeError as e:
-                    print(
-                        f"[yellow]Warning: Failed to parse structured batch output: {e}. Falling back to one-by-one.[/yellow]"
-                    )
-                    return [self.translate(t, False) for t in text_list]
+        try:
+            parsed = json.loads(t_text)
+            paragraphs = parsed.get("paragraphs", [])
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse structured batch output: {e}") from e
 
-                if len(paragraphs) != plist_len:
-                    print(
-                        f"[yellow]Warning: Expected {plist_len} translations, got {len(paragraphs)}. "
-                        f"Falling back to one-by-one translation.[/yellow]"
-                    )
-                    return [self.translate(t, False) for t in text_list]
+        if len(paragraphs) != plist_len:
+            raise ValueError(
+                f"Expected {plist_len} translations, got {len(paragraphs)}"
+            )
 
-                if self.context_flag:
-                    for orig, trans in zip(text_list, paragraphs):
-                        self.save_context(orig, trans)
+        if self.context_flag:
+            for orig, trans in zip(text_list, paragraphs):
+                self.save_context(orig, trans)
 
-                return paragraphs
-
-            except RateLimitError as e:
-                sleep_time = int(60 / self.key_len)
-                print(e, f"will sleep {sleep_time} seconds")
-                time.sleep(sleep_time)
-                attempt_count += 1
-                if attempt_count == max_attempts:
-                    print(f"Get {attempt_count} consecutive exceptions")
-                    print("[yellow]Falling back to one-by-one translation.[/yellow]")
-                    return [self.translate(t, False) for t in text_list]
-            except Exception as e:
-                print(str(e))
-                attempt_count += 1
-                if attempt_count == max_attempts:
-                    print(
-                        f"Get {attempt_count} consecutive exceptions, "
-                        f"falling back to one-by-one translation."
-                    )
-                    return [self.translate(t, False) for t in text_list]
+        return paragraphs
 
     def set_deployment_id(self, deployment_id):
         self.deployment_id = deployment_id
@@ -536,32 +509,24 @@ class ChatGPTAPI(Base):
             return False
         return True
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(Exception),
+        reraise=True,
+    )
     def _fetch_api_models_with_retry(self):
         """Fetch available models from API with retry logic.
         Returns list of model IDs or raises Exception after max retries."""
-        max_retries = 3
-        retry_delay = 2  # seconds
-
-        for attempt in range(max_retries):
-            try:
-                return [
-                    i["id"]
-                    for i in self.openai_client.models.list().model_dump()["data"]
-                ]
-            except Exception as e:
-                if attempt < max_retries - 1:
-                    print(
-                        f"[yellow]Error checking model availability: {e}. Retrying ({attempt + 1}/{max_retries})...[/yellow]"
-                    )
-                    time.sleep(retry_delay)
-                else:
-                    print(
-                        f"[red]Error checking model availability after {max_retries} retries: {e}[/red]"
-                    )
-                    raise Exception(
-                        f"Cannot validate models due to connection error: {e}. "
-                        f"Check your network, API server, and endpoint configuration."
-                    )
+        try:
+            return [
+                i["id"] for i in self.openai_client.models.list().model_dump()["data"]
+            ]
+        except Exception as e:
+            print(
+                f"[yellow]Error checking model availability: {e}. Retrying...[/yellow]"
+            )
+            raise
 
     def _validate_custom_models(self, custom_model_list):
         """Validate that custom models exist in the API's model list.
