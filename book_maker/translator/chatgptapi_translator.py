@@ -522,138 +522,163 @@ class ChatGPTAPI(Base):
             azure_deployment=self.deployment_id,
         )
 
+    def _check_model_availability(self, model_list, model_family_name):
+        """Check if any models from the model_list are available from the API.
+        Returns True if at least one model is available, False otherwise.
+        """
+        if not model_list:
+            print(
+                f"[red]Error: No {model_family_name} models are available from the API.[/red]"
+            )
+            print(
+                "[yellow]Please check your API key, endpoint, and model permissions.[/yellow]"
+            )
+            return False
+        return True
+
+    def _fetch_api_models_with_retry(self):
+        """Fetch available models from API with retry logic.
+        Returns list of model IDs or raises Exception after max retries."""
+        max_retries = 3
+        retry_delay = 2  # seconds
+
+        for attempt in range(max_retries):
+            try:
+                return [
+                    i["id"]
+                    for i in self.openai_client.models.list().model_dump()["data"]
+                ]
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(
+                        f"[yellow]Error checking model availability: {e}. Retrying ({attempt + 1}/{max_retries})...[/yellow]"
+                    )
+                    time.sleep(retry_delay)
+                else:
+                    print(
+                        f"[red]Error checking model availability after {max_retries} retries: {e}[/red]"
+                    )
+                    raise Exception(
+                        f"Cannot validate models due to connection error: {e}. "
+                        f"Check your network, API server, and endpoint configuration."
+                    )
+
+    def _validate_custom_models(self, custom_model_list):
+        """Validate that custom models exist in the API's model list.
+        Returns a dict with 'success', 'available_models', and 'unavailable_models' keys.
+        """
+        api_models = self._fetch_api_models_with_retry()
+        available_models = list(set(custom_model_list) & set(api_models))
+        unavailable_models = list(set(custom_model_list) - set(api_models))
+
+        if not available_models:
+            print(
+                f"[red]Error: None of the custom models {custom_model_list} are available in the API.[/red]"
+            )
+            print(f"[yellow]Available models: {api_models}[/yellow]")
+            print(
+                "[yellow]Please check your model name, API key, endpoint, and model permissions.[/yellow]"
+            )
+            return {
+                "success": False,
+                "available_models": [],
+                "unavailable_models": custom_model_list,
+                "api_models": api_models,
+            }
+
+        # If some models are not available, warn but continue with available ones
+        if unavailable_models:
+            print(
+                f"[yellow]Warning: Models {unavailable_models} not found in API, using available models: {available_models}[/yellow]"
+            )
+
+        return {
+            "success": True,
+            "available_models": available_models,
+            "unavailable_models": unavailable_models,
+            "api_models": api_models,
+        }
+
+    def _set_models(
+        self, model_family_name: str, default_azure_model: str, allowed_models: set
+    ):
+        """Generic method to set available models based on model family.
+
+        Args:
+            model_family_name: Human-readable name for error messages (e.g., "GPT-3.5")
+            default_azure_model: Default model name to use for Azure deployments
+            allowed_models: Set of allowed model IDs to intersect with API models
+        """
+        # For Azure deployments, use the default model directly
+        if self.deployment_id:
+            self.model_list = cycle([default_azure_model])
+            self.model = default_azure_model
+            return
+
+        # For regular OpenAI client, fetch and filter available models
+        my_model_list = self._fetch_api_models_with_retry()
+        model_list = list(set(my_model_list) & allowed_models)
+        if not self._check_model_availability(model_list, model_family_name):
+            raise Exception(
+                f"No {model_family_name} models available. Available models: {my_model_list}"
+            )
+        print(f"Using model list {model_list}")
+        self.model_list = cycle(model_list)
+        self.model = model_list[0]
+
     def set_gpt35_models(self, ollama_model=""):
         if ollama_model:
             self.model_list = cycle([ollama_model])
             self.model = ollama_model
             return
-        # gpt3 all models for save the limit
-        if self.deployment_id:
-            self.model_list = cycle(["gpt-35-turbo"])
-            self.model = "gpt-35-turbo"
-        else:
-            my_model_list = [
-                i["id"] for i in self.openai_client.models.list().model_dump()["data"]
-            ]
-            model_list = list(set(my_model_list) & set(GPT35_MODEL_LIST))
-            print(f"Using model list {model_list}")
-            self.model_list = cycle(model_list)
-            self.model = model_list[0]
+        self._set_models("GPT-3.5", "gpt-35-turbo", set(GPT35_MODEL_LIST))
 
     def set_gpt4_models(self):
-        # for issue #375 azure can not use model list
-        if self.deployment_id:
-            self.model_list = cycle(["gpt-4"])
-            self.model = "gpt-4"
-        else:
-            my_model_list = [
-                i["id"] for i in self.openai_client.models.list().model_dump()["data"]
-            ]
-            model_list = list(set(my_model_list) & set(GPT4_MODEL_LIST))
-            print(f"Using model list {model_list}")
-            self.model_list = cycle(model_list)
-            self.model = model_list[0]
+        self._set_models("GPT-4", "gpt-4", set(GPT4_MODEL_LIST))
 
     def set_gpt4omini_models(self):
-        # for issue #375 azure can not use model list
-        if self.deployment_id:
-            self.model_list = cycle(["gpt-4o-mini"])
-            self.model = "gpt-4o-mini"
-        else:
-            my_model_list = [
-                i["id"] for i in self.openai_client.models.list().model_dump()["data"]
-            ]
-            model_list = list(set(my_model_list) & set(GPT4oMINI_MODEL_LIST))
-            print(f"Using model list {model_list}")
-            self.model_list = cycle(model_list)
-            self.model = model_list[0]
+        self._set_models("GPT-4o-mini", "gpt-4o-mini", set(GPT4oMINI_MODEL_LIST))
 
     def set_gpt4o_models(self):
-        # for issue #375 azure can not use model list
-        if self.deployment_id:
-            self.model_list = cycle(["gpt-4o"])
-            self.model = "gpt-4o"
-        else:
-            my_model_list = [
-                i["id"] for i in self.openai_client.models.list().model_dump()["data"]
-            ]
-            model_list = list(set(my_model_list) & set(GPT4o_MODEL_LIST))
-            print(f"Using model list {model_list}")
-            self.model_list = cycle(model_list)
-            self.model = model_list[0]
+        self._set_models("GPT-4o", "gpt-4o", set(GPT4o_MODEL_LIST))
 
     def set_gpt5mini_models(self):
-        # for issue #375 azure can not use model list
-        if self.deployment_id:
-            self.model_list = cycle(["gpt-5-mini"])
-            self.model = "gpt-5-mini"
-        else:
-            my_model_list = [
-                i["id"] for i in self.openai_client.models.list().model_dump()["data"]
-            ]
-            model_list = list(set(my_model_list) & set(GPT5MINI_MODEL_LIST))
-            print(f"Using model list {model_list}")
-            self.model_list = cycle(model_list)
-            self.model = model_list[0]
+        self._set_models("GPT-5-mini", "gpt-5-mini", set(GPT5MINI_MODEL_LIST))
 
     def set_o1preview_models(self):
-        # for issue #375 azure can not use model list
-        if self.deployment_id:
-            self.model_list = cycle(["o1-preview"])
-            self.model = "o1-preview"
-        else:
-            my_model_list = [
-                i["id"] for i in self.openai_client.models.list().model_dump()["data"]
-            ]
-            model_list = list(set(my_model_list) & set(O1PREVIEW_MODEL_LIST))
-            print(f"Using model list {model_list}")
-            self.model_list = cycle(model_list)
-            self.model = model_list[0]
+        self._set_models("O1-preview", "o1-preview", set(O1PREVIEW_MODEL_LIST))
 
     def set_o1_models(self):
-        # for issue #375 azure can not use model list
-        if self.deployment_id:
-            self.model_list = cycle(["o1"])
-            self.model = "o1"
-        else:
-            my_model_list = [
-                i["id"] for i in self.openai_client.models.list().model_dump()["data"]
-            ]
-            model_list = list(set(my_model_list) & set(O1_MODEL_LIST))
-            print(f"Using model list {model_list}")
-            self.model_list = cycle(model_list)
-            self.model = model_list[0]
+        self._set_models("O1", "o1", set(O1_MODEL_LIST))
 
     def set_o1mini_models(self):
-        # for issue #375 azure can not use model list
-        if self.deployment_id:
-            self.model_list = cycle(["o1-mini"])
-            self.model = "o1-mini"
-        else:
-            my_model_list = [
-                i["id"] for i in self.openai_client.models.list().model_dump()["data"]
-            ]
-            model_list = list(set(my_model_list) & set(O1MINI_MODEL_LIST))
-            print(f"Using model list {model_list}")
-            self.model_list = cycle(model_list)
-            self.model = model_list[0]
+        self._set_models("O1-mini", "o1-mini", set(O1MINI_MODEL_LIST))
 
     def set_o3mini_models(self):
-        # for issue #375 azure can not use model list
-        if self.deployment_id:
-            self.model_list = cycle(["o3-mini"])
-            self.model = "o3-mini"
-        else:
-            my_model_list = [
-                i["id"] for i in self.openai_client.models.list().model_dump()["data"]
-            ]
-            model_list = list(set(my_model_list) & set(O3MINI_MODEL_LIST))
-            print(f"Using model list {model_list}")
-            self.model_list = cycle(model_list)
-            self.model = model_list[0]
+        self._set_models("O3-mini", "o3-mini", set(O3MINI_MODEL_LIST))
 
     def set_model_list(self, model_list):
         model_list = list(set(model_list))
+        if not model_list:
+            raise Exception(
+                "Empty model list provided. Use --model_list with at least one model name."
+            )
+
+        # Validate custom models against API
+        if not self.deployment_id:  # Skip for Azure deployments
+            validation_result = self._validate_custom_models(model_list)
+            if not validation_result["success"]:
+                raise Exception(
+                    f"Custom model validation failed. "
+                    f"Requested: {model_list}. "
+                    f"Unavailable: {validation_result['unavailable_models']}. "
+                    f"Available models in API: {validation_result['api_models']}. "
+                    f"Check your model name, API key, and permissions."
+                )
+            # If some models were partially available, use only the available ones
+            if validation_result["unavailable_models"]:
+                model_list = validation_result["available_models"]
+
         print(f"Using model list {model_list}")
         self.model_list = cycle(model_list)
         self.model = model_list[
