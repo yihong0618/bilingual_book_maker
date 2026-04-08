@@ -542,17 +542,29 @@ class ChatGPTAPI(Base):
         """
         api_models = self._fetch_api_models_with_retry()
 
-        # If models API is not available, skip validation
+        # If models API is not available, validate by testing the model directly
         if api_models is None:
-            print(
-                "[yellow]Skipping model validation: API does not support models endpoint.[/yellow]"
-            )
-            return {
-                "success": True,
-                "available_models": custom_model_list,
-                "unavailable_models": [],
-                "api_models": [],
-            }
+            # Test the first custom model to verify it works
+            test_model = custom_model_list[0]
+            try:
+                self._validate_model_with_test(test_model, "custom")
+                print(
+                    "[yellow]Skipping model validation: API does not support models endpoint.[/yellow]"
+                )
+                return {
+                    "success": True,
+                    "available_models": custom_model_list,
+                    "unavailable_models": [],
+                    "api_models": [],
+                }
+            except Exception as e:
+                print(f"[red]{e}[/red]")
+                return {
+                    "success": False,
+                    "available_models": [],
+                    "unavailable_models": custom_model_list,
+                    "api_models": [],
+                }
 
         available_models = list(set(custom_model_list) & set(api_models))
         unavailable_models = list(set(custom_model_list) - set(api_models))
@@ -604,8 +616,11 @@ class ChatGPTAPI(Base):
         # For regular OpenAI client, fetch and filter available models
         my_model_list = self._fetch_api_models_with_retry()
 
-        # If models API is not available, skip validation and use allowed models directly
+        # If models API is not available, validate by testing the model directly
         if my_model_list is None:
+            # Test the first model in the allowed list to verify it works
+            test_model = list(allowed_models)[0]
+            self._validate_model_with_test(test_model, model_family_name)
             print(
                 f"[yellow]Using {model_family_name} models without API validation: {list(allowed_models)}[/yellow]"
             )
@@ -619,6 +634,28 @@ class ChatGPTAPI(Base):
         print(f"Using model list {model_list}")
         self.model_list = cycle(model_list)
         self.model = model_list[0]
+
+    def _validate_model_with_test(self, model_name: str, model_family_name: str):
+        """Validate a model by making a test request when models API is unavailable.
+        Raises Exception if the model is not accessible.
+        """
+        print(f"[yellow]Testing model '{model_name}' with a simple request...[/yellow]")
+        try:
+            # Make a minimal test request
+            test_messages = [{"role": "user", "content": "Say 'ok'"}]
+            self.openai_client.chat.completions.create(
+                model=model_name,
+                messages=test_messages,
+                max_tokens=10,
+                temperature=0.1,
+            )
+            print(f"[green]Model '{model_name}' is accessible and working.[/green]")
+        except Exception as e:
+            raise Exception(
+                f"Model '{model_name}' from family '{model_family_name}' is not accessible. "
+                f"Error: {e}. "
+                f"Please check the model name and your API permissions."
+            )
 
     def set_gpt35_models(self, ollama_model=""):
         if ollama_model:
