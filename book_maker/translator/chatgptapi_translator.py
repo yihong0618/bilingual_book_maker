@@ -545,7 +545,8 @@ class ChatGPTAPI(Base):
         for attempt in range(max_retries):
             try:
                 return [
-                    i["id"] for i in self.openai_client.models.list().model_dump()["data"]
+                    i["id"]
+                    for i in self.openai_client.models.list().model_dump()["data"]
                 ]
             except Exception as e:
                 if attempt < max_retries - 1:
@@ -564,7 +565,8 @@ class ChatGPTAPI(Base):
 
     def _validate_custom_models(self, custom_model_list):
         """Validate that custom models exist in the API's model list.
-        Returns a dict with 'success', 'available_models', and 'unavailable_models' keys."""
+        Returns a dict with 'success', 'available_models', and 'unavailable_models' keys.
+        """
         api_models = self._fetch_api_models_with_retry()
         available_models = list(set(custom_model_list) & set(api_models))
         unavailable_models = list(set(custom_model_list) - set(api_models))
@@ -658,7 +660,9 @@ class ChatGPTAPI(Base):
     def set_model_list(self, model_list):
         model_list = list(set(model_list))
         if not model_list:
-            raise Exception("Empty model list provided. Use --model_list with at least one model name.")
+            raise Exception(
+                "Empty model list provided. Use --model_list with at least one model name."
+            )
 
         # Validate custom models against API
         if not self.deployment_id:  # Skip for Azure deployments
