@@ -8,7 +8,6 @@ on:
   workflow_dispatch:
   
 env:
-  ACTIONS_ALLOW_UNSECURE_COMMANDS: true
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   BBM_CAIYUN_API_KEY: ${{ secrets.BBM_CAIYUN_API_KEY }}
 
@@ -18,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Actions Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Check spelling with custom config file
         uses: crate-ci/typos@v1.16.6
         with:
@@ -26,9 +25,9 @@ jobs:
   testing:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: install python 3.10
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
           cache: 'pip' # caching pip dependencies
