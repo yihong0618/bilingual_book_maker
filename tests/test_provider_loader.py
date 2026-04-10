@@ -15,7 +15,6 @@ from book_maker.translator.claude_translator import Claude
 from book_maker.translator.gemini_translator import Gemini
 from book_maker.translator.qwen_translator import QwenTranslator
 
-
 VALID_DEEPSEEK = {
     "api_style": "openai",
     "base_url": "https://api.deepseek.com/v1",
