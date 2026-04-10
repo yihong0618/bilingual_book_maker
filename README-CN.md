@@ -165,6 +165,38 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 
 ## 参数说明
 
+- `--model`:
+
+  指定翻译模型。默认：`chatgptapi`。各模型值及其行为：
+
+  | 模型 | Key 来源 | 说明 |
+  |------|---------|------|
+  | `chatgptapi` | `--openai_key` / `BBM_OPENAI_API_KEY` | GPT-3.5-turbo，自动检测 API 可用模型 |
+  | `gpt4` | `--openai_key` / `BBM_OPENAI_API_KEY` | GPT-4 系列，自动在可用变体间负载均衡 |
+  | `gpt4omini` | `--openai_key` / `BBM_OPENAI_API_KEY` | GPT-4o-mini |
+  | `gpt4o` | `--openai_key` / `BBM_OPENAI_API_KEY` | GPT-4o |
+  | `gpt5mini` | `--openai_key` / `BBM_OPENAI_API_KEY` | GPT-5-mini |
+  | `o1preview` | `--openai_key` / `BBM_OPENAI_API_KEY` | o1-preview |
+  | `o1` | `--openai_key` / `BBM_OPENAI_API_KEY` | o1 |
+  | `o1mini` | `--openai_key` / `BBM_OPENAI_API_KEY` | o1-mini |
+  | `o3mini` | `--openai_key` / `BBM_OPENAI_API_KEY` | o3-mini |
+  | `openai` | `--openai_key` / `BBM_OPENAI_API_KEY` | **必须配合 `--model_list`**，可使用任意 OpenAI 兼容模型 |
+  | `claude-*` | `--claude_key` / `BBM_CLAUDE_API_KEY` | 前缀匹配，如 `--model claude-sonnet-4-20250514` |
+  | `gemini` | `--gemini_key` / `BBM_GOOGLE_GEMINI_KEY` | Gemini Flash，支持 `--model_list` 自定义 |
+  | `geminipro` | `--gemini_key` / `BBM_GOOGLE_GEMINI_KEY` | Gemini Pro |
+  | `groq` | `--groq_key` / `BBM_GROQ_API_KEY` | **必须配合 `--model_list`** |
+  | `xai` | `--xai_key` / `BBM_XAI_API_KEY` | Grok |
+  | `qwen-mt-turbo` | `--qwen_key` / `BBM_QWEN_API_KEY` | 通义千问快速翻译模型 |
+  | `qwen-mt-plus` | `--qwen_key` / `BBM_QWEN_API_KEY` | 通义千问高质量翻译模型 |
+  | `google` | 无需 key | 免费谷歌翻译 |
+  | `caiyun` | `--caiyun_key` / `BBM_CAIYUN_API_KEY` | 彩云小译 |
+  | `deepl` | `--deepl_key` / `BBM_DEEPL_API_KEY` | DeepL（付费） |
+  | `deeplfree` | 无需 key | DeepL 免费版 |
+  | `tencentransmart` | 无需 key | 腾讯交互翻译，免费 |
+  | `customapi` | `--custom_api` / `BBM_CUSTOM_API` | 自定义翻译 API |
+
+  上表未列出的 OpenAI 兼容 API，请使用 `--provider`（见「自定义 API Provider」章节）。
+
 - `--test`:
 
   如果大家没付费可以加上这个先看看效果（有 limit 稍微有些慢）

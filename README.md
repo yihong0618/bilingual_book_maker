@@ -179,6 +179,38 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 
 ## Params
 
+- `--model`:
+
+  Select the translation model. Default: `chatgptapi`. Available values and their behavior:
+
+  | Model | Key Source | Notes |
+  |-------|-----------|-------|
+  | `chatgptapi` | `--openai_key` / `BBM_OPENAI_API_KEY` | GPT-3.5-turbo. Auto-detects available models from API |
+  | `gpt4` | `--openai_key` / `BBM_OPENAI_API_KEY` | GPT-4 family. Auto-balances across available GPT-4 variants |
+  | `gpt4omini` | `--openai_key` / `BBM_OPENAI_API_KEY` | GPT-4o-mini |
+  | `gpt4o` | `--openai_key` / `BBM_OPENAI_API_KEY` | GPT-4o |
+  | `gpt5mini` | `--openai_key` / `BBM_OPENAI_API_KEY` | GPT-5-mini |
+  | `o1preview` | `--openai_key` / `BBM_OPENAI_API_KEY` | o1-preview |
+  | `o1` | `--openai_key` / `BBM_OPENAI_API_KEY` | o1 |
+  | `o1mini` | `--openai_key` / `BBM_OPENAI_API_KEY` | o1-mini |
+  | `o3mini` | `--openai_key` / `BBM_OPENAI_API_KEY` | o3-mini |
+  | `openai` | `--openai_key` / `BBM_OPENAI_API_KEY` | **Requires `--model_list`**. Use any OpenAI-compatible model |
+  | `claude-*` | `--claude_key` / `BBM_CLAUDE_API_KEY` | Prefix match. e.g. `--model claude-sonnet-4-20250514` |
+  | `gemini` | `--gemini_key` / `BBM_GOOGLE_GEMINI_KEY` | Gemini Flash. Supports `--model_list` |
+  | `geminipro` | `--gemini_key` / `BBM_GOOGLE_GEMINI_KEY` | Gemini Pro |
+  | `groq` | `--groq_key` / `BBM_GROQ_API_KEY` | **Requires `--model_list`** |
+  | `xai` | `--xai_key` / `BBM_XAI_API_KEY` | Grok |
+  | `qwen-mt-turbo` | `--qwen_key` / `BBM_QWEN_API_KEY` | Qwen fast translation model |
+  | `qwen-mt-plus` | `--qwen_key` / `BBM_QWEN_API_KEY` | Qwen high-quality translation model |
+  | `google` | N/A | Free. No API key needed |
+  | `caiyun` | `--caiyun_key` / `BBM_CAIYUN_API_KEY` | Caiyun |
+  | `deepl` | `--deepl_key` / `BBM_DEEPL_API_KEY` | DeepL (paid) |
+  | `deeplfree` | N/A | DeepL Free |
+  | `tencentransmart` | N/A | Tencent TranSmart. Free |
+  | `customapi` | `--custom_api` / `BBM_CUSTOM_API` | Custom translation API |
+
+  For any OpenAI-compatible API not listed above, use `--provider` instead (see Custom API Provider section).
+
 - `--test`:
 
   Use `--test` option to preview the result if you haven't paid for the service. Note that there is a limit and it may take some time.
