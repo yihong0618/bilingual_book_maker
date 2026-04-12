@@ -3,6 +3,8 @@ import json
 import os
 from os import environ as env
 
+from rich import print
+
 from book_maker.loader import BOOK_LOADER_DICT
 from book_maker.translator import MODEL_DICT
 from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE
@@ -595,7 +597,11 @@ So you are close to reaching the limit. You have to choose your own value, there
     if options.model in ("openai", "groq"):
         # Currently only supports `openai` when you also have --model_list set
         if options.model_list:
-            e.translate_model.set_model_list(options.model_list.split(","))
+            try:
+                e.translate_model.set_model_list(options.model_list.split(","))
+            except Exception as ex:
+                print(f"[red]Error: {ex}[/red]")
+                exit(1)
         else:
             raise ValueError(
                 "When using `openai` model, you must also provide `--model_list`. For default model sets use `--model chatgptapi` or `--model gpt4` or `--model gpt4omini` or `--model gpt5mini`",
