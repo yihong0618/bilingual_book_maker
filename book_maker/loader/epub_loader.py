@@ -584,6 +584,7 @@ class EPUBBookLoader(BaseBookLoader):
         if len(translated_sentences) != len(sentences):
             return False
 
+        style = self.translation_style or "color: #1e90ff;"
         if self.single_translate:
             p.clear()
             p.string = " ".join(translated_sentences)
@@ -594,8 +595,7 @@ class EPUBBookLoader(BaseBookLoader):
                 if trans and trans.strip() != orig.strip():
                     trans_span = soup.new_tag("span")
                     trans_span.string = trans + " "
-                    if self.translation_style:
-                        trans_span["style"] = self.translation_style
+                    trans_span["style"] = style
                     p.append(trans_span)
 
         return True
