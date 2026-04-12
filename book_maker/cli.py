@@ -344,6 +344,11 @@ So you are close to reaching the limit. You have to choose your own value, there
         help="output translated book, no bilingual",
     )
     parser.add_argument(
+        "--sentence_mode",
+        action="store_true",
+        help="translate sentence by sentence within each paragraph instead of the whole paragraph at once",
+    )
+    parser.add_argument(
         "--use_context",
         dest="context_flag",
         action="store_true",
@@ -547,6 +552,8 @@ So you are close to reaching the limit. You have to choose your own value, there
             print(f"[bold red]Error:[/bold red] Invalid JSON in --extra_body: {e}")
             exit(1)
     # other options
+    if options.sentence_mode:
+        e.sentence_mode = True
     if options.allow_navigable_strings:
         e.allow_navigable_strings = True
     if options.translate_tags:
