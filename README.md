@@ -125,12 +125,91 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   python3 make_book.py --book_name test_books/animal_farm.epub --groq_key [your_key] --model groq --model_list llama3-8b-8192
   ```
 
+* Custom API Provider
+
+  If the built-in models don't cover your needs, you can define custom providers via a JSON config file. This lets you use any OpenAI-compatible API (DeepSeek, SiliconFlow, local proxies, etc.) without modifying source code.
+
+  Create `bbm_providers.json` in the current directory (or `~/.bbm/providers.json` for global config):
+
+  ```json
+  {
+    "providers": {
+      "deepseek": {
+        "api_style": "openai",
+        "base_url": "https://api.deepseek.com/v1",
+        "default_models": ["deepseek-chat", "deepseek-reasoner"],
+        "env_key": "BBM_DEEPSEEK_API_KEY"
+      },
+      "siliconflow": {
+        "api_style": "openai",
+        "base_url": "https://api.siliconflow.cn/v1",
+        "default_models": ["Qwen/Qwen2.5-72B-Instruct"],
+        "env_key": "BBM_SILICONFLOW_API_KEY"
+      }
+    }
+  }
+  ```
+
+  Config fields:
+
+  | Field | Required | Description |
+  |-------|----------|-------------|
+  | `api_style` | Yes | Translator interface style. Supported: `openai`, `claude`, `gemini`, `qwen` |
+  | `base_url` | No | API endpoint URL. Falls back to the api_style's default |
+  | `default_models` | No | Default model list. Required if `--model_list` is not provided |
+  | `env_key` | No | Environment variable name for API key. Required if `--api_key` is not provided |
+
+  Priority: project-level `./bbm_providers.json` overrides global `~/.bbm/providers.json`.
+
+  `--provider` and `--model` are mutually exclusive.
+
+  ```shell
+  python3 make_book.py --provider deepseek --api_key sk-xxx --book_name test_books/animal_farm.epub
+
+  export BBM_DEEPSEEK_API_KEY=sk-xxx
+  python3 make_book.py --provider deepseek --book_name test_books/animal_farm.epub
+
+  python3 make_book.py --provider deepseek --api_key sk-xxx --model_list deepseek-reasoner --book_name test_books/animal_farm.epub
+  ```
+
 ## Use
 
 - Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated for EPUB inputs; for TXT/MD/SRT inputs a bilingual text (or subtitle) file named `${book_name}_bilingual.txt` (or `_bilingual.srt`) will be generated. For **PDF inputs** the tool will produce a bilingual `.txt` fallback and will also attempt to create `${book_name}_bilingual.epub` — if EPUB creation fails, the TXT fallback remains so you do not need to retranslate.
 - If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`, a temporary bilingual file (for example `{book_name}_bilingual_temp.epub` or `{book_name}_bilingual_temp.txt`) would be generated. You can simply rename it to any desired name.
 
 ## Params
+
+- `--model`:
+
+  Select the translation model. Default: `chatgptapi`. Available values and their behavior:
+
+  | Model | Key Source | Notes |
+  |-------|-----------|-------|
+  | `chatgptapi` | `--openai_key` / `BBM_OPENAI_API_KEY` | GPT-3.5-turbo. Auto-detects available models from API |
+  | `gpt4` | `--openai_key` / `BBM_OPENAI_API_KEY` | GPT-4 family. Auto-balances across available GPT-4 variants |
+  | `gpt4omini` | `--openai_key` / `BBM_OPENAI_API_KEY` | GPT-4o-mini |
+  | `gpt4o` | `--openai_key` / `BBM_OPENAI_API_KEY` | GPT-4o |
+  | `gpt5mini` | `--openai_key` / `BBM_OPENAI_API_KEY` | GPT-5-mini |
+  | `o1preview` | `--openai_key` / `BBM_OPENAI_API_KEY` | o1-preview |
+  | `o1` | `--openai_key` / `BBM_OPENAI_API_KEY` | o1 |
+  | `o1mini` | `--openai_key` / `BBM_OPENAI_API_KEY` | o1-mini |
+  | `o3mini` | `--openai_key` / `BBM_OPENAI_API_KEY` | o3-mini |
+  | `openai` | `--openai_key` / `BBM_OPENAI_API_KEY` | **Requires `--model_list`**. Use any OpenAI-compatible model |
+  | `claude-*` | `--claude_key` / `BBM_CLAUDE_API_KEY` | Prefix match. e.g. `--model claude-sonnet-4-20250514` |
+  | `gemini` | `--gemini_key` / `BBM_GOOGLE_GEMINI_KEY` | Gemini Flash. Supports `--model_list` |
+  | `geminipro` | `--gemini_key` / `BBM_GOOGLE_GEMINI_KEY` | Gemini Pro |
+  | `groq` | `--groq_key` / `BBM_GROQ_API_KEY` | **Requires `--model_list`** |
+  | `xai` | `--xai_key` / `BBM_XAI_API_KEY` | Grok |
+  | `qwen-mt-turbo` | `--qwen_key` / `BBM_QWEN_API_KEY` | Qwen fast translation model |
+  | `qwen-mt-plus` | `--qwen_key` / `BBM_QWEN_API_KEY` | Qwen high-quality translation model |
+  | `google` | N/A | Free. No API key needed |
+  | `caiyun` | `--caiyun_key` / `BBM_CAIYUN_API_KEY` | Caiyun |
+  | `deepl` | `--deepl_key` / `BBM_DEEPL_API_KEY` | DeepL (paid) |
+  | `deeplfree` | N/A | DeepL Free |
+  | `tencentransmart` | N/A | Tencent TranSmart. Free |
+  | `customapi` | `--custom_api` / `BBM_CUSTOM_API` | Custom translation API |
+
+  For any OpenAI-compatible API not listed above, use `--provider` instead (see Custom API Provider section).
 
 - `--test`:
 
@@ -267,6 +346,14 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --extra_body '{"chat_template_kwargs": {"enable_thinking": false}}'
   ```
 
+- `--provider`:
+
+  Use a custom provider defined in `bbm_providers.json`. Mutually exclusive with `--model`. See the "Custom API Provider" section above.
+
+- `--api_key`:
+
+  API key for custom providers (used with `--provider`). Can also be set via the `env_key` field in the provider config.
+
 ### Examples
 
 **Note if use `pip install bbook_maker` all commands can change to `bbook_maker args`**
@@ -313,6 +400,9 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model claude --cl
 
 # Use the CustomAPI model with Japanese
 python3 make_book.py --book_name test_books/animal_farm.epub --model customapi --custom_api ${custom_api} --language ja
+
+# Use a custom provider (e.g. DeepSeek)
+python3 make_book.py --book_name test_books/animal_farm.epub --provider deepseek --api_key sk-xxx --language ja
 
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p
