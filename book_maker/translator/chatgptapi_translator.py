@@ -7,7 +7,7 @@ from itertools import cycle
 import json
 from threading import Lock
 
-from openai import AzureOpenAI, NotFoundError, OpenAI, RateLimitError
+from openai import AzureOpenAI, BadRequestError, NotFoundError, OpenAI, RateLimitError
 from rich import print
 from tenacity import (
     retry,
@@ -523,8 +523,8 @@ class ChatGPTAPI(Base):
             return [
                 i["id"] for i in self.openai_client.models.list().model_dump()["data"]
             ]
-        except NotFoundError:
-            # 404 — models endpoint not supported by this API provider
+        except (NotFoundError, BadRequestError):
+            # 404 or 400 — models endpoint not supported by this API provider
             print(
                 "[yellow]Model availability check skipped: API does not support models endpoint.[/yellow]"
             )
