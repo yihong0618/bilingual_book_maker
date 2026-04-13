@@ -1,5 +1,6 @@
 import os
 import pickle
+import re
 import string
 import sys
 import time
@@ -72,6 +73,7 @@ class EPUBBookLoader(BaseBookLoader):
         self.only_filelist = ""
         self.single_translate = single_translate
         self.block_size = 1  # Default to 1 for better translation quality with delimiter-based batching
+        self.sentence_mode = False
         self.batch_use_flag = False
         self.batch_flag = False
         self.parallel_workers = 1
@@ -555,6 +557,49 @@ class EPUBBookLoader(BaseBookLoader):
             single_translate,
         )
 
+    def _split_into_sentences(self, text):
+        """Split text into sentences on punctuation followed by whitespace + uppercase."""
+        parts = re.split(r"(?<=[.!?])\s+(?=[A-Z\"\'\(])", text.strip())
+        return [s.strip() for s in parts if s.strip()]
+
+    def _process_paragraph_sentence_mode(self, p, soup):
+        """Translate a paragraph sentence by sentence, interleaving originals and translations.
+
+        Returns True if sentence-level processing was applied, False if the paragraph
+        should fall through to normal paragraph-level translation.
+        """
+        text = p.get_text().strip()
+        sentences = self._split_into_sentences(text)
+
+        # Only one sentence — let normal processing handle it
+        if len(sentences) <= 1:
+            return False
+
+        try:
+            translated_sentences = self.translate_model.translate_list(sentences)
+        except Exception as e:
+            print(f"[bold red]Sentence translation error: {e}[/bold red]")
+            return False
+
+        if len(translated_sentences) != len(sentences):
+            return False
+
+        style = self.translation_style or "color: #1e90ff;"
+        if self.single_translate:
+            p.clear()
+            p.string = " ".join(translated_sentences)
+        else:
+            p.clear()
+            for orig, trans in zip(sentences, translated_sentences):
+                p.append(NavigableString(orig + " "))
+                if trans and trans.strip() != orig.strip():
+                    trans_span = soup.new_tag("span")
+                    trans_span.string = trans + " "
+                    trans_span["style"] = style
+                    p.append(trans_span)
+
+        return True
+
     def get_item(self, book, name):
         for item in book.get_items():
             if item.file_name == name:
@@ -760,6 +805,15 @@ class EPUBBookLoader(BaseBookLoader):
                     continue
 
                 new_p = self._extract_paragraph(copy(p))
+                if self.sentence_mode:
+                    if self._process_paragraph_sentence_mode(p, soup):
+                        index += 1
+                        pbar.update(1)
+                        print()
+                        if self.is_test and index >= self.test_num:
+                            is_test_done = True
+                        continue
+                    # Fall through to normal paragraph processing if <1 sentence split
                 if self.block_size >= 1:
                     # Collect paragraphs for batch translation
                     p_block.append(p)
