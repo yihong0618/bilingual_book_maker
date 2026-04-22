@@ -324,6 +324,12 @@ So you are close to reaching the limit. You have to choose your own value, there
         help="""ex: --translation_style "color: #808080; font-style: italic;" """,
     )
     parser.add_argument(
+        "--translation_color",
+        dest="translation_color",
+        type=str,
+        help="color for translated text, e.g. --translation_color '#1e90ff' or --translation_color 'red'",
+    )
+    parser.add_argument(
         "--batch_size",
         dest="batch_size",
         type=int,
@@ -345,6 +351,11 @@ So you are close to reaching the limit. You have to choose your own value, there
         "--single_translate",
         action="store_true",
         help="output translated book, no bilingual",
+    )
+    parser.add_argument(
+        "--sentence_mode",
+        action="store_true",
+        help="translate sentence by sentence within each paragraph instead of the whole paragraph at once",
     )
     parser.add_argument(
         "--use_context",
@@ -583,6 +594,8 @@ So you are close to reaching the limit. You have to choose your own value, there
             print(f"[bold red]Error:[/bold red] Invalid JSON in --extra_body: {e}")
             exit(1)
     # other options
+    if options.sentence_mode:
+        e.sentence_mode = True
     if options.allow_navigable_strings:
         e.allow_navigable_strings = True
     if options.translate_tags:
@@ -595,6 +608,8 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.only_filelist = options.only_filelist
     if options.accumulated_num > 1:
         e.accumulated_num = options.accumulated_num
+    if options.translation_color:
+        e.translation_style = f"color: {options.translation_color};"
     if options.translation_style:
         e.translation_style = options.translation_style
     if options.batch_size:
