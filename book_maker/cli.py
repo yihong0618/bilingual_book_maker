@@ -495,7 +495,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         API_KEY = options.deepl_key or env.get("BBM_DEEPL_API_KEY")
         if not API_KEY:
             raise Exception("Please provide deepl key")
-    elif options.model.startswith("claude"):
+    elif options.model and options.model.startswith("claude"):
         API_KEY = options.claude_key or env.get("BBM_CLAUDE_API_KEY")
         if not API_KEY:
             raise Exception("Please provide claude key")
@@ -509,7 +509,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         API_KEY = options.groq_key or env.get("BBM_GROQ_API_KEY")
     elif options.model == "xai":
         API_KEY = options.xai_key or env.get("BBM_XAI_API_KEY")
-    elif options.model.startswith("qwen-"):
+    elif options.model and options.model.startswith("qwen-"):
         API_KEY = options.qwen_key or env.get("BBM_QWEN_API_KEY")
     elif options.provider:
         env_key_name = provider_cfg.get("env_key", "") if provider_cfg else ""
@@ -655,9 +655,9 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.translate_model.set_o1mini_models()
     if options.model == "o3mini":
         e.translate_model.set_o3mini_models()
-    if options.model.startswith("claude-"):
+    if options.model and options.model.startswith("claude-"):
         e.translate_model.set_claude_model(options.model)
-    if options.model.startswith("qwen-"):
+    if options.model and options.model.startswith("qwen-"):
         e.translate_model.set_qwen_model(options.model)
     if options.block_size > 0:
         e.block_size = options.block_size
