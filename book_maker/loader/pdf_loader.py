@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
 
+from tqdm import tqdm
+
 from book_maker.utils import prompt_config_to_kwargs
 
 from .base_loader import BaseBookLoader
@@ -53,11 +55,13 @@ class PDFBookLoader(BaseBookLoader):
         try:
             doc = fitz.open(self.pdf_name)
             lines = []
-            for page in doc:
-                text = page.get_text("text")
-                if not text:
-                    continue
-                lines.extend(text.splitlines())
+            total_pages = len(doc)
+            with tqdm(total=total_pages, desc="Extracting text", unit="pg") as pbar:
+                for page in doc:
+                    text = page.get_text("text")
+                    if text:
+                        lines.extend(text.splitlines())
+                    pbar.update(1)
             self.origin_book = lines
         except Exception as e:
             raise Exception("can not load file") from e
@@ -163,24 +167,28 @@ class PDFBookLoader(BaseBookLoader):
                 self.origin_book[i : i + self.batch_size]
                 for i in range(0, len(self.origin_book), self.batch_size)
             ]
-            for i in sliced_list:
-                # fix the format thanks https://github.com/tudoujunha
-                batch_text = "\n".join(i)
-                if not batch_text.strip():
-                    continue
-                if not self.resume or index >= p_to_save_len:
-                    try:
-                        temp = self.translate_model.translate(batch_text)
-                    except Exception as e:
-                        print(e)
-                        raise Exception("Something is wrong when translate") from e
-                    self.p_to_save.append(temp)
-                    if not self.single_translate:
-                        self.bilingual_result.append(batch_text)
-                    self.bilingual_result.append(temp)
-                index += self.batch_size
-                if self.is_test and index > self.test_num:
-                    break
+            with tqdm(total=len(sliced_list), desc="Translating", unit="b") as pbar:
+                for i in sliced_list:
+                    # fix the format thanks https://github.com/tudoujunha
+                    batch_text = "\n".join(i)
+                    if not batch_text.strip():
+                        pbar.update(1)
+                        continue
+                    if not self.resume or index >= p_to_save_len:
+                        try:
+                            temp = self.translate_model.translate(batch_text)
+                        except Exception as e:
+                            print(e)
+                            raise Exception("Something is wrong when translate") from e
+                        self.p_to_save.append(temp)
+                        if not self.single_translate:
+                            self.bilingual_result.append(batch_text)
+                        self.bilingual_result.append(temp)
+                        self._save_progress()
+                    index += self.batch_size
+                    pbar.update(1)
+                    if self.is_test and index > self.test_num:
+                        break
 
             txt_out = (
                 f"{Path(self.pdf_name).parent}/{Path(self.pdf_name).stem}_bilingual.txt"
