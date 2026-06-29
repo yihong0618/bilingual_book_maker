@@ -24,6 +24,290 @@ from .helper import EPUBBookLoaderHelper, is_text_link, not_trans, shorter_resul
 
 
 class EPUBBookLoader(BaseBookLoader):
+    # Tags to exclude during --scan (structural + inline + container tags)
+    _SCAN_EXCLUDE_TAGS = frozenset(
+        {
+            "html",
+            "head",
+            "body",
+            "script",
+            "style",
+            "meta",
+            "link",
+            "title",
+            "nav",
+            "svg",
+            "math",
+            "img",
+            "br",
+            "hr",
+            "table",
+            "thead",
+            "tbody",
+            "tr",
+            "td",
+            "th",
+            "col",
+            "colgroup",
+            # Inline elements - should not be translated independently
+            "em",
+            "strong",
+            "b",
+            "i",
+            "u",
+            "span",
+            "a",
+            "sub",
+            "sup",
+            "code",
+            "kbd",
+            "var",
+            "samp",
+            "abbr",
+            "cite",
+            "q",
+            "small",
+            "mark",
+            "del",
+            "ins",
+            "dfn",
+            "ruby",
+            "rt",
+            "rp",
+            "bdo",
+            "wbr",
+            # Container elements - their text is the sum of children
+            "section",
+            "article",
+            "aside",
+            "header",
+            "footer",
+            "main",
+            "figure",
+            "figcaption",
+            "ol",
+            "ul",
+            "dl",
+            "dd",
+            "dt",
+        }
+    )
+
+    def _parse_translate_tags(self):
+        """Parse translate_tags into a CSS selector string.
+
+        Sets:
+            self._css_selector: CSS selector string for soup.select(), e.g. "p, div.Para"
+        """
+        specs = [s.strip() for s in self.translate_tags.split(",") if s.strip()]
+        self._css_selector = ", ".join(specs)
+
+    def _find_translatable_paragraphs(self, soup):
+        """Find all translatable paragraphs using CSS selector and handle nested structures.
+
+        Uses self._css_selector (set by _parse_translate_tags) to find paragraphs.
+        For paragraphs that contain nested translatable child tags (Type B),
+        extracts the outer direct text into a new <p> node inserted into the DOM.
+
+        Returns:
+            list: Paragraphs in DOM order, ready for translation.
+        """
+        p_list = soup.select(self._css_selector)
+
+        # Check for Type B: paragraphs with nested translatable children
+        extra_nodes = []
+        for p in list(p_list):  # iterate copy since we may modify DOM
+            if not self.has_nest_child(p, self._css_selector):
+                continue
+            # Type B: this paragraph has nested translatable children
+            # Extract direct text that is NOT inside nested translatable children
+            nested_matches = [m for m in p.select(self._css_selector) if m is not p]
+            nested_set = set(id(m) for m in nested_matches)
+            # Also include ancestors of nested matches (containers like blockquote)
+            nested_and_ancestors = set(nested_set)
+            for m in nested_matches:
+                if m is p:
+                    continue
+                for parent in m.parents:
+                    if parent is p:
+                        break
+                    nested_and_ancestors.add(id(parent))
+
+            direct_parts = []
+            first_nested = None
+            for child in p.children:
+                if isinstance(child, NavigableString):
+                    t = str(child).strip()
+                    if t:
+                        direct_parts.append(str(child))
+                elif isinstance(child, Tag):
+                    if id(child) in nested_and_ancestors:
+                        if first_nested is None:
+                            first_nested = child
+                    else:
+                        # Inline tags like <em>, <span> - part of outer text
+                        direct_parts.append(str(child))
+
+            direct_text = "".join(direct_parts).strip()
+            if not direct_text or self._is_special_text(direct_text):
+                continue
+
+            # Create a new <p> node with the direct text and insert it into DOM
+            new_p = soup.new_tag("p", attrs={"class": "_bbm_extracted"})
+            new_p.append(bs(direct_text, "html.parser"))
+            if first_nested is not None:
+                first_nested.insert_before(new_p)
+            else:
+                p.insert(0, new_p)
+            extra_nodes.append(new_p)
+
+        if extra_nodes:
+            # Re-select to include newly inserted nodes, maintaining DOM order
+            p_list = soup.select(self._css_selector)
+
+        return p_list
+
+    def scan_untranslated_tags(self):
+        """Scan EPUB for potentially untranslated text content.
+
+        Finds all tags containing substantial text that are not covered by
+        the current --translate-tags selector. Groups results by CSS selector
+        format (tag.class) and prints a report.
+        """
+        self._parse_translate_tags()
+        all_items = list(self.origin_book.get_items())
+
+        # Collect stats: {selector_str: {"count": int, "example": str}}
+        stats = {}
+
+        for item in all_items:
+            if item.get_type() != ITEM_DOCUMENT:
+                continue
+            if item.file_name in self.exclude_filelist.split(","):
+                continue
+            if self.only_filelist and item.file_name not in self.only_filelist.split(
+                ","
+            ):
+                continue
+
+            content = item.content
+            soup = bs(content, "html.parser")
+
+            # Find already-covered paragraphs
+            covered = soup.select(self._css_selector) if self._css_selector else []
+            covered_set = set(id(p) for p in covered)
+
+            # Build set of all descendants of covered paragraphs (to exclude children)
+            covered_descendants = set()
+            for p in covered:
+                for desc in p.descendants:
+                    covered_descendants.add(id(desc))
+
+            # Scan all tags
+            for tag in soup.find_all(True):
+                if tag.name in self._SCAN_EXCLUDE_TAGS:
+                    continue
+                # Skip if this tag is already covered
+                if id(tag) in covered_set:
+                    continue
+                # Skip if this tag is a descendant of a covered paragraph
+                if id(tag) in covered_descendants:
+                    continue
+
+                text = tag.get_text().strip()
+                if len(text) < 20:
+                    continue
+                if self._is_special_text(text):
+                    continue
+
+                # Check if this tag's text is fully contained in any covered paragraph
+                is_contained = False
+                for p in covered:
+                    if text in p.get_text():
+                        is_contained = True
+                        break
+                if is_contained:
+                    continue
+
+                # Build CSS selector key
+                classes = tag.get("class", [])
+                if classes:
+                    selector_key = f"{tag.name}.{classes[0]}"
+                else:
+                    selector_key = tag.name
+
+                if selector_key not in stats:
+                    stats[selector_key] = {"count": 0, "example": text[:80]}
+                stats[selector_key]["count"] += 1
+
+        # Print report
+        if not stats:
+            print("No potentially untranslated content detected.")
+            return ""
+
+        sorted_items = sorted(stats.items(), key=lambda x: -x[1]["count"])
+        current_tags = self.translate_tags
+
+        # Build choices for interactive selection
+        choices = []
+        for selector, info in sorted_items:
+            label = f"{selector:25s}  {info['count']:4d} paragraphs  \"{info['example'][:45]}...\""
+            choices.append((selector, label))
+
+        selected = self._interactive_checkbox(
+            title=f"Potentially untranslated content detected. "
+            f'Current --translate-tags: "{current_tags}"',
+            choices=choices,
+        )
+
+        if not selected:
+            print("No tags selected.")
+            return ""
+
+        combined = ",".join([current_tags] + selected)
+        print()
+        print("Selected tags:")
+        for sel in selected:
+            info = stats[sel]
+            print(f"  + {sel} ({info['count']} paragraphs)")
+        print()
+        print(f'Combined --translate-tags: "{combined}"')
+        print()
+        print("Command to use:")
+        print(f'  --translate-tags "{combined}"')
+        print()
+        return combined
+
+    @staticmethod
+    def _interactive_checkbox(title, choices):
+        """Terminal checkbox widget using InquirerPy.
+
+        Args:
+            title: Header text displayed as the prompt message.
+            choices: List of (value, label) tuples.
+
+        Returns:
+            List of selected values, or empty list if cancelled.
+        """
+        from InquirerPy import inquirer
+        from InquirerPy.base.control import Choice
+
+        if not choices:
+            return []
+
+        inq_choices = [Choice(value=value, name=label) for value, label in choices]
+
+        try:
+            selected = inquirer.checkbox(
+                message=title,
+                choices=inq_choices,
+                instruction="(Space: toggle, Tab: toggle all, Enter: confirm)",
+            ).execute()
+        except (KeyboardInterrupt, EOFError):
+            return []
+
+        return selected if selected else []
+
     def __init__(
         self,
         epub_name,
@@ -212,19 +496,20 @@ class EPUBBookLoader(BaseBookLoader):
         return fixed_toc
 
     def _extract_paragraph(self, p):
-        for p_exclude in self.exclude_translate_tags.split(","):
-            # for issue #280
-            if type(p) is NavigableString:
-                continue
-            for pt in p.find_all(p_exclude):
-                pt.extract()
-        # Exclude content within specified tags from translation (e.g., code, pre)
-        exclude_tags_list = [t for t in self.exclude_translate_tags.split(",") if t]
-        for tag_name in exclude_tags_list:
-            if type(p) is NavigableString:
+        if type(p) is NavigableString:
+            return p
+        # Exclude content within specified tags from translation (e.g., sup, code, pre)
+        for tag_name in self.exclude_translate_tags.split(","):
+            tag_name = tag_name.strip()
+            if not tag_name:
                 continue
             for pt in p.find_all(tag_name):
                 pt.extract()
+        # For div-type paragraphs (e.g., div.Para), remove nested div children
+        # (Equation, MediaObject, etc.) to avoid translating formula alt text
+        if p.name == "div":
+            for nested_div in p.find_all("div"):
+                nested_div.extract()
         return p
 
     def _is_content_only_excluded_tags(self, p):
@@ -251,7 +536,7 @@ class EPUBBookLoader(BaseBookLoader):
         remaining_text = temp_p.get_text().strip()
         return not remaining_text or self._is_special_text(remaining_text)
 
-    def _count_translatable_paragraphs(self, items, trans_taglist):
+    def _count_translatable_paragraphs(self, items):
         """Count paragraphs that actually need translation (excluding special content)."""
         count = 0
         for i in items:
@@ -264,7 +549,7 @@ class EPUBBookLoader(BaseBookLoader):
 
             content = i.content
             soup = bs(content, "html.parser")
-            p_list = soup.findAll(trans_taglist)
+            p_list = self._find_translatable_paragraphs(soup)
 
             if self.allow_navigable_strings:
                 p_list.extend(soup.findAll(text=True))
@@ -616,7 +901,7 @@ class EPUBBookLoader(BaseBookLoader):
 
         return matching_items
 
-    def retranslate_book(self, index, p_to_save_len, pbar, trans_taglist, retranslate):
+    def retranslate_book(self, index, p_to_save_len, pbar, retranslate):
         complete_book_name = retranslate[0]
         fixname = retranslate[1]
         fixstart = retranslate[2]
@@ -650,8 +935,8 @@ class EPUBBookLoader(BaseBookLoader):
         soup_complete = bs(content_complete, "html.parser")
         soup_ori = bs(content_ori, "html.parser")
 
-        p_list_complete = soup_complete.findAll(trans_taglist)
-        p_list_ori = soup_ori.findAll(trans_taglist)
+        p_list_complete = soup_complete.select(self._css_selector)
+        p_list_ori = soup_ori.select(self._css_selector)
 
         target = None
         tagl = []
@@ -704,23 +989,20 @@ class EPUBBookLoader(BaseBookLoader):
             p_to_save_len,
             pbar,
             new_book,
-            trans_taglist,
             fixstart,
             fixend,
         )
         epub.write_epub(f"{name_fix}", new_book, {})
 
-    def has_nest_child(self, element, trans_taglist):
+    def has_nest_child(self, element, css_selector):
+        """Check if element has any descendant matching the CSS selector."""
         if isinstance(element, Tag):
-            for child in element.children:
-                if child.name in trans_taglist:
-                    return True
-                if self.has_nest_child(child, trans_taglist):
-                    return True
+            matches = element.select(css_selector)
+            return any(m is not element for m in matches)
         return False
 
-    def filter_nest_list(self, p_list, trans_taglist):
-        filtered_list = [p for p in p_list if not self.has_nest_child(p, trans_taglist)]
+    def filter_nest_list(self, p_list, css_selector):
+        filtered_list = [p for p in p_list if not self.has_nest_child(p, css_selector)]
         return filtered_list
 
     def process_item(
@@ -730,7 +1012,6 @@ class EPUBBookLoader(BaseBookLoader):
         p_to_save_len,
         pbar,
         new_book,
-        trans_taglist,
         fixstart=None,
         fixend=None,
     ):
@@ -749,9 +1030,9 @@ class EPUBBookLoader(BaseBookLoader):
 
         content = item.content
         soup = bs(content, "html.parser")
-        p_list = soup.findAll(trans_taglist)
+        p_list = self._find_translatable_paragraphs(soup)
 
-        p_list = self.filter_nest_list(p_list, trans_taglist)
+        p_list = self.filter_nest_list(p_list, self._css_selector)
 
         if self.retranslate:
             new_p_list = []
@@ -874,7 +1155,7 @@ class EPUBBookLoader(BaseBookLoader):
 
     def _process_chapter_parallel(self, chapter_data):
         """Process a single chapter in parallel mode with proper accumulated_num handling."""
-        item, trans_taglist, p_to_save_len = chapter_data
+        item, p_to_save_len = chapter_data
         chapter_result = {
             "item": item,
             "processed_content": None,
@@ -889,8 +1170,8 @@ class EPUBBookLoader(BaseBookLoader):
 
             content = item.content
             soup = bs(content, "html.parser")
-            p_list = soup.findAll(trans_taglist)
-            p_list = self.filter_nest_list(p_list, trans_taglist)
+            p_list = self._find_translatable_paragraphs(soup)
+            p_list = self.filter_nest_list(p_list, self._css_selector)
 
             if self.allow_navigable_strings:
                 p_list.extend(soup.findAll(text=True))
@@ -1164,10 +1445,10 @@ class EPUBBookLoader(BaseBookLoader):
         self.batch_init_then_wait()
         new_book = self._make_new_book(self.origin_book)
         all_items = list(self.origin_book.get_items())
-        trans_taglist = self.translate_tags.split(",")
+        self._parse_translate_tags()
 
         # Count only paragraphs that actually need translation
-        all_p_length = self._count_translatable_paragraphs(all_items, trans_taglist)
+        all_p_length = self._count_translatable_paragraphs(all_items)
 
         # Use leave=False in test mode to prevent duplicate progress bar display
         pbar = tqdm(
@@ -1179,9 +1460,7 @@ class EPUBBookLoader(BaseBookLoader):
         p_to_save_len = len(self.p_to_save)
         try:
             if self.retranslate:
-                self.retranslate_book(
-                    index, p_to_save_len, pbar, trans_taglist, self.retranslate
-                )
+                self.retranslate_book(index, p_to_save_len, pbar, self.retranslate)
                 exit(0)
             # Add the things that don't need to be translated first, so that you can see the img after the interruption
             for item in self.origin_book.get_items():
@@ -1221,9 +1500,7 @@ class EPUBBookLoader(BaseBookLoader):
                     total=len(document_items), desc="Chapters", unit="ch"
                 )
 
-                chapter_data_list = [
-                    (item, trans_taglist, p_to_save_len) for item in document_items
-                ]
+                chapter_data_list = [(item, p_to_save_len) for item in document_items]
 
                 with ThreadPoolExecutor(max_workers=effective_workers) as executor:
                     future_to_item = {
@@ -1281,7 +1558,7 @@ class EPUBBookLoader(BaseBookLoader):
                         continue
 
                     index = self.process_item(
-                        item, index, p_to_save_len, pbar, new_book, trans_taglist
+                        item, index, p_to_save_len, pbar, new_book
                     )
 
                     # Check for fatal error after processing
@@ -1338,14 +1615,13 @@ class EPUBBookLoader(BaseBookLoader):
         origin_book_temp = epub.read_epub(self.epub_name)
         new_temp_book = self._make_new_book(origin_book_temp)
         p_to_save_len = len(self.p_to_save)
-        trans_taglist = self.translate_tags.split(",")
         index = 0
         try:
             for item in origin_book_temp.get_items():
                 if item.get_type() == ITEM_DOCUMENT:
                     content = item.content
                     soup = bs(content, "html.parser")
-                    p_list = soup.findAll(trans_taglist)
+                    p_list = self._find_translatable_paragraphs(soup)
                     if self.allow_navigable_strings:
                         p_list.extend(soup.findAll(text=True))
                     for p in p_list:
