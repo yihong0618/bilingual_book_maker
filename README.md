@@ -78,7 +78,7 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 * Gemini
 
   Support Google [Gemini](https://aistudio.google.com/app/apikey) model, use `--model gemini` for Gemini Flash or `--model geminipro` for Gemini Pro.
-  If you want to use a specific model alias with Gemini (eg `gemini-1.5-flash-002` or `gemini-1.5-flash-8b-exp-0924`), you can use `--model gemini --model_list gemini-1.5-flash-002,gemini-1.5-flash-8b-exp-0924`. `--model_list` takes a comma-separated list of model aliases.
+  If you want to use a specific model alias with Gemini (eg `gemini-2.5-flash` or `gemini-2.0-flash`), you can use `--model gemini --model_list gemini-2.5-flash,gemini-2.0-flash`. `--model_list` takes a comma-separated list of model aliases.
 
   ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --model gemini --gemini_key ${gemini_key}
@@ -375,7 +375,7 @@ python3 make_book.py --book_name test_books/animal_farm.epub --gemini_key ${gemi
 python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --parallel-workers 4
 
 # Use a specific list of Gemini model aliases
-python3 make_book.py --book_name test_books/animal_farm.epub --gemini_key ${gemini_key} --model gemini --model_list gemini-1.5-flash-002,gemini-1.5-flash-8b-exp-0924
+python3 make_book.py --book_name test_books/animal_farm.epub --gemini_key ${gemini_key} --model gemini --model_list gemini-2.5-flash,gemini-2.0-flash
 
 # Set env OPENAI_API_KEY to ignore option --openai_key
 export OPENAI_API_KEY=${your_api_key}

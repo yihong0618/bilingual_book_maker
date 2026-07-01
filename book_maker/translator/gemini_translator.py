@@ -83,19 +83,18 @@ PROMPT_ENV_MAP = {
 }
 
 GEMINIPRO_MODEL_LIST = [
-    "gemini-1.5-pro",
-    "gemini-1.5-pro-latest",
-    "gemini-1.5-pro-001",
-    "gemini-1.5-pro-002",
+    "gemini-pro-latest",
+    "gemini-2.5-pro",
+    "gemini-3-pro-preview",
 ]
 
 GEMINIFLASH_MODEL_LIST = [
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-latest",
-    "gemini-1.5-flash-001",
-    "gemini-1.5-flash-002",
-    "gemini-2.0-flash-exp",
-    "gemini-2.5-flash-preview-04-17",
+    "gemini-flash-latest",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash-001",
+    "gemini-flash-lite-latest",
 ]
 
 
@@ -296,6 +295,11 @@ class Gemini(Base):
             list(set(available_models) & set(allowed_models)),
             key=allowed_models.index,
         )
+        if not model_list:
+            raise ValueError(
+                f"None of the expected models {allowed_models} are available "
+                f"for this API key. Available models: {available_models}"
+            )
         print(f"Using model list {model_list}")
         self.model_list = cycle(model_list)
         self.rotate_model()
