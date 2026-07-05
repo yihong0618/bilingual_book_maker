@@ -7,7 +7,10 @@ from book_maker.loader.pdf_loader import create_bilingual_pdf
 def _run_check(tmp_dir):
     pairs = [
         ("Hello world\nThis is the original.", "你好，世界\n这是译文。"),
-        ("A longer English line that should wrap inside the PDF column.", "一行较长的中文译文，应当在 PDF 栏内自动换行。"),
+        (
+            "A longer English line that should wrap inside the PDF column.",
+            "一行较长的中文译文，应当在 PDF 栏内自动换行。",
+        ),
     ]
     tmp_dir = Path(tmp_dir)
     for layout in ("top-bottom", "side-by-side"):

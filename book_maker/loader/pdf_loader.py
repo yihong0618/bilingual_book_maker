@@ -11,7 +11,6 @@ import fitz
 
 from ebooklib import epub
 
-
 PDF_LAYOUTS = ("top-bottom", "side-by-side")
 
 
