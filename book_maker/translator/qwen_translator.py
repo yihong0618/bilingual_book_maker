@@ -98,6 +98,8 @@ class QwenTranslator(Base):
         self.context_list = []
         self.context_translated_list = []
         self.context_paragraph_limit = context_paragraph_limit
+        self.request_interval = float(kwargs.get("request_interval", 1.2))
+        self._last_request_at = 0.0
 
         print("[bold blue]Qwen Translator initialized:[/bold blue]")
         print(f"  Model: {self.model}")
@@ -164,12 +166,26 @@ class QwenTranslator(Base):
             self.context_list.pop(0)
             self.context_translated_list.pop(0)
 
+    @staticmethod
+    def _is_rate_limit_error(error):
+        message = str(error)
+        return "429" in message or "limit_requests" in message
+
+    def _pace_request(self):
+        if self.request_interval <= 0:
+            return
+
+        wait_time = self.request_interval - (time.time() - self._last_request_at)
+        if wait_time > 0:
+            time.sleep(wait_time)
+        self._last_request_at = time.time()
+
     def translate(self, text):
         """Main translation method"""
         start_time = time.time()
 
         attempt_count = 0
-        max_attempts = 3
+        max_attempts = 6
         t_text = ""
 
         while attempt_count < max_attempts:
@@ -183,6 +199,7 @@ class QwenTranslator(Base):
                 translation_options = self._create_translation_options()
 
                 # Make API request
+                self._pace_request()
                 completion = self.client.chat.completions.create(
                     model=self.model,
                     messages=messages,
@@ -203,17 +220,20 @@ class QwenTranslator(Base):
 
             except Exception as e:
                 attempt_count += 1
+                is_rate_limit = self._is_rate_limit_error(e)
                 print(
                     f"[red]Translation attempt {attempt_count} failed: {str(e)}[/red]"
                 )
 
                 if attempt_count >= max_attempts:
+                    if is_rate_limit:
+                        raise
                     print(
                         f"[red]Translation failed after {max_attempts} attempts[/red]"
                     )
                     t_text = text  # Fallback to original text
                 else:
-                    time.sleep(1)  # Wait before retry
+                    time.sleep(min(60, 10 * attempt_count) if is_rate_limit else 1)
 
         end_time = time.time()
         print(f"[dim]Translation time: {end_time - start_time:.2f}s[/dim]")
