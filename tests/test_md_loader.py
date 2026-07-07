@@ -375,7 +375,9 @@ def test_markdown_use_context_injects_heading_breadcrumb_without_emitting_it(tmp
     loader.make_bilingual_book()
 
     model = ContextListModel.instances[-1]
-    assert any("Markdown section context: Main" in "\n".join(c) for c in model.contexts_at_call)
+    assert any(
+        "Markdown section context: Main" in "\n".join(c) for c in model.contexts_at_call
+    )
     assert any(
         "Markdown section context: Main > Detail" in "\n".join(c)
         for c in model.contexts_at_call

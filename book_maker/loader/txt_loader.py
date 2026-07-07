@@ -98,7 +98,9 @@ class TXTBookLoader(BaseBookLoader):
             if self.is_test and remaining <= 0:
                 break
 
-            batch_len = min(self.batch_size, remaining) if remaining else self.batch_size
+            batch_len = (
+                min(self.batch_size, remaining) if remaining else self.batch_size
+            )
             batch_lines = self.origin_book[cursor : cursor + batch_len]
             cursor += batch_len
 

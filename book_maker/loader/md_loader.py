@@ -210,7 +210,9 @@ class MarkdownBookLoader(BaseBookLoader):
 
     def make_bilingual_book(self):
         try:
-            self.bilingual_result = self._render_bilingual_result(translate_missing=True)
+            self.bilingual_result = self._render_bilingual_result(
+                translate_missing=True
+            )
 
             self.save_file(
                 f"{Path(self.md_name).parent}/{Path(self.md_name).stem}_bilingual.md",
@@ -290,13 +292,14 @@ class MarkdownBookLoader(BaseBookLoader):
 
             batch.append(block)
             remaining = self.test_num - translated_count if self.is_test else None
-            target_size = min(self.batch_size, remaining) if remaining else self.batch_size
+            target_size = (
+                min(self.batch_size, remaining) if remaining else self.batch_size
+            )
             if len(batch) >= target_size and not self._batch_is_heading_only(batch):
                 flush_batch()
-            elif (
-                self._batch_char_count(batch) >= self.md_chunk_char_budget
-                and not self._batch_is_heading_only(batch)
-            ):
+            elif self._batch_char_count(
+                batch
+            ) >= self.md_chunk_char_budget and not self._batch_is_heading_only(batch):
                 flush_batch()
 
         if not stop_after_batch:
