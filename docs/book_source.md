@@ -5,6 +5,13 @@ Txt files and srt files are plain text files. This program can translate plain t
 
     python3 make_book.py --book_name test_books/the_little_prince.txt --test --language zh-hans
 
+## markdown
+Markdown files can be translated directly with `--book_name your_doc.md`; use `--prompt prompt_md.json` for the Markdown-specific prompt.
+
+    python3 make_book.py --book_name your_doc.md --model chatgptapi --openai_key ${openai_key} --prompt prompt_md.json
+
+PromptDown `.md` files go to `--prompt`; Markdown books go to `--book_name`.
+
 ## epub
 epub is made of html files. By default, we only translate contents in `<p>`. Use `--translate-tags` to specify tags need for translation. Use comma to separate multiple tags. For example: `--translate-tags h1,h2,h3,p,div`
 

@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 from os import environ as env
+from pathlib import Path
 
 from rich import print
 
@@ -9,6 +10,10 @@ from book_maker.loader import BOOK_LOADER_DICT
 from book_maker.translator import MODEL_DICT
 from book_maker.provider_loader import get_provider, get_translator_class
 from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE
+
+
+def get_book_type(book_name):
+    return Path(book_name).suffix.lower().lstrip(".")
 
 
 def parse_prompt_arg(prompt_arg):
@@ -112,7 +117,7 @@ def main():
         "--book_name",
         dest="book_name",
         type=str,
-        help="path of the epub file to be translated",
+        help="path of the book/source file to be translated",
     )
     parser.add_argument(
         "--book_from",
@@ -333,7 +338,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         "--batch_size",
         dest="batch_size",
         type=int,
-        help="how many lines will be translated by aggregated translation(This options currently only applies to txt files)",
+        help="how many text units will be translated by aggregated translation for supported loaders",
     )
     parser.add_argument(
         "--retranslate",
@@ -541,7 +546,7 @@ So you are close to reaching the limit. You have to choose your own value, there
             )
         options.book_name = obok.cli_main(device_path)
 
-    book_type = options.book_name.split(".")[-1]
+    book_type = get_book_type(options.book_name)
     support_type_list = list(BOOK_LOADER_DICT.keys())
     if book_type not in support_type_list:
         raise Exception(
