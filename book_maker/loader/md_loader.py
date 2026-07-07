@@ -1,10 +1,15 @@
 import json
 import re
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import copy
 from dataclasses import dataclass
 from pathlib import Path
+
+from rich import print
+from rich.markup import escape
+from tqdm import tqdm
 
 from book_maker.utils import prompt_config_to_kwargs
 
@@ -320,43 +325,61 @@ class MarkdownBookLoader(BaseBookLoader):
         if not pending:
             return results
 
+        pbar = tqdm(
+            total=len(batches),
+            initial=len(batches) - len(pending),
+            unit="batch",
+            leave=not self.is_test,
+        )
+        report_lock = threading.Lock()
+
+        def report(batch, translated):
+            # Lock so parallel workers emit each batch as one uninterleaved
+            # block; also serializes pbar updates.
+            with report_lock:
+                for source, target in zip(batch.block_texts, translated):
+                    # escape(): Markdown text is full of [bracketed] spans
+                    # that rich would otherwise eat or crash on as markup.
+                    print(escape(source))
+                    print(f"[bold green]{escape(target)}[/bold green]")
+                    print()
+                pbar.update(1)
+
         try:
             if self.context_flag and self.parallel_workers > 1:
-                self._translate_sections_parallel(pending, results)
-            elif self.context_flag:
+                self._translate_sections_parallel(pending, results, report)
+            elif self.context_flag or min(self.parallel_workers, len(pending)) <= 1:
                 for index, batch in pending:
                     results[index] = self._translate_batch(
                         batch.block_texts,
                         batch.breadcrumb,
                     )
+                    report(batch, results[index])
             else:
                 effective_workers = min(self.parallel_workers, len(pending))
-                if effective_workers <= 1:
-                    for index, batch in pending:
-                        results[index] = self._translate_batch(
+                with ThreadPoolExecutor(max_workers=effective_workers) as executor:
+                    futures = {
+                        executor.submit(
+                            self._translate_batch,
                             batch.block_texts,
                             batch.breadcrumb,
-                        )
-                else:
-                    with ThreadPoolExecutor(max_workers=effective_workers) as executor:
-                        futures = {
-                            executor.submit(
-                                self._translate_batch,
-                                batch.block_texts,
-                                batch.breadcrumb,
-                            ): index
-                            for index, batch in pending
-                        }
-                        for future in as_completed(futures):
-                            results[futures[future]] = future.result()
+                        ): (index, batch)
+                        for index, batch in pending
+                    }
+                    for future in as_completed(futures):
+                        index, batch = futures[future]
+                        results[index] = future.result()
+                        report(batch, results[index])
         except (KeyboardInterrupt, Exception):
             self.p_to_save = self._contiguous_results(results)
             raise
+        finally:
+            pbar.close()
 
         self.p_to_save = self._contiguous_results(results)
         return results
 
-    def _translate_sections_parallel(self, pending, results):
+    def _translate_sections_parallel(self, pending, results, report):
         """Translate independent Markdown sections concurrently while keeping
         per-section context intact.
 
@@ -372,7 +395,7 @@ class MarkdownBookLoader(BaseBookLoader):
 
         if effective_workers <= 1:
             for section in sections:
-                self._translate_section(section, results)
+                self._translate_section(section, results, report)
             return
 
         print(
@@ -381,7 +404,7 @@ class MarkdownBookLoader(BaseBookLoader):
         )
         with ThreadPoolExecutor(max_workers=effective_workers) as executor:
             futures = [
-                executor.submit(self._translate_section, section, results)
+                executor.submit(self._translate_section, section, results, report)
                 for section in sections
             ]
             for future in as_completed(futures):
@@ -410,7 +433,7 @@ class MarkdownBookLoader(BaseBookLoader):
         breadcrumb = batch.breadcrumb or ""
         return breadcrumb.split(" > ")[0].strip()
 
-    def _translate_section(self, section, results):
+    def _translate_section(self, section, results, report):
         """Translate one section's batches in reading order on an isolated
         translator clone, writing each finished batch into `results` so an
         interrupt only loses in-flight batches, not the whole section. Each
@@ -422,6 +445,7 @@ class MarkdownBookLoader(BaseBookLoader):
                 batch.breadcrumb,
                 translator=translator,
             )
+            report(batch, results[index])
 
     def _clone_translator_for_context(self):
         """Return a translator with its own context buffers so parallel
