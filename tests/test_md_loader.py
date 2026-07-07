@@ -1,4 +1,5 @@
 import json
+import re
 import threading
 import time
 
@@ -72,6 +73,12 @@ class ContextListModel(ListModel):
 
 
 class SlowListModel(ListModel):
+    # Class-level counters observe concurrency across cloned translators
+    # (clones bypass __init__, so instance counters can't see it).
+    cls_lock = threading.Lock()
+    cls_active = 0
+    cls_max_active = 0
+
     def __init__(
         self,
         key,
@@ -90,17 +97,63 @@ class SlowListModel(ListModel):
         self.active = 0
         self.max_active = 0
         self.lock = threading.Lock()
+        SlowListModel.cls_active = 0
+        SlowListModel.cls_max_active = 0
 
     def translate_list(self, texts):
         with self.lock:
             self.active += 1
             self.max_active = max(self.max_active, self.active)
+        with SlowListModel.cls_lock:
+            SlowListModel.cls_active += 1
+            SlowListModel.cls_max_active = max(
+                SlowListModel.cls_max_active, SlowListModel.cls_active
+            )
         try:
             time.sleep(0.03)
             return super().translate_list(texts)
         finally:
             with self.lock:
                 self.active -= 1
+            with SlowListModel.cls_lock:
+                SlowListModel.cls_active -= 1
+
+
+class AccumulatingContextModel(ListModel):
+    """Simulates a translator that accumulates context across calls (like
+    ChatGPTAPI.save_context). Each translation records how many *real* context
+    items (excluding the injected breadcrumb marker) were present, so tests can
+    prove per-section context isolation."""
+
+    def __init__(
+        self,
+        key,
+        language,
+        api_base=None,
+        temperature=1.0,
+        source_lang="auto",
+        context_flag=False,
+        context_paragraph_limit=0,
+        **kwargs,
+    ):
+        super().__init__(key, language, api_base, temperature, source_lang, **kwargs)
+        self.context_flag = context_flag
+        self.context_list = []
+        self.context_translated_list = []
+
+    def translate_list(self, texts):
+        self.list_calls.append(list(texts))
+        out = []
+        for text in texts:
+            real_ctx = [
+                c
+                for c in self.context_list
+                if not c.startswith("Markdown section context:")
+            ]
+            out.append(f"<T ctx={len(real_ctx)}>{text}</T>")
+            self.context_list.append(text)
+            self.context_translated_list.append(text)
+        return out
 
 
 class InterruptingListModel(ListModel):
@@ -400,7 +453,7 @@ def test_markdown_parallel_keeps_pass_through_blocks_untouched(tmp_path):
     assert SlowListModel.instances[-1].max_active > 1
 
 
-def test_markdown_use_context_forces_parallel_workers_to_sequential(tmp_path):
+def test_markdown_use_context_runs_sections_in_parallel(tmp_path):
     book = tmp_path / "book.md"
     book.write_text("# One\n\nFirst body.\n\n# Two\n\nSecond body.\n")
 
@@ -413,7 +466,66 @@ def test_markdown_use_context_forces_parallel_workers_to_sequential(tmp_path):
     loader.batch_size = 1
     loader.make_bilingual_book()
 
-    assert SlowListModel.instances[-1].max_active == 1
+    # Two independent H1 sections translate concurrently on isolated clones.
+    assert SlowListModel.cls_max_active > 1
+
+    content = (tmp_path / "book_bilingual.md").read_text(encoding="utf-8")
+    assert content.count("<T>") == 4
+    assert content.index("<T>First body.</T>") < content.index("<T>Second body.</T>")
+
+
+def test_markdown_use_context_isolates_context_per_section(tmp_path):
+    book = tmp_path / "book.md"
+    book.write_text(
+        "# One\n\nOne body a.\n\nOne body b.\n\n# Two\n\nTwo body a.\n\nTwo body b.\n"
+    )
+
+    loader = make_loader(
+        book,
+        AccumulatingContextModel,
+        context_flag=True,
+        parallel_workers=4,
+    )
+    loader.batch_size = 1
+    loader.make_bilingual_book()
+
+    content = (tmp_path / "book_bilingual.md").read_text(encoding="utf-8")
+    ctx_values = sorted(int(m) for m in re.findall(r"<T ctx=(\d+)>", content))
+    # Each section accumulates context independently across its 3 batches
+    # (heading, body a, body b) -> ctx 0,1,2. Without isolation the second
+    # section would continue at 3,4,5.
+    assert ctx_values == [0, 0, 1, 1, 2, 2]
+
+
+def test_markdown_context_section_interrupt_persists_partial_section(tmp_path):
+    book = tmp_path / "book.md"
+    book.write_text("# One\n\nOne a.\n\nTwo.\n\nThree.\n")
+
+    loader = make_loader(
+        book,
+        InterruptingListModel,
+        context_flag=True,
+        parallel_workers=4,
+    )
+    loader.batch_size = 1
+    with pytest.raises(SystemExit) as exc:
+        loader.make_bilingual_book()
+    assert exc.value.code == 0
+
+    # Batches completed before the interrupt within the same section are
+    # persisted, not just whole finished sections.
+    state = json.loads((tmp_path / ".book.temp.bin").read_text(encoding="utf-8"))
+    assert state == [["<T># One</T>", "<T>One a.</T>"]]
+
+    resume_loader = make_loader(
+        book, ListModel, resume=True, context_flag=True, parallel_workers=4
+    )
+    resume_loader.batch_size = 1
+    resume_loader.make_bilingual_book()
+
+    content = (tmp_path / "book_bilingual.md").read_text(encoding="utf-8")
+    for chunk in ("<T># One</T>", "<T>One a.</T>", "<T>Two.</T>", "<T>Three.</T>"):
+        assert content.count(chunk) == 1
 
 
 def test_markdown_parallel_interrupt_persists_contiguous_prefix_and_resumes(tmp_path):

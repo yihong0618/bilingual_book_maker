@@ -2,6 +2,7 @@ import json
 import re
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from copy import copy
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -320,11 +321,9 @@ class MarkdownBookLoader(BaseBookLoader):
             return results
 
         try:
-            if self.context_flag:
-                if self.parallel_workers > 1:
-                    print(
-                        "Markdown --use_context is order-dependent; using 1 worker."
-                    )
+            if self.context_flag and self.parallel_workers > 1:
+                self._translate_sections_parallel(pending, results)
+            elif self.context_flag:
                 for index, batch in pending:
                     results[index] = self._translate_batch(
                         batch.block_texts,
@@ -356,6 +355,89 @@ class MarkdownBookLoader(BaseBookLoader):
 
         self.p_to_save = self._contiguous_results(results)
         return results
+
+    def _translate_sections_parallel(self, pending, results):
+        """Translate independent Markdown sections concurrently while keeping
+        per-section context intact.
+
+        Used when both --use_context and --parallel-workers are active. Pending
+        batches are grouped into heading-delimited sections; each section is
+        translated sequentially (so context accumulates in reading order) on
+        its own context-isolated translator clone, and sections run in
+        parallel. `results` is filled by batch index, so output order is
+        preserved regardless of completion order.
+        """
+        sections = self._group_sections(pending)
+        effective_workers = min(self.parallel_workers, len(sections))
+
+        if effective_workers <= 1:
+            for section in sections:
+                self._translate_section(section, results)
+            return
+
+        print(
+            f"Markdown parallel context: {len(sections)} sections "
+            f"across {effective_workers} workers."
+        )
+        with ThreadPoolExecutor(max_workers=effective_workers) as executor:
+            futures = [
+                executor.submit(self._translate_section, section, results)
+                for section in sections
+            ]
+            for future in as_completed(futures):
+                future.result()
+
+    def _group_sections(self, pending):
+        """Split pending (index, batch) items into contiguous sections keyed by
+        their top-level heading, so each section is an independent context unit.
+        """
+        sections = []
+        current = []
+        current_key = None
+        for index, batch in pending:
+            key = self._section_key(batch)
+            if current and key != current_key:
+                sections.append(current)
+                current = []
+            current.append((index, batch))
+            current_key = key
+        if current:
+            sections.append(current)
+        return sections
+
+    @staticmethod
+    def _section_key(batch):
+        breadcrumb = batch.breadcrumb or ""
+        return breadcrumb.split(" > ")[0].strip()
+
+    def _translate_section(self, section, results):
+        """Translate one section's batches in reading order on an isolated
+        translator clone, writing each finished batch into `results` so an
+        interrupt only loses in-flight batches, not the whole section. Each
+        section owns a distinct set of indexes, so writes never collide."""
+        translator = self._clone_translator_for_context()
+        for index, batch in section:
+            results[index] = self._translate_batch(
+                batch.block_texts,
+                batch.breadcrumb,
+                translator=translator,
+            )
+
+    def _clone_translator_for_context(self):
+        """Return a translator with its own context buffers so parallel
+        sections do not share or clobber each other's context. Falls back to
+        the shared model if the translator cannot be cloned."""
+        if self.parallel_workers <= 1:
+            return self.translate_model
+        try:
+            clone = copy(self.translate_model)
+        except Exception:
+            return self.translate_model
+        if hasattr(clone, "context_list"):
+            clone.context_list = []
+        if hasattr(clone, "context_translated_list"):
+            clone.context_translated_list = []
+        return clone
 
     def _assemble_render_items(self, render_items, batches, translated_batches):
         result = []
@@ -392,7 +474,8 @@ class MarkdownBookLoader(BaseBookLoader):
             contiguous.append(result)
         return contiguous
 
-    def _translate_batch(self, batch_texts, breadcrumb=""):
+    def _translate_batch(self, batch_texts, breadcrumb="", translator=None):
+        translator = translator if translator is not None else self.translate_model
         protected_items = []
         replacement_items = []
         for text in batch_texts:
@@ -403,7 +486,8 @@ class MarkdownBookLoader(BaseBookLoader):
         try:
             translated_items = self._with_breadcrumb_context(
                 breadcrumb,
-                lambda: self._translate_list(protected_items),
+                lambda: self._translate_list(protected_items, translator),
+                translator,
             )
             if len(translated_items) != len(batch_texts):
                 raise ValueError(
@@ -422,10 +506,11 @@ class MarkdownBookLoader(BaseBookLoader):
             print(f"Translation failed: {e}")
             raise Exception("Something is wrong when translating") from e
 
-    def _translate_list(self, texts):
-        if hasattr(self.translate_model, "translate_list"):
-            return self.translate_model.translate_list(texts)
-        return [self.translate_model.translate(text) for text in texts]
+    def _translate_list(self, texts, translator=None):
+        translator = translator if translator is not None else self.translate_model
+        if hasattr(translator, "translate_list"):
+            return translator.translate_list(texts)
+        return [translator.translate(text) for text in texts]
 
     def _coerce_saved_batch(self, saved_batch, batch_texts):
         if isinstance(saved_batch, list):
@@ -478,14 +563,15 @@ class MarkdownBookLoader(BaseBookLoader):
     def _batch_is_heading_only(self, batch):
         return len(batch) == 1 and self._is_heading(batch[0].text)
 
-    def _with_breadcrumb_context(self, breadcrumb, translate):
+    def _with_breadcrumb_context(self, breadcrumb, translate, translator=None):
+        translator = translator if translator is not None else self.translate_model
         if not self.context_flag or not breadcrumb:
             return translate()
-        if not getattr(self.translate_model, "context_flag", False):
+        if not getattr(translator, "context_flag", False):
             return translate()
 
-        context_list = getattr(self.translate_model, "context_list", None)
-        translated_list = getattr(self.translate_model, "context_translated_list", None)
+        context_list = getattr(translator, "context_list", None)
+        translated_list = getattr(translator, "context_translated_list", None)
         if not isinstance(context_list, list) or not isinstance(translated_list, list):
             return translate()
 
