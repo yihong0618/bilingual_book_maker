@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -63,60 +64,78 @@ class TXTBookLoader(BaseBookLoader):
         pass
 
     def make_bilingual_book(self):
-        index = 0
-        p_to_save_len = len(self.p_to_save)
-
         try:
-            sliced_list = [
-                self.origin_book[i : i + self.batch_size]
-                for i in range(0, len(self.origin_book), self.batch_size)
-            ]
-            for i in sliced_list:
-                # fix the format thanks https://github.com/tudoujunha
-                batch_text = "\n".join(i)
-                if self._is_special_text(batch_text):
-                    continue
-                if not self.resume or index >= p_to_save_len:
-                    try:
-                        temp = self.translate_model.translate(batch_text)
-                    except Exception as e:
-                        print(e)
-                        raise Exception("Something is wrong when translate") from e
-                    self.p_to_save.append(temp)
-                    if not self.single_translate:
-                        self.bilingual_result.append(batch_text)
-                    self.bilingual_result.append(temp)
-                index += self.batch_size
-                if self.is_test and index > self.test_num:
-                    break
+            self.bilingual_result = self._render_bilingual_result(
+                translate_missing=True
+            )
 
             self.save_file(
                 f"{Path(self.txt_name).parent}/{Path(self.txt_name).stem}_bilingual.txt",
                 self.bilingual_result,
             )
 
-        except (KeyboardInterrupt, Exception) as e:
-            print(e)
+        except KeyboardInterrupt:
+            print("Interrupted. Saving progress so you can resume later.")
             print("you can resume it next time")
             self._save_progress()
             self._save_temp_book()
             sys.exit(0)
+        except Exception as e:
+            print(e)
+            print("you can resume it next time")
+            self._save_progress()
+            self._save_temp_book()
+            raise
+
+    def _render_bilingual_result(self, translate_missing):
+        result = []
+        batch_index = 0
+        translated_count = 0
+        cursor = 0
+
+        while cursor < len(self.origin_book):
+            remaining = self.test_num - translated_count if self.is_test else None
+            if self.is_test and remaining <= 0:
+                break
+
+            batch_len = min(self.batch_size, remaining) if remaining else self.batch_size
+            batch_lines = self.origin_book[cursor : cursor + batch_len]
+            cursor += batch_len
+
+            # fix the format thanks https://github.com/tudoujunha
+            batch_text = "\n".join(batch_lines)
+            if self._is_special_text(batch_text):
+                translated_count += len(batch_lines)
+                continue
+
+            if batch_index < len(self.p_to_save):
+                translated_text = self.p_to_save[batch_index]
+            elif translate_missing:
+                try:
+                    translated_text = self.translate_model.translate(batch_text)
+                except KeyboardInterrupt:
+                    raise
+                except Exception as e:
+                    print(e)
+                    raise Exception("Something is wrong when translate") from e
+                self.p_to_save.append(translated_text)
+            else:
+                translated_text = None
+
+            if not self.single_translate:
+                result.append(batch_text)
+            if translated_text is not None:
+                result.append(translated_text)
+
+            translated_count += len(batch_lines)
+            batch_index += 1
+
+        return result
 
     def _save_temp_book(self):
-        index = 0
-        sliced_list = [
-            self.origin_book[i : i + self.batch_size]
-            for i in range(0, len(self.origin_book), self.batch_size)
-        ]
-
-        for i in range(len(sliced_list)):
-            batch_text = "".join(sliced_list[i])
-            self.bilingual_temp_result.append(batch_text)
-            if self._is_special_text(self.origin_book[i]):
-                continue
-            if index < len(self.p_to_save):
-                self.bilingual_temp_result.append(self.p_to_save[index])
-            index += 1
+        self.bilingual_temp_result = self._render_bilingual_result(
+            translate_missing=False
+        )
 
         self.save_file(
             f"{Path(self.txt_name).parent}/{Path(self.txt_name).stem}_bilingual_temp.txt",
@@ -126,14 +145,21 @@ class TXTBookLoader(BaseBookLoader):
     def _save_progress(self):
         try:
             with open(self.bin_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(self.p_to_save))
+                json.dump(self.p_to_save, f, ensure_ascii=False)
         except Exception as e:
             raise Exception("can not save resume file") from e
 
     def load_state(self):
         try:
             with open(self.bin_path, encoding="utf-8") as f:
-                self.p_to_save = f.read().splitlines()
+                content = f.read()
+                try:
+                    state = json.loads(content)
+                except json.JSONDecodeError:
+                    state = content.splitlines()
+                if not isinstance(state, list):
+                    raise ValueError("resume file must contain a list")
+                self.p_to_save = state
         except Exception as e:
             raise Exception("can not load resume file") from e
 
