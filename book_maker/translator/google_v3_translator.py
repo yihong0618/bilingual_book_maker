@@ -4,6 +4,11 @@ import time
 from book_maker.utils import TO_LANGUAGE_CODE
 from .base_translator import Base
 
+# translate_text accepts up to 1024 contents / 30k codepoints per request;
+# stay well under both so a single oversized paragraph cannot break a chunk.
+BATCH_MAX_SEGMENTS = 128
+BATCH_MAX_CODEPOINTS = 20000
+
 # Cloud Translation v3 expects BCP-47 codes and rejects some of the
 # internal codes used by this repo's language table.
 V3_LANGUAGE_CODE_FIX = {
@@ -102,11 +107,12 @@ class GoogleV3(Base):
                 glossary=glossary_path
             )
 
-    def translate(self, text):
+    def _request(self, contents):
+        """Translate a list of strings; returns translations in order."""
         self._ensure_client()
         request = {
             "parent": self.parent,
-            "contents": [text],
+            "contents": contents,
             "mime_type": "text/plain",
             "target_language_code": self.target_lang,
         }
@@ -123,11 +129,49 @@ class GoogleV3(Base):
                     self.glossary_config is not None
                     and response.glossary_translations
                 ):
-                    return response.glossary_translations[0].translated_text
-                return response.translations[0].translated_text
+                    translations = response.glossary_translations
+                else:
+                    translations = response.translations
+                return [t.translated_text for t in translations]
             except Exception as e:
                 last_error = e
                 time.sleep(2**attempt)
         raise Exception(
             f"Google Cloud Translation failed after retries: {last_error}"
         ) from last_error
+
+    def translate(self, text):
+        return self._request([text])[0]
+
+    def translate_list(self, text_list):
+        """
+        Batch translation: pack the block's paragraphs into as few
+        contents[] requests as the API limits allow. One request replaces
+        up to BATCH_MAX_SEGMENTS per-paragraph round trips, which is where
+        the speedup comes from; each paragraph is still translated as its
+        own segment, so quality and alignment match single requests.
+        Pair with a large --block_size (e.g. 200) to feed big blocks.
+        """
+        results = [None] * len(text_list)
+        chunk, chunk_size = [], 0
+        chunks = []
+        for i, text in enumerate(text_list):
+            if not text.strip():
+                results[i] = text
+                continue
+            if chunk and (
+                len(chunk) >= BATCH_MAX_SEGMENTS
+                or chunk_size + len(text) > BATCH_MAX_CODEPOINTS
+            ):
+                chunks.append(chunk)
+                chunk, chunk_size = [], 0
+            chunk.append((i, text))
+            chunk_size += len(text)
+        if chunk:
+            chunks.append(chunk)
+
+        for chunk in chunks:
+            translated = self._request([text for _, text in chunk])
+            for (i, _), t_text in zip(chunk, translated):
+                results[i] = t_text
+        return results
