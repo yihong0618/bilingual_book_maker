@@ -394,16 +394,28 @@ class Gemini(Base):
             return [self.TRANSLATION_ERROR_MARKER] * batch_size
 
         stripped_texts = [str(t).strip() for t in text_list]
-        batch_text = "\n\n".join(stripped_texts)
+
+        # Empty/whitespace paragraphs are dropped by the model, producing a
+        # spurious "expected N, got N-1" count mismatch. Send only the non-empty
+        # paragraphs and re-insert the empties (unchanged) afterwards so the
+        # count check stays strict for genuine omissions.
+        non_empty_indices = [i for i, s in enumerate(stripped_texts) if s]
+        non_empty_texts = [stripped_texts[i] for i in non_empty_indices]
+
+        if not non_empty_texts:
+            return list(text_list)
+
+        expected_count = len(non_empty_texts)
+        batch_text = "\n\n".join(non_empty_texts)
 
         prompt = self.prompt.format(text=batch_text, language=self.language)
         if "translated_paragraphs" not in prompt.lower():
             prompt += (
                 f"\n\nReturn the translations as a JSON object with a 'translated_paragraphs' "
-                f"field containing exactly {batch_size} translated texts in order."
+                f"field containing exactly {expected_count} translated texts in order."
             )
 
-        result = self._batch_translate_with_retry(prompt, batch_size)
+        result = self._batch_translate_with_retry(prompt, expected_count)
 
         # Check again after retry attempt (error may have been detected during retries)
         if self._fatal_error_detected:
@@ -411,7 +423,12 @@ class Gemini(Base):
             return [self.TRANSLATION_ERROR_MARKER] * batch_size
 
         if result:
-            return result
+            # Re-insert translations at their original positions; empty paragraphs
+            # keep their original (untranslated) content.
+            merged = list(text_list)
+            for idx, value in zip(non_empty_indices, result):
+                merged[idx] = value
+            return merged
 
         # Fallback to one-by-one translation (only for non-fatal errors)
         print(
