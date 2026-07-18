@@ -18,6 +18,7 @@ dependencies = [
     "backoff",
     "bs4",
     "ebooklib",
+    "google-cloud-translate>=3.15.0",
     "google-genai",
     "litellm",
     "openai>=1.1.1",
