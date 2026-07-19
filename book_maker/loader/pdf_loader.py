@@ -11,6 +11,158 @@ import fitz
 
 from ebooklib import epub
 
+PDF_LAYOUTS = ("top-bottom", "side-by-side")
+
+
+def create_bilingual_pdf(pairs, out_path, title, layout="top-bottom"):
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+        from reportlab.pdfbase.ttfonts import TTFont
+        from reportlab.pdfgen import canvas
+    except Exception as e:
+        print(f"pdf creation skipped: install reportlab first ({e})")
+        return False
+
+    if layout not in PDF_LAYOUTS:
+        raise ValueError(f"unsupported pdf layout: {layout}")
+
+    font = "Helvetica"
+    ttf_path = Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf")
+    try:
+        if ttf_path.exists():
+            font = "BBMArialUnicode"
+            if font not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(TTFont(font, str(ttf_path)))
+        else:
+            font = "STSong-Light"
+            if font not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(UnicodeCIDFont(font))
+    except Exception:
+        font = "Helvetica"
+
+    page_w, page_h = A4
+    left = right = 46
+    top = 52
+    bottom = 46
+    font_size = 9.5
+    label_size = 8
+    leading = 13
+    max_w = page_w - left - right
+    col_gap = 18
+    col_w = (max_w - col_gap) / 2
+    width_cache = {}
+
+    def width(text, size=font_size):
+        key = (text, size)
+        if key not in width_cache:
+            width_cache[key] = pdfmetrics.stringWidth(text, font, size)
+        return width_cache[key]
+
+    def wrap_line(line, line_w):
+        line = line.replace("\t", "    ").rstrip()
+        if not line:
+            return [""]
+        out, cur, cur_w = [], [], 0.0
+        for ch in line:
+            ch_w = width(ch)
+            if cur and cur_w + ch_w > line_w:
+                out.append("".join(cur).rstrip())
+                cur = [] if ch == " " else [ch]
+                cur_w = 0.0 if ch == " " else ch_w
+            else:
+                cur.append(ch)
+                cur_w += ch_w
+        if cur:
+            out.append("".join(cur).rstrip())
+        return out or [""]
+
+    def wrap_text(text, line_w):
+        lines = []
+        for raw in str(text or "").splitlines() or [""]:
+            lines.extend(wrap_line(raw, line_w))
+        return lines
+
+    c = canvas.Canvas(str(out_path), pagesize=A4)
+    c.setTitle(title)
+    page_no = 0
+
+    def new_page():
+        nonlocal page_no, y
+        if page_no:
+            c.showPage()
+        page_no += 1
+        c.setStrokeColor(colors.HexColor("#d9d9d9"))
+        c.setLineWidth(0.4)
+        c.line(left, page_h - 36, page_w - right, page_h - 36)
+        c.line(left, 34, page_w - right, 34)
+        c.setFillColor(colors.HexColor("#666666"))
+        c.setFont(font, 8)
+        header = title
+        while width(header, 8) > max_w:
+            header = header[:-4] + "..."
+        c.drawString(left, page_h - 28, header)
+        c.drawCentredString(page_w / 2, 22, str(page_no))
+        c.setFillColor(colors.black)
+        c.setFont(font, font_size)
+        y = page_h - top
+
+    def ensure(lines=1):
+        if y - lines * leading < bottom:
+            new_page()
+
+    def draw_label(text, x):
+        c.setFillColor(colors.HexColor("#666666"))
+        c.setFont(font, label_size)
+        c.drawString(x, y, text)
+        c.setFillColor(colors.black)
+        c.setFont(font, font_size)
+
+    y = page_h - top
+    new_page()
+
+    for original, translated in pairs:
+        if layout == "top-bottom":
+            for label, text in (("Original", original), ("Translation", translated)):
+                ensure(2)
+                draw_label(label, left)
+                y -= leading
+                for line in wrap_text(text, max_w):
+                    ensure()
+                    if line:
+                        c.drawString(left, y, line)
+                    y -= leading
+                y -= 4
+            ensure()
+            c.setStrokeColor(colors.HexColor("#eeeeee"))
+            c.line(left, y + 4, page_w - right, y + 4)
+            y -= 4
+            continue
+
+        original_lines = wrap_text(original, col_w)
+        translated_lines = wrap_text(translated, col_w)
+        row_count = max(len(original_lines), len(translated_lines))
+        ensure(2)
+        draw_label("Original", left)
+        draw_label("Translation", left + col_w + col_gap)
+        y -= leading
+        for i in range(row_count):
+            ensure()
+            if i < len(original_lines) and original_lines[i]:
+                c.drawString(left, y, original_lines[i])
+            if i < len(translated_lines) and translated_lines[i]:
+                c.drawString(left + col_w + col_gap, y, translated_lines[i])
+            y -= leading
+        ensure()
+        c.setStrokeColor(colors.HexColor("#eeeeee"))
+        c.line(left, y + 4, page_w - right, y + 4)
+        y -= 6
+
+    c.save()
+    return True
+
 
 class PDFBookLoader(BaseBookLoader):
     def __init__(
@@ -30,6 +182,7 @@ class PDFBookLoader(BaseBookLoader):
         temperature=1.0,
         source_lang="auto",
         parallel_workers=1,
+        pdf_layout="none",
     ) -> None:
         if fitz is None:
             raise Exception("PyMuPDF (fitz) is required to use PDF loader")
@@ -51,6 +204,7 @@ class PDFBookLoader(BaseBookLoader):
         self.batch_size = 10
         self.single_translate = single_translate
         self.parallel_workers = max(1, parallel_workers)
+        self.pdf_layout = pdf_layout
 
         try:
             doc = fitz.open(self.pdf_name)
@@ -158,6 +312,31 @@ class PDFBookLoader(BaseBookLoader):
             print(f"create epub failed: {e}")
             return False
 
+    def _try_create_pdfs(self):
+        if self.pdf_layout == "none":
+            return
+
+        layouts = PDF_LAYOUTS if self.pdf_layout == "all" else (self.pdf_layout,)
+        if self.single_translate:
+            pairs = [("", translated) for translated in self.bilingual_result]
+        else:
+            pairs = []
+            for i in range(0, len(self.bilingual_result), 2):
+                translated = (
+                    self.bilingual_result[i + 1]
+                    if i + 1 < len(self.bilingual_result)
+                    else ""
+                )
+                pairs.append((self.bilingual_result[i], translated))
+
+        for layout in layouts:
+            out_path = (
+                Path(self.pdf_name).parent
+                / f"{Path(self.pdf_name).stem}_bilingual_{layout}.pdf"
+            )
+            if create_bilingual_pdf(pairs, out_path, Path(self.pdf_name).stem, layout):
+                print(f"created pdf: {out_path.name}")
+
     def make_bilingual_book(self):
         index = 0
         p_to_save_len = len(self.p_to_save)
@@ -203,6 +382,7 @@ class PDFBookLoader(BaseBookLoader):
                 print(
                     "epub creation skipped or failed; bilingual text saved to txt fallback"
                 )
+            self._try_create_pdfs()
 
         except (KeyboardInterrupt, Exception) as e:
             print(e)

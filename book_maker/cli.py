@@ -341,6 +341,13 @@ So you are close to reaching the limit. You have to choose your own value, there
         help="how many text units will be translated by aggregated translation for supported loaders",
     )
     parser.add_argument(
+        "--pdf_layout",
+        dest="pdf_layout",
+        choices=["none", "top-bottom", "side-by-side", "all"],
+        default="none",
+        help="PDF output layout for PDF inputs: top-bottom, side-by-side, all, or none",
+    )
+    parser.add_argument(
         "--retranslate",
         dest="retranslate",
         nargs=4,
@@ -570,6 +577,10 @@ So you are close to reaching the limit. You have to choose your own value, there
     if options.provider and provider_cfg and not model_api_base:
         model_api_base = provider_cfg.get("base_url")
 
+    loader_kwargs = {}
+    if book_type == "pdf":
+        loader_kwargs["pdf_layout"] = options.pdf_layout
+
     e = book_loader(
         options.book_name,
         translate_model,
@@ -586,6 +597,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         temperature=options.temperature,
         source_lang=options.source_lang,
         parallel_workers=options.parallel_workers,
+        **loader_kwargs,
     )
     # Parse and set extra_body if provided
     if options.extra_body:
