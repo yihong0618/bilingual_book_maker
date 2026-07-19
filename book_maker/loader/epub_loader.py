@@ -532,7 +532,9 @@ class EPUBBookLoader(BaseBookLoader):
         if not wait_p_list:
             return
 
-        result_txt_list = self.translate_model.translate_list(wait_p_list)
+        result_txt_list = self.translate_model.translate_list(
+            [p.text for p in wait_p_list]
+        )
 
         for i in range(len(wait_p_list)):
             if i < len(result_txt_list):
@@ -1042,7 +1044,9 @@ class EPUBBookLoader(BaseBookLoader):
                     )
 
                     # Call translate_list for consistent batch translation logic
-                    result_txt_list = self.translator.translate_list(wait_p_list)
+                    result_txt_list = self.translator.translate_list(
+                        [p.text for p in wait_p_list]
+                    )
 
                     # Update chapter context from translator
                     self.context_list[:] = self.translator.context_list
