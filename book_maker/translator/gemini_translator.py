@@ -395,14 +395,13 @@ class Gemini(Base):
 
         stripped_texts = [str(t).strip() for t in text_list]
 
-        # Empty/whitespace paragraphs are dropped by the model, producing a
-        # spurious "expected N, got N-1" count mismatch. Send only the non-empty
-        # paragraphs and re-insert the empties (unchanged) afterwards so the
-        # count check stays strict for genuine omissions.
+        # The model silently drops empty/whitespace paragraphs, causing a bogus
+        # "expected N, got N-1" mismatch. Send only the non-empty ones.
         non_empty_indices = [i for i, s in enumerate(stripped_texts) if s]
         non_empty_texts = [stripped_texts[i] for i in non_empty_indices]
 
         if not non_empty_texts:
+            # Nothing to translate — return the originals unchanged.
             return list(text_list)
 
         expected_count = len(non_empty_texts)
@@ -423,8 +422,7 @@ class Gemini(Base):
             return [self.TRANSLATION_ERROR_MARKER] * batch_size
 
         if result:
-            # Re-insert translations at their original positions; empty paragraphs
-            # keep their original (untranslated) content.
+            # Put each translation back at its original index; empty paragraphs stay as-is.
             merged = list(text_list)
             for idx, value in zip(non_empty_indices, result):
                 merged[idx] = value
