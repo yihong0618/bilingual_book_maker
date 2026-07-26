@@ -11,6 +11,9 @@ PROMPT_ENV_MAP = {
 
 
 class liteLLM(ChatGPTAPI):
+    # Routed through litellm's own completion(), not self.openai_client.
+    SUPPORTS_STRUCTURED_OUTPUTS = False
+
     def create_chat_completion(self, text):
         # content = self.prompt_template.format(
         #     text=text, language=self.language, crlf="\n"
