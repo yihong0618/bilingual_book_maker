@@ -37,10 +37,10 @@ def _parsed_completion(parsed=None, refusal=None):
     )
 
 
-def _api_error(cls, status_code):
+def _api_error(cls, status_code, message="boom"):
     request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
     response = httpx.Response(status_code, request=request)
-    return cls("boom", response=response, body=None)
+    return cls(message, response=response, body=None)
 
 
 def _translator(create=None, parse=None, cls=ChatGPTAPI):
@@ -61,6 +61,7 @@ def _translator(create=None, parse=None, cls=ChatGPTAPI):
     translator._api_lock = threading.Lock()
     translator._structured_lock = threading.RLock()
     translator._structured_support = {}
+    translator._temperature_unsupported = {}
     translator.openai_client = SimpleNamespace(
         chat=SimpleNamespace(
             completions=SimpleNamespace(
@@ -361,6 +362,157 @@ def test_groq_never_probes_for_structured_outputs():
     assert GroqClient.SUPPORTS_STRUCTURED_OUTPUTS is False
     assert translator._structured_support["test-model"] is False
     assert create.call_count == 0
+
+
+# --------------------------------------------------------------------------
+# Item 6: temperature must not be forced onto models that only accept their
+# default, and a temperature 400 must not be blamed on the JSON schema
+# --------------------------------------------------------------------------
+
+
+def test_default_temperature_is_not_sent():
+    """1.0 is the API default, so sending it is a no-op — except on models that
+    reject any explicit temperature."""
+    parse = Mock(
+        return_value=_parsed_completion(parsed=SimpleNamespace(translated="你好"))
+    )
+    translator = _translator(parse=parse)
+    translator.temperature = 1.0
+    translator._structured_support["test-model"] = True
+
+    translator._structured_single_translation("hello")
+
+    assert "temperature" not in parse.call_args.kwargs
+
+
+def test_explicit_temperature_is_sent():
+    parse = Mock(
+        return_value=_parsed_completion(parsed=SimpleNamespace(translated="你好"))
+    )
+    translator = _translator(parse=parse)
+    translator.temperature = 0.1
+    translator._structured_support["test-model"] = True
+
+    translator._structured_single_translation("hello")
+
+    assert parse.call_args.kwargs["temperature"] == 0.1
+
+
+def test_plain_path_also_honors_the_default_temperature_rule():
+    create = Mock(return_value=_completion("plain"))
+    translator = _translator(create=create)
+    translator.temperature = 1.0
+
+    translator.create_chat_completion("hello")
+
+    assert "temperature" not in create.call_args.kwargs
+
+
+def test_temperature_rejection_retries_once_without_it_and_is_cached():
+    ok = _parsed_completion(parsed=SimpleNamespace(translated="你好"))
+    parse = Mock(
+        side_effect=[
+            _api_error(
+                BadRequestError,
+                400,
+                "Unsupported value: 'temperature' does not support 0.1 with this model",
+            ),
+            ok,
+            ok,
+        ]
+    )
+    translator = _translator(parse=parse)
+    translator.temperature = 0.1
+    translator._structured_support["test-model"] = True
+
+    assert translator._structured_single_translation("hello") == "你好"
+    assert parse.call_count == 2
+    assert "temperature" not in parse.call_args.kwargs
+    assert translator._temperature_unsupported["test-model"] is True
+
+    # Cached: the second translation never sends it again.
+    translator._structured_single_translation("world")
+    assert parse.call_count == 3
+    assert "temperature" not in parse.call_args.kwargs
+
+
+def test_temperature_rejection_does_not_demote_structured_outputs():
+    ok = _parsed_completion(parsed=SimpleNamespace(translated="你好"))
+    parse = Mock(
+        side_effect=[
+            _api_error(BadRequestError, 400, "temperature is not supported"),
+            ok,
+        ]
+    )
+    translator = _translator(parse=parse)
+    translator.temperature = 0.1
+    translator._structured_support["test-model"] = True
+
+    translator._structured_single_translation("hello")
+
+    assert translator._structured_support["test-model"] is True
+
+
+def test_schema_rejection_is_still_a_capability_answer():
+    parse = Mock(
+        side_effect=_api_error(
+            BadRequestError, 400, "response_format of type json_schema is not supported"
+        )
+    )
+    translator = _translator(parse=parse)
+    translator._structured_support["test-model"] = True
+
+    with pytest.raises(StructuredOutputUnsupported):
+        translator._structured_single_translation("hello")
+
+
+def test_unrelated_bad_request_is_not_blamed_on_the_schema():
+    parse = Mock(
+        side_effect=_api_error(BadRequestError, 400, "context length exceeded")
+    )
+    translator = _translator(parse=parse)
+    translator._structured_support["test-model"] = True
+
+    with pytest.raises(BadRequestError):
+        translator._structured_single_translation("hello")
+
+    # Still enabled: the model never said anything about schemas.
+    assert translator._structured_support["test-model"] is True
+
+
+def test_batch_path_applies_the_same_temperature_rule():
+    parse = Mock(
+        return_value=_parsed_completion(parsed=SimpleNamespace(paragraphs=["一", "二"]))
+    )
+    translator = _translator(parse=parse)
+    translator.temperature = 1.0
+    translator._structured_support["test-model"] = True
+
+    translator._do_structured_batch_translate(["a", "b"])
+
+    assert "temperature" not in parse.call_args.kwargs
+
+
+def test_temperature_support_is_tracked_per_model():
+    translator = _translator()
+    translator.temperature = 0.1
+    translator._temperature_unsupported["test-model"] = True
+
+    assert translator._sampling_kwargs() == {}
+    assert translator._sampling_kwargs("other-model") == {"temperature": 0.1}
+
+
+def test_batch_api_body_omits_default_temperature():
+    translator = _translator()
+    translator.temperature = 1.0
+    translator.batch_model = "batch-model"
+    translator._structured_support["batch-model"] = False
+    translator.create_batch_context_messages = Mock(return_value=[])
+    translator.custom_id = Mock(return_value="id-1")
+
+    body = translator.make_batch_request(0, "hello")["body"]
+
+    assert "temperature" not in body
 
 
 # --------------------------------------------------------------------------

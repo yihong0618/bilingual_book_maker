@@ -80,6 +80,10 @@ SINGLE_TRANSLATION_SCHEMA = {
     },
 }
 
+# The API's own default. Sending it explicitly changes nothing for models that
+# accept it, and is a hard 400 for models that only allow their default.
+DEFAULT_TEMPERATURE = 1.0
+
 PROBE_PROMPT = "Reply with the single word: ignored. Do not output JSON."
 PROBE_KEY = "probe"
 PROBE_EXPECTED = "schema_ok"
@@ -212,9 +216,11 @@ class ChatGPTAPI(Base):
         self._structured_lock = RLock()
         self.extra_body = extra_body or {}
 
-        # Structured outputs: probed once per model on first use. Keyed by model
-        # because --model_list rotates across models of differing capability.
+        # Both keyed by model, because --model_list rotates across models of
+        # differing capability. Structured support is probed on first use;
+        # temperature support is learned from the first rejection.
         self._structured_support = {}
+        self._temperature_unsupported = {}
         self.model = (
             None  # Will be set by rotate_model() after model_list is initialized
         )
@@ -361,15 +367,65 @@ class ChatGPTAPI(Base):
             )
         return messages
 
+    def _sampling_kwargs(self, model=None):
+        """Sampling parameters to send, or nothing when the model owns them.
+
+        `DEFAULT_TEMPERATURE` is the API's own default, so sending it changes no
+        output — but gpt-5.x and the o-series reject *any* explicit temperature,
+        so an unrequested default is pure downside. A model that turned one down
+        is remembered and never asked again.
+        """
+        model = model or self.model
+        if self._temperature_unsupported.get(model):
+            return {}
+        if self.temperature is None or self.temperature == DEFAULT_TEMPERATURE:
+            return {}
+        return {"temperature": self.temperature}
+
+    @staticmethod
+    def _classify_bad_request(error):
+        """Say what a 400 was actually about: 'temperature', 'schema' or 'other'.
+
+        Without this, a temperature rejection is misread as "no schema support":
+        the model gets demoted for the rest of the run and the real cause never
+        reaches the user.
+        """
+        text = str(error).lower()
+        if "temperature" in text:
+            return "temperature"
+        if "response_format" in text or "json_schema" in text:
+            return "schema"
+        return "other"
+
+    def _request(self, call, model=None):
+        """Issue an API call, retrying once without temperature if refused."""
+        model = model or self.model
+        try:
+            return call(self._sampling_kwargs(model))
+        except BadRequestError as e:
+            if self._classify_bad_request(e) != "temperature":
+                raise
+            with self._structured_lock:
+                first_time = not self._temperature_unsupported.get(model)
+                self._temperature_unsupported[model] = True
+            if first_time:
+                print(
+                    f"[yellow]ℹ '{model}' rejected temperature={self.temperature}; "
+                    f"retrying with the model default[/yellow]"
+                )
+            return call({})
+
     def create_chat_completion(self, text):
         """Plain (delimiter-mode) completion. Overridden by some subclasses."""
         messages = self.create_messages(text, self.create_context_messages())
 
-        return self.openai_client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=self.temperature,
-            extra_body=self.extra_body if self.extra_body else None,
+        return self._request(
+            lambda sampling: self.openai_client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                extra_body=self.extra_body if self.extra_body else None,
+                **sampling,
+            )
         )
 
     def _structured_single_translation(self, text):
@@ -382,16 +438,21 @@ class ChatGPTAPI(Base):
         messages = self.create_messages(text, self.create_context_messages())
 
         try:
-            completion = self.openai_client.chat.completions.parse(
-                model=self.model,
-                messages=messages,
-                temperature=self.temperature,
-                response_format=SingleTranslation,
-                extra_body=self.extra_body if self.extra_body else None,
+            completion = self._request(
+                lambda sampling: self.openai_client.chat.completions.parse(
+                    model=self.model,
+                    messages=messages,
+                    response_format=SingleTranslation,
+                    extra_body=self.extra_body if self.extra_body else None,
+                    **sampling,
+                )
             )
-        except (BadRequestError, ValidationError, json.JSONDecodeError) as e:
-            # Rejected the schema, or answered with something that is not the
-            # schema — either way the capability is not there.
+        except BadRequestError as e:
+            if self._classify_bad_request(e) != "schema":
+                raise  # not a capability answer — do not blame the schema
+            raise StructuredOutputUnsupported(str(e)) from e
+        except (ValidationError, json.JSONDecodeError) as e:
+            # Answered with something that is not the schema.
             raise StructuredOutputUnsupported(str(e)) from e
 
         message = completion.choices[0].message
@@ -609,14 +670,20 @@ class ChatGPTAPI(Base):
         messages = self._create_structured_batch_messages(text_list)
 
         try:
-            completion = self.openai_client.chat.completions.parse(
-                model=self.model,
-                messages=messages,
-                temperature=self.temperature,
-                response_format=BatchTranslation,
-                extra_body=self.extra_body if self.extra_body else None,
+            completion = self._request(
+                lambda sampling: self.openai_client.chat.completions.parse(
+                    model=self.model,
+                    messages=messages,
+                    response_format=BatchTranslation,
+                    extra_body=self.extra_body if self.extra_body else None,
+                    **sampling,
+                )
             )
-        except (BadRequestError, ValidationError, json.JSONDecodeError) as e:
+        except BadRequestError as e:
+            if self._classify_bad_request(e) != "schema":
+                raise  # not a capability answer — do not blame the schema
+            raise StructuredOutputUnsupported(str(e)) from e
+        except (ValidationError, json.JSONDecodeError) as e:
             raise StructuredOutputUnsupported(str(e)) from e
 
         message = completion.choices[0].message
@@ -1044,7 +1111,7 @@ class ChatGPTAPI(Base):
         batch_body = {
             "model": self.batch_model,
             "messages": messages,
-            "temperature": self.temperature,
+            **self._sampling_kwargs(self.batch_model),
         }
 
         # The Batch API takes hand-built bodies, so the schema cannot come from
