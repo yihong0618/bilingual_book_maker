@@ -165,7 +165,6 @@ class ChatGPTAPI(Base):
             self.openai_client.chat.completions.create(
                 model=self.model,
                 messages=test_messages,
-                temperature=0.1,
                 response_format={
                     "type": "json_schema",
                     "json_schema": SINGLE_TRANSLATION_SCHEMA,
@@ -680,7 +679,6 @@ class ChatGPTAPI(Base):
                 model=model_name,
                 messages=test_messages,
                 max_tokens=10,
-                temperature=0.1,
             )
             print(f"[green]Model '{model_name}' is accessible and working.[/green]")
         except Exception as e:
