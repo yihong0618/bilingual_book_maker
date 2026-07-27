@@ -732,6 +732,11 @@ def test_hand_built_batch_schema_matches_the_sdk_model():
         field = single_field_name(language)
 
         assert schema["strict"] is True
+        # The SDK sends the model's class name as the schema name, so both
+        # transports must land on the same one.
+        assert schema["name"] == field
+        assert single_translation_model(language).__name__ == field
+        assert batch_translation_model(language).__name__ == batch_field_name(language)
         assert schema["schema"]["required"] == [field]
         assert schema["schema"]["additionalProperties"] is False
         assert list(schema["schema"]["properties"]) == [field]

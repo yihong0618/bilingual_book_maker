@@ -77,17 +77,15 @@ def batch_field_name(language):
     return f"{slug}_paragraphs" if slug else "paragraphs"
 
 
-def _schema_suffix(language):
-    slug = _language_slug(language)
-    return f"_{slug}" if slug else ""
-
-
+# The schema name is sent to the model, which never has to tell the single
+# schema from the batch one -- a request carries exactly one. So name each
+# schema after the field it wraps rather than after our own call sites.
 @lru_cache(maxsize=None)
 def single_translation_model(language):
     """Structured single translation output, pinned to `language`."""
     field = single_field_name(language)
     return create_model(
-        f"SingleTranslation{_schema_suffix(language)}",
+        field,
         __config__=ConfigDict(extra="forbid"),
         **{
             field: (
@@ -103,7 +101,7 @@ def batch_translation_model(language):
     """Structured batch translation output, pinned to `language`."""
     field = batch_field_name(language)
     return create_model(
-        f"BatchTranslation{_schema_suffix(language)}",
+        field,
         __config__=ConfigDict(extra="forbid"),
         **{
             field: (
@@ -136,7 +134,7 @@ def single_translation_schema(language):
     """
     field = single_field_name(language)
     return {
-        "name": f"single_translation{_schema_suffix(language)}",
+        "name": field,
         "strict": True,
         "schema": {
             "type": "object",
