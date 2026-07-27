@@ -20,8 +20,29 @@ from openai import (
 from book_maker.translator.chatgptapi_translator import (
     ChatGPTAPI,
     StructuredOutputUnsupported,
+    batch_field_name,
+    batch_translation_model,
+    single_field_name,
+    single_translation_model,
+    single_translation_schema,
 )
 from book_maker.translator.groq_translator import GroqClient
+
+# Every translator built by `_translator` uses this language, so the structured
+# fields are named after it.
+LANGUAGE = "Chinese"
+SINGLE_FIELD = single_field_name(LANGUAGE)
+BATCH_FIELD = batch_field_name(LANGUAGE)
+
+
+def _single(text):
+    """`.parsed` for a single translation in the fixture's language."""
+    return SimpleNamespace(**{SINGLE_FIELD: text})
+
+
+def _batch(paragraphs):
+    """`.parsed` for a batch translation in the fixture's language."""
+    return SimpleNamespace(**{BATCH_FIELD: paragraphs})
 
 
 def _completion(content, finish_reason="stop"):
@@ -298,14 +319,14 @@ def test_concurrent_workers_probe_a_model_only_once():
 
 
 def test_single_translation_returns_parsed_field():
-    parse = Mock(
-        return_value=_parsed_completion(parsed=SimpleNamespace(translated="你好"))
-    )
+    parse = Mock(return_value=_parsed_completion(parsed=_single("你好")))
     translator = _translator(parse=parse)
     translator._structured_support["test-model"] = True
 
     assert translator.get_translation("hello") == "你好"
-    assert parse.call_args.kwargs["response_format"].__name__ == "SingleTranslation"
+    assert parse.call_args.kwargs["response_format"] is single_translation_model(
+        LANGUAGE
+    )
 
 
 def test_truncated_response_raises_instead_of_leaking_json_fragment():
@@ -388,7 +409,7 @@ def test_a_working_structured_call_clears_the_failure_streak():
     parse = Mock(
         side_effect=[
             StructuredOutputUnsupported("blip"),
-            _parsed_completion(parsed=SimpleNamespace(translated="你好")),
+            _parsed_completion(parsed=_single("你好")),
             StructuredOutputUnsupported("blip"),
         ]
     )
@@ -416,9 +437,7 @@ def test_batch_path_demotes_without_burning_retries():
 
 
 def test_batch_length_mismatch_is_retried_then_falls_back_one_by_one():
-    parse = Mock(
-        return_value=_parsed_completion(parsed=SimpleNamespace(paragraphs=["only one"]))
-    )
+    parse = Mock(return_value=_parsed_completion(parsed=_batch(["only one"])))
     translator = _translator(parse=parse)
     translator._structured_support["test-model"] = True
     translator.translate = Mock(side_effect=lambda text, _=True: f"t:{text}")
@@ -432,15 +451,13 @@ def test_batch_length_mismatch_is_retried_then_falls_back_one_by_one():
 
 
 def test_batch_success_returns_paragraphs():
-    parse = Mock(
-        return_value=_parsed_completion(parsed=SimpleNamespace(paragraphs=["一", "二"]))
-    )
+    parse = Mock(return_value=_parsed_completion(parsed=_batch(["一", "二"])))
     translator = _translator(parse=parse)
     translator._structured_support["test-model"] = True
 
     assert translator._do_structured_batch_translate(["a", "b"]) == ["一", "二"]
     request = parse.call_args.kwargs
-    assert request["response_format"].__name__ == "BatchTranslation"
+    assert request["response_format"] is batch_translation_model(LANGUAGE)
     assert json.loads  # payload is built by the SDK, not hand-rolled
 
 
@@ -469,9 +486,7 @@ def test_groq_never_probes_for_structured_outputs():
 def test_default_temperature_is_not_sent():
     """1.0 is the API default, so sending it is a no-op — except on models that
     reject any explicit temperature."""
-    parse = Mock(
-        return_value=_parsed_completion(parsed=SimpleNamespace(translated="你好"))
-    )
+    parse = Mock(return_value=_parsed_completion(parsed=_single("你好")))
     translator = _translator(parse=parse)
     translator.temperature = 1.0
     translator._structured_support["test-model"] = True
@@ -482,9 +497,7 @@ def test_default_temperature_is_not_sent():
 
 
 def test_explicit_temperature_is_sent():
-    parse = Mock(
-        return_value=_parsed_completion(parsed=SimpleNamespace(translated="你好"))
-    )
+    parse = Mock(return_value=_parsed_completion(parsed=_single("你好")))
     translator = _translator(parse=parse)
     translator.temperature = 0.1
     translator._structured_support["test-model"] = True
@@ -505,7 +518,7 @@ def test_plain_path_also_honors_the_default_temperature_rule():
 
 
 def test_temperature_rejection_retries_once_without_it_and_is_cached():
-    ok = _parsed_completion(parsed=SimpleNamespace(translated="你好"))
+    ok = _parsed_completion(parsed=_single("你好"))
     parse = Mock(
         side_effect=[
             _api_error(
@@ -533,7 +546,7 @@ def test_temperature_rejection_retries_once_without_it_and_is_cached():
 
 
 def test_temperature_rejection_does_not_demote_structured_outputs():
-    ok = _parsed_completion(parsed=SimpleNamespace(translated="你好"))
+    ok = _parsed_completion(parsed=_single("你好"))
     parse = Mock(
         side_effect=[
             _api_error(BadRequestError, 400, "temperature is not supported"),
@@ -577,9 +590,7 @@ def test_unrelated_bad_request_is_not_blamed_on_the_schema():
 
 
 def test_batch_path_applies_the_same_temperature_rule():
-    parse = Mock(
-        return_value=_parsed_completion(parsed=SimpleNamespace(paragraphs=["一", "二"]))
-    )
+    parse = Mock(return_value=_parsed_completion(parsed=_batch(["一", "二"])))
     translator = _translator(parse=parse)
     translator.temperature = 1.0
     translator._structured_support["test-model"] = True
@@ -620,16 +631,16 @@ def test_batch_api_body_omits_default_temperature():
 def test_batch_choice_unwraps_structured_content_without_cached_state():
     choice = {
         "finish_reason": "stop",
-        "message": {"content": '{"translated":"你好"}'},
+        "message": {"content": json.dumps({SINGLE_FIELD: "你好"})},
     }
 
-    assert ChatGPTAPI._read_batch_choice(choice, "id-1") == "你好"
+    assert ChatGPTAPI._read_batch_choice(choice, "id-1", LANGUAGE) == "你好"
 
 
 def test_batch_choice_passes_through_plain_content():
     choice = {"finish_reason": "stop", "message": {"content": "plain text"}}
 
-    assert ChatGPTAPI._read_batch_choice(choice, "id-1") == "plain text"
+    assert ChatGPTAPI._read_batch_choice(choice, "id-1", LANGUAGE) == "plain text"
 
 
 def test_batch_choice_rejects_truncated_result():
@@ -639,14 +650,121 @@ def test_batch_choice_rejects_truncated_result():
     }
 
     with pytest.raises(ValueError, match="truncated"):
-        ChatGPTAPI._read_batch_choice(choice, "id-1")
+        ChatGPTAPI._read_batch_choice(choice, "id-1", LANGUAGE)
 
 
 def test_batch_choice_rejects_refusal():
     choice = {"finish_reason": "stop", "message": {"refusal": "nope", "content": None}}
 
     with pytest.raises(ValueError, match="refused"):
-        ChatGPTAPI._read_batch_choice(choice, "id-1")
+        ChatGPTAPI._read_batch_choice(choice, "id-1", LANGUAGE)
+
+
+def test_batch_choice_rejects_structured_object_from_another_language():
+    """A result file written under a different --language must not be pasted
+    into the book as raw JSON."""
+    choice = {
+        "finish_reason": "stop",
+        "message": {"content": json.dumps({"german_translation": "hallo"})},
+    }
+
+    with pytest.raises(ValueError, match=SINGLE_FIELD):
+        ChatGPTAPI._read_batch_choice(choice, "id-1", LANGUAGE)
+
+
+# --------------------------------------------------------------------------
+# The schema itself carries the target language: field name, description and
+# schema name. Without it the last thing the model reads before decoding says
+# only what shape to emit, never which language.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("language", "single", "batch"),
+    [
+        ("Chinese", "chinese_translation", "chinese_paragraphs"),
+        (
+            "simplified chinese",
+            "simplified_chinese_translation",
+            "simplified_chinese_paragraphs",
+        ),
+        (
+            "Simplified Chinese",
+            "simplified_chinese_translation",
+            "simplified_chinese_paragraphs",
+        ),
+        # cli.py maps codes through LANGUAGES, but a raw code must still slug.
+        ("zh-hans", "zh_hans_translation", "zh_hans_paragraphs"),
+        ("", "translated", "paragraphs"),  # nothing usable: language-free names
+        (None, "translated", "paragraphs"),
+    ],
+)
+def test_field_names_follow_the_target_language(language, single, batch):
+    assert single_field_name(language) == single
+    assert batch_field_name(language) == batch
+
+
+def test_models_expose_the_language_named_field_and_say_so():
+    model = single_translation_model("simplified chinese")
+    schema = model.model_json_schema()
+    field = schema["properties"]["simplified_chinese_translation"]
+
+    assert schema["required"] == ["simplified_chinese_translation"]
+    assert "simplified chinese" in field["description"]
+    assert model.model_config["extra"] == "forbid"
+
+    batch = batch_translation_model("simplified chinese").model_json_schema()
+    assert "simplified chinese" in (
+        batch["properties"]["simplified_chinese_paragraphs"]["description"]
+    )
+
+
+def test_models_are_cached_per_language():
+    """One `create_model` per language, not one per paragraph."""
+    assert single_translation_model("Chinese") is single_translation_model("Chinese")
+    assert single_translation_model("Chinese") is not single_translation_model("German")
+
+
+def test_hand_built_batch_schema_matches_the_sdk_model():
+    """The Batch API body is hand-rolled; it must not drift from the model."""
+    for language in ("Chinese", "simplified chinese", ""):
+        schema = single_translation_schema(language)
+        field = single_field_name(language)
+
+        assert schema["strict"] is True
+        assert schema["schema"]["required"] == [field]
+        assert schema["schema"]["additionalProperties"] is False
+        assert list(schema["schema"]["properties"]) == [field]
+        assert (
+            schema["schema"]["properties"][field]["description"]
+            == single_translation_model(language).model_json_schema()["properties"][
+                field
+            ]["description"]
+        )
+
+
+def test_batch_request_pins_the_language_schema():
+    translator = _translator()
+    translator.batch_model = "test-model"
+    translator.custom_id = lambda index: f"id-{index}"
+    translator.context_flag = False
+    translator._structured_support["test-model"] = True
+
+    body = translator.make_batch_request(0, "hello")["body"]
+
+    assert body["response_format"]["json_schema"] == single_translation_schema(LANGUAGE)
+
+
+def test_structured_batch_prompt_ends_on_the_target_language():
+    """Recency matters: a shape-only tail leaves `{language}` buried behind the
+    source JSON blob."""
+    translator = _translator()
+
+    content = translator._create_structured_batch_messages(["a", "b"])[-1]["content"]
+
+    assert content.rstrip().endswith(f"each written in {LANGUAGE}.")
+    assert f"'{BATCH_FIELD}'" in content
+    assert "EXACTLY 2" in content
 
 
 # --------------------------------------------------------------------------
