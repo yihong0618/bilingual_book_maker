@@ -116,14 +116,14 @@ def batch_translation_model(language):
 
 def _single_field_description(language):
     target = language or "the target language"
-    return f"The source text translated into {target}. Write {target} only."
+    return f"The source text translated into {target}."
 
 
 def _batch_field_description(language):
     target = language or "the target language"
     return (
         f"The source paragraphs translated into {target}, one per input "
-        f"paragraph and in the same order. Write {target} only."
+        f"paragraph and in the same order."
     )
 
 
