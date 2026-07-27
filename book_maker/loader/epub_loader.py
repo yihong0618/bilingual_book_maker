@@ -311,7 +311,9 @@ class EPUBBookLoader(BaseBookLoader):
         if os.path.exists(plan_path):
             overrides = load_plan_overrides(plan_path, self.epub_name)
             if overrides:
-                print(f"Applying {len(overrides)} signature override(s) from {plan_path}")
+                print(
+                    f"Applying {len(overrides)} signature override(s) from {plan_path}"
+                )
 
         self._plan_css = BookCss(self.origin_book)
         self._plan_overrides = overrides
@@ -447,9 +449,9 @@ class EPUBBookLoader(BaseBookLoader):
                 )
             return [t]
         mid = len(texts) // 2
-        return self._translate_texts_aligned(texts[:mid]) + self._translate_texts_aligned(
-            texts[mid:]
-        )
+        return self._translate_texts_aligned(
+            texts[:mid]
+        ) + self._translate_texts_aligned(texts[mid:])
 
     def _insert_trans_preserving_tags(
         self, p, translated_text, translation_style="", single_translate=False
@@ -589,9 +591,7 @@ class EPUBBookLoader(BaseBookLoader):
                 cached = self.p_to_save[index]
                 entries.append((k, p, None, cached))
             else:
-                raw = (
-                    plan_units[k].text.rstrip() if plan_units else p.text.rstrip()
-                )
+                raw = plan_units[k].text.rstrip() if plan_units else p.text.rstrip()
                 entries.append((k, p, raw, None))
 
             index += 1

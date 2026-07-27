@@ -202,7 +202,7 @@ class TestPartition:
 
     def test_epub_pagebreak_semantics_skipped(self):
         html = (
-            '<body><p>real text here</p>'
+            "<body><p>real text here</p>"
             '<span epub:type="pagebreak" title="12">12</span>'
             '<div class="mbp_pagebreak">next!</div></body>'
         )
@@ -517,7 +517,9 @@ class TestLoaderPlanMode:
             soup = bs(z.read(doc), "html.parser")
         quotes = soup.find_all("blockquote")
         texts = [q.get_text() for q in quotes]
-        assert any(t.startswith("T[Beasts of England, beasts of Ireland,") for t in texts)
+        assert any(
+            t.startswith("T[Beasts of England, beasts of Ireland,") for t in texts
+        )
         # every original poem line has a translated sibling
         originals = [t for t in texts if not t.startswith("T[")]
         translated = [t for t in texts if t.startswith("T[")]

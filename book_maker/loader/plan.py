@@ -38,16 +38,23 @@ from .helper import is_text_link
 
 # Tags that are block-level by HTML default (for our purpose: an element that
 # establishes its own line of text, including table cells and list items).
-DEFAULT_BLOCK_TAGS = frozenset(
-    """
+DEFAULT_BLOCK_TAGS = frozenset("""
     address article aside blockquote body caption dd details dfn div dl dt
     fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hr html
     li main nav ol p pre section summary table tbody td tfoot th thead tr ul
-    """.split()
-)
+    """.split())
 
 BLOCKISH_DISPLAY = frozenset(
-    ["block", "flex", "grid", "table", "table-row", "table-cell", "list-item", "flow-root"]
+    [
+        "block",
+        "flex",
+        "grid",
+        "table",
+        "table-row",
+        "table-cell",
+        "list-item",
+        "flow-root",
+    ]
 )
 
 # Containers whose text is never document content.
@@ -151,9 +158,7 @@ def classify_skip(text):
     return None
 
 
-_CJK_RE = re.compile(
-    "[぀-ヿ㐀-䶿一-鿿豈-﫿가-힯]"
-)
+_CJK_RE = re.compile("[぀-ヿ㐀-䶿一-鿿豈-﫿가-힯]")
 
 
 # Prose-type blocks are exempt from the trivial filter: a standalone "No."
@@ -536,7 +541,12 @@ class TranslationPlan:
             for u in f.units:
                 row = stats.setdefault(
                     u.signature,
-                    {"signature": u.signature, "units": 0, "chars": 0, "sample": u.text},
+                    {
+                        "signature": u.signature,
+                        "units": 0,
+                        "chars": 0,
+                        "sample": u.text,
+                    },
                 )
                 row["units"] += 1
                 row["chars"] += u.chars
@@ -593,7 +603,9 @@ class TranslationPlan:
 
     def save_json(self, path, book_path=None):
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(self.to_dict(book_path=book_path), f, ensure_ascii=False, indent=1)
+            json.dump(
+                self.to_dict(book_path=book_path), f, ensure_ascii=False, indent=1
+            )
 
 
 def _sha256(path):
