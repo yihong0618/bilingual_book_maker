@@ -9,9 +9,12 @@ import httpx
 import pytest
 from openai import (
     APIConnectionError,
+    APITimeoutError,
     AuthenticationError,
     BadRequestError,
     LengthFinishReasonError,
+    NotFoundError,
+    RateLimitError,
 )
 
 from book_maker.translator.chatgptapi_translator import (
@@ -62,6 +65,8 @@ def _translator(create=None, parse=None, cls=ChatGPTAPI):
     translator._structured_lock = threading.RLock()
     translator._structured_support = {}
     translator._temperature_unsupported = {}
+    translator._structured_failures = {}
+    translator._probe_deferred = set()
     translator.openai_client = SimpleNamespace(
         chat=SimpleNamespace(
             completions=SimpleNamespace(
@@ -179,18 +184,61 @@ def test_probe_treats_bad_request_as_no_schema_support():
     "error",
     [
         _api_error(AuthenticationError, 401),
-        APIConnectionError(
-            request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
-        ),
+        _api_error(NotFoundError, 404),
     ],
 )
-def test_probe_reraises_errors_that_are_not_capability_answers(error):
+def test_probe_reraises_permanent_endpoint_errors(error):
+    """A bad key or a wrong model name must not read as 'no schema support'."""
     translator = _translator(create=Mock(side_effect=error))
 
     with pytest.raises(type(error)):
         translator._test_structured_outputs()
 
     assert translator._structured_support == {}
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        APIConnectionError(
+            request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+        ),
+        APITimeoutError(
+            request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+        ),
+        _api_error(RateLimitError, 429),
+    ],
+)
+def test_probe_defers_on_a_router_outage_instead_of_ending_the_run(error):
+    """Gateways come back. A blip must not raise and must not cache a verdict."""
+    translator = _translator(create=Mock(side_effect=error))
+
+    assert translator._ensure_structured_support() is False
+    assert translator._structured_support == {}  # nothing learned, nothing cached
+
+
+def test_deferred_probe_is_retried_on_the_next_paragraph():
+    outage = APIConnectionError(
+        request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    )
+    create = Mock(side_effect=[outage, _completion('{"probe":"schema_ok"}')])
+    translator = _translator(create=create)
+
+    assert translator._ensure_structured_support() is False
+    assert translator._ensure_structured_support() is True
+    assert create.call_count == 2
+
+
+def test_translate_list_survives_a_probe_outage():
+    """`translate_list` probes outside any tenacity wrapper, so a blip there
+    used to take down the run with zero retries."""
+    outage = APIConnectionError(
+        request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    )
+    translator = _translator(create=Mock(side_effect=outage))
+    translator._do_batch_translate = Mock(return_value=["t:a", "t:b"])
+
+    assert translator.translate_list(["a", "b"]) == ["t:a", "t:b"]
 
 
 def test_probe_falls_back_on_ambiguous_server_error():
@@ -279,6 +327,30 @@ def test_truncated_response_raises_instead_of_leaking_json_fragment():
         translator._structured_single_translation("hello")
 
 
+def test_truncation_retranslates_plainly_instead_of_ending_the_run():
+    """No partial JSON in the book, but no dead run either: the plain path has
+    no JSON to truncate, so one long paragraph goes through it."""
+    error = LengthFinishReasonError(
+        completion=SimpleNamespace(
+            usage=None,
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content='{"translated":"半'),
+                    finish_reason="length",
+                )
+            ],
+        )
+    )
+    create = Mock(return_value=_completion("完整的翻譯"))
+    translator = _translator(create=create, parse=Mock(side_effect=error))
+    translator._structured_support["test-model"] = True
+
+    assert translator.get_translation("hello") == "完整的翻譯"
+    assert create.call_count == 1
+    # Truncation is a token-budget accident, not a capability answer.
+    assert translator._structured_support["test-model"] is True
+
+
 def test_refusal_raises_loudly():
     translator = _translator(
         parse=Mock(return_value=_parsed_completion(refusal="nope"))
@@ -300,10 +372,34 @@ def test_single_path_demotes_and_retries_plainly_when_schema_is_ignored():
     translator = _translator(create=create, parse=parse)
     translator._structured_support["test-model"] = True
 
+    # First failure falls back for this paragraph but keeps structured mode on:
+    # one garbled proxy answer must not cost a whole book its schema support.
+    assert translator.get_translation("hello") == "plain translation"
+    assert translator._structured_support["test-model"] is True
+
     assert translator.get_translation("hello") == "plain translation"
     assert translator._structured_support["test-model"] is False
-    assert parse.call_count == 1
-    assert create.call_count == 1
+
+    assert parse.call_count == 2
+    assert create.call_count == 2
+
+
+def test_a_working_structured_call_clears_the_failure_streak():
+    parse = Mock(
+        side_effect=[
+            StructuredOutputUnsupported("blip"),
+            _parsed_completion(parsed=SimpleNamespace(translated="你好")),
+            StructuredOutputUnsupported("blip"),
+        ]
+    )
+    translator = _translator(parse=parse)
+    translator._structured_support["test-model"] = True
+
+    translator.get_translation("a")  # streak 1
+    assert translator.get_translation("b") == "你好"  # streak reset
+    translator.get_translation("c")  # streak 1 again, not 2
+
+    assert translator._structured_support["test-model"] is True
 
 
 def test_batch_path_demotes_without_burning_retries():
@@ -312,10 +408,10 @@ def test_batch_path_demotes_without_burning_retries():
     translator._structured_support["test-model"] = True
     translator.translate = Mock(side_effect=lambda text, _=True: f"t:{text}")
 
-    result = translator._do_structured_batch_translate(["a", "b"])
+    assert translator._do_structured_batch_translate(["a", "b"]) == ["t:a", "t:b"]
+    assert translator._do_structured_batch_translate(["a", "b"]) == ["t:a", "t:b"]
 
-    assert result == ["t:a", "t:b"]
-    assert parse.call_count == 1  # not 3 tenacity attempts
+    assert parse.call_count == 2  # one attempt each, not 3 tenacity attempts
     assert translator._structured_support["test-model"] is False
 
 

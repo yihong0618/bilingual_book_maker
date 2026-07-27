@@ -13,6 +13,7 @@ from openai import (
     AuthenticationError,
     AzureOpenAI,
     BadRequestError,
+    LengthFinishReasonError,
     NotFoundError,
     OpenAI,
     PermissionDeniedError,
@@ -98,16 +99,30 @@ STRUCTURED_PROBE_SCHEMA = {
     },
 }
 
-# Errors that say nothing about JSON Schema support. Swallowing these would pin
-# the whole run to the delimiter method because of a bad key or a flaky network.
+# A permanent answer about this endpoint: no key, no access, no such model.
+# Nothing downstream recovers from these, and swallowing them would pin the whole
+# run to the delimiter method because of a typo in the key.
 PROBE_FATAL_ERRORS = (
     AuthenticationError,
     PermissionDeniedError,
+    NotFoundError,
+)
+
+# Router hiccups. These say nothing about schema support, but they also do not
+# mean the run is over: API gateways go away and come back, and a book is
+# expected to translate across hours of that. The probe therefore *defers* —
+# records no verdict, uses the delimiter method for this one call, and probes
+# again on the next paragraph. The real request behind it hits the same outage
+# and gets tenacity's retries, which is where transient failures belong.
+PROBE_TRANSIENT_ERRORS = (
     APIConnectionError,
     APITimeoutError,
     RateLimitError,
-    NotFoundError,
 )
+
+# One garbled response from a proxy must not cost the whole book its structured
+# mode. A genuinely unsupported endpoint still pays at most this many attempts.
+STRUCTURED_FAILURE_THRESHOLD = 2
 
 GPT35_MODEL_LIST = [
     "gpt-3.5-turbo",
@@ -221,6 +236,10 @@ class ChatGPTAPI(Base):
         # temperature support is learned from the first rejection.
         self._structured_support = {}
         self._temperature_unsupported = {}
+        # Consecutive capability failures per model, and models whose probe was
+        # postponed by an outage (tracked only to keep the log to one line).
+        self._structured_failures = {}
+        self._probe_deferred = set()
         self.model = (
             None  # Will be set by rotate_model() after model_list is initialized
         )
@@ -243,19 +262,52 @@ class ChatGPTAPI(Base):
     def _structured_enabled(self):
         return self._structured_support.get(self.model, False)
 
-    def _demote_structured_outputs(self, reason):
-        """Stop using structured outputs for this model after a real failure.
+    def _defer_probe(self, model, error):
+        """Postpone the verdict: record nothing so the next call probes again."""
+        with self._structured_lock:
+            first_time = model not in self._probe_deferred
+            self._probe_deferred.add(model)
+        if first_time:
+            print(
+                f"[yellow]ℹ could not probe '{model}' right now ({error}); "
+                f"using the delimiter method until the endpoint answers[/yellow]"
+            )
 
-        Without this, every later batch pays three tenacity attempts with
-        exponential backoff before falling back.
+    def _note_structured_success(self):
+        """A working structured call clears the model's failure streak."""
+        if self._structured_failures.get(self.model):
+            with self._structured_lock:
+                self._structured_failures.pop(self.model, None)
+
+    def _demote_structured_outputs(self, reason):
+        """Count a capability failure and, on a streak, stop paying for it.
+
+        The caller falls back for the current paragraph or batch either way. The
+        streak is what keeps a single garbled proxy response from disabling
+        structured outputs for the rest of a multi-hour run, while an endpoint
+        that really ignores the schema still costs only
+        `STRUCTURED_FAILURE_THRESHOLD` attempts instead of three tenacity
+        retries per batch, forever.
         """
         with self._structured_lock:
+            failures = self._structured_failures.get(self.model, 0) + 1
+            self._structured_failures[self.model] = failures
+            demote = failures >= STRUCTURED_FAILURE_THRESHOLD
             already_demoted = self._structured_support.get(self.model) is False
-            self._structured_support[self.model] = False
-        if not already_demoted:
+            if demote:
+                self._structured_support[self.model] = False
+
+        if demote:
+            if not already_demoted:
+                print(
+                    f"[yellow]ℹ '{self.model}' did not honor the JSON schema "
+                    f"({reason}); switching to the delimiter method[/yellow]"
+                )
+        else:
             print(
-                f"[yellow]ℹ '{self.model}' did not honor the JSON schema ({reason}); "
-                f"switching to the delimiter method[/yellow]"
+                f"[yellow]ℹ '{self.model}' did not honor the JSON schema "
+                f"({reason}); falling back for this one and trying structured "
+                f"outputs once more[/yellow]"
             )
 
     def _test_structured_outputs(self, model=None):
@@ -279,6 +331,9 @@ class ChatGPTAPI(Base):
             )
         except PROBE_FATAL_ERRORS:
             raise
+        except PROBE_TRANSIENT_ERRORS as e:
+            self._defer_probe(model, e)
+            return
         except Exception as e:
             # Ambiguous (400 for an unknown param, 500 from a local server, ...):
             # not a usable endpoint for schemas either way, so degrade loudly.
@@ -461,6 +516,7 @@ class ChatGPTAPI(Base):
         if message.parsed is None:
             raise StructuredOutputUnsupported("no parsed content in response")
 
+        self._note_structured_success()
         return message.parsed.translated
 
     def _plain_translation(self, text):
@@ -483,6 +539,15 @@ class ChatGPTAPI(Base):
                 t_text = self._structured_single_translation(text)
             except StructuredOutputUnsupported as e:
                 self._demote_structured_outputs(e)
+                t_text = self._plain_translation(text)
+            except LengthFinishReasonError:
+                # The answer was cut off mid-JSON. Nothing partial may be used,
+                # but the plain path has no JSON to truncate — retranslate there
+                # rather than ending a multi-hour run over one paragraph.
+                print(
+                    "[yellow]ℹ structured answer was truncated; retranslating "
+                    "this paragraph without a schema[/yellow]"
+                )
                 t_text = self._plain_translation(text)
         else:
             t_text = self._plain_translation(text)
@@ -704,6 +769,7 @@ class ChatGPTAPI(Base):
             for orig, trans in zip(text_list, paragraphs):
                 self.save_context(orig, trans)
 
+        self._note_structured_success()
         return paragraphs
 
     def set_deployment_id(self, deployment_id):
