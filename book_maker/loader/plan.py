@@ -151,6 +151,23 @@ def classify_skip(text):
     return None
 
 
+_CJK_RE = re.compile(
+    "[぀-ヿ㐀-䶿一-鿿豈-﫿가-힯]"
+)
+
+
+def is_trivial_unit(text):
+    """A unit not worth an API round-trip: manuscript sigla ("(a)", "M",
+    "aa", "Kf"), stray initials, list markers.
+
+    Fewer than 3 alphabetic characters — unless the text contains CJK, where
+    two characters are a full word (lemo.epub's title is just 檸檬).
+    """
+    if _CJK_RE.search(text):
+        return False
+    return sum(c.isalpha() for c in text) < 3
+
+
 def _signature(element):
     classes = element.get("class") or []
     if classes:
@@ -166,7 +183,7 @@ def _ancestor_skip_reason(node, exclude_tags, resolver=None):
         if name in exclude_tags:
             return "excluded-tag"
         epub_type = ancestor.get("epub:type") if ancestor.get else None
-        if epub_type and "pagebreak" in epub_type:
+        if epub_type and ("pagebreak" in epub_type or "page-list" in epub_type):
             return "pagebreak"
         if resolver is not None and resolver.display_of(ancestor) == "none":
             return "hidden"
@@ -348,6 +365,9 @@ def partition_soup(
     for key in order:
         block, parts, chars = owners[key]
         text = " ".join("".join(parts).split())
+        if is_trivial_unit(text):
+            fp.skipped["trivial"] += chars
+            continue
         fp.units.append(
             Unit(
                 element=block,

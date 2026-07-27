@@ -20,6 +20,7 @@ from book_maker.loader.plan import (
     DisplayResolver,
     build_plan,
     classify_skip,
+    is_trivial_unit,
     parse_css_display,
     partition_soup,
     unit_clean_text,
@@ -66,6 +67,21 @@ class TestClassifySkip:
 
     def test_links(self):
         assert classify_skip("http://example.com/x") == "link"
+
+
+class TestTrivialUnits:
+    def test_sigla_and_markers_are_trivial(self):
+        # manuscript sigla in Gilgamesh's tablet tables, stray initials
+        for text in ["(a)", "M", "aa", "Kf", "CJ", "1.F.", "x1", "ii"]:
+            assert is_trivial_unit(text), text
+
+    def test_real_short_content_is_kept(self):
+        for text in ["THE END", "Pages", "Enkidu:", "cypress", "One ….…..,"]:
+            assert not is_trivial_unit(text), text
+
+    def test_cjk_is_dense_two_chars_is_a_word(self):
+        assert not is_trivial_unit("檸檬")  # lemo.epub's entire title
+        assert not is_trivial_unit("目次")
 
 
 # ------------------------------------------------------------- css resolver
@@ -153,6 +169,27 @@ class TestPartition:
             fp.skipped.values()
         )
         assert fp.total_chars > 0
+
+    def test_page_list_nav_skipped(self):
+        html = (
+            "<body><p>real prose paragraph</p>"
+            '<nav epub:type="page-list"><ol>'
+            "<li><a href='x'>iii</a></li><li><a href='y'>overview</a></li>"
+            "</ol></nav></body>"
+        )
+        fp, _ = self._partition(html)
+        assert [u.signature for u in fp.units] == ["p"]
+        assert fp.skipped.get("pagebreak", 0) > 0
+
+    def test_trivial_units_skipped_with_reason(self):
+        html = "<body><table><tr><td>(a)</td><td>Gilgamesh</td></tr></table></body>"
+        fp, _ = self._partition(html)
+        assert [u.text for u in fp.units] == ["Gilgamesh"]
+        assert fp.skipped.get("trivial", 0) == 3
+        # invariant survives the trivial filter
+        assert fp.total_chars == sum(u.chars for u in fp.units) + sum(
+            fp.skipped.values()
+        )
 
     def test_epub_pagebreak_semantics_skipped(self):
         html = (
