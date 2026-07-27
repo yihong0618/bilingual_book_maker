@@ -222,6 +222,19 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 
   指定需要翻译的标签，使用逗号分隔多个标签。epub 由 html 文件组成，默认情况下，只翻译 `<p>` 中的内容。例如: `--translate-tags h1,h2,h3,p,div`
 
+  **自动模式（`--translate-tags auto`，仅 epub）**：不再由你挑选标签，而是把书中每一个文本节点要么归入某个翻译单元，要么按明确的理由跳过并计入报告（行号、page-list 目录、隐藏内容、纯符号等）。如果一本书的正文并不放在 `<p>` 里——例如每行一个 `<div>` 或 `<blockquote>` 的诗歌，按默认标签会被静默漏掉——那就该用这个模式。连续的短诗行会被合并成诗节窗口（最多 `--poetry-group-size` 行，默认 8 行）一次请求翻译，让模型能看到相邻诗行的上下文。
+
+  - `--plan-dry-run`：打印按标签签名分组的覆盖率表格，写出 `<book>_plan.json` 后退出。不需要 API key，也不消耗额度。同时遵守 `--only_filelist` / `--exclude_filelist`。
+  - `<book>_plan.json`：把某个签名的 `"action"` 改成 `"skip"` 即可在正式翻译时排除它；该文件一旦存在就不会被覆盖（想重新生成请先删除）。
+  - `--plan-min-coverage`（默认 0.5）：如果计划覆盖的正文比例低于该阈值，自动模式会直接报错退出，而不是闷头只翻译一小部分。
+
+  ```shell
+  # 先免费预览会翻译哪些内容（不需要 key）
+  python3 make_book.py --book_name my_book.epub --plan-dry-run
+  # 用自动发现模式翻译
+  python3 make_book.py --book_name my_book.epub --openai_key ${key} --translate-tags auto
+  ```
+
 - `--book_from`
 
   选项指定电子阅读器类型（现在只有 kobo 可用），并使用 `--device_path` 指定挂载点。
@@ -338,6 +351,9 @@ python3 make_book.py --book_name test_books/animal_farm.epub --provider deepseek
 
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p
+
+# 自动发现要翻译的内容（诗歌、列表、无 <p> 包裹的正文都能覆盖）
+python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags auto
 
 # 修改prompt
 python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template_sample.txt

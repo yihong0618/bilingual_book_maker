@@ -126,7 +126,10 @@ class DisplayResolver:
 
 # ------------------------------------------------------------- predicates
 
-_NUMERIC_TOKEN_RE = re.compile(r"[\d.,:;()\[\]§–—-]+")
+# Numbers and their usual companions: decimal/thousands separators, ranges,
+# percent signs, currency symbols, section marks. A run of these is apparatus
+# (a figure, a page range, "42%"), never prose worth spending tokens on.
+_NUMERIC_TEXT_RE = re.compile(r"[\d.,:;%()\[\]§$£€¥+±/–—-]+")
 _ROMAN_TOKEN_RE = re.compile(r"[IVXLCDM]{1,7}")
 _DIGIT_TOKEN_RE = re.compile(r"\d+")
 
@@ -143,10 +146,9 @@ def classify_skip(text):
     if is_text_link(t):
         return "link"
     tokens = t.split()
-    if all(
-        _NUMERIC_TOKEN_RE.fullmatch(tok) and any(c.isdigit() for c in tok)
-        for tok in tokens
-    ):
+    # Match on the whitespace-stripped whole, so "50 %" and "1 234,50 €" are
+    # caught as well as "50%" — a lone "%" token carries no digit of its own.
+    if _NUMERIC_TEXT_RE.fullmatch("".join(tokens)) and any(c.isdigit() for c in t):
         return "numeric"
     if all(
         _ROMAN_TOKEN_RE.fullmatch(tok) or _DIGIT_TOKEN_RE.fullmatch(tok)

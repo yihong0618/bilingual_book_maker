@@ -54,6 +54,22 @@ class TestClassifySkip:
         assert classify_skip("120") == "numeric"
         assert classify_skip("3 4 5") == "numeric"
 
+    def test_decimals_percentages_and_currency(self):
+        # upstream #451: bare figures and percentages are not worth a request
+        assert classify_skip("3.14") == "numeric"
+        assert classify_skip("-17") == "numeric"
+        assert classify_skip("1,234.56") == "numeric"
+        assert classify_skip("42%") == "numeric"
+        assert classify_skip("50 %") == "numeric"
+        assert classify_skip("$3.99") == "numeric"
+        assert classify_skip("1 234,50 €") == "numeric"
+        assert classify_skip("±0.5") == "numeric"
+        # ... but a figure with any prose attached still gets translated
+        assert classify_skip("42% of the herd") is None
+        assert classify_skip("about 3.14") is None
+        # a lone symbol has no digits, so it stays a symbol
+        assert classify_skip("%") == "symbol"
+
     def test_roman_line_refs(self):
         # gilgamesh span.mr / span.mn / span.line_number contents
         assert classify_skip("I 5") == "roman-ref"
@@ -165,6 +181,36 @@ class TestPartition:
         assert line.text == "He who saw the Deep, the country's foundation,"
         assert "I" not in line.text.split()
         assert fp.skipped.get("roman-ref", 0) + fp.skipped.get("numeric", 0) > 0
+
+    def test_inline_link_does_not_split_its_paragraph(self):
+        # upstream #414: with --translate-tags a,p the <a> was translated on its
+        # own and the surrounding text left behind. A unit is the whole block.
+        html = (
+            '<body><p>Some text before, <a href="#">some link</a>: '
+            "some text after</p></body>"
+        )
+        fp, _ = self._partition(html)
+        assert [u.text for u in fp.units] == [
+            "Some text before, some link: some text after"
+        ]
+
+    def test_list_items_without_inner_p_are_units(self):
+        # upstream #440 / #207: bullet text living directly in <li> was skipped
+        # entirely by the default tag list.
+        html = (
+            "<body><ul><li>bark bark</li><li>meow meow</li></ul>"
+            '<ol><li class="li">We could offer niche recipes.<span> </span></li>'
+            '<li class="li">Alternately, generic ones.</li></ol></body>'
+        )
+        fp, _ = self._partition(html)
+        assert [u.text for u in fp.units] == [
+            "bark bark",
+            "meow meow",
+            "We could offer niche recipes.",
+            "Alternately, generic ones.",
+        ]
+        # the <ul>/<ol> wrappers own no text of their own, so no double pass
+        assert not any(u.signature in ("ul", "ol") for u in fp.units)
 
     def test_sup_excluded_by_default(self):
         fp, _ = self._partition(MINI_GILGAMESH)
