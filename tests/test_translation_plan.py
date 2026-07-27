@@ -83,6 +83,15 @@ class TestTrivialUnits:
         assert not is_trivial_unit("檸檬")  # lemo.epub's entire title
         assert not is_trivial_unit("目次")
 
+    def test_prose_tags_exempt_short_dialogue_survives(self):
+        # "No." as a standalone paragraph is dialogue, not apparatus
+        for tag in ("p", "blockquote", "h2", "figcaption"):
+            assert not is_trivial_unit("No.", tag=tag)
+            assert not is_trivial_unit("Sí", tag=tag)
+        # apparatus containers still filtered
+        for tag in ("td", "li", "div", "span", None):
+            assert is_trivial_unit("(a)", tag=tag)
+
 
 # ------------------------------------------------------------- css resolver
 
@@ -255,6 +264,57 @@ class TestPartition:
             unit_clean_text(el, resolver)
             == "He who saw the Deep, the country's foundation,"
         )
+
+
+class TestPerDocumentCss:
+    def _book(self):
+        book = epub.EpubBook()
+        book.set_identifier("t")
+        book.set_title("t")
+        css_hide = epub.EpubItem(
+            uid="c1",
+            file_name="Styles/hide.css",
+            media_type="text/css",
+            content=b".note { display: none; }",
+        )
+        css_plain = epub.EpubItem(
+            uid="c2",
+            file_name="Styles/plain.css",
+            media_type="text/css",
+            content=b"p { margin: 0; }",
+        )
+        d1 = epub.EpubHtml(uid="d1", file_name="Text/one.xhtml")
+        d1.content = (
+            '<html><head><link rel="stylesheet" href="../Styles/hide.css"/></head>'
+            '<body><p>visible one</p><p class="note">hidden note</p></body></html>'
+        )
+        d2 = epub.EpubHtml(uid="d2", file_name="Text/two.xhtml")
+        d2.content = (
+            '<html><head><link rel="stylesheet" href="../Styles/plain.css"/></head>'
+            '<body><p>visible two</p><p class="note">a normal aside</p></body></html>'
+        )
+        for it in (css_hide, css_plain, d1, d2):
+            book.add_item(it)
+        return book
+
+    def test_chapter_local_display_none_stays_local(self):
+        # Finding #8: hide.css is linked only by one.xhtml — its
+        # .note {display:none} must not hide two.xhtml's .note prose.
+        plan = build_plan(self._book())
+        texts = {f.file_name: [u.text for u in f.units] for f in plan.files}
+        assert "hidden note" not in texts["Text/one.xhtml"]
+        assert "a normal aside" in texts["Text/two.xhtml"]
+
+    def test_docs_without_links_fall_back_to_global_css(self):
+        book = self._book()
+        d3 = epub.EpubHtml(uid="d3", file_name="Text/three.xhtml")
+        d3.content = '<body><p class="note">no links here</p></body>'
+        book.add_item(d3)
+        plan = build_plan(book)
+        fp = next(f for f in plan.files if f.file_name == "Text/three.xhtml")
+        # global merge includes hide.css, so .note is hidden here
+        assert fp.units == []
+        assert fp.skipped.get("hidden", 0) > 0
 
 
 # ------------------------------------------------------------- poetry runs
@@ -430,6 +490,7 @@ class MisalignedOnceModel(FakeModel):
 def _make_loader(tmp_path, model_cls, book=ANIMAL_FARM):
     from book_maker.loader.epub_loader import EPUBBookLoader
 
+    tmp_path.mkdir(parents=True, exist_ok=True)
     src = tmp_path / book.name
     shutil.copy(book, src)
     loader = EPUBBookLoader(
@@ -487,5 +548,94 @@ class TestLoaderPlanMode:
     def test_coverage_gate_fails_loud(self, tmp_path):
         loader, src = _make_loader(tmp_path, FakeModel)
         loader.plan_min_coverage = 1.01  # impossible on purpose
+        with pytest.raises(SystemExit):
+            loader.make_bilingual_book()
+
+    def test_single_translate_preserves_unowned_content(self, tmp_path):
+        # Finding #4: single-translate must replace only the unit's own text
+        # nodes — nested blocks and line-number spans must survive.
+        loader, src = _make_loader(tmp_path, FakeModel)
+        loader.single_translate = True
+        loader.only_filelist = "index_split_004.html"
+        loader.make_bilingual_book()
+
+        out = src.parent / (src.stem + "_bilingual.epub")
+        with zipfile.ZipFile(out) as z:
+            doc = next(n for n in z.namelist() if "004" in n and n.endswith(".html"))
+            soup = bs(z.read(doc), "html.parser")
+        quotes = [q.get_text() for q in soup.find_all("blockquote")]
+        # translated in place, originals replaced, one per line — none deleted
+        assert len(quotes) == 29
+        assert all(t.startswith("T[") for t in quotes)
+
+    def test_plan_file_not_overwritten_and_overrides_survive(self, tmp_path):
+        # Finding #2: a user-edited plan JSON must survive the real run.
+        import json
+
+        loader, src = _make_loader(tmp_path, FakeModel)
+        loader.only_filelist = "index_split_004.html"
+        loader.make_bilingual_book()
+
+        plan_path = src.parent / (src.stem + "_plan.json")
+        data = json.loads(plan_path.read_text())
+        for sig in data["signatures"]:
+            if sig["signature"] == "blockquote.calibre_17":
+                sig["action"] = "skip"
+        plan_path.write_text(json.dumps(data))
+        edited = plan_path.read_text()
+
+        loader2, _ = _make_loader(tmp_path, FakeModel)
+        loader2.only_filelist = "index_split_004.html"
+        loader2.make_bilingual_book()
+
+        assert plan_path.read_text() == edited, "edited plan was overwritten"
+        # and the override was actually applied: no calibre_17 text translated
+        sent = [t for call in loader2.translate_model.list_calls for t in call]
+        assert not any("Beasts of every land and clime" in t for t in sent)
+
+    def test_parallel_resume_cache_is_document_ordered(self, tmp_path):
+        # Finding #1: cache slots must follow document order, not thread
+        # completion order.
+        loader, src = _make_loader(tmp_path, FakeModel)
+        loader.set_parallel_workers(4)
+        loader.make_bilingual_book()
+
+        assert None not in loader.p_to_save
+        # sequential reference run must produce the same cache order
+        ref, _ = _make_loader(tmp_path / "ref", FakeModel)
+        ref.make_bilingual_book()
+        assert loader.p_to_save == ref.p_to_save
+
+    def test_parallel_respects_only_filelist(self, tmp_path):
+        # Finding #3: parallel mode must not translate filtered-out chapters.
+        loader, src = _make_loader(tmp_path, FakeModel)
+        loader.set_parallel_workers(4)
+        loader.only_filelist = "index_split_004.html"
+        loader.make_bilingual_book()
+        sent = [t for call in loader.translate_model.list_calls for t in call]
+        assert any("Beasts of England, beasts of Ireland," in t for t in sent)
+        # text from another chapter must not be translated
+        assert not any("Mr. Whymper" in t for t in sent)
+
+    def test_test_num_caps_api_usage_even_with_parallel(self, tmp_path):
+        # Finding #3: --test --test_num must cap units in parallel mode too.
+        loader, src = _make_loader(tmp_path, FakeModel)
+        loader.set_parallel_workers(4)
+        loader.is_test = True
+        loader.test_num = 1
+        loader.make_bilingual_book()
+        sent = [t for call in loader.translate_model.list_calls for t in call]
+        assert len(sent) <= 2
+
+    def test_parallel_chapter_failure_fails_loud(self, tmp_path):
+        # Finding #5: a failed chapter must not produce a "completed" book.
+        class OneChapterExplodes(FakeModel):
+            def translate_list(self, text_list):
+                if any("Beasts of England" in t for t in text_list):
+                    raise RuntimeError("boom")
+                return super().translate_list(text_list)
+
+        loader, src = _make_loader(tmp_path, OneChapterExplodes)
+        loader.set_parallel_workers(4)
         with pytest.raises(SystemExit):
             loader.make_bilingual_book()

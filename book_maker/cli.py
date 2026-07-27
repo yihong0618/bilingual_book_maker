@@ -492,6 +492,38 @@ So you are close to reaching the limit. You have to choose your own value, there
         print(f"Error: the book {options.book_name!r} does not exist.")
         exit(1)
 
+    if options.plan_dry_run:
+        # No translation happens, so no credentials are needed: build the
+        # plan straight from the file, honoring the file filters.
+        if get_book_type(options.book_name) != "epub":
+            print("[bold red]--plan-dry-run only works with epub books[/bold red]")
+            exit(1)
+        from ebooklib import epub as _epub
+
+        from book_maker.loader.plan import build_plan
+
+        plan = build_plan(
+            _epub.read_epub(options.book_name),
+            exclude_tags=tuple(
+                t for t in options.exclude_translate_tags.split(",") if t
+            ),
+            poetry_group_size=options.poetry_group_size,
+            only_files=set(f for f in options.only_filelist.split(",") if f) or None,
+            exclude_files=set(f for f in options.exclude_filelist.split(",") if f)
+            or None,
+        )
+        print(plan.report())
+        plan_path = f"{os.path.splitext(options.book_name)[0]}_plan.json"
+        if os.path.exists(plan_path):
+            print(
+                f"existing plan {plan_path} kept (may carry your edits); "
+                f"delete it to regenerate"
+            )
+        else:
+            plan.save_json(plan_path, book_path=options.book_name)
+            print(f"plan written to {plan_path} (edit signature actions to override)")
+        return
+
     PROXY = options.proxy
     if PROXY != "":
         os.environ["http_proxy"] = PROXY
@@ -650,12 +682,6 @@ So you are close to reaching the limit. You have to choose your own value, there
     if hasattr(e, "plan_min_coverage"):
         e.plan_min_coverage = options.plan_min_coverage
         e.poetry_group_size = options.poetry_group_size
-    if options.plan_dry_run:
-        if not hasattr(e, "plan_dry_run_report"):
-            print("[bold red]--plan-dry-run only works with epub books[/bold red]")
-            exit(1)
-        e.plan_dry_run_report()
-        return
     if options.exclude_filelist:
         e.exclude_filelist = options.exclude_filelist
     if options.only_filelist:

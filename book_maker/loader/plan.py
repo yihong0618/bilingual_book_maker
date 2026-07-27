@@ -156,13 +156,23 @@ _CJK_RE = re.compile(
 )
 
 
-def is_trivial_unit(text):
+# Prose-type blocks are exempt from the trivial filter: a standalone "No."
+# paragraph is dialogue, not apparatus.
+_TRIVIAL_EXEMPT_TAGS = frozenset(
+    ["p", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "figcaption"]
+)
+
+
+def is_trivial_unit(text, tag=None):
     """A unit not worth an API round-trip: manuscript sigla ("(a)", "M",
     "aa", "Kf"), stray initials, list markers.
 
     Fewer than 3 alphabetic characters — unless the text contains CJK, where
-    two characters are a full word (lemo.epub's title is just 檸檬).
+    two characters are a full word (lemo.epub's title is just 檸檬), or the
+    unit is a prose-type block (dialogue like "No.", "Sí", "Да").
     """
+    if tag in _TRIVIAL_EXEMPT_TAGS:
+        return False
     if _CJK_RE.search(text):
         return False
     return sum(c.isalpha() for c in text) < 3
@@ -318,6 +328,7 @@ class Unit:
     text: str
     chars: int
     group_id: int = None
+    nodes: list = None  # the exact text nodes this unit owns (same soup)
 
 
 @dataclass
@@ -357,15 +368,16 @@ def partition_soup(
         block = _nearest_block(node, resolver) or body
         key = id(block)
         if key not in owners:
-            owners[key] = [block, [], 0]
+            owners[key] = [block, [], 0, []]
             order.append(key)
         owners[key][1].append(str(node))
         owners[key][2] += chars
+        owners[key][3].append(node)
 
     for key in order:
-        block, parts, chars = owners[key]
+        block, parts, chars, nodes = owners[key]
         text = " ".join("".join(parts).split())
-        if is_trivial_unit(text):
+        if is_trivial_unit(text, tag=block.name):
             fp.skipped["trivial"] += chars
             continue
         fp.units.append(
@@ -375,6 +387,7 @@ def partition_soup(
                 signature=_signature(block),
                 text=text,
                 chars=chars,
+                nodes=nodes,
             )
         )
 
@@ -612,18 +625,61 @@ def load_plan_overrides(json_path, book_path):
     }
 
 
+class BookCss:
+    """Per-document CSS resolution.
+
+    A chapter only obeys the stylesheets it actually links (<link
+    rel="stylesheet">, resolved relative to the document) plus its inline
+    <style> blocks — a chapter-local `.note {display:none}` must not hide
+    same-class prose in other chapters. Documents that declare no
+    stylesheets fall back to the merge of every sheet in the book.
+    """
+
+    def __init__(self, book):
+        import posixpath
+
+        self._posixpath = posixpath
+        self.by_path = {}
+        for item in book.get_items():
+            name = getattr(item, "file_name", "") or ""
+            media = getattr(item, "media_type", "") or ""
+            if media == "text/css" or name.lower().endswith(".css"):
+                try:
+                    self.by_path[posixpath.normpath(name)] = parse_css_display(
+                        item.content.decode("utf-8", "ignore")
+                    )
+                except Exception as e:
+                    print(f"warning: could not parse stylesheet {name}: {e}")
+        self.global_maps = list(self.by_path.values())
+
+    def resolver_for(self, file_name, soup):
+        posixpath = self._posixpath
+        base = posixpath.dirname(file_name)
+        maps = []
+        for link in soup.find_all("link"):
+            rel = link.get("rel") or []
+            if isinstance(rel, str):
+                rel = [rel]
+            if "stylesheet" not in [r.lower() for r in rel] and (
+                (link.get("type") or "").lower() != "text/css"
+            ):
+                continue
+            href = (link.get("href") or "").split("#")[0]
+            if not href:
+                continue
+            target = posixpath.normpath(posixpath.join(base, href))
+            if target in self.by_path:
+                maps.append(self.by_path[target])
+        for style in soup.find_all("style"):
+            maps.append(parse_css_display(style.get_text()))
+        if not maps:
+            maps = self.global_maps
+        return DisplayResolver(maps)
+
+
 def build_resolver(book):
-    """Build a DisplayResolver from every stylesheet shipped in the book."""
-    css_maps = []
-    for item in book.get_items():
-        name = getattr(item, "file_name", "") or ""
-        media = getattr(item, "media_type", "") or ""
-        if media == "text/css" or name.lower().endswith(".css"):
-            try:
-                css_maps.append(parse_css_display(item.content.decode("utf-8", "ignore")))
-            except Exception as e:
-                print(f"warning: could not parse stylesheet {name}: {e}")
-    return DisplayResolver(css_maps)
+    """Merge of every stylesheet in the book (fallback / whole-book view)."""
+    return DisplayResolver(BookCss(book).global_maps)
 
 
 def build_plan(
@@ -637,7 +693,7 @@ def build_plan(
     """Build a TranslationPlan for an ebooklib book object."""
     from bs4 import BeautifulSoup
 
-    resolver = build_resolver(book)
+    css_index = BookCss(book)
     files = []
     next_group_id = 0
     for item in book.get_items_of_type(ITEM_DOCUMENT):
@@ -648,7 +704,7 @@ def build_plan(
         soup = BeautifulSoup(item.content, "html.parser")
         fp, next_group_id = partition_file(
             soup,
-            resolver,
+            css_index.resolver_for(item.file_name, soup),
             item.file_name,
             exclude_tags=exclude_tags,
             overrides=overrides,
