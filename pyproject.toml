@@ -20,7 +20,9 @@ dependencies = [
     "ebooklib",
     "google-genai",
     "litellm",
-    "openai>=1.1.1",
+    # chat.completions.parse (Structured Outputs) is unavailable before 1.92.
+    "openai>=1.92.0",
+    "pydantic>=2.0",
     "PyDeepLX",
     "requests",
     "rich",

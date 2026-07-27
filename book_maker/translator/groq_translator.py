@@ -12,6 +12,10 @@ GROQ_MODEL_LIST = [
 
 
 class GroqClient(ChatGPTAPI):
+    # Requests go through self.groq_client, not self.openai_client, so probing
+    # would send the capability request to OpenAI with a Groq key.
+    SUPPORTS_STRUCTURED_OUTPUTS = False
+
     def rotate_model(self):
         if not self.model_list:
             model_list = list(set(GROQ_MODEL_LIST))

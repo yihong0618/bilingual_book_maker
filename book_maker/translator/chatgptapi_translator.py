@@ -5,15 +5,28 @@ import shutil
 from os import environ
 from itertools import cycle
 import json
-from threading import Lock
+from threading import Lock, RLock
 
-from openai import AzureOpenAI, BadRequestError, NotFoundError, OpenAI, RateLimitError
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    AzureOpenAI,
+    BadRequestError,
+    LengthFinishReasonError,
+    NotFoundError,
+    OpenAI,
+    PermissionDeniedError,
+    RateLimitError,
+)
+from pydantic import BaseModel, ConfigDict, ValidationError
 from rich import print
 from tenacity import (
     retry,
     stop_after_attempt,
     wait_exponential,
     retry_if_exception_type,
+    retry_if_not_exception_type,
 )
 
 from .base_translator import Base
@@ -26,19 +39,37 @@ PROMPT_ENV_MAP = {
     "system": "BBM_CHATGPTAPI_SYS_MSG",
 }
 
-# JSON Schema for structured batch translation output (OpenAI compatible)
-TRANSLATION_SCHEMA = {
-    "name": "translation_response",
-    "strict": True,
-    "schema": {
-        "type": "object",
-        "properties": {"paragraphs": {"type": "array", "items": {"type": "string"}}},
-        "required": ["paragraphs"],
-        "additionalProperties": False,
-    },
-}
 
-# Simpler schema for single translations
+class StructuredOutputUnsupported(Exception):
+    """The endpoint does not really apply the JSON Schema we sent.
+
+    Raised only for capability answers, never for model or transport errors, so
+    callers can demote to the delimiter method instead of retrying.
+    """
+
+
+class BatchTranslation(BaseModel):
+    """Structured batch translation output (OpenAI Structured Outputs)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    paragraphs: list[str]
+
+
+class SingleTranslation(BaseModel):
+    """Structured single translation output."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    translated: str
+
+
+# Capability probe. The prompt asks for plain text and the schema pins a
+# single-value enum, so the only way `PROBE_EXPECTED` can come back is if the
+# server actually applied the schema to decoding. A proxy that accepts
+# `response_format` and quietly drops it answers with the prompted text instead.
+# Mirror of SingleTranslation for the Batch API, whose JSONL bodies are built by
+# hand and therefore cannot use the SDK's Pydantic support.
 SINGLE_TRANSLATION_SCHEMA = {
     "name": "single_translation",
     "strict": True,
@@ -49,6 +80,49 @@ SINGLE_TRANSLATION_SCHEMA = {
         "additionalProperties": False,
     },
 }
+
+# The API's own default. Sending it explicitly changes nothing for models that
+# accept it, and is a hard 400 for models that only allow their default.
+DEFAULT_TEMPERATURE = 1.0
+
+PROBE_PROMPT = "Reply with the single word: ignored. Do not output JSON."
+PROBE_KEY = "probe"
+PROBE_EXPECTED = "schema_ok"
+STRUCTURED_PROBE_SCHEMA = {
+    "name": "structured_output_probe",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {PROBE_KEY: {"type": "string", "enum": [PROBE_EXPECTED]}},
+        "required": [PROBE_KEY],
+        "additionalProperties": False,
+    },
+}
+
+# A permanent answer about this endpoint: no key, no access, no such model.
+# Nothing downstream recovers from these, and swallowing them would pin the whole
+# run to the delimiter method because of a typo in the key.
+PROBE_FATAL_ERRORS = (
+    AuthenticationError,
+    PermissionDeniedError,
+    NotFoundError,
+)
+
+# Router hiccups. These say nothing about schema support, but they also do not
+# mean the run is over: API gateways go away and come back, and a book is
+# expected to translate across hours of that. The probe therefore *defers* —
+# records no verdict, uses the delimiter method for this one call, and probes
+# again on the next paragraph. The real request behind it hits the same outage
+# and gets tenacity's retries, which is where transient failures belong.
+PROBE_TRANSIENT_ERRORS = (
+    APIConnectionError,
+    APITimeoutError,
+    RateLimitError,
+)
+
+# One garbled response from a proxy must not cost the whole book its structured
+# mode. A genuinely unsupported endpoint still pays at most this many attempts.
+STRUCTURED_FAILURE_THRESHOLD = 2
 
 GPT35_MODEL_LIST = [
     "gpt-3.5-turbo",
@@ -101,6 +175,10 @@ O3MINI_MODEL_LIST = [
 class ChatGPTAPI(Base):
     DEFAULT_PROMPT = "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text"
 
+    # Subclasses that do not route through `self.openai_client` must opt out:
+    # probing them would send the capability request to the wrong endpoint.
+    SUPPORTS_STRUCTURED_OUTPUTS = True
+
     def __init__(
         self,
         key,
@@ -149,33 +227,162 @@ class ChatGPTAPI(Base):
         self.batch_info_cache = None
         self.result_content_cache = {}
         self._api_lock = Lock()
+        # Reentrant: the probe records its verdict while still holding the lock.
+        self._structured_lock = RLock()
         self.extra_body = extra_body or {}
 
-        # Structured outputs: auto-detected on first translate_list() call
-        # None means "not yet tested", will be set to True/False after test
-        self._use_structured_outputs = None
+        # Both keyed by model, because --model_list rotates across models of
+        # differing capability. Structured support is probed on first use;
+        # temperature support is learned from the first rejection.
+        self._structured_support = {}
+        self._temperature_unsupported = {}
+        # Consecutive capability failures per model, and models whose probe was
+        # postponed by an outage (tracked only to keep the log to one line).
+        self._structured_failures = {}
+        self._probe_deferred = set()
         self.model = (
             None  # Will be set by rotate_model() after model_list is initialized
         )
 
-    def _test_structured_outputs(self):
-        """Test if the server supports structured outputs (strict json schema)"""
+    def _ensure_structured_support(self, model=None):
+        """Resolve (once per model) whether structured outputs can be used.
+
+        The probe runs while holding the lock so that N parallel workers issue
+        one probe per model, not N.
+        """
+        model = model or self.model
+        with self._structured_lock:
+            if model not in self._structured_support:
+                if self.SUPPORTS_STRUCTURED_OUTPUTS:
+                    self._test_structured_outputs(model)
+                else:
+                    self._structured_support[model] = False
+            return self._structured_support.get(model, False)
+
+    def _structured_enabled(self):
+        return self._structured_support.get(self.model, False)
+
+    def _defer_probe(self, model, error):
+        """Postpone the verdict: record nothing so the next call probes again."""
+        with self._structured_lock:
+            first_time = model not in self._probe_deferred
+            self._probe_deferred.add(model)
+        if first_time:
+            print(
+                f"[yellow]ℹ could not probe '{model}' right now ({error}); "
+                f"using the delimiter method until the endpoint answers[/yellow]"
+            )
+
+    def _note_structured_success(self):
+        """A working structured call clears the model's failure streak."""
+        if self._structured_failures.get(self.model):
+            with self._structured_lock:
+                self._structured_failures.pop(self.model, None)
+
+    def _demote_structured_outputs(self, reason):
+        """Count a capability failure and, on a streak, stop paying for it.
+
+        The caller falls back for the current paragraph or batch either way. The
+        streak is what keeps a single garbled proxy response from disabling
+        structured outputs for the rest of a multi-hour run, while an endpoint
+        that really ignores the schema still costs only
+        `STRUCTURED_FAILURE_THRESHOLD` attempts instead of three tenacity
+        retries per batch, forever.
+        """
+        with self._structured_lock:
+            failures = self._structured_failures.get(self.model, 0) + 1
+            self._structured_failures[self.model] = failures
+            demote = failures >= STRUCTURED_FAILURE_THRESHOLD
+            already_demoted = self._structured_support.get(self.model) is False
+            if demote:
+                self._structured_support[self.model] = False
+
+        if demote:
+            if not already_demoted:
+                print(
+                    f"[yellow]ℹ '{self.model}' did not honor the JSON schema "
+                    f"({reason}); switching to the delimiter method[/yellow]"
+                )
+        else:
+            print(
+                f"[yellow]ℹ '{self.model}' did not honor the JSON schema "
+                f"({reason}); falling back for this one and trying structured "
+                f"outputs once more[/yellow]"
+            )
+
+    def _test_structured_outputs(self, model=None):
+        """Probe whether the endpoint really applies a strict JSON Schema.
+
+        Grades the response body: accepting the request proves nothing, because
+        OpenAI-compatible proxies routinely accept `response_format` and drop it.
+        No temperature and no token cap — the probe must test exactly one
+        capability, and a cap would be rejected by o-series/gpt-5 models or eaten
+        by reasoning tokens, producing a false negative.
+        """
+        model = model or self.model
         try:
-            test_messages = [{"role": "user", "content": "Say 'test'"}]
-            self.openai_client.chat.completions.create(
-                model=self.model,
-                messages=test_messages,
-                temperature=0.1,
+            completion = self.openai_client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": PROBE_PROMPT}],
                 response_format={
                     "type": "json_schema",
-                    "json_schema": SINGLE_TRANSLATION_SCHEMA,
+                    "json_schema": STRUCTURED_PROBE_SCHEMA,
                 },
             )
-            self._use_structured_outputs = True
-        except Exception:
-            self._use_structured_outputs = False
+        except PROBE_FATAL_ERRORS:
+            raise
+        except PROBE_TRANSIENT_ERRORS as e:
+            self._defer_probe(model, e)
+            return
+        except Exception as e:
+            # Ambiguous (400 for an unknown param, 500 from a local server, ...):
+            # not a usable endpoint for schemas either way, so degrade loudly.
+            self._record_probe_result(model, False, f"request rejected: {e}")
+            return
+
+        verdict = self._grade_probe_response(completion)
+        self._record_probe_result(model, verdict != "unsupported", verdict)
+
+    @staticmethod
+    def _grade_probe_response(completion):
+        """Return 'strict', 'shape' or 'unsupported' for a probe completion."""
+        choice = completion.choices[0]
+        if getattr(choice, "finish_reason", "stop") != "stop":
+            return "unsupported"
+
+        content = getattr(choice.message, "content", None)
+        if not content:
+            return "unsupported"
+
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError:
+            return "unsupported"
+
+        # Exact key set, so a json-mode-only server (right JSON, arbitrary keys)
+        # and a server ignoring additionalProperties both fail here.
+        if not isinstance(parsed, dict) or set(parsed) != {PROBE_KEY}:
+            return "unsupported"
+        if not isinstance(parsed[PROBE_KEY], str):
+            return "unsupported"
+
+        # Some backends honor the structure but ignore `enum`. Still usable: our
+        # real schemas constrain shape only, never values.
+        return "strict" if parsed[PROBE_KEY] == PROBE_EXPECTED else "shape"
+
+    def _record_probe_result(self, model, supported, verdict):
+        with self._structured_lock:
+            self._structured_support[model] = supported
+        if supported:
+            if verdict == "shape":
+                print(
+                    f"[yellow]ℹ '{model}' honors JSON schema shape but not value "
+                    f"constraints; using structured outputs anyway[/yellow]"
+                )
+        else:
             print(
-                "[yellow]ℹ Server doesn't support JSON schema, using delimiter method[/yellow]"
+                f"[yellow]ℹ '{model}' doesn't apply JSON schema ({verdict}), "
+                f"using delimiter method[/yellow]"
             )
 
     def rotate_key(self):
@@ -215,28 +422,107 @@ class ChatGPTAPI(Base):
             )
         return messages
 
+    def _sampling_kwargs(self, model=None):
+        """Sampling parameters to send, or nothing when the model owns them.
+
+        `DEFAULT_TEMPERATURE` is the API's own default, so sending it changes no
+        output — but gpt-5.x and the o-series reject *any* explicit temperature,
+        so an unrequested default is pure downside. A model that turned one down
+        is remembered and never asked again.
+        """
+        model = model or self.model
+        if self._temperature_unsupported.get(model):
+            return {}
+        if self.temperature is None or self.temperature == DEFAULT_TEMPERATURE:
+            return {}
+        return {"temperature": self.temperature}
+
+    @staticmethod
+    def _classify_bad_request(error):
+        """Say what a 400 was actually about: 'temperature', 'schema' or 'other'.
+
+        Without this, a temperature rejection is misread as "no schema support":
+        the model gets demoted for the rest of the run and the real cause never
+        reaches the user.
+        """
+        text = str(error).lower()
+        if "temperature" in text:
+            return "temperature"
+        if "response_format" in text or "json_schema" in text:
+            return "schema"
+        return "other"
+
+    def _request(self, call, model=None):
+        """Issue an API call, retrying once without temperature if refused."""
+        model = model or self.model
+        try:
+            return call(self._sampling_kwargs(model))
+        except BadRequestError as e:
+            if self._classify_bad_request(e) != "temperature":
+                raise
+            with self._structured_lock:
+                first_time = not self._temperature_unsupported.get(model)
+                self._temperature_unsupported[model] = True
+            if first_time:
+                print(
+                    f"[yellow]ℹ '{model}' rejected temperature={self.temperature}; "
+                    f"retrying with the model default[/yellow]"
+                )
+            return call({})
+
     def create_chat_completion(self, text):
+        """Plain (delimiter-mode) completion. Overridden by some subclasses."""
         messages = self.create_messages(text, self.create_context_messages())
 
-        if self._use_structured_outputs:
-            completion = self.openai_client.chat.completions.create(
+        return self._request(
+            lambda sampling: self.openai_client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                temperature=self.temperature,
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": SINGLE_TRANSLATION_SCHEMA,
-                },
                 extra_body=self.extra_body if self.extra_body else None,
+                **sampling,
             )
-        else:
-            completion = self.openai_client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=self.temperature,
-                extra_body=self.extra_body if self.extra_body else None,
+        )
+
+    def _structured_single_translation(self, text):
+        """Translate one paragraph via Structured Outputs.
+
+        Raises `StructuredOutputUnsupported` when the endpoint turns out not to
+        honor the schema, `LengthFinishReasonError` when the answer was cut off
+        (never returns the truncated JSON fragment), and `ValueError` on refusal.
+        """
+        messages = self.create_messages(text, self.create_context_messages())
+
+        try:
+            completion = self._request(
+                lambda sampling: self.openai_client.chat.completions.parse(
+                    model=self.model,
+                    messages=messages,
+                    response_format=SingleTranslation,
+                    extra_body=self.extra_body if self.extra_body else None,
+                    **sampling,
+                )
             )
-        return completion
+        except BadRequestError as e:
+            if self._classify_bad_request(e) != "schema":
+                raise  # not a capability answer — do not blame the schema
+            raise StructuredOutputUnsupported(str(e)) from e
+        except (ValidationError, json.JSONDecodeError) as e:
+            # Answered with something that is not the schema.
+            raise StructuredOutputUnsupported(str(e)) from e
+
+        message = completion.choices[0].message
+        if getattr(message, "refusal", None):
+            raise ValueError(f"Model refused to translate: {message.refusal}")
+        if message.parsed is None:
+            raise StructuredOutputUnsupported("no parsed content in response")
+
+        self._note_structured_success()
+        return message.parsed.translated
+
+    def _plain_translation(self, text):
+        completion = self.create_chat_completion(text)
+        content = completion.choices[0].message.content
+        return content.encode("utf8").decode() if content else ""
 
     @retry(
         stop=stop_after_attempt(3),
@@ -248,28 +534,23 @@ class ChatGPTAPI(Base):
         self.rotate_key()
         self.rotate_model()  # rotate all the model to avoid the limit
 
-        # Auto-detect if not yet tested
-        if self._use_structured_outputs is None:
-            self._test_structured_outputs()
-
-        completion = self.create_chat_completion(text)
-
-        # TODO work well or exception finish by length limit
-        # Check if content is not None before encoding
-        if completion.choices[0].message.content is not None:
-            t_text = completion.choices[0].message.content.encode("utf8").decode() or ""
-        else:
-            t_text = ""
-
-        # Parse structured output if enabled
-        if self._use_structured_outputs and t_text:
+        if self._ensure_structured_support():
             try:
-                parsed = json.loads(t_text)
-                t_text = parsed.get("translated", t_text)
-            except json.JSONDecodeError as e:
+                t_text = self._structured_single_translation(text)
+            except StructuredOutputUnsupported as e:
+                self._demote_structured_outputs(e)
+                t_text = self._plain_translation(text)
+            except LengthFinishReasonError:
+                # The answer was cut off mid-JSON. Nothing partial may be used,
+                # but the plain path has no JSON to truncate — retranslate there
+                # rather than ending a multi-hour run over one paragraph.
                 print(
-                    f"[yellow]Warning: Failed to parse structured output: {e}[/yellow]"
+                    "[yellow]ℹ structured answer was truncated; retranslating "
+                    "this paragraph without a schema[/yellow]"
                 )
+                t_text = self._plain_translation(text)
+        else:
+            t_text = self._plain_translation(text)
 
         if self.context_flag:
             self.save_context(text, t_text)
@@ -373,12 +654,8 @@ class ChatGPTAPI(Base):
         Priority: 1. Structured Outputs (strict) -> 2. Delimiter-based
         Returns a list of translated texts.
         """
-        # Auto-detect output mode on first use
-        if self._use_structured_outputs is None:
-            self._test_structured_outputs()
-
-        # Use structured outputs if available
-        if self._use_structured_outputs:
+        # Use structured outputs if available (probed once per model)
+        if self._ensure_structured_support():
             return self._do_structured_batch_translate(text_list)
 
         # Fallback to delimiter-based method
@@ -433,6 +710,10 @@ class ChatGPTAPI(Base):
         try:
             result = self._execute_structured_batch_translate(text_list, plist_len)
             return result
+        except StructuredOutputUnsupported as e:
+            # Capability answer, not a transient failure: stop paying for it.
+            self._demote_structured_outputs(e)
+            return [self.translate(t, False) for t in text_list]
         except Exception as e:
             print(
                 f"[yellow]Structured batch translation failed after retries: {e}. "
@@ -443,7 +724,7 @@ class ChatGPTAPI(Base):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=60),
-        retry=retry_if_exception_type((RateLimitError, Exception)),
+        retry=retry_if_not_exception_type(StructuredOutputUnsupported),
         reraise=True,
     )
     def _execute_structured_batch_translate(self, text_list, plist_len):
@@ -453,28 +734,32 @@ class ChatGPTAPI(Base):
 
         messages = self._create_structured_batch_messages(text_list)
 
-        completion = self.openai_client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=self.temperature,
-            response_format={
-                "type": "json_schema",
-                "json_schema": TRANSLATION_SCHEMA,
-            },
-            extra_body=self.extra_body if self.extra_body else None,
-        )
-
-        t_text = completion.choices[0].message.content.encode("utf8").decode() or ""
-
-        if not t_text:
-            raise ValueError("Structured output returned empty response")
-
         try:
-            parsed = json.loads(t_text)
-            paragraphs = parsed.get("paragraphs", [])
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Failed to parse structured batch output: {e}") from e
+            completion = self._request(
+                lambda sampling: self.openai_client.chat.completions.parse(
+                    model=self.model,
+                    messages=messages,
+                    response_format=BatchTranslation,
+                    extra_body=self.extra_body if self.extra_body else None,
+                    **sampling,
+                )
+            )
+        except BadRequestError as e:
+            if self._classify_bad_request(e) != "schema":
+                raise  # not a capability answer — do not blame the schema
+            raise StructuredOutputUnsupported(str(e)) from e
+        except (ValidationError, json.JSONDecodeError) as e:
+            raise StructuredOutputUnsupported(str(e)) from e
 
+        message = completion.choices[0].message
+        if getattr(message, "refusal", None):
+            raise ValueError(f"Model refused to translate: {message.refusal}")
+        if message.parsed is None:
+            raise StructuredOutputUnsupported("no parsed content in response")
+
+        paragraphs = message.parsed.paragraphs
+
+        # A wrong count is a model error, not a capability answer: retry it.
         if len(paragraphs) != plist_len:
             raise ValueError(
                 f"Expected {plist_len} translations, got {len(paragraphs)}"
@@ -484,6 +769,7 @@ class ChatGPTAPI(Base):
             for orig, trans in zip(text_list, paragraphs):
                 self.save_context(orig, trans)
 
+        self._note_structured_success()
         return paragraphs
 
     def set_deployment_id(self, deployment_id):
@@ -680,7 +966,6 @@ class ChatGPTAPI(Base):
                 model=model_name,
                 messages=test_messages,
                 max_tokens=10,
-                temperature=0.1,
             )
             print(f"[green]Model '{model_name}' is accessible and working.[/green]")
         except Exception as e:
@@ -819,28 +1104,39 @@ class ChatGPTAPI(Base):
             if line.strip():
                 result = json.loads(line)
                 if result["custom_id"] == custom_id:
-                    content = result["response"]["body"]["choices"][0]["message"][
-                        "content"
-                    ]
-
-                    # Parse JSON response if using structured outputs
-                    if self._use_structured_outputs:
-                        try:
-                            parsed = json.loads(content)
-                            if "translated" in parsed:
-                                return parsed["translated"]
-                            elif "paragraphs" in parsed:
-                                return (
-                                    parsed["paragraphs"][0]
-                                    if parsed["paragraphs"]
-                                    else content
-                                )
-                        except json.JSONDecodeError:
-                            return content  # Return as-is if parsing fails
-
-                    return content
+                    return self._read_batch_choice(
+                        result["response"]["body"]["choices"][0], custom_id
+                    )
 
         raise ValueError(f"No result found for custom_id {custom_id}")
+
+    @staticmethod
+    def _read_batch_choice(choice, custom_id):
+        """Unwrap one Batch API choice.
+
+        Results are often fetched by a later process that never probed the
+        model, so this decides from the payload itself rather than from cached
+        capability state — and refuses to hand back a truncated JSON fragment.
+        """
+        message = choice.get("message", {})
+        if message.get("refusal"):
+            raise ValueError(
+                f"Model refused to translate {custom_id}: {message['refusal']}"
+            )
+        if choice.get("finish_reason") == "length":
+            raise ValueError(
+                f"Batch result for {custom_id} was truncated by the token limit"
+            )
+
+        content = message.get("content") or ""
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError:
+            return content  # delimiter-mode batch, plain text is expected
+
+        if isinstance(parsed, dict) and isinstance(parsed.get("translated"), str):
+            return parsed["translated"]
+        return content
 
     def create_batch_context_messages(self, index):
         messages = []
@@ -881,11 +1177,12 @@ class ChatGPTAPI(Base):
         batch_body = {
             "model": self.batch_model,
             "messages": messages,
-            "temperature": self.temperature,
+            **self._sampling_kwargs(self.batch_model),
         }
 
-        # Add response format for batch requests if using structured outputs
-        if self._use_structured_outputs:
+        # The Batch API takes hand-built bodies, so the schema cannot come from
+        # the SDK here; SINGLE_TRANSLATION_SCHEMA mirrors SingleTranslation.
+        if self._ensure_structured_support(self.batch_model):
             batch_body["response_format"] = {
                 "type": "json_schema",
                 "json_schema": SINGLE_TRANSLATION_SCHEMA,
