@@ -238,6 +238,28 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   Use `--translate-tags` to specify tags need for translation. Use comma to separate multiple tags.
   For example: `--translate-tags h1,h2,h3,p,div`
 
+  **Auto mode (`--translate-tags auto`, epub only)**: instead of selecting tags, every text
+  node in the book is either assigned to a translation unit or skipped for an explicit,
+  reported reason (line numbers, page-list navs, hidden content, symbols, ...). This is the
+  right choice for books whose text does not live in `<p>` — e.g. poetry rendered as
+  per-line `<div>`s or `<blockquote>`s, which the default would silently skip. Runs of short
+  verse lines are batched into stanza windows (up to `--poetry-group-size` lines, default 8)
+  and translated in one request so the model sees neighboring lines for context.
+
+  - `--plan-dry-run`: print the per-signature coverage table, write `<book>_plan.json`, and
+    exit. No API key or credits needed. Honors `--only_filelist` / `--exclude_filelist`.
+  - `<book>_plan.json`: edit a signature's `"action"` to `"skip"` to exclude it from the
+    real run; the file is never overwritten once it exists (delete it to regenerate).
+  - `--plan-min-coverage` (default 0.5): auto mode aborts if the plan covers less than this
+    fraction of the book's text, instead of silently translating a fraction of it.
+
+  ```shell
+  # inspect what would be translated (free, no key needed)
+  python3 make_book.py --book_name my_book.epub --plan-dry-run
+  # translate with auto discovery
+  python3 make_book.py --book_name my_book.epub --openai_key ${key} --translate-tags auto
+  ```
+
 - `--exclude-translate-tags`:
 
   Use `--exclude-translate-tags` to exclude content within specified HTML tags from translation. This is useful for preserving code blocks, preformatted text, or other special content. Use comma to separate multiple tags.
@@ -406,6 +428,11 @@ python3 make_book.py --book_name test_books/animal_farm.epub --provider deepseek
 
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p
+
+# Auto-discover translatable content (poetry, blockquotes, table cells, ...) and
+# batch verse lines in stanza windows; preview the plan first with --plan-dry-run
+python3 make_book.py --book_name test_books/animal_farm.epub --plan-dry-run
+python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags auto
 
 # Tweaking the prompt
 python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template_sample.txt
