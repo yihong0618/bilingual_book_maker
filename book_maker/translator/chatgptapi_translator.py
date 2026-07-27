@@ -232,6 +232,7 @@ GPT4o_MODEL_LIST = [
 ]
 GPT5MINI_MODEL_LIST = [
     "gpt-5-mini",
+    "gpt-5.4-mini",
 ]
 O1PREVIEW_MODEL_LIST = [
     "o1-preview",
