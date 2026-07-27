@@ -1,0 +1,454 @@
+"""Tests for the coverage-complete translation plan (partition, don't select).
+
+Fixtures:
+- test_books/animal_farm.epub  (committed) — poem lines are per-line
+  <blockquote class="calibre_14|calibre_17">; default tag selection missed them.
+- gilgamesh.epub (repo root, local only, 3.8MB) — 51% of text lives in
+  div.poetry_line*; tests skip if the file is absent.
+"""
+
+import os
+import shutil
+import zipfile
+from pathlib import Path
+
+import pytest
+from bs4 import BeautifulSoup as bs
+from ebooklib import epub
+
+from book_maker.loader.plan import (
+    DisplayResolver,
+    build_plan,
+    classify_skip,
+    parse_css_display,
+    partition_soup,
+    unit_clean_text,
+)
+
+REPO = Path(__file__).resolve().parent.parent
+ANIMAL_FARM = REPO / "test_books" / "animal_farm.epub"
+GILGAMESH = REPO / "gilgamesh.epub"
+
+needs_gilgamesh = pytest.mark.skipif(
+    not GILGAMESH.exists(), reason="local-only fixture gilgamesh.epub not present"
+)
+
+
+# ---------------------------------------------------------------- predicates
+
+
+class TestClassifySkip:
+    def test_translatable_prose_is_not_skipped(self):
+        assert classify_skip("He who saw the Deep, the country's foundation,") is None
+        assert classify_skip("Beasts of England, beasts of Ireland,") is None
+        # single real word must survive, even a pronoun
+        assert classify_skip("Overthrown") is None
+
+    def test_whitespace_and_empty(self):
+        assert classify_skip("") == "whitespace"
+        assert classify_skip("  \n ") == "whitespace"
+
+    def test_numeric(self):
+        assert classify_skip("5") == "numeric"
+        assert classify_skip("120") == "numeric"
+        assert classify_skip("3 4 5") == "numeric"
+
+    def test_roman_line_refs(self):
+        # gilgamesh span.mr / span.mn / span.line_number contents
+        assert classify_skip("I 5") == "roman-ref"
+        assert classify_skip("XI 100") == "roman-ref"
+        assert classify_skip("IV") == "roman-ref"
+
+    def test_symbols(self):
+        assert classify_skip("↓") == "symbol"  # ↓ span.arrow
+        assert classify_skip("+") == "symbol"
+        assert classify_skip("* * *") == "symbol"
+
+    def test_links(self):
+        assert classify_skip("http://example.com/x") == "link"
+
+
+# ------------------------------------------------------------- css resolver
+
+
+class TestCssDisplay:
+    def test_parse_simple_rules(self):
+        css = """
+        /* comment { display:none } */
+        .poem { display: block; }
+        span.linenum { display : inline-block }
+        div.run-in, p.also { display: inline; }
+        """
+        m = parse_css_display(css)
+        assert m[(None, "poem")] == "block"
+        assert m[("span", "linenum")] == "inline-block"
+        assert m[("div", "run-in")] == "inline"
+        assert m[("p", "also")] == "inline"
+
+    def test_resolver_css_overrides_defaults(self):
+        css = "span.verse { display: block; } div.note { display: inline; }"
+        resolver = DisplayResolver([parse_css_display(css)])
+        soup = bs(
+            '<div><span class="verse">a</span><div class="note">b</div>'
+            "<span>c</span><p>d</p></div>",
+            "html.parser",
+        )
+        assert resolver.is_block(soup.find("span", class_="verse"))
+        assert not resolver.is_block(soup.find("div", class_="note"))
+        assert not resolver.is_block(soup.find_all("span")[1])
+        assert resolver.is_block(soup.find("p"))
+
+
+# ---------------------------------------------------------------- partition
+
+MINI_GILGAMESH = """
+<body>
+ <section class="chapter">
+  <h2 class="chapter_title">Tablet I</h2>
+  <div class="poetry_stanza">
+   <div class="poetry_line"><span class="line_number"><span class="mr">I</span>
+    <span class="mn">5</span></span>He who saw the Deep, the country's foundation,</div>
+   <div class="poetry_line_indented">who knew the proper ways, was wise in all matters!</div>
+  </div>
+  <p>Prose paragraph <sup>1</sup> with a footnote marker.</p>
+ </body>
+"""
+
+
+class TestPartition:
+    def _partition(self, html):
+        soup = bs(html, "html.parser")
+        resolver = DisplayResolver([])
+        return partition_soup(soup, resolver, file_name="x.html"), soup
+
+    def test_units_are_leaf_blocks_only(self):
+        fp, soup = self._partition(MINI_GILGAMESH)
+        sigs = [u.signature for u in fp.units]
+        # stanza wrapper must never be a unit — double-translate impossible
+        assert "div.poetry_stanza" not in sigs
+        assert "section.chapter" not in sigs
+        assert sigs == [
+            "h2.chapter_title",
+            "div.poetry_line",
+            "div.poetry_line_indented",
+            "p",
+        ]
+
+    def test_line_numbers_are_skipped_not_translated(self):
+        fp, _ = self._partition(MINI_GILGAMESH)
+        line = next(u for u in fp.units if u.signature == "div.poetry_line")
+        assert line.text == "He who saw the Deep, the country's foundation,"
+        assert "I" not in line.text.split()
+        assert fp.skipped.get("roman-ref", 0) + fp.skipped.get("numeric", 0) > 0
+
+    def test_sup_excluded_by_default(self):
+        fp, _ = self._partition(MINI_GILGAMESH)
+        p = next(u for u in fp.units if u.signature == "p")
+        assert "1" not in p.text
+        assert "footnote marker" in p.text
+
+    def test_total_partition_invariant(self):
+        fp, _ = self._partition(MINI_GILGAMESH)
+        assert fp.total_chars == sum(u.chars for u in fp.units) + sum(
+            fp.skipped.values()
+        )
+        assert fp.total_chars > 0
+
+    def test_epub_pagebreak_semantics_skipped(self):
+        html = (
+            '<body><p>real text here</p>'
+            '<span epub:type="pagebreak" title="12">12</span>'
+            '<div class="mbp_pagebreak">next!</div></body>'
+        )
+        fp, _ = self._partition(html)
+        assert [u.signature for u in fp.units] == ["p", "div.mbp_pagebreak"]
+        # numeric pagebreak content dies by predicate even without epub:type
+
+    def test_mixed_content_block_translates_only_its_own_text(self):
+        html = (
+            "<body><div>Intro line of the chapter here."
+            "<p>Nested paragraph text.</p></div></body>"
+        )
+        fp, _ = self._partition(html)
+        texts = {u.signature: u.text for u in fp.units}
+        assert texts["p"] == "Nested paragraph text."
+        assert texts["div"] == "Intro line of the chapter here."
+        # no unit contains another unit's text
+        assert "Nested" not in texts["div"]
+
+    def test_drop_cap_roman_letters_survive_signature_vote(self):
+        # "C" of "Cover" in its own span must NOT be eaten as a roman numeral
+        # because that span class also carries normal prose letters elsewhere;
+        # Gilgamesh's span.mr ("I") IS eaten because its class never does.
+        html = (
+            "<body>"
+            '<p><span class="dcap">C</span><span class="dcap">OVER</span></p>'
+            '<p><span class="dcap">T</span><span class="dcap">ITLE</span></p>'
+            '<div class="poetry_line"><span class="mr">I</span>'
+            "He who saw the Deep</div>"
+            "</body>"
+        )
+        fp, _ = self._partition(html)
+        texts = [u.text for u in fp.units]
+        assert "COVER" in texts
+        assert "TITLE" in texts
+        line = next(u for u in fp.units if u.signature == "div.poetry_line")
+        assert line.text == "He who saw the Deep"
+        assert fp.skipped.get("roman-ref", 0) == 1  # only span.mr's "I"
+
+    def test_roman_numeral_inside_prose_link_is_content(self):
+        # Animal Farm's chapter list: <a><span>C</span><span>HAPTER </span>
+        # <span>II</span></a> — the subtree reads "CHAPTER II" as a whole, so
+        # the numeral is content and must survive.
+        html = (
+            "<body><p>"
+            '<a href="x"><span class="u">C</span><span class="n">HAPTER </span>'
+            '<span class="u">II</span></a>'
+            "</p></body>"
+        )
+        fp, _ = self._partition(html)
+        assert [u.text for u in fp.units] == ["CHAPTER II"]
+        assert sum(fp.skipped.values()) == 0
+
+    def test_unit_clean_text_is_stateless_recomputable(self):
+        _, soup = self._partition(MINI_GILGAMESH)
+        el = soup.find("div", class_="poetry_line")
+        resolver = DisplayResolver([])
+        assert (
+            unit_clean_text(el, resolver)
+            == "He who saw the Deep, the country's foundation,"
+        )
+
+
+# ------------------------------------------------------------- poetry runs
+
+
+class TestPoetryGrouping:
+    def test_animal_farm_poem_grouped_by_stanza(self):
+        book = epub.read_epub(str(ANIMAL_FARM))
+        plan = build_plan(book, poetry_group_size=8)
+        fp = next(f for f in plan.files if "004" in f.file_name)
+        # calibre_14 = stanza head, calibre_17 = continuation; calibre_7 is
+        # the chapter heading and must NOT be poetry-grouped with the poem
+        poem = [
+            u
+            for u in fp.units
+            if u.signature in ("blockquote.calibre_14", "blockquote.calibre_17")
+        ]
+        assert len(poem) >= 20  # Beasts of England has 7 stanzas x 4 lines
+        assert all(u.group_id is not None for u in poem)
+        groups = {}
+        for u in poem:
+            groups.setdefault(u.group_id, []).append(u)
+        for members in groups.values():
+            assert 1 <= len(members) <= 8
+        # stanza heads (calibre_14) start groups
+        multi = [g for g in groups.values() if len(g) > 1]
+        assert multi, "poem lines must be batched together for context"
+        for members in multi:
+            assert members[0].signature == "blockquote.calibre_14"
+
+    def test_prose_paragraphs_not_poetry_grouped(self):
+        book = epub.read_epub(str(ANIMAL_FARM))
+        plan = build_plan(book)
+        fp = next(f for f in plan.files if "004" in f.file_name)
+        prose = [u for u in fp.units if u.signature == "p.calibre_13"]
+        assert prose and all(u.group_id is None for u in prose)
+
+
+# ------------------------------------------------------------ whole books
+
+
+class TestAnimalFarmPlan:
+    def test_coverage_and_invariant(self):
+        book = epub.read_epub(str(ANIMAL_FARM))
+        plan = build_plan(book)
+        assert plan.coverage >= 0.95
+        for fp in plan.files:
+            assert fp.total_chars == sum(u.chars for u in fp.units) + sum(
+                fp.skipped.values()
+            )
+
+    def test_poem_text_is_covered(self):
+        book = epub.read_epub(str(ANIMAL_FARM))
+        plan = build_plan(book)
+        all_text = " ".join(u.text for f in plan.files for u in f.units)
+        assert "Beasts of England, beasts of Ireland," in all_text
+        assert "Tyrant Man shall be o'erthrown," in all_text.replace("’", "'")
+
+
+@needs_gilgamesh
+class TestGilgameshPlan:
+    @pytest.fixture(scope="class")
+    def plan(self):
+        return build_plan(epub.read_epub(str(GILGAMESH)))
+
+    def test_coverage(self, plan):
+        # default tag selection covered only 45% of this book
+        assert plan.coverage >= 0.90
+
+    def test_nested_units_own_disjoint_text(self, plan):
+        # Mixed-content ancestors may be units for their OWN direct text, but
+        # a descendant unit's text must never be duplicated into an ancestor
+        # unit (single ownership of every text node).
+        for fp in plan.files:
+            by_el = {id(u.element): u for u in fp.units}
+            for u in fp.units:
+                for anc in u.element.parents:
+                    outer = by_el.get(id(anc))
+                    if outer is not None and len(u.text) > 8:
+                        assert u.text not in outer.text
+
+    def test_display_none_content_skipped_not_leaked(self, plan):
+        # li.hidden_content (Kindle-removed TOC entries) is display:none —
+        # its text must be skipped as hidden, not merged into the parent ol.
+        toc = next(f for f in plan.files if "part0002" in f.file_name)
+        assert toc.skipped.get("hidden", 0) > 0
+        for u in toc.units:
+            assert "CoverTitle" not in u.text
+
+    def test_poetry_lines_are_units_without_line_numbers(self, plan):
+        units = [u for f in plan.files for u in f.units]
+        poetry = [u for u in units if u.signature.startswith("div.poetry_line")]
+        assert len(poetry) > 4500
+        sample = next(u for u in poetry if "He who saw the Deep" in u.text)
+        assert not sample.text.startswith("I 5")
+
+    def test_poetry_grouping(self, plan):
+        units = [u for f in plan.files for u in f.units]
+        poetry = [u for u in units if u.signature == "div.poetry_line"]
+        grouped = [u for u in poetry if u.group_id is not None]
+        assert len(grouped) / len(poetry) > 0.9
+
+
+# ------------------------------------------------------- plan artifact I/O
+
+
+class TestPlanArtifact:
+    def test_report_and_json_roundtrip(self, tmp_path):
+        book = epub.read_epub(str(ANIMAL_FARM))
+        plan = build_plan(book)
+        text = plan.report()
+        assert "coverage" in text.lower()
+        assert "blockquote.calibre_17" in text
+
+        out = tmp_path / "plan.json"
+        plan.save_json(out, book_path=str(ANIMAL_FARM))
+        import json
+
+        data = json.loads(out.read_text())
+        assert data["coverage"] == pytest.approx(plan.coverage)
+        assert data["book_sha256"]
+        sigs = {s["signature"]: s for s in data["signatures"]}
+        assert sigs["blockquote.calibre_17"]["action"] == "translate"
+
+    def test_signature_override_skip(self, tmp_path):
+        book = epub.read_epub(str(ANIMAL_FARM))
+        overrides = {"blockquote.calibre_17": "skip"}
+        plan = build_plan(book, overrides=overrides)
+        units = [u for f in plan.files for u in f.units]
+        assert not any(u.signature == "blockquote.calibre_17" for u in units)
+        # overridden chars are accounted as skipped, invariant intact
+        for fp in plan.files:
+            assert fp.total_chars == sum(u.chars for u in fp.units) + sum(
+                fp.skipped.values()
+            )
+
+
+# ------------------------------------------------- loader integration (e2e)
+
+
+class FakeModel:
+    """Minimal translator satisfying EPUBBookLoader's expectations."""
+
+    TRANSLATION_ERROR_MARKER = None
+    _fatal_error_detected = False
+
+    def __init__(self, key, language, **kwargs):
+        self.list_calls = []
+
+    def translate(self, text, needprint=True):
+        return f"T[{text}]"
+
+    def translate_list(self, text_list):
+        self.list_calls.append(list(text_list))
+        return [f"T[{t}]" for t in text_list]
+
+
+class MisalignedOnceModel(FakeModel):
+    """Returns a wrong-length list on the first multi-item call."""
+
+    def __init__(self, key, language, **kwargs):
+        super().__init__(key, language, **kwargs)
+        self.failed_once = False
+
+    def translate_list(self, text_list):
+        self.list_calls.append(list(text_list))
+        if len(text_list) > 1 and not self.failed_once:
+            self.failed_once = True
+            return ["only one item"]
+        return [f"T[{t}]" for t in text_list]
+
+
+def _make_loader(tmp_path, model_cls, book=ANIMAL_FARM):
+    from book_maker.loader.epub_loader import EPUBBookLoader
+
+    src = tmp_path / book.name
+    shutil.copy(book, src)
+    loader = EPUBBookLoader(
+        str(src),
+        model_cls,
+        "dummy-key",
+        resume=False,
+        language="zh-hans",
+    )
+    loader.translate_tags = "auto"
+    return loader, src
+
+
+class TestLoaderPlanMode:
+    def test_poem_translated_in_grouped_batches(self, tmp_path):
+        loader, src = _make_loader(tmp_path, FakeModel)
+        loader.only_filelist = "index_split_004.html"
+        loader.make_bilingual_book()
+
+        out = src.parent / (src.stem + "_bilingual.epub")
+        assert out.exists()
+        with zipfile.ZipFile(out) as z:
+            doc = next(n for n in z.namelist() if "004" in n and n.endswith(".html"))
+            soup = bs(z.read(doc), "html.parser")
+        quotes = soup.find_all("blockquote")
+        texts = [q.get_text() for q in quotes]
+        assert any(t.startswith("T[Beasts of England, beasts of Ireland,") for t in texts)
+        # every original poem line has a translated sibling
+        originals = [t for t in texts if not t.startswith("T[")]
+        translated = [t for t in texts if t.startswith("T[")]
+        assert len(originals) == len(translated) > 20
+
+        # poem went through translate_list in multi-line context windows
+        model = loader.translate_model
+        multi = [c for c in model.list_calls if len(c) > 1]
+        assert multi, "poetry must be batched, not sent line by line"
+        assert all(2 <= len(c) <= 8 for c in multi)
+
+    def test_alignment_retry_ladder(self, tmp_path):
+        loader, src = _make_loader(tmp_path, MisalignedOnceModel)
+        loader.only_filelist = "index_split_004.html"
+        loader.make_bilingual_book()
+
+        out = src.parent / (src.stem + "_bilingual.epub")
+        with zipfile.ZipFile(out) as z:
+            doc = next(n for n in z.namelist() if "004" in n and n.endswith(".html"))
+            soup = bs(z.read(doc), "html.parser")
+        texts = [q.get_text() for q in soup.find_all("blockquote")]
+        originals = [t for t in texts if not t.startswith("T[")]
+        translated = [t for t in texts if t.startswith("T[")]
+        # a garbage-length response must not desync line alignment
+        assert len(originals) == len(translated)
+        assert "only one item" not in " ".join(texts)
+
+    def test_coverage_gate_fails_loud(self, tmp_path):
+        loader, src = _make_loader(tmp_path, FakeModel)
+        loader.plan_min_coverage = 1.01  # impossible on purpose
+        with pytest.raises(SystemExit):
+            loader.make_bilingual_book()

@@ -21,6 +21,12 @@ from book_maker.utils import num_tokens_from_text, prompt_config_to_kwargs
 
 from .base_loader import BaseBookLoader
 from .helper import EPUBBookLoaderHelper, is_text_link, not_trans, shorter_result_link
+from .plan import (
+    build_plan,
+    build_resolver,
+    load_plan_overrides,
+    partition_file,
+)
 
 
 class EPUBBookLoader(BaseBookLoader):
@@ -71,6 +77,11 @@ class EPUBBookLoader(BaseBookLoader):
         self.retranslate = None
         self.exclude_filelist = ""
         self.only_filelist = ""
+        # plan mode (--translate-tags auto): coverage-complete partition
+        self.plan_min_coverage = 0.5
+        self.poetry_group_size = 8
+        self._plan_resolver = None
+        self._plan_overrides = None
         self.single_translate = single_translate
         self.block_size = 1  # Default to 1 for better translation quality with delimiter-based batching
         self.sentence_mode = False
@@ -262,6 +273,11 @@ class EPUBBookLoader(BaseBookLoader):
             if self.only_filelist and i.file_name not in self.only_filelist.split(","):
                 continue
 
+            if self._plan_mode:
+                soup = bs(i.content, "html.parser")
+                count += len(self._partition_item(soup, i.file_name).units)
+                continue
+
             content = i.content
             soup = bs(content, "html.parser")
             p_list = soup.findAll(trans_taglist)
@@ -278,6 +294,145 @@ class EPUBBookLoader(BaseBookLoader):
                 count += 1
 
         return count
+
+    # ------------------------------------------------------------ plan mode
+
+    @property
+    def _plan_mode(self):
+        return self.translate_tags == "auto"
+
+    def _exclude_tags_tuple(self):
+        return tuple(t for t in self.exclude_translate_tags.split(",") if t)
+
+    def _prepare_translation_plan(self):
+        """Build the coverage-complete plan; fail loud below the coverage gate."""
+        name, _ = os.path.splitext(self.epub_name)
+        plan_path = f"{name}_plan.json"
+        overrides = None
+        if os.path.exists(plan_path):
+            overrides = load_plan_overrides(plan_path, self.epub_name)
+            if overrides:
+                print(f"Applying {len(overrides)} signature override(s) from {plan_path}")
+
+        self._plan_resolver = build_resolver(self.origin_book)
+        self._plan_overrides = overrides
+        plan = build_plan(
+            self.origin_book,
+            exclude_tags=self._exclude_tags_tuple(),
+            poetry_group_size=self.poetry_group_size,
+            overrides=overrides,
+        )
+        print(plan.report())
+        plan.save_json(plan_path, book_path=self.epub_name)
+        print(f"plan written to {plan_path} (edit signature actions to override)")
+
+        if plan.coverage < self.plan_min_coverage:
+            print(
+                f"[bold red]Plan coverage {100 * plan.coverage:.1f}% is below the "
+                f"required {100 * self.plan_min_coverage:.1f}% — refusing to "
+                f"translate a fraction of the book silently. Inspect "
+                f"{plan_path}, or lower --plan-min-coverage.[/bold red]"
+            )
+            raise SystemExit(1)
+        return plan
+
+    def plan_dry_run_report(self):
+        """--plan-dry-run: print the plan and write the JSON artifact, no API calls."""
+        name, _ = os.path.splitext(self.epub_name)
+        plan_path = f"{name}_plan.json"
+        plan = build_plan(
+            self.origin_book,
+            exclude_tags=self._exclude_tags_tuple(),
+            poetry_group_size=self.poetry_group_size,
+        )
+        print(plan.report())
+        plan.save_json(plan_path, book_path=self.epub_name)
+        print(f"plan written to {plan_path} (edit signature actions to override)")
+
+    def _partition_item(self, soup, file_name):
+        fp, _ = partition_file(
+            soup,
+            self._plan_resolver,
+            file_name,
+            exclude_tags=self._exclude_tags_tuple(),
+            overrides=self._plan_overrides,
+            poetry_group_size=self.poetry_group_size,
+        )
+        return fp
+
+    @staticmethod
+    def _iter_plan_chunks(units):
+        """Yield lists of units: poetry windows together, everything else alone."""
+        chunk = []
+        chunk_gid = None
+        for unit in units:
+            if chunk and unit.group_id is not None and unit.group_id == chunk_gid:
+                chunk.append(unit)
+            else:
+                if chunk:
+                    yield chunk
+                chunk = [unit]
+                chunk_gid = unit.group_id
+        if chunk:
+            yield chunk
+
+    def _process_plan_chunks(self, units, index, p_to_save_len, pbar=None):
+        for chunk in self._iter_plan_chunks(units):
+            if self.is_test and index >= self.test_num:
+                break
+            if self.translate_model._fatal_error_detected:
+                print(
+                    "[bold red]Fatal translation error detected. Stopping chapter processing.[/bold red]"
+                )
+                break
+            index, n = self._process_combined_paragraph(
+                [u.element for u in chunk],
+                index,
+                p_to_save_len,
+                thread_safe=False,
+                clean_texts=[u.text for u in chunk],
+            )
+            if pbar is not None:
+                pbar.update(n)
+        return index
+
+    def _translate_texts_aligned(self, texts):
+        """translate_list with an alignment ladder: group -> halves -> singles.
+
+        A response with the wrong item count must never desync originals and
+        translations; instead we split and retry until counts match.
+        """
+        if not texts:
+            return []
+        try:
+            result = self.translate_model.translate_list(texts)
+        except Exception as e:
+            if self.translate_model._fatal_error_detected:
+                print(
+                    f"[bold red]Fatal translation error detected. "
+                    f"Aborting translation.[/bold red]"
+                )
+                print(f"[bold red]Error: {str(e)}[/bold red]")
+                return [self.translate_model.TRANSLATION_ERROR_MARKER] * len(texts)
+            print(f"[bold red]Translation error: {str(e)}[/bold red]")
+            raise
+        if len(result) == len(texts):
+            return result
+        print(
+            f"[bold red]alignment mismatch: sent {len(texts)} paragraphs, "
+            f"received {len(result)} — splitting for realignment[/bold red]"
+        )
+        if len(texts) == 1:
+            t = self.translate_model.translate(texts[0])
+            if t is None:
+                raise RuntimeError(
+                    "`t_text` is None: your translation model is not working as expected."
+                )
+            return [t]
+        mid = len(texts) // 2
+        return self._translate_texts_aligned(texts[:mid]) + self._translate_texts_aligned(
+            texts[mid:]
+        )
 
     def _insert_trans_preserving_tags(
         self, p, translated_text, translation_style="", single_translate=False
@@ -388,19 +543,24 @@ class EPUBBookLoader(BaseBookLoader):
         return index
 
     def _process_combined_paragraph(
-        self, p_block, index, p_to_save_len, thread_safe=False
+        self, p_block, index, p_to_save_len, thread_safe=False, clean_texts=None
     ):
-        """Returns (new_index, processed_count)."""
+        """Returns (new_index, processed_count).
+
+        `clean_texts` (plan mode) supplies the pre-cleaned text for each
+        paragraph — line numbers and other skip-classified nodes removed —
+        and marks the block as already vetted for translatability.
+        """
         # Each entry: (paragraph, text_to_translate_or_None_if_resumed, cached_translation_or_None)
         entries = []
         processed_count = 0
 
-        for p in p_block:
+        for k, p in enumerate(p_block):
             if self.is_test and index >= self.test_num:
                 break
 
             # Skip paragraphs that only contain excluded tags (code, pre, etc.)
-            if self._is_content_only_excluded_tags(p):
+            if clean_texts is None and self._is_content_only_excluded_tags(p):
                 processed_count += 1
                 continue
 
@@ -408,7 +568,7 @@ class EPUBBookLoader(BaseBookLoader):
                 cached = self.p_to_save[index]
                 entries.append((p, None, cached))
             else:
-                raw = p.text.rstrip()
+                raw = clean_texts[k].rstrip() if clean_texts else p.text.rstrip()
                 entries.append((p, raw, None))
 
             index += 1
@@ -416,27 +576,7 @@ class EPUBBookLoader(BaseBookLoader):
 
         # Translate only the non-resumed paragraphs
         new_texts = [text for _, text, cached in entries if text is not None]
-
-        if new_texts:
-            try:
-                translated_text_list = self.translate_model.translate_list(new_texts)
-            except Exception as e:
-                # Check if this is a fatal error
-                if self.translate_model._fatal_error_detected:
-                    print(
-                        f"[bold red]Fatal translation error detected. "
-                        f"Aborting translation.[/bold red]"
-                    )
-                    print(f"[bold red]Error: {str(e)}[/bold red]")
-                    # Return early with error markers
-                    translated_text_list = [
-                        self.translate_model.TRANSLATION_ERROR_MARKER
-                    ] * len(new_texts)
-                else:
-                    print(f"[bold red]Translation error: {str(e)}[/bold red]")
-                    raise
-        else:
-            translated_text_list = []
+        translated_text_list = self._translate_texts_aligned(new_texts)
 
         translate_iter = iter(translated_text_list)
         for p, text, cached in entries:
@@ -751,6 +891,15 @@ class EPUBBookLoader(BaseBookLoader):
 
         content = item.content
         soup = bs(content, "html.parser")
+
+        if self._plan_mode:
+            fp = self._partition_item(soup, item.file_name)
+            index = self._process_plan_chunks(fp.units, index, p_to_save_len, pbar)
+            if soup:
+                item.content = soup.encode(encoding="utf-8")
+            new_book.add_item(item)
+            return index
+
         p_list = soup.findAll(trans_taglist)
 
         p_list = self.filter_nest_list(p_list, trans_taglist)
@@ -891,6 +1040,41 @@ class EPUBBookLoader(BaseBookLoader):
 
             content = item.content
             soup = bs(content, "html.parser")
+
+            if self._plan_mode:
+                fp = self._partition_item(soup, item.file_name)
+                for chunk in self._iter_plan_chunks(fp.units):
+                    if self.translate_model._fatal_error_detected:
+                        break
+                    indices = [self._get_next_translation_index() for _ in chunk]
+                    fresh, fresh_texts = [], []
+                    for unit, idx in zip(chunk, indices):
+                        if self.resume and idx < p_to_save_len:
+                            self._insert_trans_preserving_tags(
+                                unit.element,
+                                self.p_to_save[idx],
+                                self.translation_style,
+                                self.single_translate,
+                            )
+                        else:
+                            fresh.append(unit)
+                            fresh_texts.append(unit.text)
+                    if fresh_texts:
+                        translated = self._translate_texts_aligned(fresh_texts)
+                        with self._progress_lock:
+                            self.p_to_save.extend(translated)
+                        for unit, t_text in zip(fresh, translated):
+                            self._insert_trans_preserving_tags(
+                                unit.element,
+                                t_text,
+                                self.translation_style,
+                                self.single_translate,
+                            )
+                if soup:
+                    chapter_result["processed_content"] = soup.encode(encoding="utf-8")
+                chapter_result["success"] = True
+                return chapter_result
+
             p_list = soup.findAll(trans_taglist)
             p_list = self.filter_nest_list(p_list, trans_taglist)
 
@@ -1165,6 +1349,31 @@ class EPUBBookLoader(BaseBookLoader):
             )
             return
 
+        if self._plan_mode:
+            incompatible = {
+                "--retranslate": self.retranslate,
+                "--batch/--batch-use": self.batch_flag or self.batch_use_flag,
+                "--interleaved-translation": self.sentence_mode,
+            }
+            active = [flag for flag, on in incompatible.items() if on]
+            if active:
+                print(
+                    f"[bold red]--translate-tags auto is not compatible with "
+                    f"{', '.join(active)}[/bold red]"
+                )
+                raise SystemExit(1)
+            if self.allow_navigable_strings:
+                print(
+                    "note: --allow_navigable_strings is redundant in plan mode "
+                    "(every text node is already accounted for); ignoring it"
+                )
+            if self.accumulated_num > 1:
+                print(
+                    "note: plan mode batches poetry windows itself; "
+                    "--accumulated_num is ignored"
+                )
+            self._prepare_translation_plan()
+
         self.batch_init_then_wait()
         new_book = self._make_new_book(self.origin_book)
         all_items = list(self.origin_book.get_items())
@@ -1349,15 +1558,25 @@ class EPUBBookLoader(BaseBookLoader):
                 if item.get_type() == ITEM_DOCUMENT:
                     content = item.content
                     soup = bs(content, "html.parser")
-                    p_list = soup.findAll(trans_taglist)
-                    if self.allow_navigable_strings:
-                        p_list.extend(soup.findAll(text=True))
+                    if self._plan_mode:
+                        # same deterministic unit order as processing
+                        p_list = [
+                            u.element
+                            for u in self._partition_item(soup, item.file_name).units
+                        ]
+                    else:
+                        p_list = soup.findAll(trans_taglist)
+                        if self.allow_navigable_strings:
+                            p_list.extend(soup.findAll(text=True))
                     for p in p_list:
-                        if not p.text or self._is_special_text(p.text):
-                            continue
-                        # Skip paragraphs that only contain excluded tags (code, pre, etc.)
-                        if self._is_content_only_excluded_tags(p):
-                            continue
+                        # plan-mode units are pre-vetted; re-filtering here
+                        # would desync the resume index
+                        if not self._plan_mode:
+                            if not p.text or self._is_special_text(p.text):
+                                continue
+                            # Skip paragraphs that only contain excluded tags (code, pre, etc.)
+                            if self._is_content_only_excluded_tags(p):
+                                continue
                         # TODO banch of p to translate then combine
                         # PR welcome here
                         if index < p_to_save_len:

@@ -287,7 +287,35 @@ def main():
         dest="translate_tags",
         type=str,
         default="p",
-        help="example --translate-tags p,blockquote",
+        help="example --translate-tags p,blockquote. Use 'auto' for the "
+        "coverage-complete plan mode: every text node is either translated or "
+        "skipped for an explicit reason, and poetry lines are batched in "
+        "stanza windows for context (epub only)",
+    )
+    parser.add_argument(
+        "--plan-dry-run",
+        dest="plan_dry_run",
+        action="store_true",
+        default=False,
+        help="build and print the translation plan (per-signature coverage "
+        "table), write <book>_plan.json, and exit without translating "
+        "(epub only)",
+    )
+    parser.add_argument(
+        "--plan-min-coverage",
+        dest="plan_min_coverage",
+        type=float,
+        default=0.5,
+        help="in plan mode, abort if the plan covers less than this fraction "
+        "of the book's text (default 0.5)",
+    )
+    parser.add_argument(
+        "--poetry-group-size",
+        dest="poetry_group_size",
+        type=int,
+        default=8,
+        help="in plan mode, max poetry lines batched per translation request "
+        "(default 8)",
     )
     parser.add_argument(
         "--exclude-translate-tags",
@@ -619,6 +647,15 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.translate_tags = options.translate_tags
     if options.exclude_translate_tags:
         e.exclude_translate_tags = options.exclude_translate_tags
+    if hasattr(e, "plan_min_coverage"):
+        e.plan_min_coverage = options.plan_min_coverage
+        e.poetry_group_size = options.poetry_group_size
+    if options.plan_dry_run:
+        if not hasattr(e, "plan_dry_run_report"):
+            print("[bold red]--plan-dry-run only works with epub books[/bold red]")
+            exit(1)
+        e.plan_dry_run_report()
+        return
     if options.exclude_filelist:
         e.exclude_filelist = options.exclude_filelist
     if options.only_filelist:
