@@ -5,6 +5,7 @@ import shutil
 from os import environ
 from itertools import cycle
 import json
+from functools import lru_cache
 from threading import Lock, RLock
 
 from openai import (
@@ -19,7 +20,7 @@ from openai import (
     PermissionDeniedError,
     RateLimitError,
 )
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import ConfigDict, Field, ValidationError, create_model
 from rich import print
 from tenacity import (
     retry,
@@ -48,38 +49,113 @@ class StructuredOutputUnsupported(Exception):
     """
 
 
-class BatchTranslation(BaseModel):
-    """Structured batch translation output (OpenAI Structured Outputs)."""
+# The schema is the last thing the model reads before it decodes, and a bare
+# `translated`/`paragraphs` field says nothing about *which* language to produce
+# — the target language would otherwise live only in the middle of the prompt.
+# So the language is baked into the field name, its description and the schema
+# name: `simplified chinese` -> `simplified_chinese_translation`. Separator is
+# `_` rather than `-`; hyphens are legal JSON keys, but this file exists because
+# OpenAI-compatible proxies mishandle things, and `_` is the conservative shape.
+def _language_slug(language):
+    """Field-name token for `language`, or "" when there is nothing usable."""
+    return re.sub(r"[^a-z0-9]+", "_", (language or "").strip().lower()).strip("_")
 
-    model_config = ConfigDict(extra="forbid")
 
-    paragraphs: list[str]
+def single_field_name(language):
+    """Name of the single-translation field for `language`.
+
+    Shared by the SDK path and the hand-built Batch API schema so the two cannot
+    drift; the Batch API reader keys off this too.
+    """
+    slug = _language_slug(language)
+    return f"{slug}_translation" if slug else "translated"
 
 
-class SingleTranslation(BaseModel):
-    """Structured single translation output."""
+def batch_field_name(language):
+    """Name of the batch-translation field for `language`."""
+    slug = _language_slug(language)
+    return f"{slug}_paragraphs" if slug else "paragraphs"
 
-    model_config = ConfigDict(extra="forbid")
 
-    translated: str
+# The schema name is sent to the model, which never has to tell the single
+# schema from the batch one -- a request carries exactly one. So name each
+# schema after the field it wraps rather than after our own call sites.
+@lru_cache(maxsize=None)
+def single_translation_model(language):
+    """Structured single translation output, pinned to `language`."""
+    field = single_field_name(language)
+    return create_model(
+        field,
+        __config__=ConfigDict(extra="forbid"),
+        **{
+            field: (
+                str,
+                Field(description=_single_field_description(language)),
+            )
+        },
+    )
+
+
+@lru_cache(maxsize=None)
+def batch_translation_model(language):
+    """Structured batch translation output, pinned to `language`."""
+    field = batch_field_name(language)
+    return create_model(
+        field,
+        __config__=ConfigDict(extra="forbid"),
+        **{
+            field: (
+                list[str],
+                Field(description=_batch_field_description(language)),
+            )
+        },
+    )
+
+
+def _single_field_description(language):
+    target = language or "the target language"
+    return f"The source text translated into {target}."
+
+
+def _batch_field_description(language):
+    target = language or "the target language"
+    return (
+        f"The source paragraphs translated into {target}, one per input "
+        f"paragraph and in the same order."
+    )
+
+
+@lru_cache(maxsize=None)
+def single_translation_schema(language):
+    """Mirror of `single_translation_model` for the Batch API.
+
+    Batch JSONL bodies are built by hand and so cannot use the SDK's Pydantic
+    support; both sides take their field name from `single_field_name`.
+    """
+    field = single_field_name(language)
+    return {
+        "name": field,
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                field: {
+                    "type": "string",
+                    "description": _single_field_description(language),
+                }
+            },
+            "required": [field],
+            "additionalProperties": False,
+        },
+    }
 
 
 # Capability probe. The prompt asks for plain text and the schema pins a
 # single-value enum, so the only way `PROBE_EXPECTED` can come back is if the
 # server actually applied the schema to decoding. A proxy that accepts
 # `response_format` and quietly drops it answers with the prompted text instead.
-# Mirror of SingleTranslation for the Batch API, whose JSONL bodies are built by
-# hand and therefore cannot use the SDK's Pydantic support.
-SINGLE_TRANSLATION_SCHEMA = {
-    "name": "single_translation",
-    "strict": True,
-    "schema": {
-        "type": "object",
-        "properties": {"translated": {"type": "string"}},
-        "required": ["translated"],
-        "additionalProperties": False,
-    },
-}
+# Deliberately language-free: this asks whether the endpoint honors schemas at
+# all, and a translation-shaped probe would confuse that with a bad translation.
 
 # The API's own default. Sending it explicitly changes nothing for models that
 # accept it, and is a hard 400 for models that only allow their default.
@@ -154,6 +230,7 @@ GPT4o_MODEL_LIST = [
 ]
 GPT5MINI_MODEL_LIST = [
     "gpt-5-mini",
+    "gpt-5.4-mini",
 ]
 O1PREVIEW_MODEL_LIST = [
     "o1-preview",
@@ -491,13 +568,14 @@ class ChatGPTAPI(Base):
         (never returns the truncated JSON fragment), and `ValueError` on refusal.
         """
         messages = self.create_messages(text, self.create_context_messages())
+        field = single_field_name(self.language)
 
         try:
             completion = self._request(
                 lambda sampling: self.openai_client.chat.completions.parse(
                     model=self.model,
                     messages=messages,
-                    response_format=SingleTranslation,
+                    response_format=single_translation_model(self.language),
                     extra_body=self.extra_body if self.extra_body else None,
                     **sampling,
                 )
@@ -517,7 +595,7 @@ class ChatGPTAPI(Base):
             raise StructuredOutputUnsupported("no parsed content in response")
 
         self._note_structured_success()
-        return message.parsed.translated
+        return getattr(message.parsed, field)
 
     def _plain_translation(self, text):
         completion = self.create_chat_completion(text)
@@ -679,10 +757,15 @@ class ChatGPTAPI(Base):
             text=texts_json, language=self.language, crlf="\n"
         )
 
-        # Add structured format instruction
+        # Add structured format instruction. The target language goes last: this
+        # is the final thing the model reads before decoding, and a shape-only
+        # tail leaves `{language}` buried behind the source JSON blob above.
+        field = batch_field_name(self.language)
         content = (
             f"{user_prompt}\n\n"
-            f"Return a JSON object with a 'paragraphs' array containing EXACTLY {plist_len} translated strings."
+            f"Return a JSON object whose '{field}' array contains EXACTLY "
+            f"{plist_len} strings, one per input paragraph and in the same "
+            f"order, each written in {self.language}."
         )
 
         sys_content = self.system_content or self.prompt_sys_msg.format(crlf="\n")
@@ -739,7 +822,7 @@ class ChatGPTAPI(Base):
                 lambda sampling: self.openai_client.chat.completions.parse(
                     model=self.model,
                     messages=messages,
-                    response_format=BatchTranslation,
+                    response_format=batch_translation_model(self.language),
                     extra_body=self.extra_body if self.extra_body else None,
                     **sampling,
                 )
@@ -757,7 +840,7 @@ class ChatGPTAPI(Base):
         if message.parsed is None:
             raise StructuredOutputUnsupported("no parsed content in response")
 
-        paragraphs = message.parsed.paragraphs
+        paragraphs = getattr(message.parsed, batch_field_name(self.language))
 
         # A wrong count is a model error, not a capability answer: retry it.
         if len(paragraphs) != plist_len:
@@ -1105,18 +1188,22 @@ class ChatGPTAPI(Base):
                 result = json.loads(line)
                 if result["custom_id"] == custom_id:
                     return self._read_batch_choice(
-                        result["response"]["body"]["choices"][0], custom_id
+                        result["response"]["body"]["choices"][0],
+                        custom_id,
+                        self.language,
                     )
 
         raise ValueError(f"No result found for custom_id {custom_id}")
 
     @staticmethod
-    def _read_batch_choice(choice, custom_id):
+    def _read_batch_choice(choice, custom_id, language):
         """Unwrap one Batch API choice.
 
         Results are often fetched by a later process that never probed the
         model, so this decides from the payload itself rather than from cached
         capability state — and refuses to hand back a truncated JSON fragment.
+        `language` only names the field to look for; nothing here inspects the
+        text itself.
         """
         message = choice.get("message", {})
         if message.get("refusal"):
@@ -1134,9 +1221,21 @@ class ChatGPTAPI(Base):
         except json.JSONDecodeError:
             return content  # delimiter-mode batch, plain text is expected
 
-        if isinstance(parsed, dict) and isinstance(parsed.get("translated"), str):
-            return parsed["translated"]
-        return content
+        if not isinstance(parsed, dict):
+            return content  # delimiter-mode batch, plain text is expected
+
+        # A structured answer whose key we cannot find is not text: returning
+        # `content` would paste the raw JSON into the book. The usual cause is a
+        # result file produced under a different --language than this run.
+        field = single_field_name(language)
+        value = parsed.get(field)
+        if not isinstance(value, str):
+            raise ValueError(
+                f"Batch result for {custom_id} has no '{field}' string; "
+                f"got keys {sorted(parsed)}. A result file from a run with a "
+                f"different --language cannot be resumed under this one."
+            )
+        return value
 
     def create_batch_context_messages(self, index):
         messages = []
@@ -1181,11 +1280,11 @@ class ChatGPTAPI(Base):
         }
 
         # The Batch API takes hand-built bodies, so the schema cannot come from
-        # the SDK here; SINGLE_TRANSLATION_SCHEMA mirrors SingleTranslation.
+        # the SDK here; single_translation_schema mirrors the Pydantic model.
         if self._ensure_structured_support(self.batch_model):
             batch_body["response_format"] = {
                 "type": "json_schema",
-                "json_schema": SINGLE_TRANSLATION_SCHEMA,
+                "json_schema": single_translation_schema(self.language),
             }
 
         return {
