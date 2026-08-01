@@ -1,3 +1,5 @@
+import hashlib
+import json
 import os
 import pickle
 import re
@@ -22,8 +24,10 @@ from book_maker.utils import num_tokens_from_text, prompt_config_to_kwargs
 from .base_loader import BaseBookLoader
 from .helper import EPUBBookLoaderHelper, is_text_link, not_trans, shorter_result_link
 from .plan import (
+    PLAN_SCHEMA_VERSION,
     BookCss,
-    build_plan,
+    TranslationPlan,
+    is_fixed_layout,
     load_plan_overrides,
     partition_file,
 )
@@ -82,6 +86,9 @@ class EPUBBookLoader(BaseBookLoader):
         self.poetry_group_size = 8
         self._plan_css = None
         self._plan_overrides = None
+        self._plan_partitions = {}  # file_name -> (soup, FilePlan), see _plan_partition
+        self._plan_fingerprint = None
+        self._resume_plan_fingerprint = None
         self.single_translate = single_translate
         self.block_size = 1  # Default to 1 for better translation quality with delimiter-based batching
         self.sentence_mode = False
@@ -273,8 +280,7 @@ class EPUBBookLoader(BaseBookLoader):
                 continue
 
             if self._plan_mode:
-                soup = bs(i.content, "html.parser")
-                count += len(self._partition_item(soup, i.file_name).units)
+                count += len(self._plan_partition(i)[1].units)
                 continue
 
             content = i.content
@@ -317,11 +323,60 @@ class EPUBBookLoader(BaseBookLoader):
 
         self._plan_css = BookCss(self.origin_book)
         self._plan_overrides = overrides
-        plan = build_plan(
-            self.origin_book,
-            exclude_tags=self._exclude_tags_tuple(),
-            poetry_group_size=self.poetry_group_size,
-            overrides=overrides,
+
+        if is_fixed_layout(self.origin_book):
+            print(
+                "[bold yellow]warning: this is a fixed-layout (pre-paginated) "
+                "EPUB — its text boxes are sized for the original words, so "
+                "translated text may overflow or misplace.[/bold yellow]"
+            )
+
+        # Anything that changes the unit list (and therefore the positional
+        # meaning of resume-cache slots) is part of the fingerprint; a cache
+        # written under a different plan must be refused, not misapplied.
+        self._plan_fingerprint = hashlib.sha256(
+            json.dumps(
+                {
+                    "schema_version": PLAN_SCHEMA_VERSION,
+                    "overrides": overrides or {},
+                    "exclude_tags": sorted(self._exclude_tags_tuple()),
+                    "only_filelist": self.only_filelist,
+                    "exclude_filelist": self.exclude_filelist,
+                },
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        if (
+            self.resume
+            and self._resume_plan_fingerprint is not None
+            and self._resume_plan_fingerprint != self._plan_fingerprint
+        ):
+            print(
+                f"[bold red]The resume cache {self.bin_path} was written under "
+                f"a different plan (edited plan JSON, or changed "
+                f"--exclude-translate-tags / file filters). Its slots no "
+                f"longer line up with the current unit list; delete it to "
+                f"start over, or restore the previous settings.[/bold red]"
+            )
+            raise SystemExit(1)
+
+        # The plan is built from the same cached partitions the processing
+        # pass will consume, over the same files it will process — the
+        # coverage gate judges what will actually be translated, and no file
+        # is partitioned twice. Filter semantics mirror process_item: an
+        # only-list wins outright; exclude applies only without one.
+        only = {f for f in self.only_filelist.split(",") if f}
+        exclude = {f for f in self.exclude_filelist.split(",") if f}
+        files = []
+        for item in self.origin_book.get_items_of_type(ITEM_DOCUMENT):
+            if only:
+                if item.file_name not in only:
+                    continue
+            elif item.file_name in exclude:
+                continue
+            files.append(self._plan_partition(item)[1])
+        plan = TranslationPlan(
+            files, self._exclude_tags_tuple(), self.poetry_group_size
         )
         print(plan.report())
         if os.path.exists(plan_path):
@@ -352,6 +407,26 @@ class EPUBBookLoader(BaseBookLoader):
             poetry_group_size=self.poetry_group_size,
         )
         return fp
+
+    def _plan_partition(self, item, consume=False):
+        """Parse + partition an item's original content exactly once.
+
+        The plan build, the progress-bar count, the parallel index_base
+        count, and the processing pass all share the cached result.
+        Processing passes consume=True: it mutates the soup, so the entry
+        must leave the cache. Workers touch disjoint keys, and all cache
+        fills happen before the executor starts, so no lock is needed.
+        """
+        key = item.file_name
+        cached = self._plan_partitions.get(key)
+        if cached is None:
+            soup = bs(item.content, "html.parser")
+            cached = (soup, self._partition_item(soup, key))
+        if consume:
+            self._plan_partitions.pop(key, None)
+        else:
+            self._plan_partitions[key] = cached
+        return cached
 
     @staticmethod
     def _iter_plan_chunks(units):
@@ -407,9 +482,22 @@ class EPUBBookLoader(BaseBookLoader):
         ):
             return
         if single_translate and unit.nodes:
+            # Ruby annotations of text that is about to disappear would
+            # survive as orphaned furigana next to non-Japanese text — collect
+            # the <ruby> wrappers of owned nodes before replacing them.
+            rubies = []
+            for node in unit.nodes:
+                for ancestor in node.parents:
+                    if ancestor is unit.element:
+                        break
+                    if ancestor.name == "ruby":
+                        rubies.append(ancestor)
             unit.nodes[0].replace_with(NavigableString(t_text))
             for node in unit.nodes[1:]:
                 node.extract()
+            for ruby in rubies:
+                for annotation in ruby.find_all(["rt", "rp", "rtc"]):
+                    annotation.extract()
         else:
             self._insert_trans_preserving_tags(
                 unit.element, t_text, translation_style, False
@@ -925,16 +1013,16 @@ class EPUBBookLoader(BaseBookLoader):
         if not os.path.exists("log"):
             os.makedirs("log")
 
-        content = item.content
-        soup = bs(content, "html.parser")
-
         if self._plan_mode:
-            fp = self._partition_item(soup, item.file_name)
+            soup, fp = self._plan_partition(item, consume=True)
             index = self._process_plan_chunks(fp.units, index, p_to_save_len, pbar)
             if soup:
                 item.content = soup.encode(encoding="utf-8")
             new_book.add_item(item)
             return index
+
+        content = item.content
+        soup = bs(content, "html.parser")
 
         p_list = soup.findAll(trans_taglist)
 
@@ -1101,11 +1189,8 @@ class EPUBBookLoader(BaseBookLoader):
             # This ensures each chapter has its own independent context
             thread_translator = self._create_chapter_translator()
 
-            content = item.content
-            soup = bs(content, "html.parser")
-
             if self._plan_mode:
-                fp = self._partition_item(soup, item.file_name)
+                soup, fp = self._plan_partition(item, consume=True)
                 local = 0
                 for chunk in self._iter_plan_chunks(fp.units):
                     if self.translate_model._fatal_error_detected:
@@ -1144,6 +1229,7 @@ class EPUBBookLoader(BaseBookLoader):
                 chapter_result["success"] = True
                 return chapter_result
 
+            soup = bs(item.content, "html.parser")
             p_list = self._parallel_p_list(soup, trans_taglist)
 
             # Initialize chapter-specific context lists
@@ -1419,7 +1505,7 @@ class EPUBBookLoader(BaseBookLoader):
             incompatible = {
                 "--retranslate": self.retranslate,
                 "--batch/--batch-use": self.batch_flag or self.batch_use_flag,
-                "--interleaved-translation": self.sentence_mode,
+                "--sentence_mode": self.sentence_mode,
             }
             active = [flag for flag, on in incompatible.items() if on]
             if active:
@@ -1501,12 +1587,10 @@ class EPUBBookLoader(BaseBookLoader):
                 index_base = {}
                 running_base = 0
                 for item in document_items:
-                    soup_count = bs(item.content, "html.parser")
                     if self._plan_mode:
-                        n_units = len(
-                            self._partition_item(soup_count, item.file_name).units
-                        )
+                        n_units = len(self._plan_partition(item)[1].units)
                     else:
+                        soup_count = bs(item.content, "html.parser")
                         n_units = sum(
                             1
                             for p in self._parallel_p_list(soup_count, trans_taglist)
@@ -1672,9 +1756,17 @@ class EPUBBookLoader(BaseBookLoader):
     def load_state(self):
         try:
             with open(self.bin_path, "rb") as f:
-                self.p_to_save = pickle.load(f)
+                data = pickle.load(f)
         except Exception:
             raise Exception("can not load resume file")
+        if isinstance(data, dict):
+            # plan-mode format (see _save_progress): carries the fingerprint
+            # of the plan the slots were written under
+            self._resume_plan_fingerprint = data.get("plan_fingerprint")
+            self.p_to_save = data.get("p_to_save", [])
+        else:
+            self._resume_plan_fingerprint = None
+            self.p_to_save = data
 
     def _save_temp_book(self):
         # TODO refactor this logic
@@ -1750,7 +1842,16 @@ class EPUBBookLoader(BaseBookLoader):
                 # parallel holes: resume must restart at the first gap, or
                 # positional lookups would shift
                 to_save = to_save[: to_save.index(None)]
+            if self._plan_mode and self._plan_fingerprint:
+                # slots are positional over the plan's unit list; record which
+                # plan they belong to so a later resume can refuse a mismatch
+                payload = {
+                    "plan_fingerprint": self._plan_fingerprint,
+                    "p_to_save": to_save,
+                }
+            else:
+                payload = to_save
             with open(self.bin_path, "wb") as f:
-                pickle.dump(to_save, f)
+                pickle.dump(payload, f)
         except Exception:
             raise Exception("can not save resume file")

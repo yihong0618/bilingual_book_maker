@@ -687,3 +687,323 @@ class TestLoaderPlanMode:
         loader.set_parallel_workers(4)
         with pytest.raises(SystemExit):
             loader.make_bilingual_book()
+
+    def test_real_run_plan_honors_file_filters(self, tmp_path):
+        # The coverage gate and saved plan JSON must describe the files that
+        # will actually be translated, not the whole book (review finding 1).
+        import json
+
+        loader, src = _make_loader(tmp_path, FakeModel)
+        loader.only_filelist = "index_split_004.html"
+        loader.make_bilingual_book()
+
+        data = json.loads((src.parent / (src.stem + "_plan.json")).read_text())
+        ref = build_plan(epub.read_epub(str(src)), only_files={"index_split_004.html"})
+        whole = build_plan(epub.read_epub(str(src)))
+        assert data["total_chars"] == ref.total_chars < whole.total_chars
+        assert {s["signature"] for s in data["signatures"]} == {
+            r["signature"] for r in ref.signature_rows()
+        }
+
+    def test_resume_refuses_plan_edited_after_crash(self, tmp_path):
+        # Resume slots are positional over the unit list; a plan edited
+        # between crash and resume must be refused, not misapplied
+        # (review finding 3).
+        import json
+
+        from book_maker.loader.epub_loader import EPUBBookLoader
+
+        class ExplodesOnBeasts(FakeModel):
+            def translate_list(self, text_list):
+                if any("Beasts of England" in t for t in text_list):
+                    raise RuntimeError("boom")
+                return super().translate_list(text_list)
+
+        def make_resume_loader(src):
+            loader = EPUBBookLoader(
+                str(src),
+                FakeModel,
+                "dummy-key",
+                resume=True,
+                language="zh-hans",
+            )
+            loader.translate_tags = "auto"
+            return loader
+
+        loader, src = _make_loader(tmp_path, ExplodesOnBeasts)
+        with pytest.raises(SystemExit):
+            loader.make_bilingual_book()
+        assert (src.parent / f".{src.stem}.temp.bin").exists()
+
+        plan_path = src.parent / (src.stem + "_plan.json")
+        original = plan_path.read_text()
+        data = json.loads(original)
+        for sig in data["signatures"]:
+            if sig["signature"] == "blockquote.calibre_17":
+                sig["action"] = "skip"
+        plan_path.write_text(json.dumps(data))
+
+        with pytest.raises(SystemExit) as excinfo:
+            make_resume_loader(src).make_bilingual_book()
+        assert excinfo.value.code == 1
+
+        # restoring the plan lets the resume proceed to completion
+        plan_path.write_text(original)
+        make_resume_loader(src).make_bilingual_book()
+        assert (src.parent / (src.stem + "_bilingual.epub")).exists()
+
+    def test_each_file_partitioned_exactly_once(self, tmp_path):
+        # The plan build, progress counting, and processing must share one
+        # partition per file, not redo the work (review finding 4).
+        from collections import Counter
+
+        for workers in (1, 4):
+            loader, src = _make_loader(tmp_path / f"w{workers}", FakeModel)
+            loader.set_parallel_workers(workers)
+            calls = Counter()
+            orig = loader._partition_item
+
+            def counting(soup, file_name, _orig=orig, _calls=calls):
+                _calls[file_name] += 1
+                return _orig(soup, file_name)
+
+            loader._partition_item = counting
+            loader.make_bilingual_book()
+            assert calls, "partitioning must have happened"
+            assert all(n == 1 for n in calls.values()), (workers, calls)
+
+
+# ------------------------------------------- epub-format hardening (260731)
+
+
+class TestEpubHardening:
+    """Approved plan items 0/2-10: ruby, hiding, @media, br/glue, svg/math,
+    doc-pagebreak, dfn, invisible chars, schema version, fixed layout."""
+
+    def _partition(self, html, css=""):
+        soup = bs(html, "html.parser")
+        resolver = DisplayResolver([parse_css_display(css)] if css else [])
+        return partition_soup(soup, resolver, file_name="x.html"), soup
+
+    # -- item 2: ruby ------------------------------------------------------
+
+    def test_ruby_readings_excluded_from_unit_text(self):
+        fp, _ = self._partition(
+            "<body><p><ruby>漢字<rt>かんじ</rt></ruby>です。</p></body>"
+        )
+        assert [u.text for u in fp.units] == ["漢字です。"]
+        assert fp.skipped["ruby"] == len("かんじ")
+        # invariant: every character accounted for
+        assert fp.total_chars == sum(u.chars for u in fp.units) + sum(
+            fp.skipped.values()
+        )
+
+    def test_ruby_with_rp_fallback_parens(self):
+        fp, _ = self._partition(
+            "<body><p><ruby>東京<rp>(</rp><rt>とうきょう</rt><rp>)</rp></ruby>"
+            "に行く。</p></body>"
+        )
+        assert [u.text for u in fp.units] == ["東京に行く。"]
+
+    def test_single_translate_extracts_orphaned_furigana(self, tmp_path):
+        loader, _ = _make_loader(tmp_path, FakeModel)
+        soup = bs(
+            "<body><p><ruby>漢字<rt>かんじ</rt></ruby>です。</p></body>",
+            "html.parser",
+        )
+        resolver = DisplayResolver([])
+        fp = partition_soup(soup, resolver, "x.html")
+        loader._insert_plan_translation(
+            fp.units[0], "It is kanji.", single_translate=True
+        )
+        assert soup.find("rt") is None
+        assert "かんじ" not in soup.get_text()
+        assert "It is kanji." in soup.get_text()
+
+    # -- item 3: inline hiding + footnote exemption ------------------------
+
+    def test_style_attribute_display_none_is_hidden(self):
+        fp, _ = self._partition(
+            "<body><p>visible prose here</p>"
+            '<div style="display:none">secret machinery text</div></body>'
+        )
+        assert [u.text for u in fp.units] == ["visible prose here"]
+        assert fp.skipped["hidden"] > 0
+
+    def test_hidden_attribute_is_hidden(self):
+        fp, _ = self._partition(
+            "<body><p>visible prose here</p><div hidden>gone content</div></body>"
+        )
+        assert [u.text for u in fp.units] == ["visible prose here"]
+
+    def test_aria_hidden_is_not_a_hiding_signal(self):
+        fp, _ = self._partition(
+            '<body><h1 aria-hidden="true">A Visible Decorated Title</h1></body>'
+        )
+        assert [u.text for u in fp.units] == ["A Visible Decorated Title"]
+
+    def test_css_hidden_footnote_aside_is_still_translated(self):
+        # popup-capable readers show footnote asides regardless of CSS
+        fp, _ = self._partition(
+            "<body><p>Prose with a marker.</p>"
+            '<aside class="fn" epub:type="footnote">The footnote body text.'
+            "</aside></body>",
+            css=".fn { display: none }",
+        )
+        texts = [u.text for u in fp.units]
+        assert "The footnote body text." in texts
+
+    def test_style_hidden_doc_footnote_role_is_still_translated(self):
+        fp, _ = self._partition(
+            '<body><aside role="doc-footnote" style="display:none">'
+            "Endnote prose survives.</aside></body>"
+        )
+        assert [u.text for u in fp.units] == ["Endnote prose survives."]
+
+    # -- item 4: @media ----------------------------------------------------
+
+    def test_media_print_rules_do_not_hide_screen_text(self):
+        m = parse_css_display("@media print { .noscreen { display: none } }")
+        assert m == {}
+
+    def test_media_screen_rules_are_unwrapped(self):
+        m = parse_css_display("@media screen { span.verse { display: block } }")
+        assert m[("span", "verse")] == "block"
+
+    def test_font_face_and_page_blocks_dropped(self):
+        m = parse_css_display(
+            "@font-face { font-family: x; src: url(y) } "
+            "@page { margin: 1em } p { display: block }"
+        )
+        assert m == {("p", None): "block"}
+
+    def test_supports_unwrapped_and_nested_media(self):
+        m = parse_css_display(
+            "@supports (display: flex) { @media print { .a { display:none } } "
+            ".b { display: inline } }"
+        )
+        assert (None, "a") not in m
+        assert m[(None, "b")] == "inline"
+
+    # -- item 5: br / whitespace glue --------------------------------------
+
+    def test_br_separates_words(self):
+        fp, _ = self._partition("<body><p>line one<br/>line two</p></body>")
+        assert [u.text for u in fp.units] == ["line one line two"]
+
+    def test_whitespace_only_nodes_glue_inline_siblings(self):
+        fp, _ = self._partition("<body><p><b>one</b> <b>two</b></p></body>")
+        assert [u.text for u in fp.units] == ["one two"]
+
+    def test_wbr_and_drop_caps_still_join_without_space(self):
+        fp, _ = self._partition(
+            "<body><p>super<wbr/>cali</p><p><span>O</span>nce upon a time</p></body>"
+        )
+        assert [u.text for u in fp.units] == ["supercali", "Once upon a time"]
+
+    def test_unit_clean_text_glues_too(self):
+        soup = bs("<body><p>one<br/>two <b>three</b></p></body>", "html.parser")
+        resolver = DisplayResolver([])
+        assert unit_clean_text(soup.p, resolver) == "one two three"
+
+    # -- item 6: svg / math ------------------------------------------------
+
+    def test_svg_and_math_are_non_content(self):
+        fp, _ = self._partition(
+            "<body><p>Formula <math><mi>x</mi><mtext>otherwise</mtext></math> "
+            "appears here.</p>"
+            "<svg><title>Diagram title</title><text>axis label</text></svg></body>"
+        )
+        assert [u.text for u in fp.units] == ["Formula appears here."]
+        assert fp.skipped["non-content"] > 0
+
+    # -- item 7: role="doc-pagebreak" --------------------------------------
+
+    def test_role_doc_pagebreak_skipped(self):
+        fp, _ = self._partition(
+            "<body><p>Prose before the break.</p>"
+            '<span role="doc-pagebreak" title="47">page 47</span></body>'
+        )
+        assert [u.text for u in fp.units] == ["Prose before the break."]
+        assert fp.skipped["pagebreak"] == len("page 47")
+
+    # -- item 8: dfn is inline ---------------------------------------------
+
+    def test_dfn_does_not_split_its_paragraph(self):
+        fp, _ = self._partition(
+            "<body><p>The term <dfn>widget</dfn> means a small thing.</p></body>"
+        )
+        assert [u.text for u in fp.units] == ["The term widget means a small thing."]
+
+    # -- item 9: invisible characters --------------------------------------
+
+    def test_soft_hyphen_and_zero_width_stripped_from_unit_text(self):
+        fp, _ = self._partition(
+            "<body><p>con­struction and zero​width﻿ here</p></body>"
+        )
+        assert [u.text for u in fp.units] == ["construction and zerowidth here"]
+
+    # -- item 0: schema version --------------------------------------------
+
+    def test_plan_json_carries_schema_version(self, tmp_path):
+        from book_maker.loader.plan import PLAN_SCHEMA_VERSION
+        import json
+
+        plan = build_plan(epub.read_epub(str(ANIMAL_FARM)))
+        path = tmp_path / "p.json"
+        plan.save_json(str(path))
+        assert json.loads(path.read_text())["schema_version"] == PLAN_SCHEMA_VERSION
+
+    def test_resume_refused_across_schema_versions(self, tmp_path):
+        import book_maker.loader.plan as plan_mod
+        import book_maker.loader.epub_loader as loader_mod
+
+        class ExplodesOnBeasts(FakeModel):
+            def translate_list(self, text_list):
+                if any("Beasts of England" in t for t in text_list):
+                    raise RuntimeError("boom")
+                return super().translate_list(text_list)
+
+        loader, src = _make_loader(tmp_path, ExplodesOnBeasts)
+        with pytest.raises(SystemExit):
+            loader.make_bilingual_book()
+
+        old = loader_mod.PLAN_SCHEMA_VERSION
+        loader_mod.PLAN_SCHEMA_VERSION = old + 1
+        try:
+            resumed = loader_mod.EPUBBookLoader(
+                str(src), FakeModel, "dummy-key", resume=True, language="zh-hans"
+            )
+            resumed.translate_tags = "auto"
+            with pytest.raises(SystemExit) as excinfo:
+                resumed.make_bilingual_book()
+            assert excinfo.value.code == 1
+        finally:
+            loader_mod.PLAN_SCHEMA_VERSION = old
+
+    # -- item 10: fixed layout ---------------------------------------------
+
+    def test_is_fixed_layout(self):
+        from book_maker.loader.plan import is_fixed_layout
+
+        book = epub.EpubBook()
+        assert not is_fixed_layout(book)
+        book.add_metadata(
+            None, "meta", "pre-paginated", {"property": "rendition:layout"}
+        )
+        assert is_fixed_layout(book)
+
+    def test_reflowable_book_is_not_fixed_layout(self):
+        from book_maker.loader.plan import is_fixed_layout
+
+        assert not is_fixed_layout(epub.read_epub(str(ANIMAL_FARM)))
+
+    # -- lead review: filter semantics parity with process_item ------------
+
+    def test_only_filelist_wins_over_exclude(self):
+        # process_item semantics: an only-list wins outright; exclude applies
+        # only when no only-list is given. The plan must judge the same set.
+        target = "index_split_004.html"
+        book = epub.read_epub(str(ANIMAL_FARM))
+        plan = build_plan(book, only_files={target}, exclude_files={target})
+        assert [f.file_name for f in plan.files] == [target]

@@ -500,10 +500,17 @@ So you are close to reaching the limit. You have to choose your own value, there
             exit(1)
         from ebooklib import epub as _epub
 
-        from book_maker.loader.plan import build_plan
+        from book_maker.loader.plan import build_plan, is_fixed_layout
 
+        book = _epub.read_epub(options.book_name)
+        if is_fixed_layout(book):
+            print(
+                "[bold yellow]warning: this is a fixed-layout (pre-paginated) "
+                "EPUB — its text boxes are sized for the original words, so "
+                "translated text may overflow or misplace.[/bold yellow]"
+            )
         plan = build_plan(
-            _epub.read_epub(options.book_name),
+            book,
             exclude_tags=tuple(
                 t for t in options.exclude_translate_tags.split(",") if t
             ),
@@ -676,7 +683,13 @@ So you are close to reaching the limit. You have to choose your own value, there
     if options.allow_navigable_strings:
         e.allow_navigable_strings = True
     if options.translate_tags:
-        e.translate_tags = options.translate_tags
+        if options.translate_tags == "auto" and book_type != "epub":
+            print(
+                f"note: --translate-tags auto (plan mode) is epub-only; "
+                f"ignoring it for this {book_type} book"
+            )
+        else:
+            e.translate_tags = options.translate_tags
     if options.exclude_translate_tags:
         e.exclude_translate_tags = options.exclude_translate_tags
     if hasattr(e, "plan_min_coverage"):
