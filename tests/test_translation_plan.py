@@ -1163,6 +1163,13 @@ class TestClassifyCandidates:
         cands, _ = gather_candidates(plan)
         assert [c["signature"] for c in cands] == ["p.header"]
 
+    def test_five_samples_per_signature(self):
+        # more samples per signature is cheap insurance against a verdict
+        # formed on an unrepresentative pair of lines
+        heads = [_cunit("p.header", f"HEAD {i}") for i in range(20)]
+        cands, _ = gather_candidates(_cplan([PROSE, *heads]))
+        assert len(cands[0]["samples"]) == 5
+
     def test_cap_reports_dropped_instead_of_truncating_silently(self):
         units = [
             _cunit(f"p.h{i}", f"HEAD {i}")
@@ -1354,6 +1361,23 @@ class TestClassifyPlanArtifact:
             "p.header": "llm-skip",
             "td.no": "force-translate",
         }
+
+    def test_unknown_action_in_plan_json_fails_loud(self, tmp_path):
+        # a typo like "skiip" silently treated as translate would quietly
+        # undo the user's decision
+        import json
+
+        from book_maker.loader.plan import load_plan_overrides
+
+        plan = _cplan([PROSE])
+        path = tmp_path / "book_plan.json"
+        plan.save_json(str(path))
+        data = json.loads(path.read_text())
+        data["signatures"][0]["action"] = "skiip"
+        path.write_text(json.dumps(data))
+
+        with pytest.raises(ValueError, match="unknown action.*skiip"):
+            load_plan_overrides(str(path), "unused-book-path")
 
 
 class TestLoaderClassifyPolicy:

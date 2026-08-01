@@ -15,7 +15,9 @@ the heuristics.
 """
 
 MAX_CANDIDATES = 12
-SAMPLES_PER_SIGNATURE = 3
+# 5, not a bare minimum: a misjudged signature loses real content, and a
+# few more sample lines per signature are cheap insurance on a single call
+SAMPLES_PER_SIGNATURE = 5
 SAMPLE_MAX_CHARS = 80
 # Above this share of the book a signature is its prose spine; whether the
 # spine gets translated is never in question.

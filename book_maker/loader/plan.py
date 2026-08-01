@@ -49,6 +49,14 @@ from .helper import is_text_link
 # the loader folds this into the resume fingerprint and refuses stale caches.
 PLAN_SCHEMA_VERSION = 2
 
+# Every action a plan JSON may carry; anything else is a typo and must fail
+# loud — a misspelled "skip" silently treated as translate would quietly
+# undo the user's decision.
+VALID_PLAN_ACTIONS = frozenset(["translate", "skip", "llm-skip", "force-translate"])
+
+# Sample lines retained per trivially-skipped signature for the classifier.
+TRIVIAL_SAMPLE_CAP = 5
+
 # --------------------------------------------------------------------- CSS
 
 # Tags that are block-level by HTML default (for our purpose: an element that
@@ -567,7 +575,7 @@ def partition_soup(
             row = fp.trivial.setdefault(sig, [0, 0, []])
             row[0] += 1
             row[1] += chars
-            if text not in row[2] and len(row[2]) < 3:
+            if text not in row[2] and len(row[2]) < TRIVIAL_SAMPLE_CAP:
                 row[2].append(text)
             continue
         fp.units.append(
@@ -756,7 +764,10 @@ class TranslationPlan:
                 row["units"] += units
                 row["chars"] += chars
                 for s in samples:
-                    if s not in row["samples"] and len(row["samples"]) < 3:
+                    if (
+                        s not in row["samples"]
+                        and len(row["samples"]) < TRIVIAL_SAMPLE_CAP
+                    ):
                         row["samples"].append(s)
         return agg
 
@@ -867,6 +878,19 @@ def load_plan_overrides(json_path, book_path):
             f"warning: {json_path} was written by plan schema "
             f"{saved_version}, current is {PLAN_SCHEMA_VERSION}; signatures "
             f"may have shifted — regenerate with --plan-dry-run to be sure"
+        )
+    unknown = [
+        (s.get("signature"), s["action"])
+        for s in data.get("signatures", [])
+        if s.get("action") and s["action"] not in VALID_PLAN_ACTIONS
+    ]
+    if unknown:
+        listed = ", ".join(f"{sig}: {act!r}" for sig, act in unknown)
+        raise ValueError(
+            f"{json_path} carries unknown action(s) — {listed}. "
+            f"Valid actions are: {', '.join(sorted(VALID_PLAN_ACTIONS))}. "
+            f"Fix the misspelled action in that file, or delete the file "
+            f"and rerun to regenerate a fresh plan."
         )
     return {
         s["signature"]: s["action"]
