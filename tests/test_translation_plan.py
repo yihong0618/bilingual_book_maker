@@ -896,10 +896,16 @@ class TestEpubHardening:
         assert [u.text for u in fp.units] == ["one two"]
 
     def test_wbr_and_drop_caps_still_join_without_space(self):
+        # drop-cap split spelled S|tone so the fragment is itself a word —
+        # the repo's typos CI reads bare split fragments as misspellings
         fp, _ = self._partition(
-            "<body><p>super<wbr/>cali</p><p><span>O</span>nce upon a time</p></body>"
+            "<body><p>super<wbr/>cali</p>"
+            "<p><span>S</span>tone walls do not a prison make</p></body>"
         )
-        assert [u.text for u in fp.units] == ["supercali", "Once upon a time"]
+        assert [u.text for u in fp.units] == [
+            "supercali",
+            "Stone walls do not a prison make",
+        ]
 
     def test_unit_clean_text_glues_too(self):
         soup = bs("<body><p>one<br/>two <b>three</b></p></body>", "html.parser")
