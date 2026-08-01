@@ -1195,9 +1195,22 @@ class TestClassifyVerdicts:
     def test_schema_pins_one_enum_verdict_per_signature(self):
         schema = build_schema(self.CANDS)["schema"]
         assert set(schema["properties"]) == {"p.header", "td.no"}
-        assert schema["properties"]["p.header"]["enum"] == VERDICTS
+        entry = schema["properties"]["p.header"]
+        assert entry["properties"]["verdict"]["enum"] == VERDICTS
+        assert entry["required"] == ["content_type", "verdict"]
         assert sorted(schema["required"]) == ["p.header", "td.no"]
         assert schema["additionalProperties"] is False
+
+    def test_content_type_is_declared_before_verdict(self):
+        # generation follows schema property order: the model must name the
+        # content before ruling on it, not rationalize a verdict after
+        entry = build_schema(self.CANDS)["schema"]["properties"]["p.header"]
+        assert list(entry["properties"]) == ["content_type", "verdict"]
+
+    def test_every_field_carries_a_description(self):
+        entry = build_schema(self.CANDS)["schema"]["properties"]["p.header"]
+        assert entry["description"]
+        assert all(p["description"] for p in entry["properties"].values())
 
     def test_prompt_shows_labeled_samples_without_current_verdicts(self):
         prompt = build_prompt(self.CANDS)
@@ -1208,19 +1221,28 @@ class TestClassifyVerdicts:
         assert "keep it as is" in prompt
 
     def test_only_confident_overturns_become_actions(self):
-        result = {"p.header": "skip", "td.no": "translate"}
+        result = {
+            "p.header": {"content_type": "running head", "verdict": "skip"},
+            "td.no": {"content_type": "dialogue", "verdict": "translate"},
+        }
         assert merge_verdicts(result, self.CANDS) == {
             "p.header": "llm-skip",
             "td.no": "force-translate",
         }
 
     def test_unsure_and_status_quo_change_nothing(self):
-        result = {"p.header": "unsure", "td.no": "skip"}
+        result = {
+            "p.header": {"content_type": "?", "verdict": "unsure"},
+            "td.no": {"content_type": "sigla", "verdict": "skip"},
+        }
         assert merge_verdicts(result, self.CANDS) == {}
 
-    def test_out_of_enum_verdict_counts_as_unsure(self):
-        # shape-only endpoints may ignore value constraints
-        result = {"p.header": "banana", "td.no": ""}
+    def test_malformed_entries_count_as_unsure(self):
+        # shape-only endpoints may ignore value constraints or flatten shapes
+        result = {
+            "p.header": {"content_type": "x", "verdict": "banana"},
+            "td.no": "translate",
+        }
         assert merge_verdicts(result, self.CANDS) == {}
 
 
@@ -1230,7 +1252,9 @@ class TestClassifyPlan:
         return _cplan([PROSE, *heads])
 
     def test_happy_path_returns_actions(self):
-        clf = FakeClassifier({"p.header": "skip"})
+        clf = FakeClassifier(
+            {"p.header": {"content_type": "running head", "verdict": "skip"}}
+        )
         actions, cands = classify_plan(self._uncertain_plan(), clf, model="clf-x")
         assert actions == {"p.header": "llm-skip"}
         assert [c["signature"] for c in cands] == ["p.header"]
@@ -1359,12 +1383,16 @@ class TestLoaderClassifyPolicy:
     def test_flag_off_disables_classification(self, tmp_path):
         loader = self._loader(tmp_path)
         loader.plan_classify = False
-        loader.translate_model = FakeClassifier({"p.header": "skip"})
+        loader.translate_model = FakeClassifier(
+            {"p.header": {"content_type": "running head", "verdict": "skip"}}
+        )
         assert loader._classify_plan(self._uncertain_plan()) == {}
         assert loader.translate_model.calls == []
 
     def test_verdicts_are_returned_and_summarized(self, tmp_path, capsys):
         loader = self._loader(tmp_path)
-        loader.translate_model = FakeClassifier({"p.header": "skip"})
+        loader.translate_model = FakeClassifier(
+            {"p.header": {"content_type": "running head", "verdict": "skip"}}
+        )
         assert loader._classify_plan(self._uncertain_plan()) == {"p.header": "llm-skip"}
         assert "p.header" in capsys.readouterr().out

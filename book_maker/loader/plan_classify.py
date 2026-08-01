@@ -33,10 +33,13 @@ VERDICTS = ["translate", "skip", "unsure"]
 
 
 def build_schema(candidates):
-    """One required enum property per signature.
+    """One required {content_type, verdict} property per signature.
 
     Constrained decoding then guarantees exactly one verdict for every
     signature asked about — no hallucinated names, no silent omissions.
+    `content_type` is declared before `verdict` on purpose: generation
+    follows schema property order, so the model names what the samples are
+    before committing to an answer instead of rationalizing one after.
     """
     return {
         "name": "plan_signature_classification",
@@ -44,7 +47,36 @@ def build_schema(candidates):
         "schema": {
             "type": "object",
             "properties": {
-                c["signature"]: {"type": "string", "enum": VERDICTS} for c in candidates
+                c["signature"]: {
+                    "type": "object",
+                    "description": (
+                        f'Classification of the "{c["signature"]}" samples'
+                    ),
+                    "properties": {
+                        "content_type": {
+                            "type": "string",
+                            "description": (
+                                "What this text is in the book, e.g. "
+                                "prose, verse, dialogue, heading, caption, "
+                                "running head, page or line number, "
+                                "manuscript sigla, cross-reference label, "
+                                "publisher boilerplate, decorative marker"
+                            ),
+                        },
+                        "verdict": {
+                            "type": "string",
+                            "enum": VERDICTS,
+                            "description": (
+                                '"translate" = book content a reader wants '
+                                'translated; "skip" = keep as is; '
+                                '"unsure" = the samples do not settle it'
+                            ),
+                        },
+                    },
+                    "required": ["content_type", "verdict"],
+                    "additionalProperties": False,
+                }
+                for c in candidates
             },
             "required": [c["signature"] for c in candidates],
             "additionalProperties": False,
@@ -176,14 +208,17 @@ def build_prompt(candidates):
 def merge_verdicts(result, candidates):
     """Verdicts -> signature actions; only confident changes make one.
 
-    The result is schema-pinned to {signature: verdict}. "unsure" and
-    status-quo verdicts produce no action: the heuristic decision stands
-    unless the model affirmatively overturns it. Anything outside the enum
-    (a shape-only endpoint ignoring value constraints) counts as unsure.
+    The result is schema-pinned to {signature: {content_type, verdict}};
+    content_type only exists so the model names the content before ruling
+    on it, and is dropped here. "unsure" and status-quo verdicts produce no
+    action: the heuristic decision stands unless the model affirmatively
+    overturns it. Anything outside the enum (a shape-only endpoint ignoring
+    value constraints) counts as unsure.
     """
     actions = {}
     for cand in candidates:
-        verdict = result.get(cand["signature"])
+        entry = result.get(cand["signature"])
+        verdict = entry.get("verdict") if isinstance(entry, dict) else None
         if cand["kind"] == "translate" and verdict == "skip":
             actions[cand["signature"]] = "llm-skip"
         elif cand["kind"] == "trivial" and verdict == "translate":
