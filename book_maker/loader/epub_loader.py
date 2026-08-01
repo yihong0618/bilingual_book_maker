@@ -17,6 +17,7 @@ from bs4 import Tag
 from bs4.element import NavigableString
 from ebooklib import ITEM_DOCUMENT, epub
 from rich import print
+from rich.markup import escape
 from tqdm import tqdm
 
 from book_maker.utils import num_tokens_from_text, prompt_config_to_kwargs
@@ -378,7 +379,8 @@ class EPUBBookLoader(BaseBookLoader):
         plan = TranslationPlan(
             files, self._exclude_tags_tuple(), self.poetry_group_size
         )
-        print(plan.report())
+        # samples are book text: rich would eat "[Seven] warriors [they were]"
+        print(escape(plan.report()))
         if os.path.exists(plan_path):
             # never overwrite: the file may carry user-edited signature
             # actions (and load_plan_overrides already verified its hash)

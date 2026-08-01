@@ -47,7 +47,7 @@ from .helper import is_text_link
 # Bump whenever a change alters which units a book partitions into (their
 # order, count, or text): resume caches are positional over the unit list, so
 # the loader folds this into the resume fingerprint and refuses stale caches.
-PLAN_SCHEMA_VERSION = 1
+PLAN_SCHEMA_VERSION = 2
 
 # --------------------------------------------------------------------- CSS
 
@@ -445,6 +445,21 @@ def _nearest_block(node, resolver, stop=None):
     return None
 
 
+def _append_glue(parts, node):
+    """A skipped node that carried surrounding whitespace still separates words.
+
+    ``he <em>walks</em> [<em>back and forth</em>,]`` — the " [" node is skipped
+    as a symbol, and dropping it whole would yield "walksback and forth". Only
+    the separation survives, never the skipped characters themselves.
+    """
+    raw = str(node)
+    if raw == raw.strip():
+        return
+    if parts and parts[-1][-1:].isspace():
+        return
+    parts.append(" ")
+
+
 def unit_clean_text(element, resolver, exclude_tags=DEFAULT_EXCLUDE_TAGS):
     """Recompute a unit's translatable text from its element, statelessly.
 
@@ -466,6 +481,8 @@ def unit_clean_text(element, resolver, exclude_tags=DEFAULT_EXCLUDE_TAGS):
         node, chars, _, _ = entry
         if _resolve_entry(entry, subtree_info, sig_has_prose) is None or chars == 0:
             parts.append(str(node))
+        else:
+            _append_glue(parts, node)
     return _normalize_text("".join(parts))
 
 
@@ -523,6 +540,9 @@ def partition_soup(
                     owners[key][1].append(str(node))
             else:
                 fp.skipped[reason] += chars
+                key = id(_nearest_block(node, resolver) or body)
+                if key in owners:
+                    _append_glue(owners[key][1], node)
             continue
 
         block = _nearest_block(node, resolver) or body

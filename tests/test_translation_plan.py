@@ -10,11 +10,14 @@ Fixtures:
 import os
 import shutil
 import zipfile
+from io import StringIO
 from pathlib import Path
 
 import pytest
 from bs4 import BeautifulSoup as bs
 from ebooklib import epub
+from rich.console import Console
+from rich.markup import escape
 
 from book_maker.loader.plan import (
     DisplayResolver,
@@ -462,6 +465,20 @@ class TestGilgameshPlan:
         poetry = [u for u in units if u.signature == "div.poetry_line"]
         grouped = [u for u in poetry if u.group_id is not None]
         assert len(grouped) / len(poetry) > 0.9
+
+    def test_editorial_brackets_do_not_merge_words(self, plan):
+        # "he <em>walks</em> [<em>back and forth</em>,]": the skipped " ["
+        # node must still separate the words it stood between
+        units = [u for f in plan.files for u in f.units]
+        assert any("he walks back and forth" in u.text for u in units)
+        assert not any("walksback" in u.text for u in units)
+
+    def test_report_samples_survive_rich_markup(self, plan):
+        # book text is full of "[Seven] warriors [they were]" — rich reads
+        # those as style tags and eats them unless the report is escaped
+        console = Console(file=StringIO(), width=200)
+        console.print(escape(plan.report()))
+        assert "[Seven] warriors [they were]" in console.file.getvalue()
 
 
 # ------------------------------------------------------- plan artifact I/O
@@ -911,6 +928,26 @@ class TestEpubHardening:
         soup = bs("<body><p>one<br/>two <b>three</b></p></body>", "html.parser")
         resolver = DisplayResolver([])
         assert unit_clean_text(soup.p, resolver) == "one two three"
+
+    def test_skipped_symbol_node_leaves_its_whitespace_behind(self):
+        # gilgamesh: "he <em>walks</em> [<em>back and forth</em>,]" — the " ["
+        # node is dropped as a symbol, but the space it carried must survive
+        fp, _ = self._partition(
+            "<body><p>he <em>walks</em> [<em>back and forth</em>,]</p></body>"
+        )
+        assert [u.text for u in fp.units] == ["he walks back and forth"]
+        assert fp.skipped["symbol"] > 0
+
+    def test_skipped_node_glue_does_not_double_space(self):
+        fp, _ = self._partition("<body><p><b>one</b> [ <b>two</b></p></body>")
+        assert [u.text for u in fp.units] == ["one two"]
+
+    def test_unit_clean_text_glues_skipped_nodes_too(self):
+        soup = bs(
+            "<body><p>he <em>walks</em> [<em>back and forth</em>,]</p></body>",
+            "html.parser",
+        )
+        assert unit_clean_text(soup.p, DisplayResolver([])) == "he walks back and forth"
 
     # -- item 6: svg / math ------------------------------------------------
 

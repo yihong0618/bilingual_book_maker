@@ -5,6 +5,7 @@ from os import environ as env
 from pathlib import Path
 
 from rich import print
+from rich.markup import escape
 
 from book_maker.loader import BOOK_LOADER_DICT
 from book_maker.translator import MODEL_DICT
@@ -519,7 +520,8 @@ So you are close to reaching the limit. You have to choose your own value, there
             exclude_files=set(f for f in options.exclude_filelist.split(",") if f)
             or None,
         )
-        print(plan.report())
+        # samples are book text: rich would eat "[Seven] warriors [they were]"
+        print(escape(plan.report()))
         plan_path = f"{os.path.splitext(options.book_name)[0]}_plan.json"
         if os.path.exists(plan_path):
             print(
