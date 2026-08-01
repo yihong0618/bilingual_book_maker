@@ -319,6 +319,23 @@ def main():
         "(default 8)",
     )
     parser.add_argument(
+        "--plan-no-classify",
+        dest="plan_no_classify",
+        action="store_true",
+        default=False,
+        help="in plan mode, skip the LLM classification of uncertain "
+        "signatures and keep the heuristic plan as-is",
+    )
+    parser.add_argument(
+        "--plan-classify-model",
+        dest="plan_classify_model",
+        type=str,
+        default="",
+        help="model for plan-signature classification (default: the "
+        "translating model). When set explicitly, a classification failure "
+        "aborts the run instead of falling back to the heuristic plan",
+    )
+    parser.add_argument(
         "--exclude-translate-tags",
         dest="exclude_translate_tags",
         type=str,
@@ -531,6 +548,15 @@ So you are close to reaching the limit. You have to choose your own value, there
         else:
             plan.save_json(plan_path, book_path=options.book_name)
             print(f"plan written to {plan_path} (edit signature actions to override)")
+            if not options.plan_no_classify:
+                # classification needs credentials, which dry-run must not:
+                # it runs on the first real run only while this JSON is absent
+                print(
+                    "note: LLM classification of uncertain signatures runs on "
+                    "the first real run, but this plan JSON now pins the "
+                    "decisions — delete it before that run to let the LLM "
+                    "weigh in, or keep it to stay fully manual"
+                )
         return
 
     PROXY = options.proxy
@@ -697,6 +723,8 @@ So you are close to reaching the limit. You have to choose your own value, there
     if hasattr(e, "plan_min_coverage"):
         e.plan_min_coverage = options.plan_min_coverage
         e.poetry_group_size = options.poetry_group_size
+        e.plan_classify = not options.plan_no_classify
+        e.plan_classify_model = options.plan_classify_model or None
     if options.exclude_filelist:
         e.exclude_filelist = options.exclude_filelist
     if options.only_filelist:

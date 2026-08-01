@@ -385,6 +385,22 @@ class ChatGPTAPI(Base):
                 f"using delimiter method[/yellow]"
             )
 
+    def structured_json(self, prompt, schema, model=None):
+        """One-off structured request outside the translation flow (plan
+        classification). Returns the parsed object, or None when the endpoint
+        does not honor JSON schemas; request and parse errors propagate — the
+        caller owns the fallback policy.
+        """
+        model = model or self.model
+        if not self._ensure_structured_support(model):
+            return None
+        completion = self.openai_client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_schema", "json_schema": schema},
+        )
+        return json.loads(completion.choices[0].message.content)
+
     def rotate_key(self):
         with self._api_lock:
             self.openai_client.api_key = next(self.keys)

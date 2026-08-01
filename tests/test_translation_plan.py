@@ -1050,3 +1050,305 @@ class TestEpubHardening:
         book = epub.read_epub(str(ANIMAL_FARM))
         plan = build_plan(book, only_files={target}, exclude_files={target})
         assert [f.file_name for f in plan.files] == [target]
+
+
+# ------------------------------------------- llm signature classification
+
+
+from book_maker.loader.plan import FilePlan, TranslationPlan, Unit
+from book_maker.loader.plan_classify import (
+    CLASSIFY_SCHEMA,
+    MAX_CANDIDATES,
+    PlanClassifyError,
+    classify_plan,
+    gather_candidates,
+    merge_verdicts,
+)
+
+
+def _cunit(sig, text, group_id=None):
+    return Unit(
+        element=None,
+        file_name="x.html",
+        signature=sig,
+        text=text,
+        chars=len(text),
+        group_id=group_id,
+    )
+
+
+def _cplan(units=(), trivial=None):
+    fp = FilePlan(file_name="x.html")
+    fp.units = list(units)
+    fp.trivial = dict(trivial or {})
+    fp.total_chars = sum(u.chars for u in fp.units) + sum(
+        row[1] for row in fp.trivial.values()
+    )
+    return TranslationPlan([fp], ("sup", "code"), 8)
+
+
+PROSE = _cunit("p", "He who saw the Deep, the country's foundation, " * 40)
+
+
+class FakeClassifier:
+    model = "fake-clf"
+
+    def __init__(self, result):
+        self.result = result
+        self.calls = []
+
+    def structured_json(self, prompt, schema, model=None):
+        self.calls.append({"prompt": prompt, "schema": schema, "model": model})
+        return self.result
+
+
+class TestClassifyCandidates:
+    def test_prose_spine_is_never_a_candidate(self):
+        plan = _cplan([PROSE])
+        cands, dropped = gather_candidates(plan)
+        assert cands == [] and dropped == 0
+
+    def test_poetry_groups_are_never_candidates(self):
+        verses = [_cunit("div.verse", f"short line {i}", group_id=0) for i in range(9)]
+        cands, _ = gather_candidates(_cplan([PROSE, *verses]))
+        assert cands == []
+
+    def test_running_head_shape_is_a_candidate(self):
+        heads = [_cunit("p.header", "GILGAMESH") for _ in range(20)]
+        cands, _ = gather_candidates(_cplan([PROSE, *heads]))
+        assert [c["signature"] for c in cands] == ["p.header"]
+        assert cands[0]["kind"] == "translate"
+        assert "GILGAMESH" in cands[0]["samples"][0]
+
+    def test_headings_are_never_candidates(self):
+        # live finding: gpt-4o-mini demoted h2.chapter_title to skip — a wrong
+        # verdict here silently loses every chapter title, so headings are
+        # structurally certain and never sent
+        titles = [_cunit("h2.chapter_title", "Appendix") for _ in range(8)]
+        cands, _ = gather_candidates(_cplan([PROSE, *titles]))
+        assert cands == []
+
+    def test_user_overridden_signature_is_not_asked_about(self):
+        heads = [_cunit("p.header", "GILGAMESH") for _ in range(20)]
+        cands, _ = gather_candidates(
+            _cplan([PROSE, *heads]), overrides={"p.header": "skip"}
+        )
+        assert cands == []
+
+    def test_trivial_needs_letters_to_be_a_candidate(self):
+        plan = _cplan(
+            [PROSE],
+            trivial={"td.no": [4, 8, ["No"]], "p.star": [3, 15, ["* * *"]]},
+        )
+        cands, _ = gather_candidates(plan)
+        assert [c["signature"] for c in cands] == ["td.no"]
+        assert cands[0]["kind"] == "trivial"
+
+    def test_signature_never_appears_as_both_kinds(self):
+        # one verdict per signature: a sig that is already asked about as a
+        # translate-candidate must not also be asked about its trivia
+        heads = [_cunit("p.header", "GILGAMESH") for _ in range(20)]
+        plan = _cplan([PROSE, *heads], trivial={"p.header": [2, 4, ["Kf"]]})
+        cands, _ = gather_candidates(plan)
+        assert [c["signature"] for c in cands] == ["p.header"]
+
+    def test_cap_reports_dropped_instead_of_truncating_silently(self):
+        units = [
+            _cunit(f"p.h{i}", f"HEAD {i}")
+            for i in range(MAX_CANDIDATES + 3)
+            for _ in range(4)
+        ]
+        cands, dropped = gather_candidates(_cplan([PROSE, *units]))
+        assert len(cands) == MAX_CANDIDATES
+        assert dropped == 3
+
+
+class TestClassifyVerdicts:
+    CANDS = [
+        {
+            "signature": "p.header",
+            "kind": "translate",
+            "units": 9,
+            "chars": 81,
+            "samples": ["GILGAMESH"],
+        },
+        {
+            "signature": "td.no",
+            "kind": "trivial",
+            "units": 4,
+            "chars": 8,
+            "samples": ["No"],
+        },
+    ]
+
+    def test_only_confident_overturns_become_actions(self):
+        result = {
+            "verdicts": [
+                {"signature": "p.header", "verdict": "skip"},
+                {"signature": "td.no", "verdict": "translate"},
+            ]
+        }
+        assert merge_verdicts(result, self.CANDS) == {
+            "p.header": "llm-skip",
+            "td.no": "force-translate",
+        }
+
+    def test_unsure_and_status_quo_change_nothing(self):
+        result = {
+            "verdicts": [
+                {"signature": "p.header", "verdict": "unsure"},
+                {"signature": "td.no", "verdict": "skip"},
+            ]
+        }
+        assert merge_verdicts(result, self.CANDS) == {}
+
+    def test_hallucinated_signature_is_ignored(self):
+        result = {"verdicts": [{"signature": "p.ghost", "verdict": "skip"}]}
+        assert merge_verdicts(result, self.CANDS) == {}
+
+
+class TestClassifyPlan:
+    def _uncertain_plan(self):
+        heads = [_cunit("p.header", "GILGAMESH") for _ in range(20)]
+        return _cplan([PROSE, *heads])
+
+    def test_happy_path_returns_actions(self):
+        clf = FakeClassifier(
+            {"verdicts": [{"signature": "p.header", "verdict": "skip"}]}
+        )
+        actions, cands = classify_plan(self._uncertain_plan(), clf, model="clf-x")
+        assert actions == {"p.header": "llm-skip"}
+        assert [c["signature"] for c in cands] == ["p.header"]
+        call = clf.calls[0]
+        assert call["schema"] is CLASSIFY_SCHEMA
+        assert call["model"] == "clf-x"
+        assert "p.header" in call["prompt"] and "GILGAMESH" in call["prompt"]
+
+    def test_no_candidates_never_touches_the_translator(self):
+        actions, cands = classify_plan(_cplan([PROSE]), translator=None)
+        assert actions == {} and cands == []
+
+    def test_translator_without_structured_support_raises(self):
+        with pytest.raises(PlanClassifyError, match="structured-output"):
+            classify_plan(self._uncertain_plan(), object())
+
+    def test_schema_not_honored_raises(self):
+        with pytest.raises(PlanClassifyError, match="does not honor"):
+            classify_plan(self._uncertain_plan(), FakeClassifier(None))
+
+    def test_request_error_raises(self):
+        class Explodes:
+            def structured_json(self, prompt, schema, model=None):
+                raise RuntimeError("boom")
+
+        with pytest.raises(PlanClassifyError, match="boom"):
+            classify_plan(self._uncertain_plan(), Explodes())
+
+
+class TestClassifyPartitionActions:
+    TABLE = (
+        "<body><table><tr><td class='no'>No</td></tr></table>"
+        "<p>Real prose sentence, long enough to matter.</p></body>"
+    )
+
+    def _partition(self, html, overrides=None):
+        soup = bs(html, "html.parser")
+        return partition_soup(
+            soup, DisplayResolver([]), file_name="x.html", overrides=overrides
+        )
+
+    def test_trivial_skips_are_sampled_by_signature(self):
+        fp = self._partition(self.TABLE)
+        assert fp.skipped["trivial"] == len("No")
+        assert fp.trivial["td.no"] == [1, 2, ["No"]]
+
+    def test_force_translate_resurrects_trivial_units(self):
+        fp = self._partition(self.TABLE, overrides={"td.no": "force-translate"})
+        assert "No" in [u.text for u in fp.units]
+        assert fp.skipped["trivial"] == 0
+        assert fp.total_chars == sum(u.chars for u in fp.units) + sum(
+            fp.skipped.values()
+        )
+
+    def test_llm_skip_counts_llm_excluded(self):
+        html = (
+            "<body><p class='head'>GILGAMESH</p>"
+            "<p>Real prose sentence, long enough to matter.</p></body>"
+        )
+        fp = self._partition(html, overrides={"p.head": "llm-skip"})
+        assert fp.skipped["llm-excluded"] == len("GILGAMESH")
+        assert fp.skipped["user-excluded"] == 0
+        assert all(u.signature != "p.head" for u in fp.units)
+
+
+class TestClassifyPlanArtifact:
+    def test_llm_actions_round_trip_via_plan_json(self, tmp_path):
+        import json
+
+        from book_maker.loader.plan import load_plan_overrides
+
+        heads = [_cunit("p.header", "GILGAMESH") for _ in range(3)]
+        plan = _cplan([PROSE, *heads], trivial={"td.no": [4, 8, ["No"]]})
+        path = tmp_path / "book_plan.json"
+        plan.save_json(
+            str(path),
+            llm_actions={"p.header": "llm-skip", "td.no": "force-translate"},
+        )
+
+        data = json.loads(path.read_text())
+        by_sig = {r["signature"]: r for r in data["signatures"]}
+        assert by_sig["p.header"]["action"] == "llm-skip"
+        assert by_sig["p.header"]["decided_by"] == "llm"
+        # resurrected trivia gets a row even though it never was a unit
+        assert by_sig["td.no"]["action"] == "force-translate"
+        assert by_sig["td.no"]["sample"] == "No"
+        # user-facing default rows stay untouched
+        assert by_sig["p"]["action"] == "translate"
+        assert "decided_by" not in by_sig["p"]
+
+        assert load_plan_overrides(str(path), "unused-book-path") == {
+            "p.header": "llm-skip",
+            "td.no": "force-translate",
+        }
+
+
+class TestLoaderClassifyPolicy:
+    """Failure policy: an explicitly chosen classifier model blocks, the
+    default degrades to a printed notice."""
+
+    def _loader(self, tmp_path):
+        loader, _ = _make_loader(tmp_path, FakeModel)
+        return loader
+
+    def _uncertain_plan(self):
+        heads = [_cunit("p.header", "GILGAMESH") for _ in range(20)]
+        return _cplan([PROSE, *heads])
+
+    def test_default_model_failure_falls_back_with_notice(self, tmp_path, capsys):
+        loader = self._loader(tmp_path)  # FakeModel has no structured_json
+        assert loader._classify_plan(self._uncertain_plan()) == {}
+        assert "plan classification skipped" in capsys.readouterr().out
+
+    def test_explicit_model_failure_blocks(self, tmp_path):
+        loader = self._loader(tmp_path)
+        loader.plan_classify_model = "clf-x"
+        with pytest.raises(SystemExit) as excinfo:
+            loader._classify_plan(self._uncertain_plan())
+        assert excinfo.value.code == 1
+
+    def test_flag_off_disables_classification(self, tmp_path):
+        loader = self._loader(tmp_path)
+        loader.plan_classify = False
+        loader.translate_model = FakeClassifier(
+            {"verdicts": [{"signature": "p.header", "verdict": "skip"}]}
+        )
+        assert loader._classify_plan(self._uncertain_plan()) == {}
+        assert loader.translate_model.calls == []
+
+    def test_verdicts_are_returned_and_summarized(self, tmp_path, capsys):
+        loader = self._loader(tmp_path)
+        loader.translate_model = FakeClassifier(
+            {"verdicts": [{"signature": "p.header", "verdict": "skip"}]}
+        )
+        assert loader._classify_plan(self._uncertain_plan()) == {"p.header": "llm-skip"}
+        assert "p.header" in capsys.readouterr().out

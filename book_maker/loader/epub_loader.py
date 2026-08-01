@@ -32,6 +32,7 @@ from .plan import (
     load_plan_overrides,
     partition_file,
 )
+from .plan_classify import PlanClassifyError, classify_plan
 
 
 class EPUBBookLoader(BaseBookLoader):
@@ -85,6 +86,8 @@ class EPUBBookLoader(BaseBookLoader):
         # plan mode (--translate-tags auto): coverage-complete partition
         self.plan_min_coverage = 0.5
         self.poetry_group_size = 8
+        self.plan_classify = True
+        self.plan_classify_model = None  # user-chosen classifier; failure blocks
         self._plan_css = None
         self._plan_overrides = None
         self._plan_partitions = {}  # file_name -> (soup, FilePlan), see _plan_partition
@@ -332,6 +335,29 @@ class EPUBBookLoader(BaseBookLoader):
                 "translated text may overflow or misplace.[/bold yellow]"
             )
 
+        plan = self._build_partitioned_plan()
+
+        # LLM classification runs exactly once, on the run that creates the
+        # plan JSON: from then on the JSON is the source of truth (user edits
+        # win, resume fingerprints stay stable). Delete it to reclassify.
+        llm_actions = {}
+        if not os.path.exists(plan_path):
+            llm_actions = self._classify_plan(plan)
+            if llm_actions:
+                # the JSON is written from the pre-verdict plan: demoted
+                # signatures still have rows to carry their action
+                plan.save_json(
+                    plan_path, book_path=self.epub_name, llm_actions=llm_actions
+                )
+                print(
+                    f"plan written to {plan_path} with {len(llm_actions)} "
+                    f"llm-decided action(s) (edit signature actions to override)"
+                )
+                overrides = {**(overrides or {}), **llm_actions}
+                self._plan_overrides = overrides
+                self._plan_partitions.clear()
+                plan = self._build_partitioned_plan()
+
         # Anything that changes the unit list (and therefore the positional
         # meaning of resume-cache slots) is part of the fingerprint; a cache
         # written under a different plan must be refused, not misapplied.
@@ -361,31 +387,13 @@ class EPUBBookLoader(BaseBookLoader):
             )
             raise SystemExit(1)
 
-        # The plan is built from the same cached partitions the processing
-        # pass will consume, over the same files it will process — the
-        # coverage gate judges what will actually be translated, and no file
-        # is partitioned twice. Filter semantics mirror process_item: an
-        # only-list wins outright; exclude applies only without one.
-        only = {f for f in self.only_filelist.split(",") if f}
-        exclude = {f for f in self.exclude_filelist.split(",") if f}
-        files = []
-        for item in self.origin_book.get_items_of_type(ITEM_DOCUMENT):
-            if only:
-                if item.file_name not in only:
-                    continue
-            elif item.file_name in exclude:
-                continue
-            files.append(self._plan_partition(item)[1])
-        plan = TranslationPlan(
-            files, self._exclude_tags_tuple(), self.poetry_group_size
-        )
         # samples are book text: rich would eat "[Seven] warriors [they were]"
         print(escape(plan.report()))
-        if os.path.exists(plan_path):
+        if os.path.exists(plan_path) and not llm_actions:
             # never overwrite: the file may carry user-edited signature
             # actions (and load_plan_overrides already verified its hash)
             print(f"using existing plan {plan_path}")
-        else:
+        elif not llm_actions:
             plan.save_json(plan_path, book_path=self.epub_name)
             print(f"plan written to {plan_path} (edit signature actions to override)")
 
@@ -398,6 +406,69 @@ class EPUBBookLoader(BaseBookLoader):
             )
             raise SystemExit(1)
         return plan
+
+    def _build_partitioned_plan(self):
+        """The plan is built from the same cached partitions the processing
+        pass will consume, over the same files it will process — the coverage
+        gate judges what will actually be translated, and no file is
+        partitioned twice. Filter semantics mirror process_item: an only-list
+        wins outright; exclude applies only without one.
+        """
+        only = {f for f in self.only_filelist.split(",") if f}
+        exclude = {f for f in self.exclude_filelist.split(",") if f}
+        files = []
+        for item in self.origin_book.get_items_of_type(ITEM_DOCUMENT):
+            if only:
+                if item.file_name not in only:
+                    continue
+            elif item.file_name in exclude:
+                continue
+            files.append(self._plan_partition(item)[1])
+        return TranslationPlan(
+            files, self._exclude_tags_tuple(), self.poetry_group_size
+        )
+
+    def _classify_plan(self, plan):
+        """LLM verdicts for the plan's uncertain signatures; {} when disabled
+        or unavailable.
+
+        A classifier model the user chose explicitly must work — a failure
+        stops the run. The default (the translating model) degrades to a
+        printed notice: the heuristics already made a safe plan.
+        """
+        if not self.plan_classify:
+            return {}
+        try:
+            actions, candidates = classify_plan(
+                plan,
+                self.translate_model,
+                overrides=self._plan_overrides,
+                model=self.plan_classify_model,
+            )
+        except PlanClassifyError as e:
+            if self.plan_classify_model:
+                print(
+                    f"[bold red]--plan-classify-model "
+                    f"{self.plan_classify_model}: {e}[/bold red]"
+                )
+                raise SystemExit(1)
+            print(
+                f"[yellow]plan classification skipped ({e}); "
+                f"keeping the heuristic plan[/yellow]"
+            )
+            return {}
+        if candidates and not actions:
+            print(
+                f"llm classification: {len(candidates)} uncertain "
+                f"signature(s) reviewed, plan unchanged"
+            )
+        elif actions:
+            decisions = ", ".join(
+                f"{sig} -> {'skip' if act == 'llm-skip' else 'translate'}"
+                for sig, act in actions.items()
+            )
+            print(f"llm classification: {escape(decisions)}")
+        return actions
 
     def _partition_item(self, soup, file_name):
         fp, _ = partition_file(

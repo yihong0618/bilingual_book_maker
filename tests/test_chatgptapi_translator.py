@@ -664,3 +664,54 @@ def test_model_validation_probe_uses_model_defaults():
     assert request["model"] == "test-model"
     assert request["max_tokens"] == 10
     assert "temperature" not in request
+
+
+# --------------------------------------------------------------------------
+# structured_json: one-off schema'd request for plan classification
+# --------------------------------------------------------------------------
+
+
+def test_structured_json_returns_parsed_object():
+    create = Mock(
+        side_effect=[
+            _completion('{"probe":"schema_ok"}'),
+            _completion('{"verdicts":[{"signature":"p.x","verdict":"skip"}]}'),
+        ]
+    )
+    translator = _translator(create=create)
+
+    result = translator.structured_json(
+        "classify this", {"name": "s", "strict": True, "schema": {}}
+    )
+
+    assert result == {"verdicts": [{"signature": "p.x", "verdict": "skip"}]}
+    request = create.call_args.kwargs
+    assert request["response_format"]["type"] == "json_schema"
+    assert request["messages"][0]["content"] == "classify this"
+
+
+def test_structured_json_returns_none_when_schema_unsupported():
+    create = Mock(return_value=_completion("not json at all"))
+    translator = _translator(create=create)
+
+    assert translator.structured_json("classify", {"schema": {}}) is None
+    # only the probe went out; no classification request followed
+    assert create.call_count == 1
+
+
+def test_structured_json_targets_the_requested_model():
+    create = Mock(
+        side_effect=[
+            _completion('{"probe":"schema_ok"}'),
+            _completion('{"verdicts":[]}'),
+        ]
+    )
+    translator = _translator(create=create)
+
+    translator.structured_json("classify", {"schema": {}}, model="clf-model")
+
+    # both the probe and the real request must hit the chosen model,
+    # not the translating one
+    probed = create.call_args_list[0].kwargs["model"]
+    asked = create.call_args_list[1].kwargs["model"]
+    assert probed == asked == "clf-model"

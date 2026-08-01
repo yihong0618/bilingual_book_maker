@@ -506,6 +506,9 @@ class FilePlan:
     units: list = field(default_factory=list)
     skipped: Counter = field(default_factory=Counter)
     total_chars: int = 0
+    # signature -> [units, chars, sample texts]: what the trivial filter ate,
+    # kept so the LLM classifier can be asked about letter-bearing ones
+    trivial: dict = field(default_factory=dict)
 
 
 def partition_soup(
@@ -557,14 +560,21 @@ def partition_soup(
     for key in order:
         block, parts, chars, nodes = owners[key]
         text = _normalize_text("".join(parts))
-        if is_trivial_unit(text, tag=block.name):
+        sig = _signature(block)
+        forced = bool(overrides) and overrides.get(sig) == "force-translate"
+        if not forced and is_trivial_unit(text, tag=block.name):
             fp.skipped["trivial"] += chars
+            row = fp.trivial.setdefault(sig, [0, 0, []])
+            row[0] += 1
+            row[1] += chars
+            if text not in row[2] and len(row[2]) < 3:
+                row[2].append(text)
             continue
         fp.units.append(
             Unit(
                 element=block,
                 file_name=file_name,
-                signature=_signature(block),
+                signature=sig,
                 text=text,
                 chars=chars,
                 nodes=nodes,
@@ -574,8 +584,10 @@ def partition_soup(
     if overrides:
         kept = []
         for unit in fp.units:
-            if overrides.get(unit.signature) == "skip":
-                fp.skipped["user-excluded"] += unit.chars
+            action = overrides.get(unit.signature)
+            if action in ("skip", "llm-skip"):
+                reason = "user-excluded" if action == "skip" else "llm-excluded"
+                fp.skipped[reason] += unit.chars
             else:
                 kept.append(unit)
         fp.units = kept
@@ -733,6 +745,21 @@ class TranslationPlan:
             row["sample"] = row["sample"][:60]
         return rows
 
+    def trivial_rows(self):
+        """Aggregate what the trivial filter skipped, by signature."""
+        agg = {}
+        for f in self.files:
+            for sig, (units, chars, samples) in f.trivial.items():
+                row = agg.setdefault(
+                    sig, {"signature": sig, "units": 0, "chars": 0, "samples": []}
+                )
+                row["units"] += units
+                row["chars"] += chars
+                for s in samples:
+                    if s not in row["samples"] and len(row["samples"]) < 3:
+                        row["samples"].append(s)
+        return agg
+
     def report(self, max_rows=25):
         lines = []
         rows = self.signature_rows()
@@ -763,7 +790,30 @@ class TranslationPlan:
         )
         return "\n".join(lines)
 
-    def to_dict(self, book_path=None):
+    def to_dict(self, book_path=None, llm_actions=None):
+        signatures = self.signature_rows()
+        if llm_actions:
+            # LLM verdicts must round-trip as ordinary signature actions:
+            # rows this plan was built without (resurrected trivia) are added,
+            # and every verdict is marked as machine-decided so user edits
+            # stay distinguishable
+            by_sig = {r["signature"]: r for r in signatures}
+            trivial = self.trivial_rows()
+            total = self.total_chars or 1
+            for sig, action in llm_actions.items():
+                row = by_sig.get(sig)
+                if row is None:
+                    t = trivial.get(sig, {"units": 0, "chars": 0, "samples": []})
+                    row = {
+                        "signature": sig,
+                        "units": t["units"],
+                        "chars": t["chars"],
+                        "sample": (t["samples"] or [""])[0][:60],
+                        "pct": round(100 * t["chars"] / total, 1),
+                    }
+                    signatures.append(row)
+                row["action"] = action
+                row["decided_by"] = "llm"
         data = {
             "schema_version": PLAN_SCHEMA_VERSION,
             "coverage": self.coverage,
@@ -772,15 +822,18 @@ class TranslationPlan:
             "skipped": dict(self.skipped_totals),
             "exclude_tags": list(self.exclude_tags),
             "poetry_group_size": self.poetry_group_size,
-            "signatures": self.signature_rows(),
+            "signatures": signatures,
             "book_sha256": _sha256(book_path) if book_path else None,
         }
         return data
 
-    def save_json(self, path, book_path=None):
+    def save_json(self, path, book_path=None, llm_actions=None):
         with open(path, "w", encoding="utf-8") as f:
             json.dump(
-                self.to_dict(book_path=book_path), f, ensure_ascii=False, indent=1
+                self.to_dict(book_path=book_path, llm_actions=llm_actions),
+                f,
+                ensure_ascii=False,
+                indent=1,
             )
 
 
