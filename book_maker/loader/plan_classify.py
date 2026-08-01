@@ -29,36 +29,39 @@ UNCERTAIN_UNIQUE_RATIO = 0.5
 # live run of this classifier.
 CERTAIN_TAGS = frozenset(["h1", "h2", "h3", "h4", "h5", "h6"])
 
-CLASSIFY_SCHEMA = {
-    "name": "plan_signature_classification",
-    "strict": True,
-    "schema": {
-        "type": "object",
-        "properties": {
-            "verdicts": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "signature": {"type": "string"},
-                        "verdict": {
-                            "type": "string",
-                            "enum": ["translate", "skip", "unsure"],
-                        },
-                    },
-                    "required": ["signature", "verdict"],
-                    "additionalProperties": False,
-                },
-            }
+VERDICTS = ["translate", "skip", "unsure"]
+
+
+def build_schema(candidates):
+    """One required enum property per signature.
+
+    Constrained decoding then guarantees exactly one verdict for every
+    signature asked about — no hallucinated names, no silent omissions.
+    """
+    return {
+        "name": "plan_signature_classification",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                c["signature"]: {"type": "string", "enum": VERDICTS} for c in candidates
+            },
+            "required": [c["signature"] for c in candidates],
+            "additionalProperties": False,
         },
-        "required": ["verdicts"],
-        "additionalProperties": False,
-    },
-}
+    }
 
 
 class PlanClassifyError(Exception):
     """The translator cannot produce a structured verdict."""
+
+
+def _clip(text):
+    """Truncate a sample visibly: a silent mid-word cut reads as corrupted
+    text and biases the model toward "skip"."""
+    if len(text) <= SAMPLE_MAX_CHARS:
+        return text
+    return text[:SAMPLE_MAX_CHARS] + "…"
 
 
 def translate_candidates(plan, overrides=None):
@@ -102,9 +105,7 @@ def translate_candidates(plan, overrides=None):
                 "kind": "translate",
                 "units": row["units"],
                 "chars": row["chars"],
-                "samples": [
-                    t[:SAMPLE_MAX_CHARS] for t in uniq[::step][:SAMPLES_PER_SIGNATURE]
-                ],
+                "samples": [_clip(t) for t in uniq[::step][:SAMPLES_PER_SIGNATURE]],
             }
         )
     return out
@@ -130,7 +131,7 @@ def trivial_candidates(plan, overrides=None, exclude_sigs=frozenset()):
                 "kind": "trivial",
                 "units": row["units"],
                 "chars": row["chars"],
-                "samples": [s[:SAMPLE_MAX_CHARS] for s in row["samples"]],
+                "samples": [_clip(s) for s in row["samples"]],
             }
         )
     return out
@@ -143,57 +144,46 @@ def gather_candidates(plan, overrides=None):
     silently.
     """
     translate = translate_candidates(plan, overrides)
-    trivial = trivial_candidates(
-        plan, overrides, exclude_sigs={c["signature"] for c in translate}
-    )
+    unit_sigs = {u.signature for f in plan.files for u in f.units}
+    trivial = trivial_candidates(plan, overrides, exclude_sigs=unit_sigs)
     cands = sorted(translate + trivial, key=lambda c: -c["chars"])
     dropped = max(0, len(cands) - MAX_CANDIDATES)
     return cands[:MAX_CANDIDATES], dropped
 
 
 def build_prompt(candidates):
+    # No current-verdict labels: the model judges the content cold instead
+    # of anchoring on what the heuristics already decided.
     lines = [
-        "You are preparing a bilingual EPUB and deciding which text groups "
-        "get a translation.",
-        "Each numbered group below is an HTML signature (tag.class) with "
-        "sample lines from the book.",
-        'Answer "translate" if the samples are book content a reader wants '
-        "translated: prose, verse, dialogue, headings, captions.",
-        'Answer "skip" if they are apparatus that should stay untranslated: '
-        "running heads, page or line numbers, manuscript sigla, "
-        "cross-reference labels, publisher boilerplate, decorative markers.",
+        "You are preparing a bilingual EPUB. For each HTML tag signature "
+        "below, decide whether it is better to translate its text or keep "
+        "it as is.",
+        'Answer "translate" for book content a reader wants translated: '
+        "prose, verse, dialogue, headings, captions.",
+        'Answer "skip" for text to keep as is: running heads, page or line '
+        "numbers, manuscript sigla, cross-reference labels, publisher "
+        "boilerplate, decorative markers.",
         'Answer "unsure" if the samples do not settle it.',
-        "Return exactly one verdict per signature.",
         "",
     ]
     for i, c in enumerate(candidates, 1):
-        status = (
-            "currently planned for translation"
-            if c["kind"] == "translate"
-            else "currently skipped as too short"
-        )
-        lines.append(
-            f'{i}. signature "{c["signature"]}" ({c["units"]} occurrence(s), {status}):'
-        )
+        lines.append(f'{i}. "{c["signature"]}" ({c["units"]} occurrence(s)):')
         for s in c["samples"]:
-            lines.append(f"   - {s!r}")
+            lines.append(f"   Sample: {s}")
     return "\n".join(lines)
 
 
 def merge_verdicts(result, candidates):
     """Verdicts -> signature actions; only confident changes make one.
 
-    "unsure" and status-quo verdicts produce no action: the heuristic
-    decision stands unless the model affirmatively overturns it. Verdicts
-    for signatures never asked about are ignored.
+    The result is schema-pinned to {signature: verdict}. "unsure" and
+    status-quo verdicts produce no action: the heuristic decision stands
+    unless the model affirmatively overturns it. Anything outside the enum
+    (a shape-only endpoint ignoring value constraints) counts as unsure.
     """
-    by_sig = {c["signature"]: c for c in candidates}
     actions = {}
-    for v in result.get("verdicts", []):
-        cand = by_sig.get(v.get("signature"))
-        if cand is None:
-            continue
-        verdict = v.get("verdict")
+    for cand in candidates:
+        verdict = result.get(cand["signature"])
         if cand["kind"] == "translate" and verdict == "skip":
             actions[cand["signature"]] = "llm-skip"
         elif cand["kind"] == "trivial" and verdict == "translate":
@@ -223,10 +213,14 @@ def classify_plan(plan, translator, overrides=None, model=None):
             f"{type(translator).__name__} has no structured-output support"
         )
     try:
-        result = structured(build_prompt(candidates), CLASSIFY_SCHEMA, model=model)
+        result = structured(
+            build_prompt(candidates), build_schema(candidates), model=model
+        )
     except Exception as e:
         raise PlanClassifyError(f"classification request failed: {e}") from e
     if result is None:
         target = model or getattr(translator, "model", "the model")
         raise PlanClassifyError(f"'{target}' does not honor JSON schemas")
+    if not isinstance(result, dict):
+        raise PlanClassifyError(f"malformed classification response: {result!r}")
     return merge_verdicts(result, candidates), candidates

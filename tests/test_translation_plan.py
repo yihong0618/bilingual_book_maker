@@ -1057,9 +1057,11 @@ class TestEpubHardening:
 
 from book_maker.loader.plan import FilePlan, TranslationPlan, Unit
 from book_maker.loader.plan_classify import (
-    CLASSIFY_SCHEMA,
     MAX_CANDIDATES,
+    VERDICTS,
     PlanClassifyError,
+    build_prompt,
+    build_schema,
     classify_plan,
     gather_candidates,
     merge_verdicts,
@@ -1135,6 +1137,15 @@ class TestClassifyCandidates:
         )
         assert cands == []
 
+    def test_trivia_of_a_unit_bearing_signature_is_not_asked_about(self):
+        # gilgamesh: div.poetry_line_indented is 15% of the book plus one
+        # 6-char fragment the trivial filter ate — the signature's content
+        # status is already proven, its trivia is residue, not a question
+        verses = [_cunit("div.verse", f"short line {i}", group_id=0) for i in range(9)]
+        plan = _cplan([PROSE, *verses], trivial={"div.verse": [1, 6, ["in …"]]})
+        cands, _ = gather_candidates(plan)
+        assert cands == []
+
     def test_trivial_needs_letters_to_be_a_candidate(self):
         plan = _cplan(
             [PROSE],
@@ -1181,29 +1192,35 @@ class TestClassifyVerdicts:
         },
     ]
 
+    def test_schema_pins_one_enum_verdict_per_signature(self):
+        schema = build_schema(self.CANDS)["schema"]
+        assert set(schema["properties"]) == {"p.header", "td.no"}
+        assert schema["properties"]["p.header"]["enum"] == VERDICTS
+        assert sorted(schema["required"]) == ["p.header", "td.no"]
+        assert schema["additionalProperties"] is False
+
+    def test_prompt_shows_labeled_samples_without_current_verdicts(self):
+        prompt = build_prompt(self.CANDS)
+        assert "Sample: GILGAMESH" in prompt
+        assert "Sample: No" in prompt
+        # the model judges cold: no anchoring on the heuristic decision
+        assert "currently" not in prompt
+        assert "keep it as is" in prompt
+
     def test_only_confident_overturns_become_actions(self):
-        result = {
-            "verdicts": [
-                {"signature": "p.header", "verdict": "skip"},
-                {"signature": "td.no", "verdict": "translate"},
-            ]
-        }
+        result = {"p.header": "skip", "td.no": "translate"}
         assert merge_verdicts(result, self.CANDS) == {
             "p.header": "llm-skip",
             "td.no": "force-translate",
         }
 
     def test_unsure_and_status_quo_change_nothing(self):
-        result = {
-            "verdicts": [
-                {"signature": "p.header", "verdict": "unsure"},
-                {"signature": "td.no", "verdict": "skip"},
-            ]
-        }
+        result = {"p.header": "unsure", "td.no": "skip"}
         assert merge_verdicts(result, self.CANDS) == {}
 
-    def test_hallucinated_signature_is_ignored(self):
-        result = {"verdicts": [{"signature": "p.ghost", "verdict": "skip"}]}
+    def test_out_of_enum_verdict_counts_as_unsure(self):
+        # shape-only endpoints may ignore value constraints
+        result = {"p.header": "banana", "td.no": ""}
         assert merge_verdicts(result, self.CANDS) == {}
 
 
@@ -1213,14 +1230,13 @@ class TestClassifyPlan:
         return _cplan([PROSE, *heads])
 
     def test_happy_path_returns_actions(self):
-        clf = FakeClassifier(
-            {"verdicts": [{"signature": "p.header", "verdict": "skip"}]}
-        )
+        clf = FakeClassifier({"p.header": "skip"})
         actions, cands = classify_plan(self._uncertain_plan(), clf, model="clf-x")
         assert actions == {"p.header": "llm-skip"}
         assert [c["signature"] for c in cands] == ["p.header"]
         call = clf.calls[0]
-        assert call["schema"] is CLASSIFY_SCHEMA
+        # the schema is built per request: one pinned verdict per signature
+        assert call["schema"]["schema"]["required"] == ["p.header"]
         assert call["model"] == "clf-x"
         assert "p.header" in call["prompt"] and "GILGAMESH" in call["prompt"]
 
@@ -1235,6 +1251,10 @@ class TestClassifyPlan:
     def test_schema_not_honored_raises(self):
         with pytest.raises(PlanClassifyError, match="does not honor"):
             classify_plan(self._uncertain_plan(), FakeClassifier(None))
+
+    def test_malformed_response_raises(self):
+        with pytest.raises(PlanClassifyError, match="malformed"):
+            classify_plan(self._uncertain_plan(), FakeClassifier(["not", "a", "dict"]))
 
     def test_request_error_raises(self):
         class Explodes:
@@ -1339,16 +1359,12 @@ class TestLoaderClassifyPolicy:
     def test_flag_off_disables_classification(self, tmp_path):
         loader = self._loader(tmp_path)
         loader.plan_classify = False
-        loader.translate_model = FakeClassifier(
-            {"verdicts": [{"signature": "p.header", "verdict": "skip"}]}
-        )
+        loader.translate_model = FakeClassifier({"p.header": "skip"})
         assert loader._classify_plan(self._uncertain_plan()) == {}
         assert loader.translate_model.calls == []
 
     def test_verdicts_are_returned_and_summarized(self, tmp_path, capsys):
         loader = self._loader(tmp_path)
-        loader.translate_model = FakeClassifier(
-            {"verdicts": [{"signature": "p.header", "verdict": "skip"}]}
-        )
+        loader.translate_model = FakeClassifier({"p.header": "skip"})
         assert loader._classify_plan(self._uncertain_plan()) == {"p.header": "llm-skip"}
         assert "p.header" in capsys.readouterr().out
