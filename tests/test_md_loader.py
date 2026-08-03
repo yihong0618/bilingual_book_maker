@@ -499,6 +499,101 @@ def test_markdown_use_context_isolates_context_per_section(tmp_path):
     assert ctx_values == [0, 0, 1, 1, 2, 2]
 
 
+def test_markdown_context_single_h1_book_still_runs_parallel(tmp_path):
+    # A book with one H1 used to collapse into a single section, so
+    # --use_context ran fully sequential no matter how many workers.
+    book = tmp_path / "book.md"
+    book.write_text("# Book\n\n## One\n\nFirst body.\n\n## Two\n\nSecond body.\n")
+
+    loader = make_loader(
+        book,
+        SlowListModel,
+        context_flag=True,
+        parallel_workers=4,
+    )
+    loader.batch_size = 1
+    loader.make_bilingual_book()
+
+    # The H2 subsections translate concurrently on isolated clones.
+    assert SlowListModel.cls_max_active > 1
+
+    content = (tmp_path / "book_bilingual.md").read_text(encoding="utf-8")
+    assert content.count("<T>") == 5
+    assert content.index("<T>First body.</T>") < content.index("<T>Second body.</T>")
+
+
+def test_markdown_context_isolation_holds_at_finest_heading_units(tmp_path):
+    book = tmp_path / "book.md"
+    book.write_text(
+        "# Book\n\n## One\n\nOne body a.\n\nOne body b.\n\n"
+        "## Two\n\nTwo body a.\n\nTwo body b.\n"
+    )
+
+    loader = make_loader(
+        book,
+        AccumulatingContextModel,
+        context_flag=True,
+        parallel_workers=4,
+    )
+    loader.batch_size = 1
+    loader.make_bilingual_book()
+
+    content = (tmp_path / "book_bilingual.md").read_text(encoding="utf-8")
+    ctx_values = sorted(int(m) for m in re.findall(r"<T ctx=(\d+)>", content))
+    # Sections: [# Book] and one per H2 (heading, body a, body b -> ctx
+    # 0,1,2). Without per-subsection isolation the later batches would
+    # continue at 3,4,5.
+    assert ctx_values == [0, 0, 0, 1, 1, 2, 2]
+
+
+def test_markdown_context_sections_coalesce_to_worker_share(tmp_path):
+    book = tmp_path / "book.md"
+    book.write_text(
+        "# One\n\n## One A\n\nBody 1a.\n\n## One B\n\nBody 1b.\n\n"
+        "# Two\n\n## Two A\n\nBody 2a.\n\n## Two B\n\nBody 2b.\n"
+    )
+
+    loader = make_loader(
+        book,
+        ListModel,
+        context_flag=True,
+        parallel_workers=2,
+    )
+    loader.batch_size = 1
+    _, batches = loader._enumerate_render_items()
+    pending = list(enumerate(batches))
+
+    # Two workers, two same-size H1 halves: small heading units coalesce
+    # back to one section per worker share instead of one per H2.
+    sections = loader._group_sections(pending)
+    assert len(sections) == 2
+    # Sections stay contiguous and cover every batch exactly once.
+    flat = [index for section in sections for index, _ in section]
+    assert flat == list(range(len(batches)))
+
+
+def test_markdown_context_headingless_book_windows_and_runs_parallel(tmp_path):
+    book = tmp_path / "book.md"
+    book.write_text("One body.\n\nTwo body.\n\nThree body.\n\nFour body.\n")
+
+    loader = make_loader(
+        book,
+        SlowListModel,
+        context_flag=True,
+        parallel_workers=2,
+    )
+    loader.batch_size = 1
+    loader.make_bilingual_book()
+
+    # No headings at all: the single breadcrumb-less run is windowed by
+    # char share so workers are still occupied.
+    assert SlowListModel.cls_max_active > 1
+
+    content = (tmp_path / "book_bilingual.md").read_text(encoding="utf-8")
+    assert content.count("<T>") == 4
+    assert content.index("<T>One body.</T>") < content.index("<T>Four body.</T>")
+
+
 def test_markdown_context_section_interrupt_persists_partial_section(tmp_path):
     book = tmp_path / "book.md"
     book.write_text("# One\n\nOne a.\n\nTwo.\n\nThree.\n")

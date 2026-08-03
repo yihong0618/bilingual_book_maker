@@ -405,36 +405,97 @@ class MarkdownBookLoader(BaseBookLoader):
             f"Markdown parallel context: {len(sections)} sections "
             f"across {effective_workers} workers."
         )
+        # Largest-first submission so the longest sequential chain starts
+        # immediately (minimizes makespan); results are index-addressed, so
+        # submission order never affects output order.
+        ordered = sorted(sections, key=self._section_chars, reverse=True)
         with ThreadPoolExecutor(max_workers=effective_workers) as executor:
             futures = [
                 executor.submit(self._translate_section, section, results, report)
-                for section in sections
+                for section in ordered
             ]
             for future in as_completed(futures):
                 future.result()
 
     def _group_sections(self, pending):
-        """Split pending (index, batch) items into contiguous sections keyed by
-        their top-level heading, so each section is an independent context unit.
+        """Partition pending (index, batch) items into contiguous sections
+        that balance worker occupancy against context coherence.
+
+        Batches are first grouped into the finest heading-delimited units
+        (full breadcrumb). Heading units are atomic: context accumulates in
+        reading order inside them and never splits below a heading.
+        Breadcrumb-less runs (documents without headings) larger than one
+        worker share are windowed by char budget so they parallelize too.
+        Contiguous units are then coalesced greedily up to one worker share
+        (total chars / workers): small neighbors run sequentially on one
+        translator clone with context carried across them, while big units
+        keep a worker to themselves.
         """
-        sections = []
+        units = []
         current = []
         current_key = None
         for index, batch in pending:
-            key = self._section_key(batch)
+            key = batch.breadcrumb or ""
             if current and key != current_key:
-                sections.append(current)
+                units.append((current_key, current))
                 current = []
             current.append((index, batch))
             current_key = key
         if current:
-            sections.append(current)
+            units.append((current_key, current))
+
+        total_chars = sum(self._section_chars(unit) for _, unit in units)
+        share = max(1, total_chars // max(1, self.parallel_workers))
+
+        windowed = []
+        for key, unit in units:
+            if key == "" and self._section_chars(unit) > share:
+                windowed.extend(self._window_entries(unit, share))
+            else:
+                windowed.append(unit)
+
+        sections = []
+        section = []
+        section_chars = 0
+        for unit in windowed:
+            unit_chars = self._section_chars(unit)
+            if section and section_chars + unit_chars > share:
+                sections.append(section)
+                section = []
+                section_chars = 0
+            section.extend(unit)
+            section_chars += unit_chars
+        if section:
+            sections.append(section)
         return sections
 
+    @classmethod
+    def _section_chars(cls, entries):
+        return sum(cls._entry_chars(entry) for entry in entries)
+
     @staticmethod
-    def _section_key(batch):
-        breadcrumb = batch.breadcrumb or ""
-        return breadcrumb.split(" > ")[0].strip()
+    def _entry_chars(entry):
+        _, batch = entry
+        return sum(len(text) for text in batch.block_texts)
+
+    @classmethod
+    def _window_entries(cls, entries, share):
+        """Chunk a contiguous run of (index, batch) entries into windows of
+        roughly one worker share each; every window keeps at least one entry."""
+        windows = []
+        window = []
+        window_chars = 0
+        for entry in entries:
+            entry_chars = cls._entry_chars(entry)
+            if window and window_chars + entry_chars > share:
+                windows.append(window)
+                window = []
+                window_chars = 0
+            window.append(entry)
+            window_chars += entry_chars
+        if window:
+            windows.append(window)
+        return windows
 
     def _translate_section(self, section, results, report):
         """Translate one section's batches in reading order on an isolated
