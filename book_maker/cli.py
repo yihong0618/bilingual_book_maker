@@ -287,7 +287,18 @@ def main():
         dest="translate_tags",
         type=str,
         default="p",
-        help="example --translate-tags p,blockquote",
+        help="CSS selectors for tags to translate, comma-separated. "
+        "Supports tag names (p), tag.class (div.Para), or mixed (p,div.Para,blockquote). "
+        "Use --scan to detect potentially untranslated tags first. "
+        "Example: --translate-tags p,div.Para",
+    )
+    parser.add_argument(
+        "--scan",
+        dest="scan",
+        action="store_true",
+        default=False,
+        help="Scan the EPUB for potentially untranslated text content and print a report. "
+        "Does not perform translation. Use this to discover which tags to add to --translate-tags.",
     )
     parser.add_argument(
         "--exclude-translate-tags",
@@ -468,6 +479,23 @@ So you are close to reaching the limit. You have to choose your own value, there
     if PROXY != "":
         os.environ["http_proxy"] = PROXY
         os.environ["https_proxy"] = PROXY
+
+    # --scan mode: only needs EPUB file, no translation model or API key
+    if options.scan:
+        book_type = options.book_name.split(".")[-1]
+        if book_type != "epub":
+            print("Error: --scan is only supported for EPUB files.")
+            exit(1)
+        from book_maker.loader.epub_loader import EPUBBookLoader
+        from ebooklib import epub
+
+        loader = object.__new__(EPUBBookLoader)
+        loader.origin_book = epub.read_epub(options.book_name)
+        loader.translate_tags = options.translate_tags or "p"
+        loader.exclude_filelist = options.exclude_filelist or ""
+        loader.only_filelist = options.only_filelist or ""
+        loader.scan_untranslated_tags()
+        exit(0)
 
     provider_cfg = None
     if options.provider:
