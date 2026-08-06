@@ -607,6 +607,76 @@ def assign_poetry_groups(units, group_size=8, next_group_id=0):
     return next_group_id
 
 
+# --------------------------------------------------- short-unit windows
+
+# A unit this small is a page number, a verse reference, a one-word label —
+# never a paragraph. Same threshold the poetry median uses.
+SHORT_UNIT_MAX_CHARS = 70
+
+# Cap on a windowed batch, so one window of apparatus costs about what one
+# poetry stanza costs.
+GROUP_MAX_CHARS = 500
+
+
+def assign_short_unit_groups(units, group_size=8, next_group_id=0):
+    """Second tier: window consecutive short units the poetry pass left alone.
+
+    Greedy partitioning turns every page number, verse reference and stray
+    label into a unit of its own — thousands of them in books like the
+    Rigveda. The poetry pass only groups structural siblings, so a page
+    number followed by a verse number followed by a two-word label would be
+    three requests. Here any consecutive run of still-ungrouped short units
+    is windowed regardless of tag or signature, capped by both line count
+    and characters.
+
+    A run of one is left solo (group_id None): there is nothing to batch it
+    with, and grouping it alone would only churn the plan.
+    """
+    runs = []
+    current = []
+    for unit in units:
+        if unit.group_id is None and unit.chars < SHORT_UNIT_MAX_CHARS:
+            current.append(unit)
+            continue
+        if len(current) > 1:
+            runs.append(current)
+        current = []
+    if len(current) > 1:
+        runs.append(current)
+
+    for run in runs:
+        window, window_chars = [], 0
+        for unit in run:
+            over_cap = (
+                len(window) >= group_size or window_chars + unit.chars > GROUP_MAX_CHARS
+            )
+            if window and over_cap:
+                if len(window) > 1:
+                    for u in window:
+                        u.group_id = next_group_id
+                    next_group_id += 1
+                window, window_chars = [], 0
+            window.append(unit)
+            window_chars += unit.chars
+        if len(window) > 1:
+            for u in window:
+                u.group_id = next_group_id
+            next_group_id += 1
+
+    return next_group_id
+
+
+def assign_groups(units, group_size=8, next_group_id=0):
+    """Group units into batched requests: poetry stanzas first, then the
+    short-unit sweep over whatever is left. Returns the next unused id."""
+    next_group_id = assign_poetry_groups(
+        units, group_size=group_size, next_group_id=next_group_id
+    )
+    return assign_short_unit_groups(
+        units, group_size=group_size, next_group_id=next_group_id
+    )
+
+
 def partition_file(
     soup,
     resolver,
@@ -616,11 +686,11 @@ def partition_file(
     poetry_group_size=8,
     next_group_id=0,
 ):
-    """partition_soup + poetry grouping; the one entry point loaders use."""
+    """partition_soup + grouping; the one entry point loaders use."""
     fp = partition_soup(
         soup, resolver, file_name, exclude_tags=exclude_tags, overrides=overrides
     )
-    next_group_id = assign_poetry_groups(
+    next_group_id = assign_groups(
         fp.units, group_size=poetry_group_size, next_group_id=next_group_id
     )
     return fp, next_group_id

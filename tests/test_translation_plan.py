@@ -10,6 +10,7 @@ Fixtures:
 import os
 import shutil
 import zipfile
+from collections import Counter
 from io import StringIO
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from book_maker.loader.plan import (
     build_plan,
     classify_skip,
     parse_css_display,
+    partition_file,
     partition_soup,
     unit_clean_text,
 )
@@ -398,6 +400,76 @@ class TestPoetryGrouping:
         fp = next(f for f in plan.files if "004" in f.file_name)
         prose = [u for u in fp.units if u.signature == "p.calibre_13"]
         assert prose and all(u.group_id is None for u in prose)
+
+
+class TestShortUnitGrouping:
+    """Tier 2: batch consecutive short units regardless of tag/signature.
+
+    Greedy partitioning turns page numbers, verse refs and one-word labels
+    into units of their own; tier 1 only groups structural siblings, so
+    mixed junk would be one request each.
+    """
+
+    LONG = (
+        "a fully formed prose sentence that runs well past the short-unit "
+        "cut-off and therefore never joins a window"
+    )
+
+    def _units(self, html, group_size=8):
+        soup = bs(html, "html.parser")
+        fp, _ = partition_file(
+            soup, DisplayResolver([]), "x.html", poetry_group_size=group_size
+        )
+        return fp.units
+
+    def test_mixed_short_run_is_windowed(self):
+        # three different tags: tier 1 rejects the run (not siblings), tier 2
+        # takes it — one request instead of three
+        units = self._units(
+            "<body><p class='pn'>42</p><div class='vn'>1.1.1</div>"
+            f"<h3 class='lbl'>Ch.</h3><p>{self.LONG}</p></body>"
+        )
+        short, long_unit = units[:3], units[3]
+        assert len({u.group_id for u in short}) == 1
+        assert short[0].group_id is not None
+        assert long_unit.group_id is None
+
+    def test_isolated_short_unit_stays_solo(self):
+        units = self._units(
+            f"<body><p>{self.LONG}</p><div class='pn'>42</div><p>{self.LONG}</p></body>"
+        )
+        assert [u.group_id for u in units] == [None, None, None]
+
+    def _mixed_rows(self, n, body=lambda i: str(i)):
+        # alternating tag names so tier 1 never forms a run of its own
+        return "".join(
+            f"<{'p' if i % 2 else 'div'} class='v{i}'>{body(i)}"
+            f"</{'p' if i % 2 else 'div'}>"
+            for i in range(n)
+        )
+
+    def test_window_capped_by_line_count(self):
+        units = self._units(f"<body>{self._mixed_rows(20)}</body>", group_size=8)
+        sizes = Counter(u.group_id for u in units)
+        assert None not in sizes
+        assert sorted(sizes.values()) == [4, 8, 8]
+
+    def test_window_capped_by_chars(self):
+        # 60-char units with a generous line cap: characters must bite first
+        rows = self._mixed_rows(9, body=lambda i: f"{'x' * 58} {i}")
+        units = self._units(f"<body>{rows}</body>", group_size=50)
+        sizes = Counter(u.group_id for u in units)
+        assert max(sizes.values()) == 8  # 8 x 60 = 480 <= 500, 9th overflows
+        for gid in sizes:
+            chars = sum(u.chars for u in units if u.group_id == gid)
+            assert chars <= 500
+
+    def test_poetry_grouping_wins_over_the_sweep(self):
+        # a real stanza must keep its tier-1 boundaries, not be re-windowed
+        stanza = "".join(f"<div class='line'>verse line {i}</div>" for i in range(4))
+        units = self._units(f"<body><div class='st'>{stanza}</div></body>")
+        assert len({u.group_id for u in units}) == 1
+        assert all(u.group_id is not None for u in units)
 
 
 # ------------------------------------------------------------ whole books
