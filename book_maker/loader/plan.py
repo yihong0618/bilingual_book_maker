@@ -60,6 +60,21 @@ PLAN_SCHEMA_VERSION = 3
 # plan JSONs written before schema 3 still load, mapped to plain "translate".
 VALID_PLAN_ACTIONS = frozenset(["translate", "skip", "llm-skip", "force-translate"])
 
+# Evidence carried per signature in the plan JSON. Enough that an agent (or a
+# person) can rule on a signature without unzipping the book; capped because
+# the JSON is read into a context window.
+SIGNATURE_SAMPLE_CAP = 5
+SAMPLE_MAX_CHARS = 80
+
+
+def clip_sample(text):
+    """Truncate a sample visibly: a silent mid-word cut reads as corrupted
+    text and biases the judgment toward "skip"."""
+    if len(text) <= SAMPLE_MAX_CHARS:
+        return text
+    return text[:SAMPLE_MAX_CHARS] + "…"
+
+
 # --------------------------------------------------------------------- CSS
 
 # Tags that are block-level by HTML default (for our purpose: an element that
@@ -733,21 +748,26 @@ class TranslationPlan:
             for u in f.units:
                 row = stats.setdefault(
                     u.signature,
-                    {
-                        "signature": u.signature,
-                        "units": 0,
-                        "chars": 0,
-                        "sample": u.text,
-                    },
+                    {"signature": u.signature, "units": 0, "chars": 0, "samples": []},
                 )
                 row["units"] += 1
                 row["chars"] += u.chars
+                # distinct texts: five copies of the same running head prove
+                # less than one of each of five different lines
+                if (
+                    len(row["samples"]) < SIGNATURE_SAMPLE_CAP
+                    and u.text not in row["samples"]
+                ):
+                    row["samples"].append(u.text)
         rows = sorted(stats.values(), key=lambda r: -r["chars"])
         total = self.total_chars or 1
         for row in rows:
             row["pct"] = round(100 * row["chars"] / total, 1)
             row["action"] = "translate"
-            row["sample"] = row["sample"][:60]
+            row["samples"] = [clip_sample(s) for s in row["samples"]]
+            # kept for one version: readers of older plan JSONs (and report())
+            # still expect a single short `sample`
+            row["sample"] = row["samples"][0][:60] if row["samples"] else ""
         return rows
 
     def report(self, max_rows=25):

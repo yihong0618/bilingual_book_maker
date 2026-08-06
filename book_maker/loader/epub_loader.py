@@ -1,8 +1,10 @@
+import builtins
 import hashlib
 import json
 import os
 import pickle
 import re
+import shlex
 import string
 import sys
 import time
@@ -32,7 +34,7 @@ from .plan import (
     load_plan_overrides,
     partition_file,
 )
-from .classify import PlanClassifyError, classify_plan
+from .classify import PlanClassifyError, build_agent_prompt, classify_plan
 
 
 class EPUBBookLoader(BaseBookLoader):
@@ -86,7 +88,7 @@ class EPUBBookLoader(BaseBookLoader):
         # plan mode (--translate-tags auto): coverage-complete partition
         self.plan_min_coverage = 0.5
         self.poetry_group_size = 8
-        self.plan_classify = True
+        self.plan_classify = "none"  # none | model | agent, see .classify
         self.plan_classify_model = None  # user-chosen classifier; failure blocks
         self._plan_css = None
         self._plan_overrides = None
@@ -317,8 +319,11 @@ class EPUBBookLoader(BaseBookLoader):
         """Build the coverage-complete plan; fail loud below the coverage gate."""
         name, _ = os.path.splitext(self.epub_name)
         plan_path = f"{name}_plan.json"
+        # agent mode hands the plan over on the run that creates it, and
+        # translates on the run that finds one already there
+        plan_existed = os.path.exists(plan_path)
         overrides = None
-        if os.path.exists(plan_path):
+        if plan_existed:
             overrides = load_plan_overrides(plan_path, self.epub_name)
             if overrides:
                 print(
@@ -405,7 +410,29 @@ class EPUBBookLoader(BaseBookLoader):
                 f"{plan_path}, or lower --plan-min-coverage.[/bold red]"
             )
             raise SystemExit(1)
+
+        if self.plan_classify == "agent" and not plan_existed:
+            # Stop here: translating now would spend the whole book before
+            # anyone looked at the questions the plan is asking. A rerun
+            # finds the (possibly edited) plan and goes straight through.
+            # builtins.print, not rich: this block is meant to be copied, and
+            # rich would hard-wrap the paths and the rerun command mid-token.
+            builtins.print(
+                build_agent_prompt(plan_path, self.epub_name, self._rerun_command())
+            )
+            raise SystemExit(0)
         return plan
+
+    @staticmethod
+    def _rerun_command():
+        """The command that will translate once the plan is edited.
+
+        Reconstructed from argv so the printed instructions name the user's
+        actual invocation (their book, their model, their language) — a
+        generic example would have to be translated back by hand.
+        """
+        parts = [shlex.quote(a) for a in sys.argv]
+        return " ".join(["python3", *parts])
 
     def _build_partitioned_plan(self):
         """The plan is built from the same cached partitions the processing
@@ -436,7 +463,7 @@ class EPUBBookLoader(BaseBookLoader):
         stops the run. The default (the translating model) degrades to a
         printed notice: the heuristics already made a safe plan.
         """
-        if not self.plan_classify:
+        if self.plan_classify != "model":
             return {}
         try:
             actions, candidates = classify_plan(

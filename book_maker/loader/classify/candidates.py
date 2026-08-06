@@ -6,10 +6,13 @@ coding agent to judge. Keeping the selection in one place is what makes
 the two entries comparable — they answer the same question, differently.
 """
 
+from ..plan import SIGNATURE_SAMPLE_CAP, clip_sample
+
 # 5, not a bare minimum: a misjudged signature loses real content, and a
-# few more sample lines per signature are cheap insurance on a single call
-SAMPLES_PER_SIGNATURE = 5
-SAMPLE_MAX_CHARS = 80
+# few more sample lines per signature are cheap insurance on a single call.
+# Same budget the plan JSON carries, so the two entries show the same
+# evidence.
+SAMPLES_PER_SIGNATURE = SIGNATURE_SAMPLE_CAP
 # Above this share of the book a signature is its prose spine; whether the
 # spine gets translated is never in question.
 UNCERTAIN_MAX_PCT = 10.0
@@ -21,14 +24,6 @@ UNCERTAIN_UNIQUE_RATIO = 0.5
 # every chapter title. gpt-4o-mini demoted h2.chapter_title on the first
 # live run of this classifier.
 CERTAIN_TAGS = frozenset(["h1", "h2", "h3", "h4", "h5", "h6"])
-
-
-def clip(text):
-    """Truncate a sample visibly: a silent mid-word cut reads as corrupted
-    text and biases the judgment toward "skip"."""
-    if len(text) <= SAMPLE_MAX_CHARS:
-        return text
-    return text[:SAMPLE_MAX_CHARS] + "…"
 
 
 def uncertain_candidates(plan, overrides=None):
@@ -71,7 +66,9 @@ def uncertain_candidates(plan, overrides=None):
                 "signature": sig,
                 "units": row["units"],
                 "chars": row["chars"],
-                "samples": [clip(t) for t in uniq[::step][:SAMPLES_PER_SIGNATURE]],
+                "samples": [
+                    clip_sample(t) for t in uniq[::step][:SAMPLES_PER_SIGNATURE]
+                ],
             }
         )
     return out

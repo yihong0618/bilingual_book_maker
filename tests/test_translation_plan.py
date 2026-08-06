@@ -1497,6 +1497,7 @@ class TestLoaderClassifyPolicy:
 
     def _loader(self, tmp_path):
         loader, _ = _make_loader(tmp_path, FakeModel)
+        loader.plan_classify = "model"
         return loader
 
     def _uncertain_plan(self):
@@ -1515,9 +1516,18 @@ class TestLoaderClassifyPolicy:
             loader._classify_plan(self._uncertain_plan())
         assert excinfo.value.code == 1
 
-    def test_flag_off_disables_classification(self, tmp_path):
+    def test_none_mode_disables_classification(self, tmp_path):
         loader = self._loader(tmp_path)
-        loader.plan_classify = False
+        loader.plan_classify = "none"
+        loader.translate_model = FakeClassifier(
+            {"p.header": {"content_type": "running head", "verdict": "skip"}}
+        )
+        assert loader._classify_plan(self._uncertain_plan()) == {}
+        assert loader.translate_model.calls == []
+
+    def test_agent_mode_never_calls_the_model(self, tmp_path):
+        loader = self._loader(tmp_path)
+        loader.plan_classify = "agent"
         loader.translate_model = FakeClassifier(
             {"p.header": {"content_type": "running head", "verdict": "skip"}}
         )
@@ -1646,3 +1656,77 @@ class TestAgentPrompt:
         text = " ".join(self._prompt().split())
         assert "leave it alone" in text
         assert "losing content is not" in text
+
+
+class TestAgentModeFlow:
+    """agent mode writes the plan, prints instructions, and stops. Stopping
+    is the feature: translating first would spend the book before anyone
+    looked at the questions."""
+
+    def test_first_run_writes_plan_prints_prompt_and_does_not_translate(
+        self, tmp_path, capsys
+    ):
+        import json
+
+        loader, src = _make_loader(tmp_path, FakeModel)
+        loader.plan_classify = "agent"
+
+        with pytest.raises(SystemExit) as excinfo:
+            loader.make_bilingual_book()
+        assert excinfo.value.code == 0
+
+        plan_path = src.parent / (src.stem + "_plan.json")
+        assert plan_path.exists()
+        out = capsys.readouterr().out
+        assert "Paste the block below" in out
+        assert str(plan_path) in out
+        # nothing was translated, and no book was produced
+        assert loader.translate_model.list_calls == []
+        assert not (src.parent / (src.stem + "_bilingual.epub")).exists()
+
+        rows = json.loads(plan_path.read_text())["signatures"]
+        assert all("samples" in r for r in rows)
+        assert any(len(r["samples"]) > 1 for r in rows)
+
+    def test_second_run_translates_using_the_edited_plan(self, tmp_path):
+        import json
+
+        loader, src = _make_loader(tmp_path, FakeModel)
+        loader.plan_classify = "agent"
+        loader.only_filelist = "index_split_004.html"
+        with pytest.raises(SystemExit):
+            loader.make_bilingual_book()
+
+        plan_path = src.parent / (src.stem + "_plan.json")
+        data = json.loads(plan_path.read_text())
+        for sig in data["signatures"]:
+            if sig["signature"] == "blockquote.calibre_17":
+                sig["action"] = "skip"
+        plan_path.write_text(json.dumps(data))
+
+        # same command again: the plan is on disk, so it translates
+        loader2, _ = _make_loader(tmp_path, FakeModel)
+        loader2.plan_classify = "agent"
+        loader2.only_filelist = "index_split_004.html"
+        loader2.make_bilingual_book()
+
+        assert (src.parent / (src.stem + "_bilingual.epub")).exists()
+        sent = [t for call in loader2.translate_model.list_calls for t in call]
+        assert sent, "second run must translate"
+        assert not any("Beasts of every land and clime" in t for t in sent)
+
+    def test_samples_are_distinct_and_clipped(self, tmp_path):
+        import json
+
+        loader, src = _make_loader(tmp_path, FakeModel)
+        loader.plan_classify = "agent"
+        with pytest.raises(SystemExit):
+            loader.make_bilingual_book()
+
+        rows = json.loads((src.parent / (src.stem + "_plan.json")).read_text())[
+            "signatures"
+        ]
+        for row in rows:
+            assert len(row["samples"]) == len(set(row["samples"]))
+            assert len(row["samples"]) <= 5
+            assert all(len(s) <= 81 for s in row["samples"])  # 80 + ellipsis

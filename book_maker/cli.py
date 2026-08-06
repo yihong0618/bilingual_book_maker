@@ -319,12 +319,19 @@ def main():
         "(default 8)",
     )
     parser.add_argument(
-        "--plan-no-classify",
-        dest="plan_no_classify",
-        action="store_true",
-        default=False,
-        help="in plan mode, skip the LLM classification of uncertain "
-        "signatures and keep the heuristic plan as-is",
+        "--plan-classify",
+        dest="plan_classify",
+        choices=["none", "model", "agent"],
+        default=None,
+        help="how to decide which tag signatures are worth translating. "
+        "Passing this flag turns plan mode on. "
+        "'none': translate the whole partition (default when the flag is "
+        "given without a value context). "
+        "'model': an LLM rules on the uncertain signatures in-pipeline, then "
+        "the run continues. "
+        "'agent': write the plan JSON with samples, print instructions to "
+        "paste into a coding-agent session, and stop before translating — "
+        "rerun the same command afterwards to translate",
     )
     parser.add_argument(
         "--plan-classify-model",
@@ -710,6 +717,20 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.sentence_mode = True
     if options.allow_navigable_strings:
         e.allow_navigable_strings = True
+    # --plan-classify-model names a classifier, which only makes sense in
+    # model mode; asking for it alongside 'agent' is a contradiction, not a
+    # preference to resolve silently.
+    classify_mode = options.plan_classify
+    if options.plan_classify_model:
+        if classify_mode == "agent":
+            print(
+                "[bold red]Error:[/bold red] --plan-classify-model cannot be "
+                "combined with --plan-classify agent (agent mode makes no API "
+                "call)"
+            )
+            exit(1)
+        classify_mode = "model"
+
     if options.translate_tags:
         if options.translate_tags == "auto" and book_type != "epub":
             print(
@@ -718,12 +739,21 @@ So you are close to reaching the limit. You have to choose your own value, there
             )
         else:
             e.translate_tags = options.translate_tags
+    # Choosing how to classify is choosing plan mode: the flag has no meaning
+    # for tag selection, and requiring both flags together is a papercut.
+    if classify_mode is not None and book_type == "epub":
+        if options.translate_tags and options.translate_tags != "auto":
+            print(
+                f"note: --plan-classify {classify_mode} implies plan mode; "
+                f"ignoring --translate-tags {options.translate_tags}"
+            )
+        e.translate_tags = "auto"
     if options.exclude_translate_tags:
         e.exclude_translate_tags = options.exclude_translate_tags
     if hasattr(e, "plan_min_coverage"):
         e.plan_min_coverage = options.plan_min_coverage
         e.poetry_group_size = options.poetry_group_size
-        e.plan_classify = not options.plan_no_classify
+        e.plan_classify = classify_mode or "none"
         e.plan_classify_model = options.plan_classify_model or None
     if options.exclude_filelist:
         e.exclude_filelist = options.exclude_filelist
