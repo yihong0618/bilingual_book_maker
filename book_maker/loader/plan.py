@@ -789,6 +789,9 @@ class TranslationPlan:
         total = self.total_chars or 1
         for row in rows:
             row["pct"] = round(100 * row["chars"] / total, 1)
+            # the same evidence the uncertainty heuristic keys on: a planner
+            # judging a null row should see what made it a candidate
+            row["mean_chars"] = round(row["chars"] / row["units"], 1)
             row["action"] = "translate"
             row["samples"] = [clip_sample(s) for s in row["samples"]]
             # kept for one version: readers of older plan JSONs (and report())

@@ -1191,6 +1191,21 @@ class TestEpubHardening:
         plan.save_json(str(path), book_path=str(ANIMAL_FARM))
         assert json.loads(path.read_text())["schema_version"] == PLAN_SCHEMA_VERSION
 
+    def test_rows_carry_the_evidence_a_planner_judges_from(self, tmp_path):
+        # tag name (signature), count, total + share, and average length:
+        # the same numbers the uncertainty heuristic keyed on
+        import json
+
+        plan = build_plan(epub.read_epub(str(ANIMAL_FARM)))
+        path = tmp_path / "p.json"
+        plan.save_json(str(path), book_path=str(ANIMAL_FARM))
+        rows = json.loads(path.read_text())["signatures"]
+        for row in rows:
+            assert row["units"] > 0
+            assert row["mean_chars"] == round(row["chars"] / row["units"], 1)
+            assert 0 <= row["pct"] <= 100
+            assert row["samples"]
+
     def test_resume_refused_across_schema_versions(self, tmp_path):
         import book_maker.loader.plan as plan_mod
         import book_maker.loader.epub_loader as loader_mod

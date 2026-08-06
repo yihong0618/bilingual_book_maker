@@ -37,6 +37,7 @@ How to read a signature row:
   signature   the tag and class the text lives in, e.g. "p.calibre_13"
   units       how many blocks in the book have this shape
   chars       how much text they hold in total (pct = share of the book)
+  mean_chars  average block length — running heads and labels run short
   samples     up to 5 real excerpts — the evidence to judge from
   action      null (decide!), "translate", or "skip"
   decided_by  present when a model, not you, chose the action
