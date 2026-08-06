@@ -171,11 +171,20 @@ class Base(ABC):
             "system_content" if hasattr(self, "system_content") else "prompt_sys_msg"
         )
 
+        # --use_context must see one pair per paragraph. translate() saves
+        # whatever it was handed, so letting it run on the joined batch would
+        # store a single entry full of "@@" markers and evict three real
+        # paragraphs of context. Suppress it here; save per pair on success,
+        # the way the structured batch path already does.
+        context_flag = getattr(self, "context_flag", False)
+
         try:
             # Set batch values
             setattr(self, prompt_attr, batch_prompt)
             if batch_sys_msg and hasattr(self, sys_msg_attr):
                 setattr(self, sys_msg_attr, batch_sys_msg)
+            if context_flag:
+                self.context_flag = False
 
             translated_text = translate_func(batch_text)
         finally:
@@ -183,6 +192,8 @@ class Base(ABC):
             setattr(self, prompt_attr, original_prompt)
             if original_sys_msg is not None and hasattr(self, sys_msg_attr):
                 setattr(self, sys_msg_attr, original_sys_msg)
+            if context_flag:
+                self.context_flag = True
 
         # Handle None or empty response
         if not translated_text:
@@ -208,6 +219,12 @@ class Base(ABC):
             for i, p in enumerate(translated_paragraphs, 1):
                 print(f"  [{i}] {p!r}")
             print()
+            # context_flag is restored here, so each single call saves its own
+            # pair — no extra bookkeeping needed on this path
             return [translate_func(t) for t in stripped_texts]
+
+        if context_flag:
+            for original, translated in zip(text_list, translated_paragraphs):
+                self.save_context(str(original).strip(), translated)
 
         return translated_paragraphs

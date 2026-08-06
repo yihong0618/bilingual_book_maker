@@ -715,3 +715,60 @@ def test_structured_json_targets_the_requested_model():
     probed = create.call_args_list[0].kwargs["model"]
     asked = create.call_args_list[1].kwargs["model"]
     assert probed == asked == "clf-model"
+
+
+# --------------------------------------------------------------------------
+# Delimiter batches must feed --use_context one pair per paragraph, never the
+# joined blob: the blob would put "@@" markers into every later prompt and
+# collapse three paragraphs of context into one unusable entry.
+# --------------------------------------------------------------------------
+
+
+def _delimiter_translator(joined_translation):
+    translator = _translator(create=Mock(return_value=_completion(joined_translation)))
+    # no structured support -> translate_list takes the delimiter path
+    translator._structured_support["test-model"] = False
+    translator.context_flag = True
+    translator.context_paragraph_limit = 5
+    return translator
+
+
+def test_delimiter_batch_saves_context_per_paragraph():
+    translator = _delimiter_translator("一\n\n@@\n\n二")
+
+    assert translator.translate_list(["one", "two"]) == ["一", "二"]
+    assert translator.context_list == ["one", "two"]
+    assert translator.context_translated_list == ["一", "二"]
+
+
+def test_delimiter_batch_never_stores_the_joined_blob():
+    translator = _delimiter_translator("一\n\n@@\n\n二")
+
+    translator.translate_list(["one", "two"])
+
+    assert not any("@@" in c for c in translator.context_list)
+    assert not any("@@" in c for c in translator.context_translated_list)
+
+
+def test_delimiter_batch_context_survives_the_one_by_one_fallback():
+    # a short response forces the per-item fallback; each single translate
+    # saves its own context, and the blob must still not be stored
+    create = Mock(
+        side_effect=[_completion("只有一段"), _completion("一"), _completion("二")]
+    )
+    translator = _delimiter_translator("unused")
+    translator.openai_client.chat.completions.create = create
+
+    assert translator.translate_list(["one", "two"]) == ["一", "二"]
+    assert translator.context_list == ["one", "two"]
+    assert translator.context_translated_list == ["一", "二"]
+
+
+def test_context_flag_is_restored_when_the_batch_call_raises():
+    create = Mock(side_effect=RuntimeError("boom"))
+    translator = _delimiter_translator("unused")
+    translator.openai_client.chat.completions.create = create
+
+    with pytest.raises(Exception):
+        translator.translate_list(["one", "two"])
+    assert translator.context_flag is True
