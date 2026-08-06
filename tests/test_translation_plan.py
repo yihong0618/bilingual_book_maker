@@ -762,6 +762,56 @@ class TestLoaderPlanMode:
         sent = [t for call in loader.translate_model.list_calls for t in call]
         assert len(sent) <= 2
 
+    def test_parallel_plan_context_is_chapter_local(self, tmp_path):
+        # The plan branch drove the shared translate_model directly, so with
+        # --use_context every chapter appended into one global context_list:
+        # wrong reading order plus a data race. Each worker must translate
+        # through its own clone.
+        class ContextModel(FakeModel):
+            def __init__(self, key, language, **kwargs):
+                super().__init__(key, language, **kwargs)
+                self.context_flag = True
+                self.context_list = []
+                self.context_translated_list = []
+                self.seen_by_instance = []
+
+            def translate_list(self, text_list):
+                self.context_list.extend(text_list)
+                self.seen_by_instance.extend(text_list)
+                return super().translate_list(text_list)
+
+        loader, _ = _make_loader(tmp_path, ContextModel)
+        loader.set_parallel_workers(4)
+        loader.make_bilingual_book()
+
+        shared = loader.translate_model
+        # the shared instance must not have accumulated every chapter's text
+        assert shared.context_list == [], (
+            "parallel plan mode still writes context into the shared translator"
+        )
+
+    def test_sequential_plan_keeps_one_shared_context(self, tmp_path):
+        # reading order is correct sequentially, so cloning there would only
+        # throw away usable context
+        class ContextModel(FakeModel):
+            def __init__(self, key, language, **kwargs):
+                super().__init__(key, language, **kwargs)
+                self.context_flag = True
+                self.context_list = []
+                self.context_translated_list = []
+
+            def translate_list(self, text_list):
+                self.context_list.extend(text_list)
+                return super().translate_list(text_list)
+
+        loader, _ = _make_loader(tmp_path, ContextModel)
+        loader.only_filelist = "index_split_004.html"
+        loader.make_bilingual_book()
+
+        assert loader.translate_model.context_list, (
+            "sequential runs must keep accumulating shared context"
+        )
+
     def test_parallel_chapter_failure_fails_loud(self, tmp_path):
         # Finding #5: a failed chapter must not produce a "completed" book.
         class OneChapterExplodes(FakeModel):

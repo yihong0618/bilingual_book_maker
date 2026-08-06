@@ -576,24 +576,30 @@ class EPUBBookLoader(BaseBookLoader):
                 unit.element, t_text, translation_style, False
             )
 
-    def _translate_texts_aligned(self, texts):
+    def _translate_texts_aligned(self, texts, translator=None):
         """translate_list with an alignment ladder: group -> halves -> singles.
 
         A response with the wrong item count must never desync originals and
         translations; instead we split and retry until counts match.
+        `translator` defaults to the shared model; parallel chapters pass
+        their own clone so --use_context stays chapter-local.
         """
         if not texts:
             return []
+        translator = translator or self.translate_model
         try:
-            result = self.translate_model.translate_list(texts)
+            result = translator.translate_list(texts)
         except Exception as e:
-            if self.translate_model._fatal_error_detected:
+            if translator._fatal_error_detected:
+                # a clone's fatal flag must reach the shared model, or the
+                # other workers keep firing at an endpoint already known dead
+                self.translate_model._fatal_error_detected = True
                 print(
                     f"[bold red]Fatal translation error detected. "
                     f"Aborting translation.[/bold red]"
                 )
                 print(f"[bold red]Error: {str(e)}[/bold red]")
-                return [self.translate_model.TRANSLATION_ERROR_MARKER] * len(texts)
+                return [translator.TRANSLATION_ERROR_MARKER] * len(texts)
             print(f"[bold red]Translation error: {str(e)}[/bold red]")
             raise
         if len(result) == len(texts):
@@ -603,7 +609,7 @@ class EPUBBookLoader(BaseBookLoader):
             f"received {len(result)} — splitting for realignment[/bold red]"
         )
         if len(texts) == 1:
-            t = self.translate_model.translate(texts[0])
+            t = translator.translate(texts[0])
             if t is None:
                 raise RuntimeError(
                     "`t_text` is None: your translation model is not working as expected."
@@ -611,8 +617,8 @@ class EPUBBookLoader(BaseBookLoader):
             return [t]
         mid = len(texts) // 2
         return self._translate_texts_aligned(
-            texts[:mid]
-        ) + self._translate_texts_aligned(texts[mid:])
+            texts[:mid], translator
+        ) + self._translate_texts_aligned(texts[mid:], translator)
 
     def _insert_trans_preserving_tags(
         self, p, translated_text, translation_style="", single_translate=False
@@ -1263,6 +1269,8 @@ class EPUBBookLoader(BaseBookLoader):
             thread_translator = self._create_chapter_translator()
 
             if self._plan_mode:
+                # own context buffers: chapters run out of order here
+                plan_translator = self._clone_translator_for_context()
                 soup, fp = self._plan_partition(item, consume=True)
                 local = 0
                 for chunk in self._iter_plan_chunks(fp.units):
@@ -1287,7 +1295,7 @@ class EPUBBookLoader(BaseBookLoader):
                             fresh.append((unit, idx))
                     if fresh:
                         translated = self._translate_texts_aligned(
-                            [unit.text for unit, _ in fresh]
+                            [unit.text for unit, _ in fresh], plan_translator
                         )
                         for (unit, idx), t_text in zip(fresh, translated):
                             self._store_translation_at(idx, t_text)
@@ -1376,6 +1384,29 @@ class EPUBBookLoader(BaseBookLoader):
         """Create a translator instance for a specific chapter with independent context."""
         # Return the main translator - we'll handle context at the chapter level
         return self.translate_model
+
+    def _clone_translator_for_context(self):
+        """A translator with its own context buffers for one parallel chapter.
+
+        Plan mode drives translate_model directly, so with --use_context and
+        --parallel-workers every chapter appended into one global
+        context_list: paragraphs arrive out of reading order *and* two
+        threads mutate the same list. Cloning is shallow on purpose — keys,
+        model config and the API/probe locks stay shared (rate limiting and
+        the structured-output probe must remain global), only the mutable
+        context state is fresh.
+
+        Sequential runs keep the shared instance: there the accumulation is
+        in reading order and worth having.
+        """
+        if self.parallel_workers <= 1 or not getattr(
+            self.translate_model, "context_flag", False
+        ):
+            return self.translate_model
+        clone = copy(self.translate_model)
+        clone.context_list = []
+        clone.context_translated_list = []
+        return clone
 
     def _translate_with_chapter_context(
         self, translator, text, chapter_context_list, chapter_translated_list
