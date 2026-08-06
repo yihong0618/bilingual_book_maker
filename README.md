@@ -240,24 +240,48 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 
   **Auto mode (`--translate-tags auto`, epub only)**: instead of selecting tags, every text
   node in the book is either assigned to a translation unit or skipped for an explicit,
-  reported reason (line numbers, page-list navs, hidden content, symbols, ...). This is the
+  reported reason (hidden content, page-list navs, symbols, links, ...). This is the
   right choice for books whose text does not live in `<p>` — e.g. poetry rendered as
   per-line `<div>`s or `<blockquote>`s, which the default would silently skip. Runs of short
   verse lines are batched into stanza windows (up to `--poetry-group-size` lines, default 8)
   and translated in one request so the model sees neighboring lines for context.
 
+  Auto mode is deliberately greedy: it translates everything it cannot rule out
+  structurally, because guessing from shape used to drop real content (verse numbers,
+  one-word dialogue, drop caps) to save only 0–6% of characters. Deciding what is not
+  worth translating is `--plan-classify`'s job.
+
   - `--plan-dry-run`: print the per-signature coverage table, write `<book>_plan.json`, and
     exit. No API key or credits needed. Honors `--only_filelist` / `--exclude_filelist`.
   - `<book>_plan.json`: edit a signature's `"action"` to `"skip"` to exclude it from the
     real run; the file is never overwritten once it exists (delete it to regenerate).
+    Each row carries up to 5 real `samples` so you can judge without opening the epub.
   - `--plan-min-coverage` (default 0.5): auto mode aborts if the plan covers less than this
     fraction of the book's text, instead of silently translating a fraction of it.
+
+- `--plan-classify {none,model,agent}` (epub only):
+
+  Who decides which tag signatures are worth translating. **Passing this flag turns auto
+  mode on**, so `--translate-tags auto` is not needed alongside it.
+
+  - `none` (default when the flag is given no other way): translate the whole plan.
+  - `model`: an LLM rules on the uncertain signatures first (headings, the prose spine and
+    poetry groups are never asked about), then the run continues. Use
+    `--plan-classify-model X` to pick a different model for it — naming one implies this
+    mode, and a failure then aborts instead of falling back.
+  - `agent`: makes no API call. Writes the plan, prints a block of instructions to paste
+    into a coding-agent session (Claude Code, Codex, ...), and **stops before translating**.
+    Edit the actions, then rerun the same command to translate.
 
   ```shell
   # inspect what would be translated (free, no key needed)
   python3 make_book.py --book_name my_book.epub --plan-dry-run
   # translate with auto discovery
   python3 make_book.py --book_name my_book.epub --openai_key ${key} --translate-tags auto
+  # let a model triage the apparatus first
+  python3 make_book.py --book_name my_book.epub --openai_key ${key} --plan-classify model
+  # or hand the triage to a coding agent (stops, prints instructions, then rerun)
+  python3 make_book.py --book_name my_book.epub --openai_key ${key} --plan-classify agent
   ```
 
 - `--exclude-translate-tags`:
