@@ -832,15 +832,15 @@ class TranslationPlan:
             lines.append(f"short-unit windows: {windowed_units} units batched")
         return "\n".join(lines)
 
-    def to_dict(self, book_path=None, llm_actions=None):
+    def to_dict(self, book_path=None, llm_actions=None, pending=None):
         signatures = self.signature_rows()
+        by_sig = {r["signature"]: r for r in signatures}
         if llm_actions:
             # LLM verdicts round-trip as ordinary signature actions, marked as
             # machine-decided so user edits stay distinguishable. Under greedy
             # partitioning every candidate signature is a real unit signature,
             # so an unknown one means the classifier answered about something
             # this plan never asked — a bug, not a row to synthesize.
-            by_sig = {r["signature"]: r for r in signatures}
             unknown = set(llm_actions) - set(by_sig)
             if unknown:
                 raise ValueError(
@@ -850,6 +850,19 @@ class TranslationPlan:
             for sig, action in llm_actions.items():
                 by_sig[sig]["action"] = action
                 by_sig[sig]["decided_by"] = "llm"
+        if pending:
+            # agent mode's open questions: a null action is one the planner
+            # has not answered yet, and load_plan_overrides refuses to
+            # translate while any remain. Same unknown-signature rule as
+            # llm_actions — asking about a row the plan lacks is a bug.
+            unknown = set(pending) - set(by_sig)
+            if unknown:
+                raise ValueError(
+                    f"pending list names {len(unknown)} signature(s) "
+                    f"absent from the plan: {sorted(unknown)[:5]}"
+                )
+            for sig in pending:
+                by_sig[sig]["action"] = None
         if not book_path:
             # the hash is what binds a plan to its book; a plan without one
             # cannot be validated on load, so it must never be written
@@ -867,10 +880,12 @@ class TranslationPlan:
         }
         return data
 
-    def save_json(self, path, book_path=None, llm_actions=None):
+    def save_json(self, path, book_path=None, llm_actions=None, pending=None):
         with open(path, "w", encoding="utf-8") as f:
             json.dump(
-                self.to_dict(book_path=book_path, llm_actions=llm_actions),
+                self.to_dict(
+                    book_path=book_path, llm_actions=llm_actions, pending=pending
+                ),
                 f,
                 ensure_ascii=False,
                 indent=1,
@@ -924,13 +939,19 @@ def load_plan_overrides(json_path, book_path):
             "truncated; delete it and rerun to regenerate"
         )
     bad = []
+    undecided = []
     for s in signatures:
         if not isinstance(s, dict) or not s.get("signature"):
             bad.append(("<malformed row>", s))
+        elif "action" in s and s["action"] is None:
+            # an explicit null is agent mode's open question — unanswered,
+            # not damaged. Refusing separately gives the planner its real
+            # instruction: decide, don't fix syntax.
+            undecided.append(s["signature"])
         elif s.get("action") not in VALID_PLAN_ACTIONS:
-            # None and "" are as illegal as a misspelling: every row we
-            # write carries an action, so a falsy one means the edit broke
-            # the row and the user's intent for it is unknown
+            # "" and a missing key are as illegal as a misspelling: every
+            # row we write carries an action, so a broken one means the
+            # edit damaged the row and the user's intent for it is unknown
             bad.append((s["signature"], s.get("action")))
     if bad:
         listed = ", ".join(f"{sig}: {act!r}" for sig, act in bad[:5])
@@ -939,6 +960,15 @@ def load_plan_overrides(json_path, book_path):
             f"Valid actions are: {', '.join(sorted(VALID_PLAN_ACTIONS))}. "
             f"Fix the action in that file, or delete the file "
             f"and rerun to regenerate a fresh plan."
+        )
+    if undecided:
+        listed = ", ".join(undecided[:10])
+        raise ValueError(
+            f"{json_path} has {len(undecided)} undecided signature(s) — "
+            f"{listed}. Each null action is a question the plan is asking; "
+            f'set every one to "translate" or "skip" (judge from its '
+            f"samples), then rerun. Translation refuses to start while any "
+            f"remain."
         )
     overrides = {}
     legacy_forced = 0

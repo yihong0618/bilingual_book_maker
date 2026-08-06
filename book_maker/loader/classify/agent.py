@@ -28,30 +28,39 @@ translation plan is at:
 
     {plan_path}
 
-It lists every HTML tag signature in {book_path}. Please decide, for each
-signature, whether its text should be translated or kept as is.
+It lists every HTML tag signature in {book_path}. Rows whose "action" is
+null are the plan's open questions: decide each one. The translate run
+will refuse to start while any null remains — there is no default to
+fall back on, and answering none of them is not an option.
 
 How to read a signature row:
   signature   the tag and class the text lives in, e.g. "p.calibre_13"
   units       how many blocks in the book have this shape
-  chars       how much text they hold in total
-  samples     up to 5 real excerpts — judge from these
-  action      "translate" (default) or "skip"
+  chars       how much text they hold in total (pct = share of the book)
+  samples     up to 5 real excerpts — the evidence to judge from
+  action      null (decide!), "translate", or "skip"
   decided_by  present when a model, not you, chose the action
 
-What to do:
-1. Read the file and look at each signature's samples.
+What to do, for every null row:
+1. Read its samples and name what the text is — prose, verse, dialogue,
+   heading, caption, running head, page or line number, manuscript
+   sigla, cross-reference label, publisher boilerplate, decorative
+   marker. Name first, then rule: deciding before naming invites
+   rationalizing.
 2. Set "action" to "skip" for text a reader does not want translated:
-   running heads, page or line numbers, manuscript sigla, cross-reference
-   labels, publisher boilerplate, decorative markers.
-3. Leave "action" as "translate" for real book content: prose, verse,
-   dialogue, headings, captions. When the samples do not settle it, leave
-   it alone — translating something unnecessary is cheap, losing content
-   is not.
+   running heads, page or line numbers, sigla, cross-reference labels,
+   boilerplate, decorative markers.
+3. Set "action" to "translate" for real book content: prose, verse,
+   dialogue, headings, captions. When the samples do not settle it,
+   choose "translate" — translating something unnecessary is cheap,
+   losing content is not.
 4. Edit only "action" fields. Never touch "book_sha256" or
    "schema_version": they are what keeps the plan matched to this book.
 5. Want more evidence than the samples give? Read the book's own markup:
    unzip -p "{book_path}" <file-from-the-plan> | grep -n '<class>'
+
+You may also change a non-null row if its samples convince you, but the
+nulls are the required work.
 
 When you are done, tell me and I will run:
 

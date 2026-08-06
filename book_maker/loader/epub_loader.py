@@ -35,7 +35,12 @@ from .plan import (
     load_plan_overrides,
     partition_file,
 )
-from .classify import PlanClassifyError, build_agent_prompt, classify_plan
+from .classify import (
+    PlanClassifyError,
+    build_agent_prompt,
+    classify_plan,
+    gather_candidates,
+)
 
 
 class EPUBBookLoader(BaseBookLoader):
@@ -433,8 +438,24 @@ class EPUBBookLoader(BaseBookLoader):
             # actions (and load_plan_overrides already verified its hash)
             print(f"using existing plan {plan_path}")
         elif not llm_actions:
-            plan.save_json(plan_path, book_path=self.epub_name)
-            print(f"plan written to {plan_path} (edit signature actions to override)")
+            pending = None
+            if self.plan_classify == "agent":
+                # uncertain signatures go out with action null: an open
+                # question, not a translate default. A rerun that answers
+                # none of them is refused by load_plan_overrides — the
+                # greedy all-translate shortcut must not be reachable by
+                # simply rerunning the command.
+                pending = [c["signature"] for c in gather_candidates(plan)]
+            plan.save_json(plan_path, book_path=self.epub_name, pending=pending)
+            if pending:
+                print(
+                    f"plan written to {plan_path} with {len(pending)} "
+                    f"undecided signature(s) (null actions must be resolved)"
+                )
+            else:
+                print(
+                    f"plan written to {plan_path} (edit signature actions to override)"
+                )
 
         if plan.coverage < self.plan_min_coverage:
             print(

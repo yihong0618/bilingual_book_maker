@@ -1694,6 +1694,75 @@ class TestClassifyPlanArtifact:
         with pytest.raises(ValueError, match="invalid action.*skiip"):
             load_plan_overrides(str(path), str(ANIMAL_FARM))
 
+    def test_pending_signatures_written_as_null(self, tmp_path):
+        # candidates go out undecided: a null action is a question, not a
+        # default, and the planner must answer it
+        import json
+
+        heads = [_cunit("p.header", "GILGAMESH") for _ in range(3)]
+        plan = _cplan([PROSE, *heads])
+        path = tmp_path / "book_plan.json"
+        plan.save_json(str(path), book_path=str(ANIMAL_FARM), pending=["p.header"])
+
+        by_sig = {r["signature"]: r for r in json.loads(path.read_text())["signatures"]}
+        assert by_sig["p.header"]["action"] is None
+        assert by_sig["p"]["action"] == "translate"
+
+    def test_pending_for_an_unplanned_signature_fails_loud(self, tmp_path):
+        plan = _cplan([PROSE])
+        with pytest.raises(ValueError, match="absent from the plan"):
+            plan.save_json(
+                str(tmp_path / "book_plan.json"),
+                book_path=str(ANIMAL_FARM),
+                pending=["td.gone"],
+            )
+
+    def test_undecided_null_refuses_to_load(self, tmp_path):
+        # an unanswered question must stop the run, not silently translate
+        from book_maker.loader.plan import load_plan_overrides
+
+        heads = [_cunit("p.header", "GILGAMESH") for _ in range(3)]
+        plan = _cplan([PROSE, *heads])
+        path = tmp_path / "book_plan.json"
+        plan.save_json(str(path), book_path=str(ANIMAL_FARM), pending=["p.header"])
+
+        with pytest.raises(ValueError, match="undecided.*p\\.header"):
+            load_plan_overrides(str(path), str(ANIMAL_FARM))
+
+    def test_resolved_null_loads_as_override(self, tmp_path):
+        import json
+
+        from book_maker.loader.plan import load_plan_overrides
+
+        heads = [_cunit("p.header", "GILGAMESH") for _ in range(3)]
+        plan = _cplan([PROSE, *heads])
+        path = tmp_path / "book_plan.json"
+        plan.save_json(str(path), book_path=str(ANIMAL_FARM), pending=["p.header"])
+        data = json.loads(path.read_text())
+        for row in data["signatures"]:
+            if row["signature"] == "p.header":
+                row["action"] = "skip"
+        path.write_text(json.dumps(data))
+
+        assert load_plan_overrides(str(path), str(ANIMAL_FARM)) == {"p.header": "skip"}
+
+    def test_row_missing_its_action_key_is_still_invalid(self, tmp_path):
+        # only an explicit null means "undecided"; a vanished key means the
+        # edit damaged the row
+        import json
+
+        from book_maker.loader.plan import load_plan_overrides
+
+        plan = _cplan([PROSE])
+        path = tmp_path / "book_plan.json"
+        plan.save_json(str(path), book_path=str(ANIMAL_FARM))
+        data = json.loads(path.read_text())
+        del data["signatures"][0]["action"]
+        path.write_text(json.dumps(data))
+
+        with pytest.raises(ValueError, match="invalid action"):
+            load_plan_overrides(str(path), str(ANIMAL_FARM))
+
 
 class TestLoaderClassifyPolicy:
     """Failure policy: an explicitly chosen classifier model blocks, the
@@ -1858,8 +1927,15 @@ class TestAgentPrompt:
     def test_prompt_states_the_asymmetry_of_mistakes(self):
         # wrapped prose, so compare on collapsed whitespace
         text = " ".join(self._prompt().split())
-        assert "leave it alone" in text
         assert "losing content is not" in text
+
+    def test_prompt_demands_a_decision_for_every_null(self):
+        text = " ".join(self._prompt().split())
+        assert "null" in text
+        assert "refuse" in text
+        # the same discipline the model schema enforces: name the content
+        # before ruling on it
+        assert "name what the text is" in text
 
 
 class TestAgentModeFlow:
@@ -1891,6 +1967,22 @@ class TestAgentModeFlow:
         rows = json.loads(plan_path.read_text())["signatures"]
         assert all("samples" in r for r in rows)
         assert any(len(r["samples"]) > 1 for r in rows)
+        # the uncertain signatures arrive as open questions, not defaults:
+        # a lazy rerun that answers none of them must not translate
+        nulls = {r["signature"] for r in rows if r["action"] is None}
+        assert nulls == {"blockquote.calibre_7", "p.calibre_15"}
+
+    def test_rerun_refuses_while_nulls_remain(self, tmp_path):
+        loader, src = _make_loader(tmp_path, FakeModel)
+        loader.plan_classify = "agent"
+        with pytest.raises(SystemExit):
+            loader.make_bilingual_book()
+
+        loader2, _ = _make_loader(tmp_path, FakeModel)
+        loader2.plan_classify = "agent"
+        with pytest.raises(ValueError, match="undecided"):
+            loader2.make_bilingual_book()
+        assert loader2.translate_model.list_calls == []
 
     def test_second_run_translates_using_the_edited_plan(self, tmp_path):
         import json
@@ -1906,6 +1998,9 @@ class TestAgentModeFlow:
         for sig in data["signatures"]:
             if sig["signature"] == "blockquote.calibre_17":
                 sig["action"] = "skip"
+            elif sig["action"] is None:
+                # answer the plan's open question (blockquote.calibre_7)
+                sig["action"] = "translate"
         plan_path.write_text(json.dumps(data))
 
         # same command again: the plan is on disk, so it translates
