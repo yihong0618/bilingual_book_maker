@@ -843,6 +843,13 @@ class ChatGPTAPI(Base):
         """Execute the actual structured batch translation with tenacity retry"""
         self.rotate_key()
         self.rotate_model()
+        if not self._ensure_structured_support(self.model):
+            # eligibility was decided for the model current at call time, but
+            # rotation may have moved us to a different one: a model that
+            # never passed the probe must not be handed a schema
+            raise StructuredOutputUnsupported(
+                f"'{self.model}' has no strict structured-output support"
+            )
 
         messages = self._create_structured_batch_messages(text_list)
 

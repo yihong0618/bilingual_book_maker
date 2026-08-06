@@ -30,6 +30,7 @@ from .plan import (
     PLAN_SCHEMA_VERSION,
     BookCss,
     TranslationPlan,
+    file_sha256,
     is_fixed_layout,
     load_plan_overrides,
     partition_file,
@@ -347,6 +348,16 @@ class EPUBBookLoader(BaseBookLoader):
             )
 
         plan = self._build_partitioned_plan()
+        if plan.total_chars == 0:
+            # coverage of an empty plan is vacuously 100%; a plan that
+            # selected nothing is a wrong filter, not a covered book. Gate
+            # before anything is classified or written to disk.
+            print(
+                f"[bold red]The plan selected no translatable text "
+                f"({len(plan.files)} document(s) matched). Check "
+                f"--only_filelist / --exclude_filelist for typos.[/bold red]"
+            )
+            raise SystemExit(1)
 
         # LLM classification runs exactly once, on the run that creates the
         # plan JSON: from then on the JSON is the source of truth (user edits
@@ -376,6 +387,11 @@ class EPUBBookLoader(BaseBookLoader):
             json.dumps(
                 {
                     "schema_version": PLAN_SCHEMA_VERSION,
+                    # the book itself is part of the slots' meaning: a
+                    # replaced epub at the same path has a different unit
+                    # list, and deleting the (sha-mismatching) plan JSON must
+                    # not resurrect the old book's cache
+                    "book_sha256": file_sha256(self.epub_name),
                     "overrides": overrides or {},
                     "exclude_tags": sorted(self._exclude_tags_tuple()),
                     "only_filelist": self.only_filelist,
@@ -391,10 +407,22 @@ class EPUBBookLoader(BaseBookLoader):
         ):
             print(
                 f"[bold red]The resume cache {self.bin_path} was written under "
-                f"a different plan (edited plan JSON, or changed "
-                f"--exclude-translate-tags / file filters). Its slots no "
-                f"longer line up with the current unit list; delete it to "
+                f"a different plan (edited plan JSON, changed book file, or "
+                f"changed --exclude-translate-tags / file filters). Its slots "
+                f"no longer line up with the current unit list; delete it to "
                 f"start over, or restore the previous settings.[/bold red]"
+            )
+            raise SystemExit(1)
+        if self.resume and self.p_to_save and self._resume_plan_fingerprint is None:
+            # a legacy list-format cache (tag-mode run): its slots index a
+            # p-tag sequence, not this plan's unit list — positionally
+            # meaningless here, and replaying it would pair units with
+            # unrelated translations
+            print(
+                f"[bold red]The resume cache {self.bin_path} was written by a "
+                f"tag-mode run and carries no plan fingerprint; its slots do "
+                f"not correspond to plan units. Delete it to start "
+                f"over.[/bold red]"
             )
             raise SystemExit(1)
 
@@ -635,6 +663,11 @@ class EPUBBookLoader(BaseBookLoader):
                 return [translator.TRANSLATION_ERROR_MARKER] * len(texts)
             print(f"[bold red]Translation error: {str(e)}[/bold red]")
             raise
+        if translator._fatal_error_detected:
+            # some translators (gemini) mark fatal and return error markers
+            # instead of raising — the flag must still reach the shared
+            # model, or a clone's death stays invisible to other workers
+            self.translate_model._fatal_error_detected = True
         if len(result) == len(texts):
             return result
         print(
@@ -1439,6 +1472,12 @@ class EPUBBookLoader(BaseBookLoader):
         clone = copy(self.translate_model)
         clone.context_list = []
         clone.context_translated_list = []
+        if hasattr(clone, "create_convo"):
+            # gemini keeps context in its chat object, not the lists above —
+            # a shallow copy would share one convo across chapters (a thread
+            # race and cross-chapter context bleed). Fresh chat, shared
+            # client.
+            clone.create_convo()
         return clone
 
     def _translate_with_chapter_context(
@@ -1905,6 +1944,17 @@ class EPUBBookLoader(BaseBookLoader):
             self._resume_plan_fingerprint = None
             self.p_to_save = data
 
+    def _item_in_processing_set(self, file_name):
+        """Whether the processing pass translates this document.
+
+        The positional resume cache is written over the *filtered* item
+        sequence, so any replay (recovery book included) must walk exactly
+        the same selection or slots shift onto unrelated text.
+        """
+        if self.only_filelist != "":
+            return file_name in self.only_filelist.split(",")
+        return file_name not in self.exclude_filelist.split(",")
+
     def _save_temp_book(self):
         # TODO refactor this logic
         origin_book_temp = epub.read_epub(self.epub_name)
@@ -1914,6 +1964,16 @@ class EPUBBookLoader(BaseBookLoader):
         index = 0
         try:
             for item in origin_book_temp.get_items():
+                if (
+                    item.get_type() == ITEM_DOCUMENT
+                    and not self._item_in_processing_set(item.file_name)
+                ):
+                    # untranslated pass-through; consumes no cache slots.
+                    # (an only-list drops the item from the real output, but
+                    # the recovery book keeps it readable — slots stay
+                    # aligned either way because none are consumed here)
+                    new_temp_book.add_item(item)
+                    continue
                 if item.get_type() == ITEM_DOCUMENT:
                     content = item.content
                     soup = bs(content, "html.parser")

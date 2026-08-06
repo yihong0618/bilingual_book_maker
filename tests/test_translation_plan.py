@@ -7,6 +7,7 @@ Fixtures:
   div.poetry_line*; tests skip if the file is absent.
 """
 
+import copy as copy_mod
 import os
 import shutil
 import zipfile
@@ -32,6 +33,7 @@ from book_maker.loader.plan import (
 
 REPO = Path(__file__).resolve().parent.parent
 ANIMAL_FARM = REPO / "test_books" / "animal_farm.epub"
+LIBER_ESTHER = REPO / "test_books" / "Liber_Esther.epub"
 GILGAMESH = REPO / "gilgamesh.epub"
 
 needs_gilgamesh = pytest.mark.skipif(
@@ -1124,7 +1126,7 @@ class TestEpubHardening:
 
         plan = build_plan(epub.read_epub(str(ANIMAL_FARM)))
         path = tmp_path / "p.json"
-        plan.save_json(str(path))
+        plan.save_json(str(path), book_path=str(ANIMAL_FARM))
         assert json.loads(path.read_text())["schema_version"] == PLAN_SCHEMA_VERSION
 
     def test_resume_refused_across_schema_versions(self, tmp_path):
@@ -1154,6 +1156,106 @@ class TestEpubHardening:
             assert excinfo.value.code == 1
         finally:
             loader_mod.PLAN_SCHEMA_VERSION = old
+
+    def test_resume_refuses_a_legacy_tag_mode_cache(self, tmp_path):
+        # review finding: a cache from an ordinary --translate-tags p run is
+        # a bare list with no fingerprint. Its slots index a p-tag sequence,
+        # not the plan's unit list, so replaying it positionally pairs
+        # headings and verse lines with unrelated prose translations.
+        import pickle
+
+        import book_maker.loader.epub_loader as loader_mod
+
+        loader, src = _make_loader(tmp_path, FakeModel)
+        with open(loader.bin_path, "wb") as f:
+            pickle.dump(["translated p 1", "translated p 2"], f)
+
+        resumed = loader_mod.EPUBBookLoader(
+            str(src), FakeModel, "dummy-key", resume=True, language="zh-hans"
+        )
+        resumed.plan_mode = True
+        resumed.translate_tags = "auto"
+        with pytest.raises(SystemExit) as excinfo:
+            resumed.make_bilingual_book()
+        assert excinfo.value.code == 1
+
+    def test_resume_refused_after_the_book_file_changes(self, tmp_path):
+        # review finding: deleting the (sha-mismatching) plan JSON is the
+        # documented recovery from a replaced book — the cache must not
+        # survive it and apply the old book's translations to new units.
+        import book_maker.loader.epub_loader as loader_mod
+
+        class ExplodesOnBeasts(FakeModel):
+            def translate_list(self, text_list):
+                if any("Beasts of England" in t for t in text_list):
+                    raise RuntimeError("boom")
+                return super().translate_list(text_list)
+
+        loader, src = _make_loader(tmp_path, ExplodesOnBeasts)
+        with pytest.raises(SystemExit):
+            loader.make_bilingual_book()
+
+        shutil.copy(LIBER_ESTHER, src)  # same path, different book
+        (src.parent / (src.stem + "_plan.json")).unlink()
+
+        resumed = loader_mod.EPUBBookLoader(
+            str(src), FakeModel, "dummy-key", resume=True, language="zh-hans"
+        )
+        resumed.plan_mode = True
+        resumed.translate_tags = "auto"
+        with pytest.raises(SystemExit) as excinfo:
+            resumed.make_bilingual_book()
+        assert excinfo.value.code == 1
+
+    def test_empty_filtered_plan_fails_loud(self, tmp_path):
+        # review finding: coverage of an empty plan is vacuously 100%, so a
+        # misspelled --only_filelist used to pass the gate and produce a
+        # book with every document dropped
+        loader, _ = _make_loader(tmp_path, FakeModel)
+        loader.only_filelist = "no_such_file.html"
+        with pytest.raises(SystemExit) as excinfo:
+            loader.make_bilingual_book()
+        assert excinfo.value.code == 1
+
+    def test_clone_fatal_flag_propagates_without_an_exception(self, tmp_path):
+        # review finding: gemini marks itself fatal and returns error
+        # markers instead of raising, so a clone's death stayed invisible to
+        # the shared model and the other workers kept firing
+        loader, _ = _make_loader(tmp_path, FakeModel)
+        clone = copy_mod.copy(loader.translate_model)
+        clone.context_list = []
+        clone.context_translated_list = []
+
+        def marker_return(text_list):
+            clone._fatal_error_detected = True
+            return [clone.TRANSLATION_ERROR_MARKER] * len(text_list)
+
+        clone.translate_list = marker_return
+        loader._translate_texts_aligned(["one", "two"], clone)
+        assert loader.translate_model._fatal_error_detected
+
+    def test_recovery_book_replay_honors_file_filters(self, tmp_path):
+        # review finding: the positional cache is written over the filtered
+        # item sequence, so a recovery book that walks every document
+        # consumes slot 0 in an unselected chapter and shifts every
+        # translation onto unrelated text
+        loader, src = _make_loader(tmp_path, FakeModel)
+        loader.only_filelist = "index_split_004.html"
+        loader.make_bilingual_book()
+        loader._save_temp_book()
+
+        temp = src.parent / (src.stem + "_bilingual_temp.epub")
+        with zipfile.ZipFile(temp) as z:
+            early = next(
+                n for n in z.namelist() if "index_split_002" in n and n.endswith("html")
+            )
+            selected = next(
+                n for n in z.namelist() if "index_split_004" in n and n.endswith("html")
+            )
+            early_text = z.read(early).decode("utf-8", "ignore")
+            selected_text = z.read(selected).decode("utf-8", "ignore")
+        assert "T[" not in early_text, "unselected chapter consumed cache slots"
+        assert "T[" in selected_text
 
     # -- item 10: fixed layout ---------------------------------------------
 
@@ -1467,7 +1569,9 @@ class TestClassifyPlanArtifact:
         heads = [_cunit("p.header", "GILGAMESH") for _ in range(3)]
         plan = _cplan([PROSE, *heads])
         path = tmp_path / "book_plan.json"
-        plan.save_json(str(path), llm_actions={"p.header": "llm-skip"})
+        plan.save_json(
+            str(path), book_path=str(ANIMAL_FARM), llm_actions={"p.header": "llm-skip"}
+        )
 
         data = json.loads(path.read_text())
         assert data["schema_version"] == 3
@@ -1478,7 +1582,7 @@ class TestClassifyPlanArtifact:
         assert by_sig["p"]["action"] == "translate"
         assert "decided_by" not in by_sig["p"]
 
-        assert load_plan_overrides(str(path), "unused-book-path") == {
+        assert load_plan_overrides(str(path), str(ANIMAL_FARM)) == {
             "p.header": "llm-skip"
         }
 
@@ -1489,7 +1593,9 @@ class TestClassifyPlanArtifact:
         plan = _cplan([PROSE])
         with pytest.raises(ValueError, match="absent from the plan"):
             plan.save_json(
-                str(tmp_path / "book_plan.json"), llm_actions={"td.gone": "llm-skip"}
+                str(tmp_path / "book_plan.json"),
+                book_path=str(ANIMAL_FARM),
+                llm_actions={"td.gone": "llm-skip"},
             )
 
     def test_legacy_force_translate_loads_as_plain_translate(self, tmp_path, capsys):
@@ -1501,12 +1607,12 @@ class TestClassifyPlanArtifact:
 
         plan = _cplan([PROSE])
         path = tmp_path / "book_plan.json"
-        plan.save_json(str(path))
+        plan.save_json(str(path), book_path=str(ANIMAL_FARM))
         data = json.loads(path.read_text())
         data["signatures"][0]["action"] = "force-translate"
         path.write_text(json.dumps(data))
 
-        assert load_plan_overrides(str(path), "unused-book-path") == {}
+        assert load_plan_overrides(str(path), str(ANIMAL_FARM)) == {}
         assert "force-translate" in capsys.readouterr().out
 
     def test_unknown_action_in_plan_json_fails_loud(self, tmp_path):
@@ -1518,13 +1624,13 @@ class TestClassifyPlanArtifact:
 
         plan = _cplan([PROSE])
         path = tmp_path / "book_plan.json"
-        plan.save_json(str(path))
+        plan.save_json(str(path), book_path=str(ANIMAL_FARM))
         data = json.loads(path.read_text())
         data["signatures"][0]["action"] = "skiip"
         path.write_text(json.dumps(data))
 
-        with pytest.raises(ValueError, match="unknown action.*skiip"):
-            load_plan_overrides(str(path), "unused-book-path")
+        with pytest.raises(ValueError, match="invalid action.*skiip"):
+            load_plan_overrides(str(path), str(ANIMAL_FARM))
 
 
 class TestLoaderClassifyPolicy:

@@ -827,6 +827,10 @@ class TranslationPlan:
             for sig, action in llm_actions.items():
                 by_sig[sig]["action"] = action
                 by_sig[sig]["decided_by"] = "llm"
+        if not book_path:
+            # the hash is what binds a plan to its book; a plan without one
+            # cannot be validated on load, so it must never be written
+            raise ValueError("plan JSON requires book_path to bind its sha256")
         data = {
             "schema_version": PLAN_SCHEMA_VERSION,
             "coverage": self.coverage,
@@ -836,7 +840,7 @@ class TranslationPlan:
             "exclude_tags": list(self.exclude_tags),
             "poetry_group_size": self.poetry_group_size,
             "signatures": signatures,
-            "book_sha256": _sha256(book_path) if book_path else None,
+            "book_sha256": file_sha256(book_path),
         }
         return data
 
@@ -850,7 +854,7 @@ class TranslationPlan:
             )
 
 
-def _sha256(path):
+def file_sha256(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
@@ -866,8 +870,17 @@ def load_plan_overrides(json_path, book_path):
     """
     with open(json_path, encoding="utf-8") as f:
         data = json.load(f)
+    # Fail closed: a plan without its hash or its rows is a damaged plan,
+    # not a plan with no opinions. Accepting it would silently translate
+    # with default actions — worst in agent mode, where the file existing
+    # at all is what suppresses the review stop.
     saved_hash = data.get("book_sha256")
-    if saved_hash and saved_hash != _sha256(book_path):
+    if not saved_hash:
+        raise ValueError(
+            f"{json_path} carries no book_sha256 — it is damaged or not a "
+            "plan JSON; delete it and rerun to regenerate"
+        )
+    if saved_hash != file_sha256(book_path):
         raise ValueError(
             f"{json_path} was generated from a different book "
             "(sha256 mismatch); delete it or regenerate with --plan-dry-run"
@@ -881,24 +894,34 @@ def load_plan_overrides(json_path, book_path):
             f"{saved_version}, current is {PLAN_SCHEMA_VERSION}; signatures "
             f"may have shifted — regenerate with --plan-dry-run to be sure"
         )
-    unknown = [
-        (s.get("signature"), s["action"])
-        for s in data.get("signatures", [])
-        if s.get("action") and s["action"] not in VALID_PLAN_ACTIONS
-    ]
-    if unknown:
-        listed = ", ".join(f"{sig}: {act!r}" for sig, act in unknown)
+    signatures = data.get("signatures")
+    if not isinstance(signatures, list) or not signatures:
         raise ValueError(
-            f"{json_path} carries unknown action(s) — {listed}. "
+            f"{json_path} has no signature rows — it is damaged or "
+            "truncated; delete it and rerun to regenerate"
+        )
+    bad = []
+    for s in signatures:
+        if not isinstance(s, dict) or not s.get("signature"):
+            bad.append(("<malformed row>", s))
+        elif s.get("action") not in VALID_PLAN_ACTIONS:
+            # None and "" are as illegal as a misspelling: every row we
+            # write carries an action, so a falsy one means the edit broke
+            # the row and the user's intent for it is unknown
+            bad.append((s["signature"], s.get("action")))
+    if bad:
+        listed = ", ".join(f"{sig}: {act!r}" for sig, act in bad[:5])
+        raise ValueError(
+            f"{json_path} carries invalid action(s) — {listed}. "
             f"Valid actions are: {', '.join(sorted(VALID_PLAN_ACTIONS))}. "
-            f"Fix the misspelled action in that file, or delete the file "
+            f"Fix the action in that file, or delete the file "
             f"and rerun to regenerate a fresh plan."
         )
     overrides = {}
     legacy_forced = 0
-    for s in data.get("signatures", []):
-        action = s.get("action")
-        if not action or action == "translate":
+    for s in signatures:
+        action = s["action"]
+        if action == "translate":
             continue
         if action == "force-translate":
             # schema <=2 escape hatch for the trivial filter, which no longer
