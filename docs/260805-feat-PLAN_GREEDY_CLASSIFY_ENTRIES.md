@@ -228,6 +228,66 @@ A second, independent review pass over the committed range then found:
 - The "Verified live" model-loop transcript quoted a CLI note that the
   redesign had already removed (annotated above).
 
+## Third pass: Codex adversarial review
+
+The whole PR was then handed to Codex as an adversarial reviewer (findings in
+`codex-findings.md`, method and evidence in
+`docs/260805-eval-PR545_ADVERSARIAL_CODE_REVIEW.md`). 14 findings; every one
+was reproduced or refuted before touching code.
+
+| # | finding | outcome |
+|---|---|---|
+| 1 | plan mode replays a legacy tag-mode resume cache positionally | fixed — refuse the cache and exit 1 |
+| 2 | resume fingerprint not bound to the book file | fixed — `book_sha256` in the fingerprint |
+| 3 | Gemini clones share one mutable `convo` | fixed — clone calls `create_convo()` |
+| 4 | clone fatal flag propagates only when translation *raises* | fixed — flag copied on marker returns too |
+| 5 | `<br>` boundaries corrupt output | **half real** — see below |
+| 6 | recovery EPUB replay ignores `--only_filelist` | fixed — `_item_in_processing_set` gate |
+| 7 | an empty filtered plan reports 100% coverage | fixed — fail loud right after the build |
+| 8 | CSS resolution depends on class-attribute order | fixed — `DisplayResolver` resolves by source order |
+| 9 | plan-JSON validation is fail-open | fixed — fail-closed on hash, rows and actions |
+| 10 | translation schema has no target-language constraint | resolved by merging main (#544) |
+| 11 | structured batch probes one model, then rotates to another | fixed — re-probe after rotation or raise |
+| 12 | tier-2 windows treated as poetry | already fixed in the second pass, concurrently |
+| 13 | the 10% boundary is excluded, the docs say otherwise | comment fixed; behaviour kept |
+| 14 | the invariant excludes XHTML `<head>` text | invariant reworded to the rendered `<body>` |
+
+Three deserve more than a row.
+
+**#5 was half a bug.** The claim covered both output modes; only one held. Run
+side by side on `<p>one<br/>two<br/>three</p>`, bilingual mode produced
+identical markup in plan mode and tag mode — no defect. Single-translate plan
+mode produced `<p>YI ER SAN<br/><br/></p>` against tag mode's clean
+`<p>YI ER SAN</p>`: the `<br>`s separated text nodes that had just been
+replaced by one translation, so they separated nothing. The fix removes only
+breaks sitting between two nodes the unit owns; leading, trailing and
+foreign breaks stay (`test_single_translate_keeps_breaks_it_does_not_own`).
+Splitting units at `<br>`, the reviewer's suggested fix, would have changed
+grouping and the plan schema to solve a problem one of the two modes did not
+have.
+
+**#12 arrived three minutes after the fix.** The review snapshot predates
+`9434633`; two independent passes found the same tier-2/poetry conflation,
+which is a fair signal it was the most findable bug in the diff.
+
+**#13 and #14 are doc/code mismatches, not defects.** Both were resolved by
+correcting the prose: the 10% boundary is inclusive on purpose (an unasked
+signature keeps its `translate` default, and over-translating is the cheap
+error), and the partition invariant was only ever a claim about the rendered
+body — spine `<title>` text is not rendered and is not accounted.
+
+Also fixed while merging main: #544's language-schema test primes the probe
+cache with `True`, but this branch stores verdicts, so it silently fell
+through to the no-schema path. Seeded `"strict"`.
+
+Suite after the merge: **307 passed, 3 skipped**, in ~112s. The three
+failures in a full run — `test_deepl_free_translate_epub` (PyDeepLX vs the
+installed httpx: `Client.__init__() got an unexpected keyword argument
+'proxies'`), `test_openai_translate_epub_ja_prompt_txt` (`--model gpt3`), and
+`test_pdf_layouts` (no reportlab) — are environment-bound and predate the
+branch. Most of the wall clock is `tests/test_integration.py` making live
+OpenAI calls (~70s of 112s in three tests).
+
 ## Deviations from the written plan
 
 - `structured_json` returns a parsed object on every rung and does the
