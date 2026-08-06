@@ -436,13 +436,11 @@ class TestPoetryGrouping:
         assert prose and all(u.group_id is None for u in prose)
 
 
-class TestShortUnitGrouping:
-    """Tier 2: batch consecutive short units regardless of tag/signature.
-
-    Greedy partitioning turns page numbers, verse refs and one-word labels
-    into units of their own; tier 1 only groups structural siblings, so
-    mixed junk would be one request each.
-    """
+class TestNoShortUnitSweep:
+    """Grouping means poetry only. A second tier that windowed leftover
+    short units was measured at 5-33 saved requests per book (0.5-4%) and
+    removed — not worth its nondeterministic window membership, and it
+    caused the tier-2/poetry classification conflation bug."""
 
     LONG = (
         "a fully formed prose sentence that runs well past the short-unit "
@@ -456,62 +454,22 @@ class TestShortUnitGrouping:
         )
         return fp.units
 
-    def test_mixed_short_run_is_windowed(self):
-        # three different tags: tier 1 rejects the run (not siblings), tier 2
-        # takes it — one request instead of three
+    def test_mixed_short_run_stays_solo(self):
+        # three different tags: not a poetry run, and no sweep exists to
+        # batch them — one request each, classifier judges each signature
         units = self._units(
             "<body><p class='pn'>42</p><div class='vn'>1.1.1</div>"
             f"<h3 class='lbl'>Ch.</h3><p>{self.LONG}</p></body>"
         )
-        short, long_unit = units[:3], units[3]
-        assert len({u.group_id for u in short}) == 1
-        assert short[0].group_id is not None
-        assert long_unit.group_id is None
+        assert [u.group_id for u in units] == [None, None, None, None]
+        assert not any(u.poetry for u in units)
 
-    def test_isolated_short_unit_stays_solo(self):
-        units = self._units(
-            f"<body><p>{self.LONG}</p><div class='pn'>42</div><p>{self.LONG}</p></body>"
-        )
-        assert [u.group_id for u in units] == [None, None, None]
-
-    def _mixed_rows(self, n, body=lambda i: str(i)):
-        # alternating tag names so tier 1 never forms a run of its own
-        return "".join(
-            f"<{'p' if i % 2 else 'div'} class='v{i}'>{body(i)}"
-            f"</{'p' if i % 2 else 'div'}>"
-            for i in range(n)
-        )
-
-    def test_window_capped_by_line_count(self):
-        units = self._units(f"<body>{self._mixed_rows(20)}</body>", group_size=8)
-        sizes = Counter(u.group_id for u in units)
-        assert None not in sizes
-        assert sorted(sizes.values()) == [4, 8, 8]
-
-    def test_window_capped_by_chars(self):
-        # 60-char units with a generous line cap: characters must bite first
-        rows = self._mixed_rows(9, body=lambda i: f"{'x' * 58} {i}")
-        units = self._units(f"<body>{rows}</body>", group_size=50)
-        sizes = Counter(u.group_id for u in units)
-        assert max(sizes.values()) == 8  # 8 x 60 = 480 <= 500, 9th overflows
-        for gid in sizes:
-            chars = sum(u.chars for u in units if u.group_id == gid)
-            assert chars <= 500
-
-    def test_poetry_grouping_wins_over_the_sweep(self):
-        # a real stanza must keep its tier-1 boundaries, not be re-windowed
+    def test_poetry_still_groups(self):
         stanza = "".join(f"<div class='line'>verse line {i}</div>" for i in range(4))
         units = self._units(f"<body><div class='st'>{stanza}</div></body>")
         assert len({u.group_id for u in units}) == 1
         assert all(u.group_id is not None for u in units)
         assert all(u.poetry for u in units)
-
-    def test_windows_are_not_marked_poetry(self):
-        # the tiers share group_id but must stay distinguishable: verse is
-        # exempt from classification, windowed apparatus is not
-        units = self._units(f"<body>{self._mixed_rows(6)}</body>")
-        assert all(u.group_id is not None for u in units)
-        assert not any(u.poetry for u in units)
 
 
 # ------------------------------------------------------------ whole books
@@ -1460,13 +1418,11 @@ class TestClassifyCandidates:
         cands = gather_candidates(_cplan([PROSE, *verses]))
         assert cands == []
 
-    def test_tier2_windowed_apparatus_is_still_a_candidate(self):
-        # review finding: both grouping tiers share group_id, and the poetry
-        # exemption used to key on it — any apparatus signature that landed
-        # in a tier-2 window silently vanished from the classifier's
-        # question list. Built through the real pipeline, not hand-set
-        # group_ids, so the exemption is tested against what assign_groups
-        # actually does.
+    def test_short_apparatus_from_the_real_pipeline_is_a_candidate(self):
+        # built through partition_file, not hand-set group_ids, so the
+        # exemption is tested against what assign_groups actually does —
+        # this is the test that caught the removed second grouping tier
+        # silently exempting windowed apparatus from classification
         rows = "".join(
             f"<p class='pn'>4{i}</p><div class='vn'>1.{i}</div>" for i in range(10)
         )
@@ -1474,7 +1430,7 @@ class TestClassifyCandidates:
         soup = bs(f"<body><p class='txt'>{prose}</p>{rows}</body>", "html.parser")
         fp, _ = partition_file(soup, DisplayResolver([]), "x.html")
         short = [u for u in fp.units if u.signature in ("p.pn", "div.vn")]
-        assert short and all(u.group_id is not None for u in short)
+        assert short and not any(u.poetry for u in short)
         plan = TranslationPlan([fp], ("sup", "code"), 8)
         cands = gather_candidates(plan)
         assert {c["signature"] for c in cands} == {"p.pn", "div.vn"}

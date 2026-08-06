@@ -141,15 +141,14 @@ partition → group → plan JSON → your edits → coverage gate → translate
    prints and checks the invariant
    `total_chars == translated + sum(skip reasons)`. Nothing is silently
    dropped — anything questionable surfaces as a signature for you to judge.
-2. **Grouping, tier 1 (poetry)**: sibling runs whose line median is short
+2. **Grouping (poetry only)**: sibling runs whose line median is short
    are stanza-shaped; they are windowed (`--poetry-group-size`, default 8
    lines/request) so verse gets translated with its neighbors as context.
-3. **Grouping, tier 2 (short-unit sweep)**: leftover short units are packed
-   into small windows purely to save per-request overhead. These are *not*
-   poetry and stay classification candidates.
-4. **Plan JSON**: one row per tag signature (`p.calibre_13` …) with unit
+   Everything else is one request per unit — short apparatus is judged by
+   classification, not batched away.
+3. **Plan JSON**: one row per tag signature (`p.calibre_13` …) with unit
    count, char total, up to 5 real samples, and an `action`.
-5. **Your edits**, then at translate time: fail-closed validation plus a
+4. **Your edits**, then at translate time: fail-closed validation plus a
    coverage gate — if the edited plan would translate less than
    `--plan-min-coverage` (default 0.5) of the book's text, hard stop.
 

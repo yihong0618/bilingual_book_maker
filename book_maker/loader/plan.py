@@ -484,9 +484,9 @@ class Unit:
     text: str
     chars: int
     group_id: int = None
-    # set by the tier-1 poetry pass only. Tier-2 short-unit windows share
-    # group_id (both batch into one request) but must stay distinguishable:
-    # verse is exempt from classification, windowed apparatus is not.
+    # kept explicit rather than inferred from group_id: grouping and the
+    # classification exemption are separate meanings, and conflating them
+    # already caused one bug when a second grouping tier briefly existed
     poetry: bool = False
     nodes: list = None  # the exact text nodes this unit owns (same soup)
 
@@ -648,72 +648,17 @@ def assign_poetry_groups(units, group_size=8, next_group_id=0):
     return next_group_id
 
 
-# --------------------------------------------------- short-unit windows
-
-# A unit this small is a page number, a verse reference, a one-word label —
-# never a paragraph. Same threshold the poetry median uses.
-SHORT_UNIT_MAX_CHARS = 70
-
-# Cap on a windowed batch, so one window of apparatus costs about what one
-# poetry stanza costs.
-GROUP_MAX_CHARS = 500
-
-
-def assign_short_unit_groups(units, group_size=8, next_group_id=0):
-    """Second tier: window consecutive short units the poetry pass left alone.
-
-    Greedy partitioning turns every page number, verse reference and stray
-    label into a unit of its own — thousands of them in books like the
-    Rigveda. The poetry pass only groups structural siblings, so a page
-    number followed by a verse number followed by a two-word label would be
-    three requests. Here any consecutive run of still-ungrouped short units
-    is windowed regardless of tag or signature, capped by both line count
-    and characters.
-
-    A run of one is left solo (group_id None): there is nothing to batch it
-    with, and grouping it alone would only churn the plan.
-    """
-    runs = []
-    current = []
-    for unit in units:
-        if unit.group_id is None and unit.chars < SHORT_UNIT_MAX_CHARS:
-            current.append(unit)
-            continue
-        if len(current) > 1:
-            runs.append(current)
-        current = []
-    if len(current) > 1:
-        runs.append(current)
-
-    for run in runs:
-        window, window_chars = [], 0
-        for unit in run:
-            over_cap = (
-                len(window) >= group_size or window_chars + unit.chars > GROUP_MAX_CHARS
-            )
-            if window and over_cap:
-                if len(window) > 1:
-                    for u in window:
-                        u.group_id = next_group_id
-                    next_group_id += 1
-                window, window_chars = [], 0
-            window.append(unit)
-            window_chars += unit.chars
-        if len(window) > 1:
-            for u in window:
-                u.group_id = next_group_id
-            next_group_id += 1
-
-    return next_group_id
-
-
 def assign_groups(units, group_size=8, next_group_id=0):
-    """Group units into batched requests: poetry stanzas first, then the
-    short-unit sweep over whatever is left. Returns the next unused id."""
-    next_group_id = assign_poetry_groups(
-        units, group_size=group_size, next_group_id=next_group_id
-    )
-    return assign_short_unit_groups(
+    """Group units into batched requests. Returns the next unused id.
+
+    Poetry stanza windows only. A second tier that swept leftover short
+    units into windows was measured across four real books at 5-33 saved
+    requests each (0.5-4%) — not worth its window-membership
+    nondeterminism, and it caused the tier-2/poetry classification
+    conflation bug. Removed; the classifier judges short apparatus
+    signature-by-signature instead.
+    """
+    return assign_poetry_groups(
         units, group_size=group_size, next_group_id=next_group_id
     )
 
@@ -821,18 +766,10 @@ class TranslationPlan:
             skip_desc = ", ".join(f"{k}={v}" for k, v in skipped.most_common())
             lines.append(f"skipped: {skip_desc}")
         poetry_units = sum(1 for f in self.files for u in f.units if u.poetry)
-        windowed_units = sum(
-            1
-            for f in self.files
-            for u in f.units
-            if u.group_id is not None and not u.poetry
-        )
         lines.append(
             f"poetry-grouped units: {poetry_units} "
             f"(window <= {self.poetry_group_size} lines)"
         )
-        if windowed_units:
-            lines.append(f"short-unit windows: {windowed_units} units batched")
         return "\n".join(lines)
 
     def to_dict(self, book_path=None, llm_actions=None, pending=None):

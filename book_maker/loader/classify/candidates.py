@@ -42,9 +42,8 @@ def uncertain_candidates(plan, overrides=None):
     poetry_sigs = set()
     for f in plan.files:
         for u in f.units:
-            # u.poetry, not u.group_id: tier-2 short-unit windows also carry
-            # a group_id, but they batch page numbers and labels — exactly
-            # what the classifier exists to rule on, never exempt
+            # u.poetry, not u.group_id: the exemption is about verse being
+            # verse, not about how units happen to be batched
             if u.poetry:
                 poetry_sigs.add(u.signature)
             row = stats.setdefault(u.signature, {"units": 0, "chars": 0, "texts": []})
