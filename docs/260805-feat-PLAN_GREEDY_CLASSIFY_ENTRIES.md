@@ -173,16 +173,30 @@ Run flow: `most` and `model` translate in one run (model classifies first).
 translating first would spend the whole book before anyone looked at the
 questions. Rerunning the same command finds the plan and translates.
 
+**Null actions (added later on 260805, user directive):** the agent-mode
+plan originally went out with every row defaulted to `"translate"`, so a
+rerun that edited nothing silently produced the greedy result — exactly
+the lazy path a planner must not have. Candidate (uncertain) signatures
+are now written with `"action": null`; `load_plan_overrides` refuses to
+translate while any null remains and lists them. Certain rows (prose
+spine, headings, poetry) keep the translate default. Only an explicit
+null means undecided — a row *missing* its action key is still invalid
+(damaged). `--plan-dry-run` still writes fully-decided plans (documented:
+it pins the decisions).
+
 The printed block is self-contained, so no skill needs to be installed: it
 explains the row fields, the judgment call (with the asymmetry stated —
 translating something unnecessary is cheap, losing content is not), the edit
 contract (`action` only, never `book_sha256`), a deeper-sampling hint, and the
 exact rerun command rebuilt from `argv`. It goes through `builtins.print`
-because rich hard-wraps paths and commands mid-token.
+because rich hard-wraps paths and commands mid-token. It also teaches the
+same discipline the model-mode schema enforces mechanically: name what the
+text is first, then rule.
 
-Plan JSON rows now carry `samples` (≤5 distinct texts, 80-char clipped)
-alongside the legacy single `sample`, so a judgment can be made without
-unzipping the book.
+Plan JSON rows carry `samples` (≤5 distinct texts, 80-char clipped)
+alongside the legacy single `sample`, plus `units`, `chars`, `pct`, and
+`mean_chars` — the same evidence the uncertainty heuristic keyed on, so a
+judgment can be made without unzipping the book.
 
 ## Verified live
 
