@@ -786,9 +786,9 @@ class TestLoaderPlanMode:
 
         shared = loader.translate_model
         # the shared instance must not have accumulated every chapter's text
-        assert shared.context_list == [], (
-            "parallel plan mode still writes context into the shared translator"
-        )
+        assert (
+            shared.context_list == []
+        ), "parallel plan mode still writes context into the shared translator"
 
     def test_sequential_plan_keeps_one_shared_context(self, tmp_path):
         # reading order is correct sequentially, so cloning there would only
@@ -808,9 +808,9 @@ class TestLoaderPlanMode:
         loader.only_filelist = "index_split_004.html"
         loader.make_bilingual_book()
 
-        assert loader.translate_model.context_list, (
-            "sequential runs must keep accumulating shared context"
-        )
+        assert (
+            loader.translate_model.context_list
+        ), "sequential runs must keep accumulating shared context"
 
     def test_parallel_chapter_failure_fails_loud(self, tmp_path):
         # Finding #5: a failed chapter must not produce a "completed" book.
@@ -1101,7 +1101,9 @@ class TestEpubHardening:
     # -- item 9: invisible characters --------------------------------------
 
     def test_soft_hyphen_and_zero_width_stripped_from_unit_text(self):
-        fp, _ = self._partition("<body><p>con­struction and zero​width﻿ here</p></body>")
+        fp, _ = self._partition(
+            "<body><p>con­struction and zero​width﻿ here</p></body>"
+        )
         assert [u.text for u in fp.units] == ["construction and zerowidth here"]
 
     # -- item 0: schema version --------------------------------------------

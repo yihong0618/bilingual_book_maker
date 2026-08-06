@@ -81,13 +81,11 @@ def clip_sample(text):
 # establishes its own line of text, including table cells and list items).
 # NB: dfn is inline per the HTML spec — listing it here would split its
 # paragraph into two units mid-sentence.
-DEFAULT_BLOCK_TAGS = frozenset(
-    """
+DEFAULT_BLOCK_TAGS = frozenset("""
     address article aside blockquote body caption dd details div dl dt
     fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hr html
     li main nav ol p pre section summary table tbody td tfoot th thead tr ul
-    """.split()
-)
+    """.split())
 
 BLOCKISH_DISPLAY = frozenset(
     [
