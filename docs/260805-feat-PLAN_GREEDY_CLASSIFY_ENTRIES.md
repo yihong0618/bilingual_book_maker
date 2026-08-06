@@ -144,19 +144,28 @@ all candidates covered. The cap silently left the smallest signatures
 unreviewed. One failing page fails the whole run — a half-classified plan is
 indistinguishable from a complete one in the JSON.
 
-## 6. `--plan-classify {none,model,agent}`
+## 6. `--plan-classify {none,most,model,agent}`
 
-Replaces `--plan-no-classify`.
+Replaces `--plan-no-classify`, and is now the only CLI door into plan mode —
+`--translate-tags auto` is gone from the CLI surface (an "auto" value there
+is just a tag name that matches nothing). The loader still uses
+`translate_tags == "auto"` as its internal plan-mode switch, so library
+users and the pipeline are untouched; the CLI maps onto it.
 
-- **Passing the flag turns plan mode on.** Choosing how to classify is
-  choosing to have a plan; requiring `--translate-tags auto` too was a
-  papercut. An explicit tag list loses to it, with a note.
-- **Without the flag nothing changes** — `--translate-tags` still defaults to
-  `p`, and `--translate-tags auto` still enters plan mode with no
-  classification.
-- `--plan-classify-model X` implies `model` mode and is rejected with `agent`.
+- `none` **(default) denotes the flag's absence**: no plan, translate the
+  `--translate-tags` selection (default `p`) as always.
+- `most` is plan mode with no classification: translate the whole greedy
+  partition. Maps to the loader's `plan_classify = "none"`.
+- `model` / `agent` as below. `--plan-classify-model X` implies `model` mode
+  and is rejected alongside `most` or `agent` (both mean "no classifier").
+- In plan mode `--translate-tags` is ignored; a note prints only when its
+  value differs from the default `p` (argparse cannot tell an explicit `p`
+  from the default, and a note on every run would be noise).
+- The flag errors on non-epub books. Silently ignoring it was the original
+  implementation, and for `agent` that is the worst case: the mode promises
+  to stop before spending, and ignoring it translates the whole book.
 
-Run flow: `none` and `model` translate in one run (model classifies first).
+Run flow: `most` and `model` translate in one run (model classifies first).
 `agent` writes the plan JSON, prints the instruction block, and **stops** —
 translating first would spend the whole book before anyone looked at the
 questions. Rerunning the same command finds the plan and translates.
@@ -183,6 +192,20 @@ unzipping the book.
   because the guardrails exempt the poetry groups, the spine and the headings
   — which is the intended behavior.
 - Ladder rungs 2/3 are unit-tested only; luna is strict so they did not fire.
+
+## Post-review fixes (same day)
+
+The self-review pass before the PR turned up:
+
+- **`--plan-dry-run` crashed on every fresh run** — the dry-run path still
+  read the removed `options.plan_no_classify` and hit `AttributeError` right
+  after writing the plan. No test exercised a fresh dry run; there is one
+  now (`test_plan_dry_run_writes_a_fresh_plan`).
+- Two files had drifted from CI's `black . --check` (the session used ruff
+  formatting); reformatted.
+- The flag surface was then redesigned per user direction (see §6): `none`
+  became the default meaning "no plan", `most` was added, and
+  `--translate-tags auto` left the CLI.
 
 ## Deviations from the written plan
 

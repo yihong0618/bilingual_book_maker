@@ -34,8 +34,8 @@ def _run(tmp_path, *args):
 
 
 def test_plan_classify_implies_plan_mode(tmp_path):
-    # choosing how to classify is choosing plan mode; requiring
-    # --translate-tags auto as well would be a papercut
+    # any classification choice is a choice to have a plan; no second flag
+    # is needed to enter plan mode
     proc, plan = _run(tmp_path, "--plan-classify", "agent")
     assert proc.returncode == 0
     assert plan.exists()
@@ -49,16 +49,85 @@ def test_no_classify_flag_keeps_legacy_tag_mode(tmp_path):
     assert not plan.exists()
 
 
+def test_explicit_none_is_the_same_as_no_flag(tmp_path):
+    # 'none' denotes the default: ordinary --translate-tags selection, no plan
+    proc, plan = _run(tmp_path, "--plan-classify", "none", "--test", "--test_num", "1")
+    assert proc.returncode == 0
+    assert not plan.exists()
+
+
+def test_most_mode_plans_the_whole_book_and_translates(tmp_path):
+    # 'most' is the greedy no-classification entry: write the plan, then
+    # keep translating in the same run (no agent stop, no API classifier)
+    proc, plan = _run(tmp_path, "--plan-classify", "most", "--test", "--test_num", "1")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert plan.exists()
+    assert "Paste the block below" not in proc.stdout
+
+
 def test_explicit_tag_list_loses_to_the_classify_flag(tmp_path):
-    proc, plan = _run(tmp_path, "--plan-classify", "agent", "--translate-tags", "p")
+    proc, plan = _run(tmp_path, "--plan-classify", "agent", "--translate-tags", "div,p")
     assert proc.returncode == 0
     assert plan.exists()
-    assert "ignoring --translate-tags p" in proc.stdout
+    # rich wraps long lines at terminal width, so compare wrap-insensitively
+    assert "ignoring --translate-tags div,p" in " ".join(proc.stdout.split())
+
+
+def test_default_tags_are_overridden_quietly(tmp_path):
+    # the untouched default "p" is not a selection worth a warning
+    proc, plan = _run(tmp_path, "--plan-classify", "agent")
+    assert proc.returncode == 0
+    assert plan.exists()
+    assert "ignoring --translate-tags" not in proc.stdout
+
+
+def test_plan_dry_run_writes_a_fresh_plan(tmp_path):
+    # regression: the dry-run path kept a reference to the removed
+    # --plan-no-classify option and crashed right after writing the plan
+    proc, plan = _run(tmp_path, "--plan-dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert plan.exists()
+    assert "plan written to" in proc.stdout
+
+
+def test_classify_flag_rejects_non_epub_books(tmp_path):
+    # plan mode is epub-only, and agent mode promises to stop before
+    # spending anything: silently translating a txt book instead would be
+    # the opposite of what was asked
+    src = tmp_path / "the_little_prince.txt"
+    src.write_bytes((REPO / "test_books" / "the_little_prince.txt").read_bytes())
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "make_book.py",
+            "--book_name",
+            str(src),
+            "--model",
+            "google",
+            "--plan-classify",
+            "agent",
+        ],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 1
+    assert "epub-only" in proc.stdout
 
 
 def test_agent_mode_rejects_a_classifier_model(tmp_path):
     proc, _ = _run(
         tmp_path, "--plan-classify", "agent", "--plan-classify-model", "gpt-4o"
+    )
+    assert proc.returncode == 1
+    assert "cannot be combined" in proc.stdout
+
+
+def test_most_mode_rejects_a_classifier_model(tmp_path):
+    # 'most' explicitly skips classification; naming a classifier alongside
+    # it is a contradiction, not a preference to resolve silently
+    proc, _ = _run(
+        tmp_path, "--plan-classify", "most", "--plan-classify-model", "gpt-4o"
     )
     assert proc.returncode == 1
     assert "cannot be combined" in proc.stdout

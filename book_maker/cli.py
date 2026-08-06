@@ -288,10 +288,8 @@ def main():
         dest="translate_tags",
         type=str,
         default="p",
-        help="example --translate-tags p,blockquote. Use 'auto' for the "
-        "coverage-complete plan mode: every text node is either translated or "
-        "skipped for an explicit reason, and poetry lines are batched in "
-        "stanza windows for context (epub only)",
+        help="which tags to translate, example --translate-tags p,blockquote "
+        "(default: p). Ignored in plan mode — see --plan-classify",
     )
     parser.add_argument(
         "--plan-dry-run",
@@ -321,12 +319,13 @@ def main():
     parser.add_argument(
         "--plan-classify",
         dest="plan_classify",
-        choices=["none", "model", "agent"],
-        default=None,
-        help="how to decide which tag signatures are worth translating. "
-        "Passing this flag turns plan mode on. "
-        "'none': translate the whole partition (default when the flag is "
-        "given without a value context). "
+        choices=["none", "most", "model", "agent"],
+        default="none",
+        help="coverage-complete plan mode (epub only): partition the whole "
+        "book, then decide which tag signatures are worth translating. "
+        "'none' (default): no plan — translate the --translate-tags "
+        "selection as usual. "
+        "'most': translate the whole partition, no classification. "
         "'model': an LLM rules on the uncertain signatures in-pipeline, then "
         "the run continues. "
         "'agent': write the plan JSON with samples, print instructions to "
@@ -555,15 +554,15 @@ So you are close to reaching the limit. You have to choose your own value, there
         else:
             plan.save_json(plan_path, book_path=options.book_name)
             print(f"plan written to {plan_path} (edit signature actions to override)")
-            if not options.plan_no_classify:
-                # classification needs credentials, which dry-run must not:
-                # it runs on the first real run only while this JSON is absent
-                print(
-                    "note: LLM classification of uncertain signatures runs on "
-                    "the first real run, but this plan JSON now pins the "
-                    "decisions — delete it before that run to let the LLM "
-                    "weigh in, or keep it to stay fully manual"
-                )
+            # classification needs credentials, which dry-run must not: both
+            # --plan-classify entries act on the run that *creates* the JSON,
+            # and this dry run just created it
+            print(
+                "note: this plan JSON now pins the decisions — a later "
+                "--plan-classify model/agent run will find it and translate "
+                "as-is. Delete it first to let a classifier weigh in, or "
+                "edit the actions here to stay fully manual"
+            )
         return
 
     PROXY = options.proxy
@@ -718,33 +717,43 @@ So you are close to reaching the limit. You have to choose your own value, there
     if options.allow_navigable_strings:
         e.allow_navigable_strings = True
     # --plan-classify-model names a classifier, which only makes sense in
-    # model mode; asking for it alongside 'agent' is a contradiction, not a
-    # preference to resolve silently.
+    # model mode; asking for it alongside a no-classification mode is a
+    # contradiction, not a preference to resolve silently.
     classify_mode = options.plan_classify
     if options.plan_classify_model:
-        if classify_mode == "agent":
+        if classify_mode in ("most", "agent"):
+            reason = (
+                "agent mode makes no API call"
+                if classify_mode == "agent"
+                else "most mode skips classification"
+            )
             print(
-                "[bold red]Error:[/bold red] --plan-classify-model cannot be "
-                "combined with --plan-classify agent (agent mode makes no API "
-                "call)"
+                f"[bold red]Error:[/bold red] --plan-classify-model cannot be "
+                f"combined with --plan-classify {classify_mode} ({reason})"
             )
             exit(1)
         classify_mode = "model"
+    # Plan mode is epub-only, and 'agent' in particular promises to stop
+    # before spending anything; silently translating a txt/md book instead
+    # would be the exact opposite of what was asked.
+    if classify_mode != "none" and book_type != "epub":
+        print(
+            f"[bold red]Error:[/bold red] --plan-classify {classify_mode} "
+            f"requires an epub book (plan mode is epub-only); got a "
+            f"{book_type} book"
+        )
+        exit(1)
 
     if options.translate_tags:
-        if options.translate_tags == "auto" and book_type != "epub":
+        e.translate_tags = options.translate_tags
+    # Any classification choice is a choice to have a plan, and the plan
+    # partitions the whole book — a tag selection has nothing left to select.
+    if classify_mode != "none":
+        if options.translate_tags != "p":
+            # "p" is argparse's default, so an untouched flag stays quiet;
+            # a real selection being discarded deserves a line
             print(
-                f"note: --translate-tags auto (plan mode) is epub-only; "
-                f"ignoring it for this {book_type} book"
-            )
-        else:
-            e.translate_tags = options.translate_tags
-    # Choosing how to classify is choosing plan mode: the flag has no meaning
-    # for tag selection, and requiring both flags together is a papercut.
-    if classify_mode is not None and book_type == "epub":
-        if options.translate_tags and options.translate_tags != "auto":
-            print(
-                f"note: --plan-classify {classify_mode} implies plan mode; "
+                f"note: --plan-classify {classify_mode} plans the whole book; "
                 f"ignoring --translate-tags {options.translate_tags}"
             )
         e.translate_tags = "auto"
@@ -753,7 +762,11 @@ So you are close to reaching the limit. You have to choose your own value, there
     if hasattr(e, "plan_min_coverage"):
         e.plan_min_coverage = options.plan_min_coverage
         e.poetry_group_size = options.poetry_group_size
-        e.plan_classify = classify_mode or "none"
+        # the loader keeps its original pipeline: plan mode is triggered by
+        # translate_tags == "auto", and its classify entries are
+        # none/model/agent — the CLI's 'most' is plan mode with no
+        # classification, i.e. the loader's 'none'
+        e.plan_classify = classify_mode if classify_mode != "most" else "none"
         e.plan_classify_model = options.plan_classify_model or None
     if options.exclude_filelist:
         e.exclude_filelist = options.exclude_filelist

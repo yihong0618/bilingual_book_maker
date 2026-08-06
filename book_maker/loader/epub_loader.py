@@ -85,7 +85,8 @@ class EPUBBookLoader(BaseBookLoader):
         self.retranslate = None
         self.exclude_filelist = ""
         self.only_filelist = ""
-        # plan mode (--translate-tags auto): coverage-complete partition
+        # plan mode (--plan-classify; translate_tags == "auto" internally):
+        # coverage-complete partition
         self.plan_min_coverage = 0.5
         self.poetry_group_size = 8
         self.plan_classify = "none"  # none | model | agent, see .classify
@@ -1641,8 +1642,8 @@ class EPUBBookLoader(BaseBookLoader):
             active = [flag for flag, on in incompatible.items() if on]
             if active:
                 print(
-                    f"[bold red]--translate-tags auto is not compatible with "
-                    f"{', '.join(active)}[/bold red]"
+                    f"[bold red]plan mode (--plan-classify) is not compatible "
+                    f"with {', '.join(active)}[/bold red]"
                 )
                 raise SystemExit(1)
             if self.allow_navigable_strings:
