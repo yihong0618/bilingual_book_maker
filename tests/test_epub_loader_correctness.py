@@ -1,3 +1,4 @@
+import pickle
 import threading
 
 import pytest
@@ -72,6 +73,18 @@ class OrderedCompletionModel(RecordingModel):
             assert type(self).a_started.wait(timeout=2)
             type(self).b_finished.set()
         return f"<T>{text}</T>"
+
+
+class ParallelInterruptingModel(RecordingModel):
+    first_finished = threading.Event()
+
+    def translate(self, text):
+        if text == "chapter A":
+            result = super().translate(text)
+            type(self).first_finished.set()
+            return result
+        assert type(self).first_finished.wait(timeout=2)
+        raise KeyboardInterrupt
 
 
 class FailingModel(RecordingModel):
@@ -221,6 +234,45 @@ def test_epub_sequential_context_follows_document_order(tmp_path, monkeypatch):
     assert loader.translate_model.contexts_at_call == [[], ["one"], ["one", "two"]]
 
 
+def test_epub_translation_plan_has_stable_document_order_ids(tmp_path, monkeypatch):
+    loader, _ = _make_loader(
+        tmp_path,
+        monkeypatch,
+        [("a.xhtml", ["one", "two"]), ("b.xhtml", ["three"])],
+    )
+    document_items = list(loader.origin_book.get_items_of_type(ITEM_DOCUMENT))
+
+    first = loader._build_translation_plan(document_items, ["p"])
+    second = loader._build_translation_plan(document_items, ["p"])
+    first_jobs = [job for chapter in first for job in chapter.jobs]
+    second_jobs = [job for chapter in second for job in chapter.jobs]
+
+    assert [job.global_index for job in first_jobs] == [0, 1, 2]
+    assert [job.document_index for job in first_jobs] == [0, 0, 1]
+    assert [job.node_index for job in first_jobs] == [0, 1, 0]
+    assert [job.context_group for job in first_jobs] == [
+        "a.xhtml",
+        "a.xhtml",
+        "b.xhtml",
+    ]
+    assert [job.job_id for job in first_jobs] == [job.job_id for job in second_jobs]
+    assert len({job.job_id for job in first_jobs}) == 3
+
+
+def test_epub_translation_plan_assigns_stable_batch_indexes(tmp_path, monkeypatch):
+    loader, _ = _make_loader(
+        tmp_path,
+        monkeypatch,
+        [("one.xhtml", ["one", "two", "three", "four", "five"])],
+    )
+    loader.block_size = 2
+    document_items = list(loader.origin_book.get_items_of_type(ITEM_DOCUMENT))
+
+    [chapter] = loader._build_translation_plan(document_items, ["p"])
+
+    assert [job.batch_index for job in chapter.jobs] == [0, 0, 1, 1, 2]
+
+
 def test_epub_sequential_accumulated_num_batches_in_document_order(
     tmp_path, monkeypatch
 ):
@@ -282,10 +334,6 @@ def test_epub_sequential_interrupt_and_resume_uses_completed_prefix(
         assert content.count(f"&lt;T&gt;{text}&lt;/T&gt;") == 1
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="block_size translation sends text from inline excluded tags to the model",
-)
 def test_epub_sequential_batch_excludes_inline_code_content(tmp_path, monkeypatch):
     loader, _ = _make_loader(
         tmp_path,
@@ -315,10 +363,6 @@ def test_epub_sequential_translation_failure_exits_nonzero(tmp_path, monkeypatch
     assert exc.value.code != 0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="parallel resume cache is appended in completion order, not document order",
-)
 def test_epub_parallel_checkpoint_order_is_deterministic(tmp_path, monkeypatch):
     OrderedCompletionModel.a_started.clear()
     OrderedCompletionModel.b_finished.clear()
@@ -335,10 +379,117 @@ def test_epub_parallel_checkpoint_order_is_deterministic(tmp_path, monkeypatch):
     assert loader.p_to_save == ["<T>chapter A</T>", "<T>chapter B</T>"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="parallel EPUB processing bypasses process_item file filtering",
-)
+def test_epub_parallel_rejects_legacy_completion_order_checkpoint(
+    tmp_path, monkeypatch
+):
+    loader, _ = _make_loader(
+        tmp_path,
+        monkeypatch,
+        [("a.xhtml", ["chapter A"]), ("b.xhtml", ["chapter B"])],
+        parallel_workers=2,
+    )
+    with open(loader.bin_path, "wb") as checkpoint:
+        pickle.dump(["<T>chapter B</T>", "<T>chapter A</T>"], checkpoint)
+
+    with pytest.raises(ValueError, match="Legacy EPUB resume checkpoints"):
+        _make_loader(
+            tmp_path,
+            monkeypatch,
+            [("a.xhtml", ["chapter A"]), ("b.xhtml", ["chapter B"])],
+            resume=True,
+            parallel_workers=2,
+        )
+
+
+def test_epub_parallel_saves_when_committed_prefix_crosses_interval(
+    tmp_path, monkeypatch
+):
+    loader, _ = _make_loader(
+        tmp_path,
+        monkeypatch,
+        [("one.xhtml", ["one"])],
+        parallel_workers=2,
+    )
+    saved_lengths = []
+    monkeypatch.setattr(
+        loader, "_save_progress", lambda: saved_lengths.append(len(loader.p_to_save))
+    )
+
+    for index in range(1, 22):
+        loader._record_translation_result(index, str(index))
+    assert saved_lengths == []
+
+    loader._record_translation_result(0, "0")
+
+    assert len(loader.p_to_save) == 22
+    assert saved_lengths == [22]
+
+
+def test_epub_resume_rejects_changed_source_job_identity(tmp_path, monkeypatch):
+    chapters = [("one.xhtml", ["one", "two"])]
+    loader, _ = _make_loader(tmp_path, monkeypatch, chapters)
+    document_items = list(loader.origin_book.get_items_of_type(ITEM_DOCUMENT))
+    plans = loader._build_translation_plan(document_items, ["p"])
+    loader._planned_job_ids = [job.job_id for plan in plans for job in plan.jobs]
+    loader.p_to_save = ["<T>one</T>"]
+    loader._save_progress()
+
+    _write_epub(tmp_path / "book.epub", [("one.xhtml", ["changed", "two"])])
+    resumed, _ = _make_loader(tmp_path, monkeypatch, chapters, resume=True)
+
+    with pytest.raises(ValueError, match="EPUB or translation filters changed"):
+        resumed.make_bilingual_book()
+
+
+def test_epub_temp_book_replays_the_filtered_translation_plan(tmp_path, monkeypatch):
+    loader, _ = _make_loader(
+        tmp_path,
+        monkeypatch,
+        [("skip.xhtml", ["skip me"]), ("keep.xhtml", ["translate me"])],
+        parallel_workers=2,
+    )
+    loader.exclude_filelist = "skip.xhtml"
+    loader.p_to_save = ["<T>translate me</T>"]
+
+    loader._save_temp_book()
+
+    documents = _document_texts(tmp_path / "book_bilingual_temp.epub")
+    assert "&lt;T&gt;translate me&lt;/T&gt;" not in documents["skip.xhtml"]
+    assert "&lt;T&gt;translate me&lt;/T&gt;" in documents["keep.xhtml"]
+
+
+def test_epub_parallel_interrupt_resumes_from_contiguous_prefix(tmp_path, monkeypatch):
+    ParallelInterruptingModel.first_finished.clear()
+    chapters = [("a.xhtml", ["chapter A"]), ("b.xhtml", ["chapter B"])]
+    loader, _ = _make_loader(
+        tmp_path,
+        monkeypatch,
+        chapters,
+        model=ParallelInterruptingModel,
+        parallel_workers=2,
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        loader.make_bilingual_book()
+    assert exc.value.code == 0
+    assert loader.p_to_save == ["<T>chapter A</T>"]
+
+    resumed, output = _make_loader(
+        tmp_path,
+        monkeypatch,
+        chapters,
+        model=RecordingModel,
+        resume=True,
+        parallel_workers=2,
+    )
+    resumed.make_bilingual_book()
+
+    assert resumed.translate_model.calls == ["chapter B"]
+    documents = _document_texts(output)
+    assert documents["a.xhtml"].count("&lt;T&gt;chapter A&lt;/T&gt;") == 1
+    assert documents["b.xhtml"].count("&lt;T&gt;chapter B&lt;/T&gt;") == 1
+
+
 def test_epub_parallel_honors_excluded_files(tmp_path, monkeypatch):
     loader, _ = _make_loader(
         tmp_path,
@@ -353,10 +504,6 @@ def test_epub_parallel_honors_excluded_files(tmp_path, monkeypatch):
     assert loader.translate_model.calls == ["translate me"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="parallel EPUB processing does not enforce the global test_num limit",
-)
 def test_epub_parallel_test_num_limits_requests(tmp_path, monkeypatch):
     loader, _ = _make_loader(
         tmp_path,
@@ -414,7 +561,7 @@ def test_epub_parallel_propagates_chapter_failures(tmp_path, monkeypatch):
 
 @pytest.mark.xfail(
     strict=True,
-    reason="parallel EPUB processing bypasses block_size batch translation",
+    reason="parallel EPUB processing still bypasses block_size batch translation",
 )
 def test_epub_parallel_honors_block_size(tmp_path, monkeypatch):
     loader, _ = _make_loader(
