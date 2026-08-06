@@ -626,9 +626,29 @@ class EPUBBookLoader(BaseBookLoader):
                         break
                     if ancestor.name == "ruby":
                         rubies.append(ancestor)
+            # <br> separated lines the unit merged into one text: once the
+            # later nodes are gone the breaks separate nothing and would
+            # render as blank lines under the translation.
+            owned = set(id(n) for n in unit.nodes)
+            stray_brs = [
+                br
+                for br in unit.element.find_all("br")
+                if any(
+                    id(sib) in owned
+                    for sib in br.next_siblings
+                    if isinstance(sib, NavigableString)
+                )
+                and any(
+                    id(sib) in owned
+                    for sib in br.previous_siblings
+                    if isinstance(sib, NavigableString)
+                )
+            ]
             unit.nodes[0].replace_with(NavigableString(t_text))
             for node in unit.nodes[1:]:
                 node.extract()
+            for br in stray_brs:
+                br.extract()
             for ruby in rubies:
                 for annotation in ruby.find_all(["rt", "rp", "rtc"]):
                     annotation.extract()

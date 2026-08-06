@@ -13,8 +13,11 @@ from ..plan import SIGNATURE_SAMPLE_CAP, clip_sample
 # Same budget the plan JSON carries, so the two entries show the same
 # evidence.
 SAMPLES_PER_SIGNATURE = SIGNATURE_SAMPLE_CAP
-# Above this share of the book a signature is its prose spine; whether the
-# spine gets translated is never in question.
+# At or above this share of the book a signature is its prose spine;
+# whether the spine gets translated is never in question. The boundary is
+# inclusive on purpose: an unasked signature keeps its "translate" default,
+# and translating something unnecessary is cheap where losing content is
+# not.
 UNCERTAIN_MAX_PCT = 10.0
 UNCERTAIN_MEAN_CHARS = 50
 UNCERTAIN_UNIQUE_RATIO = 0.5

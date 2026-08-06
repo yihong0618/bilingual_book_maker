@@ -106,6 +106,37 @@ class TestCssDisplay:
         assert not resolver.is_block(soup.find_all("span")[1])
         assert resolver.is_block(soup.find("p"))
 
+    def test_equal_specificity_resolves_by_source_order_not_attribute_order(self):
+        # review finding: the resolver returned the first class token that
+        # matched, so class="visible hidden" and class="hidden visible"
+        # resolved differently from identical CSS. CSS decides equal
+        # specificity by declaration order — .hidden is declared last here,
+        # so both elements are hidden.
+        css = ".visible { display: block } .hidden { display: none }"
+        resolver = DisplayResolver([parse_css_display(css)])
+        soup = bs(
+            '<div><p class="visible hidden">a</p>'
+            '<p class="hidden visible">b</p></div>',
+            "html.parser",
+        )
+        displays = [resolver.display_of(p) for p in soup.find_all("p")]
+        assert displays == ["none", "none"]
+
+    def test_later_stylesheet_wins_over_earlier(self):
+        first = parse_css_display(".x { display: none }")
+        second = parse_css_display(".x { display: block }")
+        resolver = DisplayResolver([first, second])
+        soup = bs('<p class="x">a</p>', "html.parser")
+        assert resolver.display_of(soup.find("p")) == "block"
+
+    def test_tag_class_outranks_bare_class_regardless_of_order(self):
+        # specificity still dominates: p.note (0,1,1) beats .plain (0,1,0)
+        # even though .plain is declared later
+        css = "p.note { display: none } .plain { display: block }"
+        resolver = DisplayResolver([parse_css_display(css)])
+        soup = bs('<p class="note plain">a</p>', "html.parser")
+        assert resolver.display_of(soup.find("p")) == "none"
+
 
 # ---------------------------------------------------------------- partition
 
@@ -968,6 +999,37 @@ class TestEpubHardening:
         assert soup.find("rt") is None
         assert "かんじ" not in soup.get_text()
         assert "It is kanji." in soup.get_text()
+
+    def test_single_translate_drops_breaks_that_separate_nothing(self, tmp_path):
+        # review finding: <br>-separated lines merge into one unit, so after
+        # the later text nodes are extracted the breaks separate nothing and
+        # rendered as blank lines under the translation. Tag mode (which
+        # replaces the whole element) never had them.
+        loader, _ = _make_loader(tmp_path, FakeModel)
+        soup = bs("<body><p>one<br/>two<br/>three</p></body>", "html.parser")
+        fp = partition_soup(soup, DisplayResolver([]), "x.html")
+        loader._insert_plan_translation(fp.units[0], "YI ER SAN", single_translate=True)
+        assert soup.find("br") is None
+        assert soup.find("p").get_text().strip() == "YI ER SAN"
+
+    def test_single_translate_keeps_breaks_it_does_not_own(self, tmp_path):
+        # a leading/trailing break is layout around the unit, not a
+        # separator inside it — removing it would change the page
+        loader, _ = _make_loader(tmp_path, FakeModel)
+        soup = bs("<body><p><br/>one</p></body>", "html.parser")
+        fp = partition_soup(soup, DisplayResolver([]), "x.html")
+        loader._insert_plan_translation(fp.units[0], "YI", single_translate=True)
+        assert soup.find("br") is not None
+
+    def test_bilingual_mode_leaves_the_original_breaks_alone(self, tmp_path):
+        # the default path appends a translation paragraph and must not
+        # touch the original's line structure
+        loader, _ = _make_loader(tmp_path, FakeModel)
+        soup = bs("<body><p>one<br/>two</p></body>", "html.parser")
+        fp = partition_soup(soup, DisplayResolver([]), "x.html")
+        loader._insert_plan_translation(fp.units[0], "YI ER", single_translate=False)
+        assert len(soup.find_all("br")) == 1
+        assert "one" in soup.get_text() and "YI ER" in soup.get_text()
 
     # -- item 3: inline hiding + footnote exemption ------------------------
 

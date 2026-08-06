@@ -2,9 +2,13 @@
 
 Instead of selecting tags to translate (`--translate-tags p`) — which silently
 drops any text living in unknown markup — this module *partitions* every text
-node in each document into exactly one of two states:
+node in each document's rendered body into exactly one of two states:
 
     TRANSLATE(unit)   |   SKIP(reason)
+
+("body" literally: a document with a <body> is walked from there, so <head>
+text — `<title>`, metadata — is outside the partition and outside the
+invariant below. It is never rendered to the reader.)
 
 Units are formed at the nearest block-level ancestor of each translatable text
 node, where block/inline is resolved from the book's own stylesheets (simple
@@ -199,31 +203,50 @@ def parse_css_display(css_text):
             if not m or (not m.group(1) and not m.group(2)):
                 continue
             tag = m.group(1).lower() if m.group(1) else None
-            mapping[(tag, m.group(2))] = value
+            key = (tag, m.group(2))
+            # re-declaring a selector moves it to the end, so iteration
+            # order is last-declaration order — which is what decides
+            # between equal-specificity rules
+            mapping.pop(key, None)
+            mapping[key] = value
     return mapping
 
 
 class DisplayResolver:
     """Resolve whether an element renders block-level.
 
-    Precedence: css(tag.class) > css(.class) > css(tag) > HTML default.
-    Later stylesheets win over earlier ones.
+    Precedence: css(tag.class) > css(.class) > css(tag) > HTML default —
+    i.e. real CSS specificity. Within one tier the *last declaration wins*,
+    as in CSS; the order the class tokens happen to appear in the HTML
+    attribute has no say (``class="a b"`` and ``class="b a"`` must resolve
+    identically). Later stylesheets win over earlier ones.
     """
 
     def __init__(self, css_maps):
         self.rules = {}
         for m in css_maps:
-            self.rules.update(m)
+            for key, value in m.items():
+                self.rules.pop(key, None)  # re-declaration moves to the end
+                self.rules[key] = value
+        self._order = {key: i for i, key in enumerate(self.rules)}
+
+    def _last_declared(self, keys):
+        """The candidate declared latest in the stylesheets, or None."""
+        best = None
+        for key in keys:
+            if key in self.rules and (
+                best is None or self._order[key] > self._order[best]
+            ):
+                best = key
+        return best
 
     def display_of(self, element):
         tag = element.name
         classes = element.get("class") or []
-        for cls in classes:
-            if (tag, cls) in self.rules:
-                return self.rules[(tag, cls)]
-        for cls in classes:
-            if (None, cls) in self.rules:
-                return self.rules[(None, cls)]
+        for tier in ([(tag, c) for c in classes], [(None, c) for c in classes]):
+            key = self._last_declared(tier)
+            if key is not None:
+                return self.rules[key]
         if (tag, None) in self.rules:
             return self.rules[(tag, None)]
         return None
