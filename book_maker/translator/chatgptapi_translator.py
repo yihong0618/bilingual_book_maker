@@ -11,9 +11,12 @@ from threading import Lock, RLock
 from openai import (
     APIConnectionError,
     APITimeoutError,
+    AsyncAzureOpenAI,
+    AsyncOpenAI,
     AuthenticationError,
     AzureOpenAI,
     BadRequestError,
+    InternalServerError,
     LengthFinishReasonError,
     NotFoundError,
     OpenAI,
@@ -30,7 +33,7 @@ from tenacity import (
     retry_if_not_exception_type,
 )
 
-from .base_translator import Base
+from .base_translator import Base, TranslationContext, TranslationResult
 from ..config import config
 
 CHATGPT_CONFIG = config["translator"]["chatgptapi"]
@@ -304,6 +307,7 @@ class ChatGPTAPI(Base):
         self.batch_info_cache = None
         self.result_content_cache = {}
         self._api_lock = Lock()
+        self._async_clients = {}
         # Reentrant: the probe records its verdict while still holding the lock.
         self._structured_lock = RLock()
         self.extra_body = extra_body or {}
@@ -487,17 +491,109 @@ class ChatGPTAPI(Base):
         messages.append({"role": "user", "content": content})
         return messages
 
-    def create_context_messages(self):
+    def create_context_messages(self, context: TranslationContext | None = None):
         messages = []
         if self.context_flag:
-            messages.append({"role": "user", "content": "\n".join(self.context_list)})
+            if context is None:
+                source_texts = self.context_list
+                translated_texts = self.context_translated_list
+            else:
+                source_texts = context.source_texts
+                translated_texts = context.translated_texts
+                if not source_texts:
+                    return messages
+            messages.append({"role": "user", "content": "\n".join(source_texts)})
             messages.append(
                 {
                     "role": "assistant",
-                    "content": "\n".join(self.context_translated_list),
+                    "content": "\n".join(translated_texts),
                 }
             )
         return messages
+
+    def _create_async_client(self, key):
+        if self.deployment_id:
+            return AsyncAzureOpenAI(
+                api_key=key,
+                azure_endpoint=self.api_base,
+                api_version="2023-07-01-preview",
+                azure_deployment=self.deployment_id,
+            )
+        return AsyncOpenAI(api_key=key, base_url=self.api_base)
+
+    def _get_async_client(self, key):
+        cache_key = (self.api_base, self.deployment_id, key)
+        with self._api_lock:
+            if cache_key not in self._async_clients:
+                self._async_clients[cache_key] = self._create_async_client(key)
+            return self._async_clients[cache_key]
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=60),
+        retry=retry_if_exception_type(
+            (RateLimitError, APIConnectionError, APITimeoutError, InternalServerError)
+        ),
+        reraise=True,
+    )
+    async def translate_async(
+        self, text: str, *, context: TranslationContext | None = None
+    ) -> TranslationResult:
+        if type(self).create_chat_completion is not ChatGPTAPI.create_chat_completion:
+            return await super().translate_async(text, context=context)
+
+        with self._api_lock:
+            key = next(self.keys)
+            if self.model_list:
+                model = (
+                    next(self.model_list)
+                    if hasattr(self.model_list, "__next__")
+                    else self.model_list[0]
+                )
+            else:
+                model = self.model
+
+        current_context = context or TranslationContext()
+        messages = self.create_messages(
+            text, self.create_context_messages(current_context)
+        )
+        client = self._get_async_client(key)
+
+        async def create(sampling):
+            return await client.chat.completions.create(
+                model=model,
+                messages=messages,
+                extra_body=self.extra_body if self.extra_body else None,
+                **sampling,
+            )
+
+        try:
+            completion = await create(self._sampling_kwargs(model))
+        except BadRequestError as e:
+            if self._classify_bad_request(e) != "temperature":
+                raise
+            with self._structured_lock:
+                first_time = not self._temperature_unsupported.get(model)
+                self._temperature_unsupported[model] = True
+            if first_time:
+                print(
+                    f"[yellow]ℹ '{model}' rejected temperature={self.temperature}; "
+                    f"retrying with the model default[/yellow]"
+                )
+            completion = await create({})
+
+        translated = completion.choices[0].message.content or ""
+        if self.context_flag:
+            current_context = current_context.append(
+                text, translated, self.context_paragraph_limit
+            )
+        return TranslationResult(translated, current_context)
+
+    async def close_async(self) -> None:
+        clients = list(self._async_clients.values())
+        self._async_clients.clear()
+        for client in clients:
+            await client.close()
 
     def _sampling_kwargs(self, model=None):
         """Sampling parameters to send, or nothing when the model owns them.
