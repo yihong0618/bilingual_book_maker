@@ -244,8 +244,20 @@ class ChatGPTAPI(Base):
             None  # Will be set by rotate_model() after model_list is initialized
         )
 
-    def _ensure_structured_support(self, model=None):
+    def _ensure_structured_support(self, model=None, purpose="translate"):
         """Resolve (once per model) whether structured outputs can be used.
+
+        The stored value is the probe verdict itself ("strict" / "shape" /
+        False), because the two positive verdicts are not interchangeable:
+
+        - `translate` requires "strict". Our translation schema pins the
+          target language as a *value* constraint (#544), so an endpoint that
+          honors shape but ignores values gives us a schema that cannot do
+          the one job we added it for — worse than the delimiter method,
+          which at least states the language in the prompt.
+        - `classify` accepts "shape" too. Every verdict is linted locally
+          against its enum, so an ignored value constraint costs one "unsure",
+          never a silently wrong translation.
 
         The probe runs while holding the lock so that N parallel workers issue
         one probe per model, not N.
@@ -257,10 +269,21 @@ class ChatGPTAPI(Base):
                     self._test_structured_outputs(model)
                 else:
                     self._structured_support[model] = False
-            return self._structured_support.get(model, False)
+            verdict = self._structured_support.get(model, False)
+        return self._verdict_allows(verdict, purpose)
+
+    @staticmethod
+    def _verdict_allows(verdict, purpose):
+        if not verdict:
+            return False
+        if purpose == "classify":
+            return verdict in ("strict", "shape")
+        return verdict == "strict"
 
     def _structured_enabled(self):
-        return self._structured_support.get(self.model, False)
+        return self._verdict_allows(
+            self._structured_support.get(self.model, False), "translate"
+        )
 
     def _defer_probe(self, model, error):
         """Postpone the verdict: record nothing so the next call probes again."""
@@ -337,11 +360,10 @@ class ChatGPTAPI(Base):
         except Exception as e:
             # Ambiguous (400 for an unknown param, 500 from a local server, ...):
             # not a usable endpoint for schemas either way, so degrade loudly.
-            self._record_probe_result(model, False, f"request rejected: {e}")
+            self._record_probe_result(model, f"request rejected: {e}")
             return
 
-        verdict = self._grade_probe_response(completion)
-        self._record_probe_result(model, verdict != "unsupported", verdict)
+        self._record_probe_result(model, self._grade_probe_response(completion))
 
     @staticmethod
     def _grade_probe_response(completion):
@@ -370,16 +392,18 @@ class ChatGPTAPI(Base):
         # real schemas constrain shape only, never values.
         return "strict" if parsed[PROBE_KEY] == PROBE_EXPECTED else "shape"
 
-    def _record_probe_result(self, model, supported, verdict):
+    def _record_probe_result(self, model, verdict):
+        """Store the verdict string; False means no schema support at all."""
+        stored = verdict if verdict in ("strict", "shape") else False
         with self._structured_lock:
-            self._structured_support[model] = supported
-        if supported:
-            if verdict == "shape":
-                print(
-                    f"[yellow]ℹ '{model}' honors JSON schema shape but not value "
-                    f"constraints; using structured outputs anyway[/yellow]"
-                )
-        else:
+            self._structured_support[model] = stored
+        if stored == "shape":
+            print(
+                f"[yellow]ℹ '{model}' honors JSON schema shape but not value "
+                f"constraints; using the delimiter method for translation, "
+                f"schema kept for classification[/yellow]"
+            )
+        elif not stored:
             print(
                 f"[yellow]ℹ '{model}' doesn't apply JSON schema ({verdict}), "
                 f"using delimiter method[/yellow]"
@@ -392,7 +416,7 @@ class ChatGPTAPI(Base):
         caller owns the fallback policy.
         """
         model = model or self.model
-        if not self._ensure_structured_support(model):
+        if not self._ensure_structured_support(model, purpose="classify"):
             return None
         completion = self.openai_client.chat.completions.create(
             model=model,
