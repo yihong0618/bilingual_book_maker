@@ -802,7 +802,8 @@ def test_batch_request_pins_the_language_schema():
     translator.batch_model = "test-model"
     translator.custom_id = lambda index: f"id-{index}"
     translator.context_flag = False
-    translator._structured_support["test-model"] = True
+    # the probe store holds verdicts now, and translation requires "strict"
+    translator._structured_support["test-model"] = "strict"
 
     body = translator.make_batch_request(0, "hello")["body"]
 
