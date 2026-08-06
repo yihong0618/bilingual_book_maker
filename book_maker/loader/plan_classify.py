@@ -136,36 +136,9 @@ def translate_candidates(plan, overrides=None):
         out.append(
             {
                 "signature": sig,
-                "kind": "translate",
                 "units": row["units"],
                 "chars": row["chars"],
                 "samples": [_clip(t) for t in uniq[::step][:SAMPLES_PER_SIGNATURE]],
-            }
-        )
-    return out
-
-
-def trivial_candidates(plan, overrides=None, exclude_sigs=frozenset()):
-    """Trivially-skipped signatures that carry actual letters ("No" cells).
-
-    A signature that also produced real units is excluded: one verdict cannot
-    both demote the units and resurrect the trivia, so mixed signatures keep
-    their heuristic split.
-    """
-    overrides = overrides or {}
-    out = []
-    for sig, row in plan.trivial_rows().items():
-        if sig in overrides or sig in exclude_sigs:
-            continue
-        if not any(any(c.isalpha() for c in s) for s in row["samples"]):
-            continue
-        out.append(
-            {
-                "signature": sig,
-                "kind": "trivial",
-                "units": row["units"],
-                "chars": row["chars"],
-                "samples": [_clip(s) for s in row["samples"]],
             }
         )
     return out
@@ -177,10 +150,7 @@ def gather_candidates(plan, overrides=None):
     Returns (candidates, dropped_count) — the cap must never truncate
     silently.
     """
-    translate = translate_candidates(plan, overrides)
-    unit_sigs = {u.signature for f in plan.files for u in f.units}
-    trivial = trivial_candidates(plan, overrides, exclude_sigs=unit_sigs)
-    cands = sorted(translate + trivial, key=lambda c: -c["chars"])
+    cands = sorted(translate_candidates(plan, overrides), key=lambda c: -c["chars"])
     dropped = max(0, len(cands) - MAX_CANDIDATES)
     return cands[:MAX_CANDIDATES], dropped
 
@@ -212,19 +182,17 @@ def merge_verdicts(result, candidates):
 
     The result is schema-pinned to {signature: {content_type, verdict}};
     content_type only exists so the model names the content before ruling
-    on it, and is dropped here. "unsure" and status-quo verdicts produce no
-    action: the heuristic decision stands unless the model affirmatively
-    overturns it. Anything outside the enum (a shape-only endpoint ignoring
-    value constraints) counts as unsure.
+    on it, and is dropped here. Under greedy partitioning every candidate is
+    already planned for translation, so only an affirmative "skip" changes
+    anything: "translate", "unsure" and anything outside the enum (a
+    shape-only endpoint ignoring value constraints) leave the plan alone.
     """
     actions = {}
     for cand in candidates:
         entry = result.get(cand["signature"])
         verdict = entry.get("verdict") if isinstance(entry, dict) else None
-        if cand["kind"] == "translate" and verdict == "skip":
+        if verdict == "skip":
             actions[cand["signature"]] = "llm-skip"
-        elif cand["kind"] == "trivial" and verdict == "translate":
-            actions[cand["signature"]] = "force-translate"
     return actions
 
 

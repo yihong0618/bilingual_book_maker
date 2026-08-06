@@ -18,8 +18,12 @@ Invariant (checked by tests, reported to users):
 Runs of short sibling units (poetry) are grouped into stanza-aligned windows
 so they can be sent to the model together for context.
 
-Known accepted limitation: a text node consisting solely of a roman numeral
-(e.g. ``<em>I</em>``) is classified as a line-number reference and skipped.
+Partitioning is *greedy* (schema 3): only structurally free reasons skip text
+(whitespace, links, symbols, hidden/ruby/pagebreak/excluded markup). Content
+heuristics — numeric runs, roman numerals, sub-3-letter units — were removed
+after measuring that they reclaimed 0-6% of characters while silently
+dropping real content; deciding what is worth translating is the classifier's
+job now (see plan_classify.py and --plan-classify).
 """
 
 import hashlib
@@ -47,15 +51,14 @@ from .helper import is_text_link
 # Bump whenever a change alters which units a book partitions into (their
 # order, count, or text): resume caches are positional over the unit list, so
 # the loader folds this into the resume fingerprint and refuses stale caches.
-PLAN_SCHEMA_VERSION = 2
+PLAN_SCHEMA_VERSION = 3
 
 # Every action a plan JSON may carry; anything else is a typo and must fail
 # loud — a misspelled "skip" silently treated as translate would quietly
-# undo the user's decision.
+# undo the user's decision. "force-translate" no longer has a behavior of its
+# own (it existed to bypass the deleted trivial filter); it stays valid so
+# plan JSONs written before schema 3 still load, mapped to plain "translate".
 VALID_PLAN_ACTIONS = frozenset(["translate", "skip", "llm-skip", "force-translate"])
-
-# Sample lines retained per trivially-skipped signature for the classifier.
-TRIVIAL_SAMPLE_CAP = 5
 
 # --------------------------------------------------------------------- CSS
 
@@ -63,11 +66,13 @@ TRIVIAL_SAMPLE_CAP = 5
 # establishes its own line of text, including table cells and list items).
 # NB: dfn is inline per the HTML spec — listing it here would split its
 # paragraph into two units mid-sentence.
-DEFAULT_BLOCK_TAGS = frozenset("""
+DEFAULT_BLOCK_TAGS = frozenset(
+    """
     address article aside blockquote body caption dd details div dl dt
     fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hr html
     li main nav ol p pre section summary table tbody td tfoot th thead tr ul
-    """.split())
+    """.split()
+)
 
 BLOCKISH_DISPLAY = frozenset(
     [
@@ -219,63 +224,25 @@ class DisplayResolver:
 
 # ------------------------------------------------------------- predicates
 
-# Numbers and their usual companions: decimal/thousands separators, ranges,
-# percent signs, currency symbols, section marks. A run of these is apparatus
-# (a figure, a page range, "42%"), never prose worth spending tokens on.
-_NUMERIC_TEXT_RE = re.compile(r"[\d.,:;%()\[\]§$£€¥+±/–—-]+")
-_ROMAN_TOKEN_RE = re.compile(r"[IVXLCDM]{1,7}")
-_DIGIT_TOKEN_RE = re.compile(r"\d+")
-
 
 def classify_skip(text):
     """Return a skip reason for a text node, or None if it needs translation.
 
-    Reasons are a closed set so the coverage report can account for every
-    skipped character: whitespace / link / numeric / roman-ref / symbol.
+    Only *structural* reasons live here — whitespace / link / symbol — each
+    free to decide and safe to act on. Content heuristics (numbers, roman
+    numerals) were deleted in schema 3: they reclaimed 0-6% of characters
+    while silently dropping real text, and judging content is now the
+    classifier's job (--plan-classify). Reasons stay a closed set so the
+    coverage report can account for every skipped character.
     """
     t = text.strip()
     if not t:
         return "whitespace"
     if is_text_link(t):
         return "link"
-    tokens = t.split()
-    # Match on the whitespace-stripped whole, so "50 %" and "1 234,50 €" are
-    # caught as well as "50%" — a lone "%" token carries no digit of its own.
-    if _NUMERIC_TEXT_RE.fullmatch("".join(tokens)) and any(c.isdigit() for c in t):
-        return "numeric"
-    if all(
-        _ROMAN_TOKEN_RE.fullmatch(tok) or _DIGIT_TOKEN_RE.fullmatch(tok)
-        for tok in tokens
-    ):
-        return "roman-ref"
     if not any(c.isalnum() for c in t):
         return "symbol"
     return None
-
-
-_CJK_RE = re.compile("[぀-ヿ㐀-䶿一-鿿豈-﫿가-힯]")
-
-
-# Prose-type blocks are exempt from the trivial filter: a standalone "No."
-# paragraph is dialogue, not apparatus.
-_TRIVIAL_EXEMPT_TAGS = frozenset(
-    ["p", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "figcaption"]
-)
-
-
-def is_trivial_unit(text, tag=None):
-    """A unit not worth an API round-trip: manuscript sigla ("(a)", "M",
-    "aa", "Kf"), stray initials, list markers.
-
-    Fewer than 3 alphabetic characters — unless the text contains CJK, where
-    two characters are a full word (lemo.epub's title is just 檸檬), or the
-    unit is a prose-type block (dialogue like "No.", "Sí", "Да").
-    """
-    if tag in _TRIVIAL_EXEMPT_TAGS:
-        return False
-    if _CJK_RE.search(text):
-        return False
-    return sum(c.isalpha() for c in text) < 3
 
 
 def _signature(element):
@@ -334,17 +301,6 @@ def _ancestor_skip_reason(node, exclude_tags, resolver=None):
     return None
 
 
-def _is_single_roman(text):
-    """A lone roman-numeral letter (C, I, V, X, L, D, M).
-
-    Ambiguous by nature: it is a line-number marker in Gilgamesh (span.mr)
-    but a drop cap in TOC entries ("C" of "Cover") or the pronoun "I".
-    partition_soup resolves it with a per-signature vote: skip only when the
-    subtree's class never carries translatable text anywhere in the file.
-    """
-    return len(text) == 1 and text in "IVXLCDM"
-
-
 def _inline_subtree_root(node, resolver):
     """The outermost inline ancestor of a text node (below its block).
 
@@ -394,16 +350,15 @@ def _separate_brs(root):
 def _classify_subtrees(nodes_iter, resolver, exclude_tags):
     """Shared two-pass classification core for partition/clean-text.
 
-    Yields nothing; returns (entries, subtree_info, sig_has_prose) where
+    Yields nothing; returns (entries, subtree_info) where
     entries = [(node, chars, ancestor_reason_or_None, subtree_id)],
-    subtree_info = {subtree_id: (reason_or_None, combined_text, signature)}.
+    subtree_info = {subtree_id: reason_or_None}.
     Whitespace-only nodes become 0-char "whitespace" entries: they carry no
     accountable text, but the callers keep them in unit text as glue so words
     don't merge across inline tag boundaries (``<b>one</b> <b>two</b>``).
     """
     entries = []
     subtree_info = {}
-    sig_has_prose = set()
     for node in nodes_iter:
         stripped = str(node).strip()
         if not stripped:
@@ -419,29 +374,19 @@ def _classify_subtrees(nodes_iter, resolver, exclude_tags):
         if rid not in subtree_info:
             if isinstance(root, Tag):
                 combined = _visible_text(root)
-                sig = _signature(root)
             else:
                 combined = _normalize_text(stripped)
-                sig = _signature(node.parent) if node.parent else ""
-            subtree_reason = classify_skip(combined)
-            subtree_info[rid] = (subtree_reason, combined, sig)
-            if subtree_reason is None:
-                sig_has_prose.add(sig)
+            subtree_info[rid] = classify_skip(combined)
         entries.append((node, chars, None, rid))
-    return entries, subtree_info, sig_has_prose
+    return entries, subtree_info
 
 
-def _resolve_entry(entry, subtree_info, sig_has_prose):
+def _resolve_entry(entry, subtree_info):
     """Final verdict for one text node: skip reason string, or None (keep)."""
     _node, _chars, ancestor_reason, rid = entry
     if ancestor_reason is not None:
         return ancestor_reason
-    reason, combined, sig = subtree_info[rid]
-    if reason is None:
-        return None
-    if _is_single_roman(combined) and sig in sig_has_prose:
-        return None  # drop cap / <em>I</em>: class carries prose elsewhere
-    return reason
+    return subtree_info[rid]
 
 
 def _nearest_block(node, resolver, stop=None):
@@ -481,13 +426,11 @@ def unit_clean_text(element, resolver, exclude_tags=DEFAULT_EXCLUDE_TAGS):
         if type(n) in TEXT_NODE_TYPES
         and _nearest_block(n, resolver, stop=element) is None
     )
-    entries, subtree_info, sig_has_prose = _classify_subtrees(
-        text_nodes, resolver, exclude_tags
-    )
+    entries, subtree_info = _classify_subtrees(text_nodes, resolver, exclude_tags)
     parts = []
     for entry in entries:
         node, chars, _, _ = entry
-        if _resolve_entry(entry, subtree_info, sig_has_prose) is None or chars == 0:
+        if _resolve_entry(entry, subtree_info) is None or chars == 0:
             parts.append(str(node))
         else:
             _append_glue(parts, node)
@@ -514,9 +457,6 @@ class FilePlan:
     units: list = field(default_factory=list)
     skipped: Counter = field(default_factory=Counter)
     total_chars: int = 0
-    # signature -> [units, chars, sample texts]: what the trivial filter ate,
-    # kept so the LLM classifier can be asked about letter-bearing ones
-    trivial: dict = field(default_factory=dict)
 
 
 def partition_soup(
@@ -534,14 +474,12 @@ def partition_soup(
     order = []
 
     text_nodes = (n for n in body.descendants if type(n) in TEXT_NODE_TYPES)
-    entries, subtree_info, sig_has_prose = _classify_subtrees(
-        text_nodes, resolver, exclude_tags
-    )
+    entries, subtree_info = _classify_subtrees(text_nodes, resolver, exclude_tags)
 
     for entry in entries:
         node, chars, _, _ = entry
         fp.total_chars += chars
-        reason = _resolve_entry(entry, subtree_info, sig_has_prose)
+        reason = _resolve_entry(entry, subtree_info)
         if reason is not None:
             if chars == 0:
                 # whitespace glue: no accountable text, but it must appear in
@@ -567,23 +505,12 @@ def partition_soup(
 
     for key in order:
         block, parts, chars, nodes = owners[key]
-        text = _normalize_text("".join(parts))
-        sig = _signature(block)
-        forced = bool(overrides) and overrides.get(sig) == "force-translate"
-        if not forced and is_trivial_unit(text, tag=block.name):
-            fp.skipped["trivial"] += chars
-            row = fp.trivial.setdefault(sig, [0, 0, []])
-            row[0] += 1
-            row[1] += chars
-            if text not in row[2] and len(row[2]) < TRIVIAL_SAMPLE_CAP:
-                row[2].append(text)
-            continue
         fp.units.append(
             Unit(
                 element=block,
                 file_name=file_name,
-                signature=sig,
-                text=text,
+                signature=_signature(block),
+                text=_normalize_text("".join(parts)),
                 chars=chars,
                 nodes=nodes,
             )
@@ -753,24 +680,6 @@ class TranslationPlan:
             row["sample"] = row["sample"][:60]
         return rows
 
-    def trivial_rows(self):
-        """Aggregate what the trivial filter skipped, by signature."""
-        agg = {}
-        for f in self.files:
-            for sig, (units, chars, samples) in f.trivial.items():
-                row = agg.setdefault(
-                    sig, {"signature": sig, "units": 0, "chars": 0, "samples": []}
-                )
-                row["units"] += units
-                row["chars"] += chars
-                for s in samples:
-                    if (
-                        s not in row["samples"]
-                        and len(row["samples"]) < TRIVIAL_SAMPLE_CAP
-                    ):
-                        row["samples"].append(s)
-        return agg
-
     def report(self, max_rows=25):
         lines = []
         rows = self.signature_rows()
@@ -804,27 +713,21 @@ class TranslationPlan:
     def to_dict(self, book_path=None, llm_actions=None):
         signatures = self.signature_rows()
         if llm_actions:
-            # LLM verdicts must round-trip as ordinary signature actions:
-            # rows this plan was built without (resurrected trivia) are added,
-            # and every verdict is marked as machine-decided so user edits
-            # stay distinguishable
+            # LLM verdicts round-trip as ordinary signature actions, marked as
+            # machine-decided so user edits stay distinguishable. Under greedy
+            # partitioning every candidate signature is a real unit signature,
+            # so an unknown one means the classifier answered about something
+            # this plan never asked — a bug, not a row to synthesize.
             by_sig = {r["signature"]: r for r in signatures}
-            trivial = self.trivial_rows()
-            total = self.total_chars or 1
+            unknown = set(llm_actions) - set(by_sig)
+            if unknown:
+                raise ValueError(
+                    f"classifier returned verdicts for {len(unknown)} signature(s) "
+                    f"absent from the plan: {sorted(unknown)[:5]}"
+                )
             for sig, action in llm_actions.items():
-                row = by_sig.get(sig)
-                if row is None:
-                    t = trivial.get(sig, {"units": 0, "chars": 0, "samples": []})
-                    row = {
-                        "signature": sig,
-                        "units": t["units"],
-                        "chars": t["chars"],
-                        "sample": (t["samples"] or [""])[0][:60],
-                        "pct": round(100 * t["chars"] / total, 1),
-                    }
-                    signatures.append(row)
-                row["action"] = action
-                row["decided_by"] = "llm"
+                by_sig[sig]["action"] = action
+                by_sig[sig]["decided_by"] = "llm"
         data = {
             "schema_version": PLAN_SCHEMA_VERSION,
             "coverage": self.coverage,
@@ -892,11 +795,25 @@ def load_plan_overrides(json_path, book_path):
             f"Fix the misspelled action in that file, or delete the file "
             f"and rerun to regenerate a fresh plan."
         )
-    return {
-        s["signature"]: s["action"]
-        for s in data.get("signatures", [])
-        if s.get("action") and s["action"] != "translate"
-    }
+    overrides = {}
+    legacy_forced = 0
+    for s in data.get("signatures", []):
+        action = s.get("action")
+        if not action or action == "translate":
+            continue
+        if action == "force-translate":
+            # schema <=2 escape hatch for the trivial filter, which no longer
+            # exists: greedy partitioning already translates these units
+            legacy_forced += 1
+            continue
+        overrides[s["signature"]] = action
+    if legacy_forced:
+        print(
+            f"note: {json_path} carries {legacy_forced} 'force-translate' "
+            "action(s) from an older schema; they now mean plain 'translate' "
+            "and were applied as such"
+        )
+    return overrides
 
 
 class BookCss:

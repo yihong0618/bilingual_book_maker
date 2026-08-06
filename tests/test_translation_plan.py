@@ -23,7 +23,6 @@ from book_maker.loader.plan import (
     DisplayResolver,
     build_plan,
     classify_skip,
-    is_trivial_unit,
     parse_css_display,
     partition_soup,
     unit_clean_text,
@@ -52,32 +51,17 @@ class TestClassifySkip:
         assert classify_skip("") == "whitespace"
         assert classify_skip("  \n ") == "whitespace"
 
-    def test_numeric(self):
-        assert classify_skip("5") == "numeric"
-        assert classify_skip("120") == "numeric"
-        assert classify_skip("3 4 5") == "numeric"
+    def test_numbers_are_content_now(self):
+        # schema 3: the numeric heuristic is gone. Verse numbers (rigveda) and
+        # figures reach the model; --plan-classify decides, not a regex.
+        for text in ["5", "120", "3 4 5", "3.14", "1,234.56", "42%", "$3.99"]:
+            assert classify_skip(text) is None, text
 
-    def test_decimals_percentages_and_currency(self):
-        # upstream #451: bare figures and percentages are not worth a request
-        assert classify_skip("3.14") == "numeric"
-        assert classify_skip("-17") == "numeric"
-        assert classify_skip("1,234.56") == "numeric"
-        assert classify_skip("42%") == "numeric"
-        assert classify_skip("50 %") == "numeric"
-        assert classify_skip("$3.99") == "numeric"
-        assert classify_skip("1 234,50 €") == "numeric"
-        assert classify_skip("±0.5") == "numeric"
-        # ... but a figure with any prose attached still gets translated
-        assert classify_skip("42% of the herd") is None
-        assert classify_skip("about 3.14") is None
-        # a lone symbol has no digits, so it stays a symbol
-        assert classify_skip("%") == "symbol"
-
-    def test_roman_line_refs(self):
-        # gilgamesh span.mr / span.mn / span.line_number contents
-        assert classify_skip("I 5") == "roman-ref"
-        assert classify_skip("XI 100") == "roman-ref"
-        assert classify_skip("IV") == "roman-ref"
+    def test_roman_line_refs_are_content_now(self):
+        # gilgamesh span.mr / span.mn contents: skipping these also cost real
+        # drop caps and the pronoun "I", which the vote only half-rescued
+        for text in ["I 5", "XI 100", "IV", "I"]:
+            assert classify_skip(text) is None, text
 
     def test_symbols(self):
         assert classify_skip("↓") == "symbol"  # ↓ span.arrow
@@ -86,30 +70,6 @@ class TestClassifySkip:
 
     def test_links(self):
         assert classify_skip("http://example.com/x") == "link"
-
-
-class TestTrivialUnits:
-    def test_sigla_and_markers_are_trivial(self):
-        # manuscript sigla in Gilgamesh's tablet tables, stray initials
-        for text in ["(a)", "M", "aa", "Kf", "CJ", "1.F.", "x1", "ii"]:
-            assert is_trivial_unit(text), text
-
-    def test_real_short_content_is_kept(self):
-        for text in ["THE END", "Pages", "Enkidu:", "cypress", "One ….…..,"]:
-            assert not is_trivial_unit(text), text
-
-    def test_cjk_is_dense_two_chars_is_a_word(self):
-        assert not is_trivial_unit("檸檬")  # lemo.epub's entire title
-        assert not is_trivial_unit("目次")
-
-    def test_prose_tags_exempt_short_dialogue_survives(self):
-        # "No." as a standalone paragraph is dialogue, not apparatus
-        for tag in ("p", "blockquote", "h2", "figcaption"):
-            assert not is_trivial_unit("No.", tag=tag)
-            assert not is_trivial_unit("Sí", tag=tag)
-        # apparatus containers still filtered
-        for tag in ("td", "li", "div", "span", None):
-            assert is_trivial_unit("(a)", tag=tag)
 
 
 # ------------------------------------------------------------- css resolver
@@ -178,12 +138,16 @@ class TestPartition:
             "p",
         ]
 
-    def test_line_numbers_are_skipped_not_translated(self):
+    def test_line_numbers_ride_along_with_their_line(self):
+        # schema 3 is greedy: the line-number spans are part of the block, so
+        # they reach the model with it instead of being guessed away. Nothing
+        # is charged to a content skip reason any more.
         fp, _ = self._partition(MINI_GILGAMESH)
         line = next(u for u in fp.units if u.signature == "div.poetry_line")
-        assert line.text == "He who saw the Deep, the country's foundation,"
-        assert "I" not in line.text.split()
-        assert fp.skipped.get("roman-ref", 0) + fp.skipped.get("numeric", 0) > 0
+        assert line.text.endswith("He who saw the Deep, the country's foundation,")
+        assert "I 5" in line.text
+        assert fp.skipped.get("roman-ref", 0) == 0
+        assert fp.skipped.get("numeric", 0) == 0
 
     def test_inline_link_does_not_split_its_paragraph(self):
         # upstream #414: with --translate-tags a,p the <a> was translated on its
@@ -239,15 +203,49 @@ class TestPartition:
         assert [u.signature for u in fp.units] == ["p"]
         assert fp.skipped.get("pagebreak", 0) > 0
 
-    def test_trivial_units_skipped_with_reason(self):
+    def test_short_units_are_units_now(self):
+        # schema 3: manuscript sigla and other sub-3-letter cells are units.
+        # They were the trivial filter's catch, and it also ate real content
+        # ("No", "Sí"); the classifier judges these instead.
         html = "<body><table><tr><td>(a)</td><td>Gilgamesh</td></tr></table></body>"
         fp, _ = self._partition(html)
-        assert [u.text for u in fp.units] == ["Gilgamesh"]
-        assert fp.skipped.get("trivial", 0) == 3
-        # invariant survives the trivial filter
+        assert [u.text for u in fp.units] == ["(a)", "Gilgamesh"]
+        assert "trivial" not in fp.skipped
         assert fp.total_chars == sum(u.chars for u in fp.units) + sum(
             fp.skipped.values()
         )
+
+    def test_verse_numbers_are_units_rigveda_shape(self):
+        # rigveda_sanskrit.epub: 6.1% of the book is bare verse references in
+        # their own blocks. The numeric filter ate every one of them; greedy
+        # keeps them as units so the classifier (or the user) can rule.
+        html = (
+            "<body><p class='vn'>1.1.1</p>"
+            "<p class='mantra'>agním īḷe puróhitaṃ</p>"
+            "<p class='vn'>1.1.2</p></body>"
+        )
+        fp, _ = self._partition(html)
+        assert [u.text for u in fp.units] == [
+            "1.1.1",
+            "agním īḷe puróhitaṃ",
+            "1.1.2",
+        ]
+        assert sum(fp.skipped.values()) == 0
+
+    def test_structural_skips_are_untouched_by_greedy(self):
+        # the free/structural half of the filter must survive schema 3 intact
+        html = (
+            "<body><p>real prose paragraph here</p>"
+            '<p style="display:none">hidden apparatus</p>'
+            "<p>* * *</p>"
+            "<p>https://example.com/x</p>"
+            "<ruby>漢<rt>かん</rt></ruby>"
+            "<svg><text>diagram label</text></svg></body>"
+        )
+        fp, _ = self._partition(html)
+        assert [u.text for u in fp.units] == ["real prose paragraph here", "漢"]
+        for reason in ("hidden", "symbol", "link", "ruby", "non-content"):
+            assert fp.skipped.get(reason, 0) > 0, reason
 
     def test_epub_pagebreak_semantics_skipped(self):
         html = (
@@ -271,10 +269,11 @@ class TestPartition:
         # no unit contains another unit's text
         assert "Nested" not in texts["div"]
 
-    def test_drop_cap_roman_letters_survive_signature_vote(self):
-        # "C" of "Cover" in its own span must NOT be eaten as a roman numeral
-        # because that span class also carries normal prose letters elsewhere;
-        # Gilgamesh's span.mr ("I") IS eaten because its class never does.
+    def test_drop_caps_join_their_word_without_a_vote(self):
+        # The old per-signature "does this class carry prose elsewhere?" vote
+        # existed only to rescue drop caps from the roman-numeral filter. With
+        # the filter gone, a drop cap is simply the first letter of its unit —
+        # no vote, no file-order dependence, no way to lose the "C" of "Cover".
         html = (
             "<body>"
             '<p><span class="dcap">C</span><span class="dcap">OVER</span></p>'
@@ -288,8 +287,8 @@ class TestPartition:
         assert "COVER" in texts
         assert "TITLE" in texts
         line = next(u for u in fp.units if u.signature == "div.poetry_line")
-        assert line.text == "He who saw the Deep"
-        assert fp.skipped.get("roman-ref", 0) == 1  # only span.mr's "I"
+        assert line.text == "IHe who saw the Deep"
+        assert fp.skipped.get("roman-ref", 0) == 0
 
     def test_roman_numeral_inside_prose_link_is_content(self):
         # Animal Farm's chapter list: <a><span>C</span><span>HAPTER </span>
@@ -306,13 +305,12 @@ class TestPartition:
         assert sum(fp.skipped.values()) == 0
 
     def test_unit_clean_text_is_stateless_recomputable(self):
-        _, soup = self._partition(MINI_GILGAMESH)
+        fp, soup = self._partition(MINI_GILGAMESH)
         el = soup.find("div", class_="poetry_line")
         resolver = DisplayResolver([])
-        assert (
-            unit_clean_text(el, resolver)
-            == "He who saw the Deep, the country's foundation,"
-        )
+        unit = next(u for u in fp.units if u.signature == "div.poetry_line")
+        # recomputing from the element alone must reproduce the planned text
+        assert unit_clean_text(el, resolver) == unit.text
 
 
 class TestPerDocumentCss:
@@ -981,9 +979,7 @@ class TestEpubHardening:
     # -- item 9: invisible characters --------------------------------------
 
     def test_soft_hyphen_and_zero_width_stripped_from_unit_text(self):
-        fp, _ = self._partition(
-            "<body><p>con­struction and zero​width﻿ here</p></body>"
-        )
+        fp, _ = self._partition("<body><p>con­struction and zero​width﻿ here</p></body>")
         assert [u.text for u in fp.units] == ["construction and zerowidth here"]
 
     # -- item 0: schema version --------------------------------------------
@@ -1079,13 +1075,10 @@ def _cunit(sig, text, group_id=None):
     )
 
 
-def _cplan(units=(), trivial=None):
+def _cplan(units=()):
     fp = FilePlan(file_name="x.html")
     fp.units = list(units)
-    fp.trivial = dict(trivial or {})
-    fp.total_chars = sum(u.chars for u in fp.units) + sum(
-        row[1] for row in fp.trivial.values()
-    )
+    fp.total_chars = sum(u.chars for u in fp.units)
     return TranslationPlan([fp], ("sup", "code"), 8)
 
 
@@ -1119,7 +1112,6 @@ class TestClassifyCandidates:
         heads = [_cunit("p.header", "GILGAMESH") for _ in range(20)]
         cands, _ = gather_candidates(_cplan([PROSE, *heads]))
         assert [c["signature"] for c in cands] == ["p.header"]
-        assert cands[0]["kind"] == "translate"
         assert "GILGAMESH" in cands[0]["samples"][0]
 
     def test_headings_are_never_candidates(self):
@@ -1137,31 +1129,12 @@ class TestClassifyCandidates:
         )
         assert cands == []
 
-    def test_trivia_of_a_unit_bearing_signature_is_not_asked_about(self):
-        # gilgamesh: div.poetry_line_indented is 15% of the book plus one
-        # 6-char fragment the trivial filter ate — the signature's content
-        # status is already proven, its trivia is residue, not a question
-        verses = [_cunit("div.verse", f"short line {i}", group_id=0) for i in range(9)]
-        plan = _cplan([PROSE, *verses], trivial={"div.verse": [1, 6, ["in …"]]})
-        cands, _ = gather_candidates(plan)
-        assert cands == []
-
-    def test_trivial_needs_letters_to_be_a_candidate(self):
-        plan = _cplan(
-            [PROSE],
-            trivial={"td.no": [4, 8, ["No"]], "p.star": [3, 15, ["* * *"]]},
-        )
-        cands, _ = gather_candidates(plan)
+    def test_short_units_are_ordinary_candidates(self):
+        # what the trivial filter used to eat is now a plain unit signature,
+        # so it reaches the classifier through the one candidate path
+        sigla = [_cunit("td.no", "No") for _ in range(4)]
+        cands, _ = gather_candidates(_cplan([PROSE, *sigla]))
         assert [c["signature"] for c in cands] == ["td.no"]
-        assert cands[0]["kind"] == "trivial"
-
-    def test_signature_never_appears_as_both_kinds(self):
-        # one verdict per signature: a sig that is already asked about as a
-        # translate-candidate must not also be asked about its trivia
-        heads = [_cunit("p.header", "GILGAMESH") for _ in range(20)]
-        plan = _cplan([PROSE, *heads], trivial={"p.header": [2, 4, ["Kf"]]})
-        cands, _ = gather_candidates(plan)
-        assert [c["signature"] for c in cands] == ["p.header"]
 
     def test_five_samples_per_signature(self):
         # more samples per signature is cheap insurance against a verdict
@@ -1185,14 +1158,12 @@ class TestClassifyVerdicts:
     CANDS = [
         {
             "signature": "p.header",
-            "kind": "translate",
             "units": 9,
             "chars": 81,
             "samples": ["GILGAMESH"],
         },
         {
             "signature": "td.no",
-            "kind": "trivial",
             "units": 4,
             "chars": 8,
             "samples": ["No"],
@@ -1227,20 +1198,19 @@ class TestClassifyVerdicts:
         assert "currently" not in prompt
         assert "keep it as is" in prompt
 
-    def test_only_confident_overturns_become_actions(self):
+    def test_only_affirmative_skips_become_actions(self):
+        # greedy plans translate every candidate already, so "translate" is
+        # the status quo and only "skip" moves anything
         result = {
             "p.header": {"content_type": "running head", "verdict": "skip"},
             "td.no": {"content_type": "dialogue", "verdict": "translate"},
         }
-        assert merge_verdicts(result, self.CANDS) == {
-            "p.header": "llm-skip",
-            "td.no": "force-translate",
-        }
+        assert merge_verdicts(result, self.CANDS) == {"p.header": "llm-skip"}
 
     def test_unsure_and_status_quo_change_nothing(self):
         result = {
             "p.header": {"content_type": "?", "verdict": "unsure"},
-            "td.no": {"content_type": "sigla", "verdict": "skip"},
+            "td.no": {"content_type": "dialogue", "verdict": "translate"},
         }
         assert merge_verdicts(result, self.CANDS) == {}
 
@@ -1308,15 +1278,10 @@ class TestClassifyPartitionActions:
             soup, DisplayResolver([]), file_name="x.html", overrides=overrides
         )
 
-    def test_trivial_skips_are_sampled_by_signature(self):
+    def test_short_cells_are_planned_units(self):
         fp = self._partition(self.TABLE)
-        assert fp.skipped["trivial"] == len("No")
-        assert fp.trivial["td.no"] == [1, 2, ["No"]]
-
-    def test_force_translate_resurrects_trivial_units(self):
-        fp = self._partition(self.TABLE, overrides={"td.no": "force-translate"})
         assert "No" in [u.text for u in fp.units]
-        assert fp.skipped["trivial"] == 0
+        assert "trivial" not in fp.skipped
         assert fp.total_chars == sum(u.chars for u in fp.units) + sum(
             fp.skipped.values()
         )
@@ -1339,28 +1304,49 @@ class TestClassifyPlanArtifact:
         from book_maker.loader.plan import load_plan_overrides
 
         heads = [_cunit("p.header", "GILGAMESH") for _ in range(3)]
-        plan = _cplan([PROSE, *heads], trivial={"td.no": [4, 8, ["No"]]})
+        plan = _cplan([PROSE, *heads])
         path = tmp_path / "book_plan.json"
-        plan.save_json(
-            str(path),
-            llm_actions={"p.header": "llm-skip", "td.no": "force-translate"},
-        )
+        plan.save_json(str(path), llm_actions={"p.header": "llm-skip"})
 
         data = json.loads(path.read_text())
+        assert data["schema_version"] == 3
         by_sig = {r["signature"]: r for r in data["signatures"]}
         assert by_sig["p.header"]["action"] == "llm-skip"
         assert by_sig["p.header"]["decided_by"] == "llm"
-        # resurrected trivia gets a row even though it never was a unit
-        assert by_sig["td.no"]["action"] == "force-translate"
-        assert by_sig["td.no"]["sample"] == "No"
         # user-facing default rows stay untouched
         assert by_sig["p"]["action"] == "translate"
         assert "decided_by" not in by_sig["p"]
 
         assert load_plan_overrides(str(path), "unused-book-path") == {
-            "p.header": "llm-skip",
-            "td.no": "force-translate",
+            "p.header": "llm-skip"
         }
+
+    def test_verdict_for_an_unplanned_signature_fails_loud(self, tmp_path):
+        # greedy plans have a row for every candidate, so a verdict about a
+        # signature the plan lacks means the classifier answered the wrong
+        # question — synthesizing a row would hide that
+        plan = _cplan([PROSE])
+        with pytest.raises(ValueError, match="absent from the plan"):
+            plan.save_json(
+                str(tmp_path / "book_plan.json"), llm_actions={"td.gone": "llm-skip"}
+            )
+
+    def test_legacy_force_translate_loads_as_plain_translate(self, tmp_path, capsys):
+        # schema<=2 JSONs (gilgamesh_plan.json) must keep loading: the action
+        # is still valid to parse, it just no longer bypasses anything
+        import json
+
+        from book_maker.loader.plan import load_plan_overrides
+
+        plan = _cplan([PROSE])
+        path = tmp_path / "book_plan.json"
+        plan.save_json(str(path))
+        data = json.loads(path.read_text())
+        data["signatures"][0]["action"] = "force-translate"
+        path.write_text(json.dumps(data))
+
+        assert load_plan_overrides(str(path), "unused-book-path") == {}
+        assert "force-translate" in capsys.readouterr().out
 
     def test_unknown_action_in_plan_json_fails_loud(self, tmp_path):
         # a typo like "skiip" silently treated as translate would quietly
