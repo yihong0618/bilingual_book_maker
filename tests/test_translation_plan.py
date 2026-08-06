@@ -9,6 +9,7 @@ Fixtures:
 
 import copy as copy_mod
 import os
+import re
 import shutil
 import zipfile
 from collections import Counter
@@ -586,10 +587,13 @@ class TestGilgameshPlan:
 
     def test_report_samples_survive_rich_markup(self, plan):
         # book text is full of "[Seven] warriors [they were]" — rich reads
-        # those as style tags and eats them unless the report is escaped
+        # those as style tags and eats them unless the report is escaped.
+        # Strip color codes before asserting: under FORCE_COLOR rich styles
+        # the output, splitting the text without eating it.
         console = Console(file=StringIO(), width=200)
         console.print(escape(plan.report()))
-        assert "[Seven] warriors [they were]" in console.file.getvalue()
+        rendered = re.sub(r"\x1b\[[0-9;]*m", "", console.file.getvalue())
+        assert "[Seven] warriors [they were]" in rendered
 
 
 # ------------------------------------------------------- plan artifact I/O
@@ -677,6 +681,35 @@ def _make_loader(tmp_path, model_cls, book=ANIMAL_FARM):
     loader.plan_mode = True
     loader.translate_tags = "auto"
     return loader, src
+
+
+class TestQuietMode:
+    """--quiet is for log files and agent runs: progress bars and
+    per-paragraph echoes off, reports and errors still on."""
+
+    @staticmethod
+    def _plain(s):
+        # rich styles the echoes, splitting tokens with ANSI codes
+        return re.sub(r"\x1b\[[0-9;]*m", "", s)
+
+    def test_echoes_and_bars_off_reports_still_on(self, tmp_path, capsys):
+        loader, src = _make_loader(tmp_path, FakeModel)
+        loader.only_filelist = "index_split_004.html"
+        loader.quiet = True
+        loader.make_bilingual_book()
+        captured = capsys.readouterr()
+        # no translated echo (the plan report still shows clipped source
+        # samples — that is the deliverable, not the echo), no tqdm bar
+        assert "T[" not in self._plain(captured.out)
+        assert "it/s" not in captured.err
+        assert "Translation plan:" in captured.out
+        assert (src.parent / (src.stem + "_bilingual.epub")).exists()
+
+    def test_default_still_echoes(self, tmp_path, capsys):
+        loader, src = _make_loader(tmp_path, FakeModel)
+        loader.only_filelist = "index_split_004.html"
+        loader.make_bilingual_book()
+        assert "T[" in self._plain(capsys.readouterr().out)
 
 
 class TestLoaderPlanMode:

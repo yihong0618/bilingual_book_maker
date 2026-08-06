@@ -158,3 +158,37 @@ def test_classify_model_flag_implies_model_mode(tmp_path):
     # classifier that cannot run must block rather than degrade
     assert proc.returncode == 1
     assert "--plan-classify-model" in proc.stdout
+
+
+def test_model_list_with_a_preset_model_fails_loud(tmp_path):
+    # --model chatgptapi runs a hardcoded GPT-3.5 discovery and ignores
+    # --model_list entirely; silently dropping the user's explicit model
+    # choice cost a live run — refuse the combination instead
+    src = tmp_path / BOOK.name
+    src.write_bytes(BOOK.read_bytes())
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "make_book.py",
+            "--book_name",
+            str(src),
+            "--model",
+            "chatgptapi",
+            "--openai_key",
+            "sk-test",
+            "--model_list",
+            "some-model",
+        ],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 1
+    assert "--model_list" in proc.stdout
+    assert "openai" in proc.stdout
+
+
+def test_quiet_flag_is_accepted(tmp_path):
+    proc, plan = _run(tmp_path, "--plan-dry-run", "--quiet")
+    assert proc.returncode == 0
+    assert plan.exists()

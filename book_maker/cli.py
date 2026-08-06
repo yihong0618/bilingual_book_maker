@@ -491,6 +491,14 @@ So you are close to reaching the limit. You have to choose your own value, there
         help='JSON string of extra body parameters to pass to the API. Example: --extra_body \'{"chat_template_kwargs": {"enable_thinking": false}}\'',
     )
     parser.add_argument(
+        "--quiet",
+        dest="quiet",
+        action="store_true",
+        help="suppress progress bars and per-paragraph translation echoes "
+        "(for log files and non-interactive runs; reports and errors still "
+        "print). Currently epub only.",
+    )
+    parser.add_argument(
         "--provider",
         dest="provider",
         type=str,
@@ -769,6 +777,8 @@ So you are close to reaching the limit. You have to choose your own value, there
         # classification, i.e. the loader's 'none'
         e.plan_classify = classify_mode if classify_mode != "most" else "none"
         e.plan_classify_model = options.plan_classify_model or None
+    if options.quiet and hasattr(e, "quiet"):
+        e.quiet = True
     if options.exclude_filelist:
         e.exclude_filelist = options.exclude_filelist
     if options.only_filelist:
@@ -815,6 +825,16 @@ So you are close to reaching the limit. You have to choose your own value, there
             raise ValueError(
                 "When using `openai` model, you must also provide `--model_list`. For default model sets use `--model chatgptapi` or `--model gpt4` or `--model gpt4omini` or `--model gpt5mini`",
             )
+    elif options.model_list and options.model != "gemini" and not options.provider:
+        # every other --model value runs its own preset model discovery and
+        # would silently drop the explicit model choice — the worst outcome
+        # for a user pointing at a proxy that only serves that model
+        print(
+            f"[bold red]Error: --model_list is only honored by --model openai, "
+            f"groq or gemini (or a --provider); --model {options.model} uses "
+            f"its own preset models and would silently ignore it.[/bold red]"
+        )
+        exit(1)
     # TODO refactor, quick fix for gpt4 model
     if options.model == "chatgptapi":
         if options.ollama_model:

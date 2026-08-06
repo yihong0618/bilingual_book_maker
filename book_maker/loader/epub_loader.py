@@ -91,6 +91,9 @@ class EPUBBookLoader(BaseBookLoader):
         self.retranslate = None
         self.exclude_filelist = ""
         self.only_filelist = ""
+        # --quiet: progress bars and per-paragraph echoes off (log files,
+        # agent runs); reports and error prints stay on
+        self.quiet = False
         # plan mode (--plan-classify): coverage-complete partition. The flag
         # is the switch; translate_tags is additionally set to "auto" so the
         # tag-selection paths keep their established no-match behavior.
@@ -896,18 +899,22 @@ class EPUBBookLoader(BaseBookLoader):
                         p, t, self.translation_style, self.single_translate
                     )
                 self.p_to_save.append(t)
-                print(text)
+                if not self.quiet:
+                    print(text)
                 # Check if translation failed
                 if (
                     self.translate_model.TRANSLATION_ERROR_MARKER is not None
                     and t == self.translate_model.TRANSLATION_ERROR_MARKER
                 ):
+                    # an error is a signal, not an echo: it prints even in
+                    # quiet mode
                     print(
                         f"[bold red][Translation failed for this paragraph][/bold red]"
                     )
-                else:
+                elif not self.quiet:
                     print(f"[bold green]{t}[/bold green]")
-                print()
+                if not self.quiet:
+                    print()
             else:
                 # Resumed from cache
                 if plan_units is not None:
@@ -934,7 +941,8 @@ class EPUBBookLoader(BaseBookLoader):
         wait_p_list = []
         for i in range(len(p_list)):
             p = p_list[i]
-            print(f"translating {i}/{len(p_list)}")
+            if not self.quiet:
+                print(f"translating {i}/{len(p_list)}")
             temp_p = copy(p)
 
             for p_exclude in self.exclude_translate_tags.split(","):
@@ -1270,7 +1278,8 @@ class EPUBBookLoader(BaseBookLoader):
                     if self._process_paragraph_sentence_mode(p, soup):
                         index += 1
                         pbar.update(1)
-                        print()
+                        if not self.quiet:
+                            print()
                         if self.is_test and index >= self.test_num:
                             is_test_done = True
                         continue
@@ -1286,12 +1295,14 @@ class EPUBBookLoader(BaseBookLoader):
                         )
                         pbar.update(n)
                         p_block = []
-                        print()
+                        if not self.quiet:
+                            print()
                 else:
                     index = self._process_paragraph(
                         p, new_p, index, p_to_save_len, thread_safe=False
                     )
-                    print()
+                    if not self.quiet:
+                        print()
                     pbar.update(1)
 
                 if self.is_test and index >= self.test_num:
@@ -1755,8 +1766,10 @@ class EPUBBookLoader(BaseBookLoader):
         pbar = tqdm(
             total=self.test_num if self.is_test else all_p_length,
             leave=not self.is_test,
+            disable=self.quiet,
         )
-        print()
+        if not self.quiet:
+            print()
         index = 0
         p_to_save_len = len(self.p_to_save)
         try:
@@ -1842,7 +1855,10 @@ class EPUBBookLoader(BaseBookLoader):
                 # Create a simpler progress bar for parallel processing
                 pbar.close()  # Close the original progress bar
                 chapter_pbar = tqdm(
-                    total=len(document_items), desc="Chapters", unit="ch"
+                    total=len(document_items),
+                    desc="Chapters",
+                    unit="ch",
+                    disable=self.quiet,
                 )
 
                 chapter_data_list = [
