@@ -1282,6 +1282,46 @@ class TestEpubHardening:
             resumed.make_bilingual_book()
         assert excinfo.value.code == 1
 
+    def test_plan_resume_finishes_the_book_without_retranslating(self, tmp_path):
+        # the checkpoint payload moved into upstream #549's versioned format
+        # (job ids + translations, plan_fingerprint alongside), so the happy
+        # path needs a round trip of its own: every refusal test above would
+        # still pass if resume simply never reused anything.
+        import book_maker.loader.epub_loader as loader_mod
+
+        class StopsPartway(FakeModel):
+            calls = 0
+            budget = 3
+
+            def translate_list(self, text_list):
+                type(self).calls += 1
+                if type(self).calls > type(self).budget:
+                    raise RuntimeError("boom")
+                return super().translate_list(text_list)
+
+        loader, src = _make_loader(tmp_path, StopsPartway)
+        with pytest.raises(SystemExit):
+            loader.make_bilingual_book()
+        done = len(loader.p_to_save)
+        assert done > 0, "nothing was checkpointed, the test proves nothing"
+
+        StopsPartway.calls = 0
+        StopsPartway.budget = 10**6
+        resumed = loader_mod.EPUBBookLoader(
+            str(src), StopsPartway, "dummy-key", resume=True, language="zh-hans"
+        )
+        resumed.plan_mode = True
+        resumed.translate_tags = "auto"
+        assert len(resumed.p_to_save) == done
+        resumed.make_bilingual_book()
+
+        reference, _ = _make_loader(tmp_path / "ref", FakeModel)
+        reference.make_bilingual_book()
+        assert resumed.p_to_save == reference.p_to_save
+        # what the checkpoint already holds must not be sent again
+        sent = [t for call in resumed.translate_model.list_calls for t in call]
+        assert len(sent) == len(reference.p_to_save) - done
+
     def test_empty_filtered_plan_fails_loud(self, tmp_path):
         # review finding: coverage of an empty plan is vacuously 100%, so a
         # misspelled --only_filelist used to pass the gate and produce a
