@@ -32,7 +32,7 @@ from .plan import (
     load_plan_overrides,
     partition_file,
 )
-from .plan_classify import PlanClassifyError, classify_plan
+from .classify import PlanClassifyError, classify_plan
 
 
 class EPUBBookLoader(BaseBookLoader):

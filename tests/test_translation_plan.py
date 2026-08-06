@@ -1174,14 +1174,15 @@ class TestEpubHardening:
 
 
 from book_maker.loader.plan import FilePlan, TranslationPlan, Unit
-from book_maker.loader.plan_classify import (
-    MAX_CANDIDATES,
+from book_maker.loader.classify.candidates import gather_candidates
+from book_maker.loader.classify.model import (
+    PAGE_SIZE,
     VERDICTS,
     PlanClassifyError,
     build_prompt,
     build_schema,
     classify_plan,
-    gather_candidates,
+    lint_verdicts,
     merge_verdicts,
 )
 
@@ -1222,17 +1223,17 @@ class FakeClassifier:
 class TestClassifyCandidates:
     def test_prose_spine_is_never_a_candidate(self):
         plan = _cplan([PROSE])
-        cands, dropped = gather_candidates(plan)
-        assert cands == [] and dropped == 0
+        cands = gather_candidates(plan)
+        assert cands == []
 
     def test_poetry_groups_are_never_candidates(self):
         verses = [_cunit("div.verse", f"short line {i}", group_id=0) for i in range(9)]
-        cands, _ = gather_candidates(_cplan([PROSE, *verses]))
+        cands = gather_candidates(_cplan([PROSE, *verses]))
         assert cands == []
 
     def test_running_head_shape_is_a_candidate(self):
         heads = [_cunit("p.header", "GILGAMESH") for _ in range(20)]
-        cands, _ = gather_candidates(_cplan([PROSE, *heads]))
+        cands = gather_candidates(_cplan([PROSE, *heads]))
         assert [c["signature"] for c in cands] == ["p.header"]
         assert "GILGAMESH" in cands[0]["samples"][0]
 
@@ -1241,12 +1242,12 @@ class TestClassifyCandidates:
         # verdict here silently loses every chapter title, so headings are
         # structurally certain and never sent
         titles = [_cunit("h2.chapter_title", "Appendix") for _ in range(8)]
-        cands, _ = gather_candidates(_cplan([PROSE, *titles]))
+        cands = gather_candidates(_cplan([PROSE, *titles]))
         assert cands == []
 
     def test_user_overridden_signature_is_not_asked_about(self):
         heads = [_cunit("p.header", "GILGAMESH") for _ in range(20)]
-        cands, _ = gather_candidates(
+        cands = gather_candidates(
             _cplan([PROSE, *heads]), overrides={"p.header": "skip"}
         )
         assert cands == []
@@ -1255,25 +1256,26 @@ class TestClassifyCandidates:
         # what the trivial filter used to eat is now a plain unit signature,
         # so it reaches the classifier through the one candidate path
         sigla = [_cunit("td.no", "No") for _ in range(4)]
-        cands, _ = gather_candidates(_cplan([PROSE, *sigla]))
+        cands = gather_candidates(_cplan([PROSE, *sigla]))
         assert [c["signature"] for c in cands] == ["td.no"]
 
     def test_five_samples_per_signature(self):
         # more samples per signature is cheap insurance against a verdict
         # formed on an unrepresentative pair of lines
         heads = [_cunit("p.header", f"HEAD {i}") for i in range(20)]
-        cands, _ = gather_candidates(_cplan([PROSE, *heads]))
+        cands = gather_candidates(_cplan([PROSE, *heads]))
         assert len(cands[0]["samples"]) == 5
 
-    def test_cap_reports_dropped_instead_of_truncating_silently(self):
+    def test_nothing_is_dropped_paging_replaces_the_cap(self):
+        # the old cap silently left the smallest signatures unreviewed;
+        # model mode pages through all of them instead
         units = [
             _cunit(f"p.h{i}", f"HEAD {i}")
-            for i in range(MAX_CANDIDATES + 3)
+            for i in range(PAGE_SIZE + 3)
             for _ in range(4)
         ]
-        cands, dropped = gather_candidates(_cplan([PROSE, *units]))
-        assert len(cands) == MAX_CANDIDATES
-        assert dropped == 3
+        cands = gather_candidates(_cplan([PROSE, *units]))
+        assert len(cands) == PAGE_SIZE + 3
 
 
 class TestClassifyVerdicts:
@@ -1371,8 +1373,9 @@ class TestClassifyPlan:
         with pytest.raises(PlanClassifyError, match="structured-output"):
             classify_plan(self._uncertain_plan(), object())
 
-    def test_schema_not_honored_raises(self):
-        with pytest.raises(PlanClassifyError, match="does not honor"):
+    def test_no_json_at_all_raises(self):
+        # every rung of the ladder failed to produce an object
+        with pytest.raises(PlanClassifyError, match="cannot produce JSON"):
             classify_plan(self._uncertain_plan(), FakeClassifier(None))
 
     def test_malformed_response_raises(self):
@@ -1528,3 +1531,118 @@ class TestLoaderClassifyPolicy:
         )
         assert loader._classify_plan(self._uncertain_plan()) == {"p.header": "llm-skip"}
         assert "p.header" in capsys.readouterr().out
+
+
+class TestClassifyLint:
+    """Below strict decoding nothing about the response is guaranteed, so
+    every field is untrusted and 'unsure' is the safe reading."""
+
+    CANDS = [
+        {"signature": "p.header", "units": 9, "chars": 81, "samples": ["GILGAMESH"]},
+        {"signature": "td.no", "units": 4, "chars": 8, "samples": ["No"]},
+    ]
+
+    def test_missing_signature_is_unsure(self):
+        result = {"p.header": {"verdict": "skip"}}
+        assert lint_verdicts(result, self.CANDS) == {
+            "p.header": "skip",
+            "td.no": "unsure",
+        }
+
+    def test_out_of_enum_verdict_is_unsure(self):
+        result = {
+            "p.header": {"verdict": "banana"},
+            "td.no": {"verdict": "SKIP"},  # case counts: enum is exact
+        }
+        assert set(lint_verdicts(result, self.CANDS).values()) == {"unsure"}
+
+    def test_non_dict_entry_is_unsure(self):
+        result = {"p.header": "skip", "td.no": None}
+        assert set(lint_verdicts(result, self.CANDS).values()) == {"unsure"}
+
+    def test_extra_signatures_are_ignored(self):
+        # a hallucinated key must not become an action for a signature the
+        # plan never asked about — to_dict would reject it downstream
+        result = {
+            "p.header": {"verdict": "skip"},
+            "td.no": {"verdict": "translate"},
+            "div.invented": {"verdict": "skip"},
+        }
+        assert set(lint_verdicts(result, self.CANDS)) == {"p.header", "td.no"}
+
+    def test_non_dict_response_fails_loud(self):
+        with pytest.raises(PlanClassifyError, match="malformed"):
+            lint_verdicts(["not", "a", "dict"], self.CANDS)
+
+
+class TestClassifyPaging:
+    def test_candidates_are_paged_and_merged(self):
+        units = [_cunit(f"p.h{i}", f"HEAD {i}") for i in range(25) for _ in range(4)]
+        plan = _cplan([PROSE, *units])
+
+        class Pager:
+            model = "fake"
+
+            def __init__(self):
+                self.pages = []
+
+            def structured_json(self, prompt, schema, model=None):
+                sigs = schema["schema"]["required"]
+                self.pages.append(sigs)
+                return {s: {"verdict": "skip"} for s in sigs}
+
+        clf = Pager()
+        actions, cands = classify_plan(plan, clf)
+
+        assert len(cands) == 25
+        assert [len(p) for p in clf.pages] == [12, 12, 1]
+        assert len(actions) == 25
+        # every signature appears exactly once across the pages
+        flat = [s for page in clf.pages for s in page]
+        assert len(set(flat)) == 25
+
+    def test_one_failing_page_fails_the_whole_run(self):
+        # a half-classified plan is indistinguishable from a complete one in
+        # the JSON, so it must never be written
+        units = [_cunit(f"p.h{i}", f"HEAD {i}") for i in range(20) for _ in range(4)]
+
+        class SecondPageExplodes:
+            model = "fake"
+            calls = 0
+
+            def structured_json(self, prompt, schema, model=None):
+                type(self).calls += 1
+                if self.calls > 1:
+                    raise RuntimeError("boom")
+                return {s: {"verdict": "skip"} for s in schema["schema"]["required"]}
+
+        with pytest.raises(PlanClassifyError, match="boom"):
+            classify_plan(_cplan([PROSE, *units]), SecondPageExplodes())
+
+
+class TestAgentPrompt:
+    def _prompt(self):
+        from book_maker.loader.classify import build_agent_prompt
+
+        return build_agent_prompt(
+            "book_plan.json", "book.epub", "python3 make_book.py --book_name book.epub"
+        )
+
+    def test_prompt_is_self_contained(self):
+        text = self._prompt()
+        # a session with no skill installed must learn everything from this
+        for needed in [
+            "book_plan.json",
+            "book.epub",
+            "python3 make_book.py --book_name book.epub",
+            "samples",
+            "book_sha256",
+            "unzip -p",
+        ]:
+            assert needed in text, needed
+
+    def test_prompt_states_the_asymmetry_of_mistakes(self):
+        # wrapped prose, so compare on collapsed whitespace
+        text = " ".join(self._prompt().split())
+        assert "leave it alone" in text
+        assert "losing content is not" in text

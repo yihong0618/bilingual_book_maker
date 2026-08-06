@@ -23,7 +23,7 @@ Partitioning is *greedy* (schema 3): only structurally free reasons skip text
 heuristics — numeric runs, roman numerals, sub-3-letter units — were removed
 after measuring that they reclaimed 0-6% of characters while silently
 dropping real content; deciding what is worth translating is the classifier's
-job now (see plan_classify.py and --plan-classify).
+job now (see the classify package and --plan-classify).
 """
 
 import hashlib

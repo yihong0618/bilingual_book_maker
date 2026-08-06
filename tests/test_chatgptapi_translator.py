@@ -739,13 +739,14 @@ def test_structured_json_returns_parsed_object():
     assert request["messages"][0]["content"] == "classify this"
 
 
-def test_structured_json_returns_none_when_schema_unsupported():
+def test_structured_json_returns_none_when_no_rung_yields_json():
+    # probe says unsupported, and the json_object rung answers prose anyway:
+    # the ladder is exhausted, so the caller is told rather than guessed at
     create = Mock(return_value=_completion("not json at all"))
     translator = _translator(create=create)
 
     assert translator.structured_json("classify", {"schema": {}}) is None
-    # only the probe went out; no classification request followed
-    assert create.call_count == 1
+    assert create.call_count == 2  # probe + rung 2
 
 
 def test_structured_json_targets_the_requested_model():
@@ -821,3 +822,74 @@ def test_context_flag_is_restored_when_the_batch_call_raises():
     with pytest.raises(Exception):
         translator.translate_list(["one", "two"])
     assert translator.context_flag is True
+
+
+# --------------------------------------------------------------------------
+# structured_json ladder: json_schema -> json_object -> plain completion.
+# A 反代 that drops response_format must still be able to classify.
+# --------------------------------------------------------------------------
+
+
+def test_ladder_rung2_uses_json_object_with_the_schema_inlined():
+    create = Mock(
+        side_effect=[
+            _completion("ignored"),  # probe: no schema support
+            _completion('{"p.header": {"verdict": "skip"}}'),
+        ]
+    )
+    translator = _translator(create=create)
+
+    result = translator.structured_json("classify", {"schema": {"type": "object"}})
+
+    assert result == {"p.header": {"verdict": "skip"}}
+    rung2 = create.call_args_list[1].kwargs
+    assert rung2["response_format"] == {"type": "json_object"}
+    # the schema has to travel in the prompt now that it cannot travel as a param
+    assert "exact shape" in rung2["messages"][0]["content"]
+    assert '"type": "object"' in rung2["messages"][0]["content"]
+
+
+def test_ladder_falls_to_a_plain_completion_when_json_object_is_rejected():
+    create = Mock(
+        side_effect=[
+            _completion("ignored"),  # probe: no schema support
+            _api_error(BadRequestError, 400, "response_format is not supported"),
+            _completion('```json\n{"p.header": {"verdict": "skip"}}\n```'),
+        ]
+    )
+    translator = _translator(create=create)
+
+    assert translator.structured_json("classify", {"schema": {}}) == {
+        "p.header": {"verdict": "skip"}
+    }
+    rung3 = create.call_args_list[2].kwargs
+    assert "response_format" not in rung3
+    assert "raw JSON only" in rung3["messages"][0]["content"]
+
+
+def test_a_bad_request_unrelated_to_response_format_is_not_swallowed():
+    create = Mock(
+        side_effect=[
+            _completion("ignored"),
+            _api_error(BadRequestError, 400, "context length exceeded"),
+        ]
+    )
+    translator = _translator(create=create)
+
+    with pytest.raises(BadRequestError):
+        translator.structured_json("classify", {"schema": {}})
+
+
+@pytest.mark.parametrize(
+    "reply,expected",
+    [
+        ('{"a": 1}', {"a": 1}),
+        ('```json\n{"a": 1}\n```', {"a": 1}),
+        ('Sure! Here you go:\n{"a": 1}\nHope that helps.', {"a": 1}),
+        ('{"a": "brace } inside a string"}', {"a": "brace } inside a string"}),
+        ("not json at all", None),
+        ("", None),
+    ],
+)
+def test_json_extraction_survives_fences_and_prose(reply, expected):
+    assert ChatGPTAPI._extract_json_object(reply) == expected

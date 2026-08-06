@@ -409,21 +409,93 @@ class ChatGPTAPI(Base):
                 f"using delimiter method[/yellow]"
             )
 
+    @staticmethod
+    def _extract_json_object(text):
+        """Pull the first balanced JSON object out of a model reply.
+
+        Endpoints below strict decoding wrap answers in prose or ``` fences
+        no matter how firmly the prompt says not to. Returns None when there
+        is no parseable object — the caller decides what that means.
+        """
+        if not text:
+            return None
+        start = text.find("{")
+        while start != -1:
+            depth, in_string, escaped = 0, False, False
+            for i in range(start, len(text)):
+                ch = text[i]
+                if in_string:
+                    if escaped:
+                        escaped = False
+                    elif ch == "\\":
+                        escaped = True
+                    elif ch == '"':
+                        in_string = False
+                    continue
+                if ch == '"':
+                    in_string = True
+                elif ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            return json.loads(text[start : i + 1])
+                        except json.JSONDecodeError:
+                            break  # try the next opening brace
+            start = text.find("{", start + 1)
+        return None
+
     def structured_json(self, prompt, schema, model=None):
-        """One-off structured request outside the translation flow (plan
-        classification). Returns the parsed object, or None when the endpoint
-        does not honor JSON schemas; request and parse errors propagate — the
-        caller owns the fallback policy.
+        """One-off JSON request outside the translation flow (plan
+        classification), over a three-rung ladder:
+
+        1. probe says strict/shape -> a real json_schema response_format
+        2. probe says unsupported  -> json_object mode, schema inlined in the
+           prompt (many proxies and local servers support this and nothing
+           more)
+        3. that too rejected       -> a plain completion, schema in the prompt
+
+        Returns the parsed object, or None when no rung produced JSON. Value
+        constraints are NOT guaranteed below rung 1 — callers lint verdicts
+        locally, which is why classification tolerates a shape-only endpoint
+        while translation does not.
         """
         model = model or self.model
-        if not self._ensure_structured_support(model, purpose="classify"):
-            return None
-        completion = self.openai_client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_schema", "json_schema": schema},
+        if self._ensure_structured_support(model, purpose="classify"):
+            completion = self.openai_client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_schema", "json_schema": schema},
+            )
+            return self._extract_json_object(completion.choices[0].message.content)
+
+        inlined = (
+            f"{prompt}\n\nAnswer with a single JSON object of this exact "
+            f"shape:\n{json.dumps(schema.get('schema', schema), ensure_ascii=False)}"
         )
-        return json.loads(completion.choices[0].message.content)
+        try:
+            completion = self.openai_client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": inlined}],
+                response_format={"type": "json_object"},
+            )
+        except BadRequestError as e:
+            if "response_format" not in str(e):
+                raise
+            completion = self.openai_client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            f"{inlined}\n\nOutput raw JSON only — no prose, "
+                            f"no markdown fences."
+                        ),
+                    }
+                ],
+            )
+        return self._extract_json_object(completion.choices[0].message.content)
 
     def rotate_key(self):
         with self._api_lock:
