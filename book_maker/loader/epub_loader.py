@@ -85,8 +85,10 @@ class EPUBBookLoader(BaseBookLoader):
         self.retranslate = None
         self.exclude_filelist = ""
         self.only_filelist = ""
-        # plan mode (--plan-classify; translate_tags == "auto" internally):
-        # coverage-complete partition
+        # plan mode (--plan-classify): coverage-complete partition. The flag
+        # is the switch; translate_tags is additionally set to "auto" so the
+        # tag-selection paths keep their established no-match behavior.
+        self.plan_mode = False
         self.plan_min_coverage = 0.5
         self.poetry_group_size = 8
         self.plan_classify = "none"  # none | model | agent, see .classify
@@ -311,7 +313,10 @@ class EPUBBookLoader(BaseBookLoader):
 
     @property
     def _plan_mode(self):
-        return self.translate_tags == "auto"
+        # the explicit flag, not the tag string: a user-typed
+        # `--translate-tags auto` must stay an ordinary (matching-nothing)
+        # tag name, not a backdoor into plan mode. The CLI sets both.
+        return self.plan_mode
 
     def _exclude_tags_tuple(self):
         return tuple(t for t in self.exclude_translate_tags.split(",") if t)

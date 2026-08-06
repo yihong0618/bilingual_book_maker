@@ -146,11 +146,14 @@ indistinguishable from a complete one in the JSON.
 
 ## 6. `--plan-classify {none,most,model,agent}`
 
-Replaces `--plan-no-classify`, and is now the only CLI door into plan mode —
+Replaces `--plan-no-classify`, and is the only CLI door into plan mode —
 `--translate-tags auto` is gone from the CLI surface (an "auto" value there
-is just a tag name that matches nothing). The loader still uses
-`translate_tags == "auto"` as its internal plan-mode switch, so library
-users and the pipeline are untouched; the CLI maps onto it.
+is just a tag name that matches nothing). The loader's switch is an explicit
+`plan_mode` attribute; the CLI sets it together with the internal
+`translate_tags = "auto"` so the tag-selection paths keep their established
+no-match behavior. The switch was originally left keyed on the tag string,
+which kept `--translate-tags auto` working as an undocumented backdoor into
+plan mode — the second review pass caught it.
 
 - `none` **(default) denotes the flag's absence**: no plan, translate the
   `--translate-tags` selection (default `p`) as always.
@@ -187,10 +190,12 @@ unzipping the book.
   wrote the plan + printed the block + translated nothing; edited one
   signature to `skip`; rerun translated and honored the edit.
 - **model loop** (gilgamesh via cpamc `gpt-5.6-luna`, strict endpoint):
-  `note: --plan-classify model implies plan mode` then `llm classification: 1
-  uncertain signature(s) reviewed, plan unchanged`. Only one candidate,
-  because the guardrails exempt the poetry groups, the spine and the headings
-  — which is the intended behavior.
+  `llm classification: 1 uncertain signature(s) reviewed, plan unchanged`.
+  (The transcript predates the same-day flag redesign, so the note it also
+  printed no longer exists verbatim.) One candidate looked like the
+  guardrails working — poetry groups, spine and headings exempt — but the
+  second review pass showed part of it was the tier-2 bug below: windowed
+  units were wrongly counted as poetry.
 - Ladder rungs 2/3 are unit-tested only; luna is strict so they did not fire.
 
 ## Post-review fixes (same day)
@@ -206,6 +211,22 @@ The self-review pass before the PR turned up:
 - The flag surface was then redesigned per user direction (see §6): `none`
   became the default meaning "no plan", `most` was added, and
   `--translate-tags auto` left the CLI.
+
+A second, independent review pass over the committed range then found:
+
+- **Tier-2 windows were silently exempt from classification.** Both grouping
+  tiers share `Unit.group_id`, and the classifier's poetry exemption keyed on
+  it — so any apparatus signature that landed in a short-unit window vanished
+  from the candidate list, on exactly the apparatus-heavy books tier 2 was
+  built for. The report also counted those windows as "poetry-grouped units".
+  Units now carry an explicit `poetry` flag set only by the tier-1 pass; the
+  exemption and the report read that, and the report prints windowed units on
+  their own line. The old test passed with the bug because it hand-built
+  units with `group_id=None`; the new one goes through `assign_groups`.
+- **The plan-mode backdoor** described in §6 (`_plan_mode` keyed on the tag
+  string).
+- The "Verified live" model-loop transcript quoted a CLI note that the
+  redesign had already removed (annotated above).
 
 ## Deviations from the written plan
 

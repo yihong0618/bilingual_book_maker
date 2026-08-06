@@ -470,6 +470,14 @@ class TestShortUnitGrouping:
         units = self._units(f"<body><div class='st'>{stanza}</div></body>")
         assert len({u.group_id for u in units}) == 1
         assert all(u.group_id is not None for u in units)
+        assert all(u.poetry for u in units)
+
+    def test_windows_are_not_marked_poetry(self):
+        # the tiers share group_id but must stay distinguishable: verse is
+        # exempt from classification, windowed apparatus is not
+        units = self._units(f"<body>{self._mixed_rows(6)}</body>")
+        assert all(u.group_id is not None for u in units)
+        assert not any(u.poetry for u in units)
 
 
 # ------------------------------------------------------------ whole books
@@ -633,6 +641,7 @@ def _make_loader(tmp_path, model_cls, book=ANIMAL_FARM):
         resume=False,
         language="zh-hans",
     )
+    loader.plan_mode = True
     loader.translate_tags = "auto"
     return loader, src
 
@@ -864,6 +873,7 @@ class TestLoaderPlanMode:
                 resume=True,
                 language="zh-hans",
             )
+            loader.plan_mode = True
             loader.translate_tags = "auto"
             return loader
 
@@ -1137,6 +1147,7 @@ class TestEpubHardening:
             resumed = loader_mod.EPUBBookLoader(
                 str(src), FakeModel, "dummy-key", resume=True, language="zh-hans"
             )
+            resumed.plan_mode = True
             resumed.translate_tags = "auto"
             with pytest.raises(SystemExit) as excinfo:
                 resumed.make_bilingual_book()
@@ -1189,7 +1200,7 @@ from book_maker.loader.classify.model import (
 )
 
 
-def _cunit(sig, text, group_id=None):
+def _cunit(sig, text, group_id=None, poetry=False):
     return Unit(
         element=None,
         file_name="x.html",
@@ -1197,6 +1208,7 @@ def _cunit(sig, text, group_id=None):
         text=text,
         chars=len(text),
         group_id=group_id,
+        poetry=poetry,
     )
 
 
@@ -1229,9 +1241,31 @@ class TestClassifyCandidates:
         assert cands == []
 
     def test_poetry_groups_are_never_candidates(self):
-        verses = [_cunit("div.verse", f"short line {i}", group_id=0) for i in range(9)]
+        verses = [
+            _cunit("div.verse", f"short line {i}", group_id=0, poetry=True)
+            for i in range(9)
+        ]
         cands = gather_candidates(_cplan([PROSE, *verses]))
         assert cands == []
+
+    def test_tier2_windowed_apparatus_is_still_a_candidate(self):
+        # review finding: both grouping tiers share group_id, and the poetry
+        # exemption used to key on it — any apparatus signature that landed
+        # in a tier-2 window silently vanished from the classifier's
+        # question list. Built through the real pipeline, not hand-set
+        # group_ids, so the exemption is tested against what assign_groups
+        # actually does.
+        rows = "".join(
+            f"<p class='pn'>4{i}</p><div class='vn'>1.{i}</div>" for i in range(10)
+        )
+        prose = "a fully formed prose sentence that anchors the spine " * 40
+        soup = bs(f"<body><p class='txt'>{prose}</p>{rows}</body>", "html.parser")
+        fp, _ = partition_file(soup, DisplayResolver([]), "x.html")
+        short = [u for u in fp.units if u.signature in ("p.pn", "div.vn")]
+        assert short and all(u.group_id is not None for u in short)
+        plan = TranslationPlan([fp], ("sup", "code"), 8)
+        cands = gather_candidates(plan)
+        assert {c["signature"] for c in cands} == {"p.pn", "div.vn"}
 
     def test_running_head_shape_is_a_candidate(self):
         heads = [_cunit("p.header", "GILGAMESH") for _ in range(20)]

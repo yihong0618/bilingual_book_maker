@@ -39,7 +39,10 @@ def uncertain_candidates(plan, overrides=None):
     poetry_sigs = set()
     for f in plan.files:
         for u in f.units:
-            if u.group_id is not None:
+            # u.poetry, not u.group_id: tier-2 short-unit windows also carry
+            # a group_id, but they batch page numbers and labels — exactly
+            # what the classifier exists to rule on, never exempt
+            if u.poetry:
                 poetry_sigs.add(u.signature)
             row = stats.setdefault(u.signature, {"units": 0, "chars": 0, "texts": []})
             row["units"] += 1

@@ -73,6 +73,16 @@ def test_explicit_tag_list_loses_to_the_classify_flag(tmp_path):
     assert "ignoring --translate-tags div,p" in " ".join(proc.stdout.split())
 
 
+def test_translate_tags_auto_is_an_ordinary_tag(tmp_path):
+    # review finding: the loader used to key plan mode off the literal tag
+    # string, so `--translate-tags auto` was an undocumented backdoor into
+    # plan mode. It is now just a tag name that matches nothing.
+    proc, plan = _run(tmp_path, "--translate-tags", "auto", "--test", "--test_num", "1")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert not plan.exists()
+    assert "Translation plan" not in proc.stdout
+
+
 def test_default_tags_are_overridden_quietly(tmp_path):
     # the untouched default "p" is not a selection worth a warning
     proc, plan = _run(tmp_path, "--plan-classify", "agent")

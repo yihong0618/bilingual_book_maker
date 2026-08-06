@@ -461,6 +461,10 @@ class Unit:
     text: str
     chars: int
     group_id: int = None
+    # set by the tier-1 poetry pass only. Tier-2 short-unit windows share
+    # group_id (both batch into one request) but must stay distinguishable:
+    # verse is exempt from classification, windowed apparatus is not.
+    poetry: bool = False
     nodes: list = None  # the exact text nodes this unit owns (same soup)
 
 
@@ -615,6 +619,7 @@ def assign_poetry_groups(units, group_size=8, next_group_id=0):
         for group in groups:
             for unit in group:
                 unit.group_id = next_group_id
+                unit.poetry = True
             next_group_id += 1
 
     return next_group_id
@@ -789,13 +794,19 @@ class TranslationPlan:
         if skipped:
             skip_desc = ", ".join(f"{k}={v}" for k, v in skipped.most_common())
             lines.append(f"skipped: {skip_desc}")
-        poetry_units = sum(
-            1 for f in self.files for u in f.units if u.group_id is not None
+        poetry_units = sum(1 for f in self.files for u in f.units if u.poetry)
+        windowed_units = sum(
+            1
+            for f in self.files
+            for u in f.units
+            if u.group_id is not None and not u.poetry
         )
         lines.append(
             f"poetry-grouped units: {poetry_units} "
             f"(window <= {self.poetry_group_size} lines)"
         )
+        if windowed_units:
+            lines.append(f"short-unit windows: {windowed_units} units batched")
         return "\n".join(lines)
 
     def to_dict(self, book_path=None, llm_actions=None):

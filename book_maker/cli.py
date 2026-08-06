@@ -756,6 +756,7 @@ So you are close to reaching the limit. You have to choose your own value, there
                 f"note: --plan-classify {classify_mode} plans the whole book; "
                 f"ignoring --translate-tags {options.translate_tags}"
             )
+        e.plan_mode = True
         e.translate_tags = "auto"
     if options.exclude_translate_tags:
         e.exclude_translate_tags = options.exclude_translate_tags
