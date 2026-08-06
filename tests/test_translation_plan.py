@@ -1230,6 +1230,8 @@ class TestEpubHardening:
         # a bare list with no fingerprint. Its slots index a p-tag sequence,
         # not the plan's unit list, so replaying it positionally pairs
         # headings and verse lines with unrelated prose translations.
+        # Upstream #549 generalized the refusal: every checkpoint carries a
+        # version, and a legacy bare list is rejected in both modes.
         import pickle
 
         import book_maker.loader.epub_loader as loader_mod
@@ -1238,14 +1240,19 @@ class TestEpubHardening:
         with open(loader.bin_path, "wb") as f:
             pickle.dump(["translated p 1", "translated p 2"], f)
 
-        resumed = loader_mod.EPUBBookLoader(
-            str(src), FakeModel, "dummy-key", resume=True, language="zh-hans"
-        )
-        resumed.plan_mode = True
-        resumed.translate_tags = "auto"
-        with pytest.raises(SystemExit) as excinfo:
+        # the refusal now lands in the constructor's load_state(), before any
+        # plan is built — a legacy cache never reaches the translation loop
+        with pytest.raises((SystemExit, ValueError)) as excinfo:
+            resumed = loader_mod.EPUBBookLoader(
+                str(src), FakeModel, "dummy-key", resume=True, language="zh-hans"
+            )
+            resumed.plan_mode = True
+            resumed.translate_tags = "auto"
             resumed.make_bilingual_book()
-        assert excinfo.value.code == 1
+        if isinstance(excinfo.value, SystemExit):
+            assert excinfo.value.code == 1
+        else:
+            assert "Legacy EPUB resume checkpoints" in str(excinfo.value)
 
     def test_resume_refused_after_the_book_file_changes(self, tmp_path):
         # review finding: deleting the (sha-mismatching) plan JSON is the
@@ -1306,7 +1313,11 @@ class TestEpubHardening:
         # review finding: the positional cache is written over the filtered
         # item sequence, so a recovery book that walks every document
         # consumes slot 0 in an unselected chapter and shifts every
-        # translation onto unrelated text
+        # translation onto unrelated text.
+        # Upstream #549 replays the same job plan the run executed, which
+        # drops only-list-excluded documents from the recovery book outright;
+        # either shape is fine as long as no unselected chapter carries
+        # translations.
         loader, src = _make_loader(tmp_path, FakeModel)
         loader.only_filelist = "index_split_004.html"
         loader.make_bilingual_book()
@@ -1314,16 +1325,14 @@ class TestEpubHardening:
 
         temp = src.parent / (src.stem + "_bilingual_temp.epub")
         with zipfile.ZipFile(temp) as z:
-            early = next(
-                n for n in z.namelist() if "index_split_002" in n and n.endswith("html")
-            )
-            selected = next(
-                n for n in z.namelist() if "index_split_004" in n and n.endswith("html")
-            )
-            early_text = z.read(early).decode("utf-8", "ignore")
-            selected_text = z.read(selected).decode("utf-8", "ignore")
-        assert "T[" not in early_text, "unselected chapter consumed cache slots"
-        assert "T[" in selected_text
+            names = [n for n in z.namelist() if n.endswith("html")]
+            selected = next(n for n in names if "index_split_004" in n)
+            unselected = [n for n in names if "index_split_004" not in n]
+            for name in unselected:
+                assert "T[" not in z.read(name).decode(
+                    "utf-8", "ignore"
+                ), f"unselected chapter {name} consumed cache slots"
+            assert "T[" in z.read(selected).decode("utf-8", "ignore")
 
     # -- item 10: fixed layout ---------------------------------------------
 
