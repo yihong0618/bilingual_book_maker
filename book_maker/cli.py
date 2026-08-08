@@ -641,7 +641,9 @@ So you are close to reaching the limit. You have to choose your own value, there
         API_KEY = options.groq_key or env.get("BBM_GROQ_API_KEY")
     elif options.model == "xai":
         API_KEY = options.xai_key or env.get("BBM_XAI_API_KEY")
-    elif options.model and options.model.startswith("qwen-"):
+    elif options.model and options.model.startswith("qwen"):
+        # "qwen" itself is a MODEL_DICT choice; matching only "qwen-" left it
+        # with an empty key, so the documented alias could never authenticate.
         API_KEY = options.qwen_key or env.get("BBM_QWEN_API_KEY")
     elif options.provider:
         env_key_name = provider_cfg.get("env_key", "") if provider_cfg else ""

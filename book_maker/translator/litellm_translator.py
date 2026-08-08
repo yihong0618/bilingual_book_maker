@@ -14,6 +14,18 @@ class liteLLM(ChatGPTAPI):
     # Routed through litellm's own completion(), not self.openai_client.
     SUPPORTS_STRUCTURED_OUTPUTS = False
 
+    def _chat_completion(self, prompt, model=None):
+        """Classification through litellm, for the same reason as translation.
+
+        ChatGPTAPI's version would talk to self.openai_client, which litellm
+        deliberately never uses.
+        """
+        response = completion(
+            model=model or getattr(self, "model", "gpt-3.5-turbo"),
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return response.choices[0].message.content
+
     def create_chat_completion(self, text):
         # content = self.prompt_template.format(
         #     text=text, language=self.language, crlf="\n"

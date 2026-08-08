@@ -19,6 +19,7 @@ from openai import (
     OpenAI,
     PermissionDeniedError,
     RateLimitError,
+    UnprocessableEntityError,
 )
 from pydantic import ConfigDict, Field, ValidationError, create_model
 from rich import print
@@ -31,6 +32,12 @@ from tenacity import (
 )
 
 from .base_translator import Base
+from ..structured import (
+    RungRejected,
+    extract_json_object,
+    prompt_with_schema,
+    unwrap_schema_echo,
+)
 from ..config import config
 
 CHATGPT_CONFIG = config["translator"]["chatgptapi"]
@@ -196,6 +203,15 @@ PROBE_TRANSIENT_ERRORS = (
     RateLimitError,
 )
 
+# A refusal of the *request shape*, which a simpler rung may not trigger: an
+# unsupported `response_format`, a schema the endpoint will not compile, a
+# payload it will not size. Distinct from PROBE_FATAL_ERRORS (no key, no model
+# — descending cannot help) and from transport errors (retrying can).
+RUNG_REFUSAL_ERRORS = (
+    BadRequestError,
+    UnprocessableEntityError,
+)
+
 # One garbled response from a proxy must not cost the whole book its structured
 # mode. A genuinely unsupported endpoint still pays at most this many attempts.
 STRUCTURED_FAILURE_THRESHOLD = 2
@@ -321,23 +337,12 @@ class ChatGPTAPI(Base):
             None  # Will be set by rotate_model() after model_list is initialized
         )
 
-    def _ensure_structured_support(self, model=None, purpose="translate"):
-        """Resolve (once per model) whether structured outputs can be used.
+    def _probe_verdict(self, model=None):
+        """The endpoint's graded schema support, probed once per model.
 
-        The stored value is the probe verdict itself ("strict" / "shape" /
-        False), because the two positive verdicts are not interchangeable:
-
-        - `translate` requires "strict". Our translation schema pins the
-          target language as a *value* constraint (#544), so an endpoint that
-          honors shape but ignores values gives us a schema that cannot do
-          the one job we added it for — worse than the delimiter method,
-          which at least states the language in the prompt.
-        - `classify` accepts "shape" too. Every verdict is linted locally
-          against its enum, so an ignored value constraint costs one "unsure",
-          never a silently wrong translation.
-
-        The probe runs while holding the lock so that N parallel workers issue
-        one probe per model, not N.
+        One of "strict", "shape", "json" or False. The probe runs while
+        holding the lock so that N parallel workers issue one probe per model,
+        not N.
         """
         model = model or self.model
         with self._structured_lock:
@@ -346,21 +351,24 @@ class ChatGPTAPI(Base):
                     self._test_structured_outputs(model)
                 else:
                     self._structured_support[model] = False
-            verdict = self._structured_support.get(model, False)
-        return self._verdict_allows(verdict, purpose)
+            return self._structured_support.get(model, False)
 
-    @staticmethod
-    def _verdict_allows(verdict, purpose):
-        if not verdict:
-            return False
-        if purpose == "classify":
-            return verdict in ("strict", "shape")
-        return verdict == "strict"
+    def _ensure_structured_support(self, model=None):
+        """Whether *translation* may use a schema. Only "strict" qualifies.
+
+        Our translation schema pins the target language as a value constraint
+        (#544), so an endpoint that honors shape but ignores values gives us a
+        schema that cannot do the one job we added it for — worse than the
+        delimiter method, which at least states the language in the prompt.
+
+        Classification does not come through here at all: it needs a JSON
+        object with legal values, not an endpoint that applied our schema, so
+        the verdict only picks its entry rung (`structured_rungs`).
+        """
+        return self._probe_verdict(model) == "strict"
 
     def _structured_enabled(self):
-        return self._verdict_allows(
-            self._structured_support.get(self.model, False), "translate"
-        )
+        return self._structured_support.get(self.model, False) == "strict"
 
     def _defer_probe(self, model, error):
         """Postpone the verdict: record nothing so the next call probes again."""
@@ -444,7 +452,13 @@ class ChatGPTAPI(Base):
 
     @staticmethod
     def _grade_probe_response(completion):
-        """Return 'strict', 'shape' or 'unsupported' for a probe completion."""
+        """Grade a probe completion: 'strict', 'shape', 'json', 'unsupported'.
+
+        The prompt asks for plain text, so anything JSON-shaped that comes
+        back is evidence of *some* structuring. The four verdicts map onto the
+        four entry rungs, which is all a verdict is used for in
+        classification — a wrong guess costs one request, not the run.
+        """
         choice = completion.choices[0]
         if getattr(choice, "finish_reason", "stop") != "stop":
             return "unsupported"
@@ -458,12 +472,13 @@ class ChatGPTAPI(Base):
         except json.JSONDecodeError:
             return "unsupported"
 
-        # Exact key set, so a json-mode-only server (right JSON, arbitrary keys)
-        # and a server ignoring additionalProperties both fail here.
+        # Right JSON, wrong keys: json mode is on, the schema was not applied.
+        # Worth knowing — such an endpoint should enter at the json_object
+        # rung rather than being lumped in with prose-only ones.
         if not isinstance(parsed, dict) or set(parsed) != {PROBE_KEY}:
-            return "unsupported"
+            return "json"
         if not isinstance(parsed[PROBE_KEY], str):
-            return "unsupported"
+            return "json"
 
         # Some backends honor the structure but ignore `enum`. Still usable: our
         # real schemas constrain shape only, never values.
@@ -471,7 +486,7 @@ class ChatGPTAPI(Base):
 
     def _record_probe_result(self, model, verdict):
         """Store the verdict string; False means no schema support at all."""
-        stored = verdict if verdict in ("strict", "shape") else False
+        stored = verdict if verdict in ("strict", "shape", "json") else False
         with self._structured_lock:
             self._structured_support[model] = stored
         if stored == "shape":
@@ -480,99 +495,78 @@ class ChatGPTAPI(Base):
                 f"constraints; using the delimiter method for translation, "
                 f"schema kept for classification[/yellow]"
             )
+        elif stored == "json":
+            print(
+                f"[yellow]ℹ '{model}' returns JSON but does not apply the "
+                f"schema; using the delimiter method for translation, "
+                f"classification asks in the prompt[/yellow]"
+            )
         elif not stored:
             print(
                 f"[yellow]ℹ '{model}' doesn't apply JSON schema ({verdict}), "
                 f"using delimiter method[/yellow]"
             )
 
-    @staticmethod
-    def _extract_json_object(text):
-        """Pull the first balanced JSON object out of a model reply.
+    # Hoisted to `structured.py` — every provider's bottom rung needs it.
+    _extract_json_object = staticmethod(extract_json_object)
 
-        Endpoints below strict decoding wrap answers in prose or ``` fences
-        no matter how firmly the prompt says not to. Returns None when there
-        is no parseable object — the caller decides what that means.
+    # Probe verdict -> the cheapest rung worth *starting* at. Advisory only:
+    # descent is failure-driven, so a wrong guess costs one request.
+    ENTRY_RUNG = {
+        "strict": "json_schema",
+        "shape": "json_schema",
+        "json": "json_object",
+    }
+
+    def structured_rungs(self, prompt, schema, model=None):
+        """json_schema -> json_object + described schema -> plain prompt.
+
+        A real ladder now: `run_rungs` descends whenever a rung is refused or
+        answers unusably, so an endpoint that accepts the one-key probe schema
+        and then rejects a twelve-property one still classifies, and a
+        `strict` endpoint that returns prose falls through instead of aborting
+        the run.
         """
-        if not text:
-            return None
-        start = text.find("{")
-        while start != -1:
-            depth, in_string, escaped = 0, False, False
-            for i in range(start, len(text)):
-                ch = text[i]
-                if in_string:
-                    if escaped:
-                        escaped = False
-                    elif ch == "\\":
-                        escaped = True
-                    elif ch == '"':
-                        in_string = False
-                    continue
-                if ch == '"':
-                    in_string = True
-                elif ch == "{":
-                    depth += 1
-                elif ch == "}":
-                    depth -= 1
-                    if depth == 0:
-                        try:
-                            return json.loads(text[start : i + 1])
-                        except json.JSONDecodeError:
-                            break  # try the next opening brace
-            start = text.find("{", start + 1)
-        return None
+        target = model or self.model
+        ladder = [
+            ("json_schema", lambda: self._json_schema_rung(prompt, schema, target)),
+            ("json_object", lambda: self._json_object_rung(prompt, schema, target)),
+            ("prompt", lambda: self._prompt_rung(prompt, schema, target)),
+        ]
+        entry = self.ENTRY_RUNG.get(self._probe_verdict(target), "prompt")
+        start = next(i for i, (name, _) in enumerate(ladder) if name == entry)
+        return ladder[start:]
 
-    def structured_json(self, prompt, schema, model=None):
-        """One-off JSON request outside the translation flow (plan
-        classification), over a three-rung ladder:
-
-        1. probe says strict/shape -> a real json_schema response_format
-        2. probe says unsupported  -> json_object mode, schema inlined in the
-           prompt (many proxies and local servers support this and nothing
-           more)
-        3. that too rejected       -> a plain completion, schema in the prompt
-
-        Returns the parsed object, or None when no rung produced JSON. Value
-        constraints are NOT guaranteed below rung 1 — callers lint verdicts
-        locally, which is why classification tolerates a shape-only endpoint
-        while translation does not.
-        """
-        model = model or self.model
-        if self._ensure_structured_support(model, purpose="classify"):
-            completion = self.openai_client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_schema", "json_schema": schema},
-            )
-            return self._extract_json_object(completion.choices[0].message.content)
-
-        inlined = (
-            f"{prompt}\n\nAnswer with a single JSON object of this exact "
-            f"shape:\n{json.dumps(schema.get('schema', schema), ensure_ascii=False)}"
-        )
+    def _completion_text(self, model, content, **kwargs):
+        """One single-turn request, with shape refusals marked as such."""
         try:
             completion = self.openai_client.chat.completions.create(
                 model=model,
-                messages=[{"role": "user", "content": inlined}],
-                response_format={"type": "json_object"},
+                messages=[{"role": "user", "content": content}],
+                **kwargs,
             )
-        except BadRequestError as e:
-            if "response_format" not in str(e):
-                raise
-            completion = self.openai_client.chat.completions.create(
-                model=model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": (
-                            f"{inlined}\n\nOutput raw JSON only — no prose, "
-                            f"no markdown fences."
-                        ),
-                    }
-                ],
-            )
-        return self._extract_json_object(completion.choices[0].message.content)
+        except RUNG_REFUSAL_ERRORS as e:
+            raise RungRejected(e) from e
+        return completion.choices[0].message.content
+
+    def _json_schema_rung(self, prompt, schema, model):
+        text = self._completion_text(
+            model,
+            prompt,
+            response_format={"type": "json_schema", "json_schema": schema},
+        )
+        return unwrap_schema_echo(extract_json_object(text))
+
+    def _json_object_rung(self, prompt, schema, model):
+        text = self._completion_text(
+            model,
+            prompt_with_schema(prompt, schema),
+            response_format={"type": "json_object"},
+        )
+        return unwrap_schema_echo(extract_json_object(text))
+
+    def _chat_completion(self, prompt, model=None):
+        return self._completion_text(model or self.model, prompt)
 
     def rotate_key(self):
         with self._api_lock:

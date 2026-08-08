@@ -1448,7 +1448,7 @@ class FakeClassifier:
         self.result = result
         self.calls = []
 
-    def structured_json(self, prompt, schema, model=None):
+    def structured_json(self, prompt, schema, model=None, accept=None):
         self.calls.append({"prompt": prompt, "schema": schema, "model": model})
         return self.result
 
@@ -1627,8 +1627,9 @@ class TestClassifyPlan:
             classify_plan(self._uncertain_plan(), object())
 
     def test_no_json_at_all_raises(self):
-        # every rung of the ladder failed to produce an object
-        with pytest.raises(PlanClassifyError, match="cannot produce JSON"):
+        # every rung of the ladder failed, and dividing down to one signature
+        # did not help either: that signature is named and the run stops
+        with pytest.raises(PlanClassifyError, match="p.header"):
             classify_plan(self._uncertain_plan(), FakeClassifier(None))
 
     def test_malformed_response_raises(self):
@@ -1637,7 +1638,7 @@ class TestClassifyPlan:
 
     def test_request_error_raises(self):
         class Explodes:
-            def structured_json(self, prompt, schema, model=None):
+            def structured_json(self, prompt, schema, model=None, accept=None):
                 raise RuntimeError("boom")
 
         with pytest.raises(PlanClassifyError, match="boom"):
@@ -1880,21 +1881,25 @@ class TestClassifyLint:
 
     def test_missing_signature_is_unsure(self):
         result = {"p.header": {"verdict": "skip"}}
-        assert lint_verdicts(result, self.CANDS) == {
-            "p.header": "skip",
-            "td.no": "unsure",
-        }
+        verdicts, answered = lint_verdicts(result, self.CANDS)
+        assert verdicts == {"p.header": "skip", "td.no": "unsure"}
+        # ...and the caller can tell that "unsure" was never anyone's answer
+        assert answered == {"p.header"}
 
     def test_out_of_enum_verdict_is_unsure(self):
         result = {
             "p.header": {"verdict": "banana"},
             "td.no": {"verdict": "SKIP"},  # case counts: enum is exact
         }
-        assert set(lint_verdicts(result, self.CANDS).values()) == {"unsure"}
+        verdicts, answered = lint_verdicts(result, self.CANDS)
+        assert set(verdicts.values()) == {"unsure"}
+        assert answered == set()
 
     def test_non_dict_entry_is_unsure(self):
         result = {"p.header": "skip", "td.no": None}
-        assert set(lint_verdicts(result, self.CANDS).values()) == {"unsure"}
+        verdicts, answered = lint_verdicts(result, self.CANDS)
+        assert set(verdicts.values()) == {"unsure"}
+        assert answered == set()
 
     def test_extra_signatures_are_ignored(self):
         # a hallucinated key must not become an action for a signature the
@@ -1904,7 +1909,8 @@ class TestClassifyLint:
             "td.no": {"verdict": "translate"},
             "div.invented": {"verdict": "skip"},
         }
-        assert set(lint_verdicts(result, self.CANDS)) == {"p.header", "td.no"}
+        verdicts, _ = lint_verdicts(result, self.CANDS)
+        assert set(verdicts) == {"p.header", "td.no"}
 
     def test_non_dict_response_fails_loud(self):
         with pytest.raises(PlanClassifyError, match="malformed"):
@@ -1922,7 +1928,7 @@ class TestClassifyPaging:
             def __init__(self):
                 self.pages = []
 
-            def structured_json(self, prompt, schema, model=None):
+            def structured_json(self, prompt, schema, model=None, accept=None):
                 sigs = schema["schema"]["required"]
                 self.pages.append(sigs)
                 return {s: {"verdict": "skip"} for s in sigs}
@@ -1946,7 +1952,7 @@ class TestClassifyPaging:
             model = "fake"
             calls = 0
 
-            def structured_json(self, prompt, schema, model=None):
+            def structured_json(self, prompt, schema, model=None, accept=None):
                 type(self).calls += 1
                 if self.calls > 1:
                     raise RuntimeError("boom")

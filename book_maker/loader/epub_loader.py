@@ -579,8 +579,10 @@ class EPUBBookLoader(BaseBookLoader):
                 )
                 raise SystemExit(1)
             print(
-                f"[yellow]plan classification skipped ({e}); "
-                f"keeping the heuristic plan[/yellow]"
+                f"[yellow]plan classification skipped entirely ({e}); "
+                f"no signature was reviewed. Keeping the heuristic plan, "
+                f"which translates everything it cannot structurally rule "
+                f"out[/yellow]"
             )
             return {}
         if candidates and not actions:

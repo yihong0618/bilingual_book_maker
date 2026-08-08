@@ -17,6 +17,7 @@ from openai import (
     RateLimitError,
 )
 
+from book_maker.structured import StructuredJSONFailed
 from book_maker.translator.chatgptapi_translator import (
     ChatGPTAPI,
     StructuredOutputUnsupported,
@@ -88,6 +89,7 @@ def _translator(create=None, parse=None, cls=ChatGPTAPI):
     translator._temperature_unsupported = {}
     translator._structured_failures = {}
     translator._probe_deferred = set()
+    translator._rung_refusals = {}
     translator.openai_client = SimpleNamespace(
         chat=SimpleNamespace(
             completions=SimpleNamespace(
@@ -156,32 +158,46 @@ def test_probe_records_shape_when_values_are_ignored():
     assert translator._structured_support["test-model"] == "shape"
 
 
-def test_shape_endpoints_do_not_get_schemas_for_translation():
+@pytest.mark.parametrize("verdict", ["shape", "json", False])
+def test_only_a_strict_endpoint_gets_a_schema_for_translation(verdict):
     # our translation schema pins the target language as a *value*; an
     # endpoint that ignores values would drop that pin (#544), which is
     # worse than the delimiter method stating the language in the prompt
     translator = _translator()
-    translator._structured_support["test-model"] = "shape"
+    translator._structured_support["test-model"] = verdict
 
     assert translator._ensure_structured_support() is False
-    assert translator._ensure_structured_support(purpose="translate") is False
-    assert translator._ensure_structured_support(purpose="classify") is True
 
 
-def test_strict_endpoints_serve_both_purposes():
+def test_strict_endpoints_get_a_schema_for_translation():
     translator = _translator()
     translator._structured_support["test-model"] = "strict"
 
-    assert translator._ensure_structured_support(purpose="translate") is True
-    assert translator._ensure_structured_support(purpose="classify") is True
+    assert translator._ensure_structured_support() is True
 
 
-def test_unsupported_endpoints_serve_neither():
+@pytest.mark.parametrize(
+    "verdict,entry",
+    [
+        ("strict", "json_schema"),
+        ("shape", "json_schema"),
+        ("json", "json_object"),
+        (False, "prompt"),
+    ],
+)
+def test_the_verdict_only_picks_where_classification_starts(verdict, entry):
+    """No verdict refuses classification any more.
+
+    An endpoint that drops `response_format` entirely still answers a schema
+    described in the prompt — the lint is what establishes whether it did the
+    job. The verdict just saves a request by starting at the right rung.
+    """
     translator = _translator()
-    translator._structured_support["test-model"] = False
+    translator._structured_support["test-model"] = verdict
 
-    assert translator._ensure_structured_support(purpose="translate") is False
-    assert translator._ensure_structured_support(purpose="classify") is False
+    rungs = translator.structured_rungs("classify", {"schema": {}})
+
+    assert rungs[0][0] == entry
 
 
 def test_shape_endpoint_translates_via_delimiter_but_classifies_structured():
@@ -209,20 +225,38 @@ def test_shape_endpoint_translates_via_delimiter_but_classifies_structured():
     "content",
     [
         "ignored",  # proxy dropped response_format entirely
-        '```json\n{"probe":"schema_ok"}\n```',  # fenced, not raw JSON
-        '{"probe":"schema_ok","extra":1}',  # additionalProperties not enforced
-        '{"answer":"ignored"}',  # json mode only, schema ignored
-        '{"probe":42}',  # wrong type
-        "[1,2,3]",  # not an object
+        '```json\n{"probe":"schema_ok"}\n```',  # fences: json mode is not on
         "",  # empty body
     ],
 )
-def test_probe_rejects_servers_that_do_not_apply_the_schema(content):
+def test_probe_rejects_servers_that_produce_no_json(content):
     translator = _translator(create=Mock(return_value=_completion(content)))
 
     translator._test_structured_outputs()
 
     assert translator._structured_support["test-model"] is False
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        '{"probe":"schema_ok","extra":1}',  # additionalProperties not enforced
+        '{"answer":"ignored"}',  # json mode only, schema ignored
+        '{"probe":42}',  # wrong type
+        "[1,2,3]",  # not an object
+    ],
+)
+def test_probe_grades_json_mode_apart_from_prose(content):
+    """Right JSON, wrong keys: the schema was dropped but json mode is on.
+
+    Worth its own verdict — such an endpoint should start classification at
+    the json_object rung instead of being lumped in with prose-only ones.
+    """
+    translator = _translator(create=Mock(return_value=_completion(content)))
+
+    translator._test_structured_outputs()
+
+    assert translator._structured_support["test-model"] == "json"
 
 
 def test_probe_rejects_truncated_probe_response():
@@ -863,14 +897,16 @@ def test_structured_json_returns_parsed_object():
     assert request["messages"][0]["content"] == "classify this"
 
 
-def test_structured_json_returns_none_when_no_rung_yields_json():
-    # probe says unsupported, and the json_object rung answers prose anyway:
-    # the ladder is exhausted, so the caller is told rather than guessed at
+def test_structured_json_raises_when_no_rung_yields_json():
+    # probe says unsupported, and the prompt rung answers prose anyway: the
+    # ladder is exhausted, so the caller is told what each rung did rather
+    # than handed a None to guess about
     create = Mock(return_value=_completion("not json at all"))
     translator = _translator(create=create)
 
-    assert translator.structured_json("classify", {"schema": {}}) is None
-    assert create.call_count == 2  # probe + rung 2
+    with pytest.raises(StructuredJSONFailed, match="no JSON object"):
+        translator.structured_json("classify", {"schema": {}})
+    assert create.call_count == 2  # probe + the prompt rung
 
 
 def test_structured_json_targets_the_requested_model():
@@ -954,29 +990,33 @@ def test_context_flag_is_restored_when_the_batch_call_raises():
 # --------------------------------------------------------------------------
 
 
-def test_ladder_rung2_uses_json_object_with_the_schema_inlined():
+def test_json_mode_rung_describes_the_schema_in_the_prompt():
     create = Mock(
         side_effect=[
-            _completion("ignored"),  # probe: no schema support
+            _completion('{"answer":"ignored"}'),  # probe: json mode, no schema
             _completion('{"p.header": {"verdict": "skip"}}'),
         ]
     )
     translator = _translator(create=create)
 
-    result = translator.structured_json("classify", {"schema": {"type": "object"}})
+    result = translator.structured_json(
+        "classify", {"schema": {"type": "object", "properties": {"p.header": {}}}}
+    )
 
     assert result == {"p.header": {"verdict": "skip"}}
-    rung2 = create.call_args_list[1].kwargs
-    assert rung2["response_format"] == {"type": "json_object"}
-    # the schema has to travel in the prompt now that it cannot travel as a param
-    assert "exact shape" in rung2["messages"][0]["content"]
-    assert '"type": "object"' in rung2["messages"][0]["content"]
+    rung = create.call_args_list[1].kwargs
+    assert rung["response_format"] == {"type": "json_object"}
+    # the schema travels in the prompt as an example instance; serializing the
+    # schema itself is what made models echo the envelope back
+    content = rung["messages"][0]["content"]
+    assert "Shaped like this example" in content
+    assert '"type": "object"' not in content
 
 
 def test_ladder_falls_to_a_plain_completion_when_json_object_is_rejected():
     create = Mock(
         side_effect=[
-            _completion("ignored"),  # probe: no schema support
+            _completion('{"answer":"ignored"}'),  # probe: json mode only
             _api_error(BadRequestError, 400, "response_format is not supported"),
             _completion('```json\n{"p.header": {"verdict": "skip"}}\n```'),
         ]
@@ -986,22 +1026,97 @@ def test_ladder_falls_to_a_plain_completion_when_json_object_is_rejected():
     assert translator.structured_json("classify", {"schema": {}}) == {
         "p.header": {"verdict": "skip"}
     }
-    rung3 = create.call_args_list[2].kwargs
-    assert "response_format" not in rung3
-    assert "raw JSON only" in rung3["messages"][0]["content"]
+    bottom = create.call_args_list[2].kwargs
+    assert "response_format" not in bottom
+    assert "no markdown fences" in bottom["messages"][0]["content"]
 
 
-def test_a_bad_request_unrelated_to_response_format_is_not_swallowed():
+def test_any_refusal_descends_a_rung_not_just_a_response_format_one():
+    # matching on the words of an error message was never sound: a proxy that
+    # refuses json mode with its own wording must still fall through
     create = Mock(
         side_effect=[
-            _completion("ignored"),
+            _completion('{"answer":"ignored"}'),  # probe: json mode only
+            _api_error(BadRequestError, 400, "unsupported parameter"),
+            _completion('{"p.header": {"verdict": "skip"}}'),
+        ]
+    )
+    translator = _translator(create=create)
+
+    assert translator.structured_json("classify", {"schema": {}}) == {
+        "p.header": {"verdict": "skip"}
+    }
+
+
+def test_a_rung_refused_twice_stops_being_offered():
+    # not on the first refusal: a 400 is as often about the page as about the
+    # shape, and the caller's retry with a smaller page needs the rung intact
+    create = Mock(
+        side_effect=[
+            _completion('{"answer":"ignored"}'),  # probe: json mode only
+            _api_error(BadRequestError, 400, "unsupported parameter"),
+            _completion('{"a": 1}'),
+            _api_error(BadRequestError, 400, "unsupported parameter"),
+            _completion('{"b": 2}'),
+            _completion('{"c": 3}'),
+        ]
+    )
+    translator = _translator(create=create)
+
+    assert translator.structured_json("q", {"schema": {}}) == {"a": 1}
+    assert translator.structured_json("q", {"schema": {}}) == {"b": 2}
+    assert translator.structured_json("q", {"schema": {}}) == {"c": 3}
+    # probe + (refused, prompt) + (refused, prompt) + prompt only = 6
+    assert create.call_count == 6
+
+
+def test_a_dead_endpoint_is_reported_not_walked_down():
+    # auth and quota say nothing about request shape; descending cannot fix
+    # them and would pay for the same failure once per rung
+    create = Mock(
+        side_effect=[
+            _completion('{"probe":"schema_ok"}'),
+            _api_error(AuthenticationError, 401, "invalid api key"),
+        ]
+    )
+    translator = _translator(create=create)
+
+    with pytest.raises(AuthenticationError):
+        translator.structured_json("classify", {"schema": {}})
+    assert create.call_count == 2
+
+
+def test_an_exhausted_ladder_reports_every_rungs_error():
+    # nothing is swallowed: a 400 that no rung survives still reaches the user
+    create = Mock(
+        side_effect=[
+            _completion('{"probe":"schema_ok"}'),
+            _api_error(BadRequestError, 400, "context length exceeded"),
+            _api_error(BadRequestError, 400, "context length exceeded"),
             _api_error(BadRequestError, 400, "context length exceeded"),
         ]
     )
     translator = _translator(create=create)
 
-    with pytest.raises(BadRequestError):
+    with pytest.raises(StructuredJSONFailed, match="context length exceeded"):
         translator.structured_json("classify", {"schema": {}})
+
+
+def test_a_strict_endpoint_that_answers_prose_falls_through():
+    # the probe passing is not a promise about the next request: a page schema
+    # is far bigger than the one-key probe schema, and used to abort the run
+    create = Mock(
+        side_effect=[
+            _completion('{"probe":"schema_ok"}'),  # strict verdict
+            _completion("I'm afraid I can't help with that."),
+            _completion('{"p.header": {"verdict": "skip"}}'),
+        ]
+    )
+    translator = _translator(create=create)
+
+    assert translator.structured_json("classify", {"schema": {}}) == {
+        "p.header": {"verdict": "skip"}
+    }
 
 
 @pytest.mark.parametrize(

@@ -2,6 +2,15 @@ import itertools
 import re
 from abc import ABC, abstractmethod
 
+from rich import print
+
+from ..structured import (
+    extract_json_object,
+    prompt_with_schema,
+    run_rungs,
+    unwrap_schema_echo,
+)
+
 # Special delimiter for batch translation - UUID-based token unlikely to appear in any text
 BATCH_DELIMITER = "\n\n@@\n\n"
 
@@ -10,10 +19,18 @@ class Base(ABC):
     # Default values for fatal error handling - subclasses can override
     TRANSLATION_ERROR_MARKER = None
 
+    # Refusals of one rung, by one model, before we stop offering it.
+    RUNG_REFUSAL_THRESHOLD = 2
+
     def __init__(self, key, language) -> None:
         self.keys = itertools.cycle(key.split(","))
         self.language = language
         self._fatal_error_detected = False
+        # {model: {rung name: refusal count}} — see _retire_rung. Dict writes
+        # are atomic under the GIL, which is all the synchronization this
+        # needs: the worst a race costs is one repeated rejection, never a
+        # wrong answer.
+        self._rung_refusals = {}
 
     @abstractmethod
     def rotate_key(self):
@@ -25,6 +42,107 @@ class Base(ABC):
 
     def set_deployment_id(self, deployment_id):
         pass
+
+    # ---------------------------------------------------------------- JSON
+    # Plan classification asks a translator one structured question. It needs
+    # a JSON object carrying legal values — not an endpoint that honors the
+    # `json_schema` request field. So the bottom rung, defined here, is a
+    # plain prompt: every LLM-backed translator can classify, whatever its
+    # provider supports.
+
+    def _chat_completion(self, prompt, model=None):
+        """Answer one arbitrary prompt in one turn; return the raw text.
+
+        The single primitive classification needs. Translators that speak to
+        an LLM implement it and get classification for free. Dedicated MT
+        engines (google, deepl, caiyun, tencent transmart, qwen-mt, a custom
+        translate endpoint) cannot: their only channel *translates* what it is
+        handed instead of answering it, so asking would return a translated
+        copy of the question. They keep failing loudly instead.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} has no arbitrary-prompt channel"
+        )
+
+    def supports_structured_json(self):
+        """Whether this translator can be asked a question at all.
+
+        Derived from the implementation rather than a per-class flag, so a new
+        translator cannot advertise a capability it never implemented, or
+        implement one it forgot to advertise. Either half counts: the prompt
+        primitive, or a `structured_json` of the provider's own.
+        """
+        cls = type(self)
+        return (
+            cls._chat_completion is not Base._chat_completion
+            or cls.structured_json is not Base.structured_json
+        )
+
+    def structured_rungs(self, prompt, schema, model=None):
+        """(name, callable) pairs, most constrained first.
+
+        Providers prepend their native structured-output mechanisms; the
+        prompt rung is the floor and is always last.
+        """
+        return [("prompt", lambda: self._prompt_rung(prompt, schema, model))]
+
+    def _prompt_rung(self, prompt, schema, model=None):
+        """Schema described in the prompt, answer recovered from free text."""
+        text = self._chat_completion(prompt_with_schema(prompt, schema), model=model)
+        return unwrap_schema_echo(extract_json_object(text))
+
+    def structured_json(self, prompt, schema, model=None, accept=None):
+        """One structured question, over whatever rungs this provider has.
+
+        Returns the first object `accept` approves, else the last object any
+        rung parsed (the caller lints it: a partial answer beats a discarded
+        page), else raises `StructuredJSONFailed`. Value constraints are never
+        guaranteed — the caller owns validation.
+        """
+        target = model or getattr(self, "model", None)
+        rungs = self.structured_rungs(prompt, schema, model)
+        refusals = self._rung_refusals.get(target, {})
+        live = [
+            (name, rung)
+            for name, rung in rungs
+            if refusals.get(name, 0) < self.RUNG_REFUSAL_THRESHOLD
+        ]
+        # The floor is always asked. Callers divide a failed request and ask
+        # again with less; handing them an empty ladder would answer that
+        # smaller request without making a single call.
+        floor = rungs[-1] if rungs else None
+        if not live and floor is not None:
+            live = [floor]
+        return run_rungs(
+            live,
+            accept=accept,
+            on_reject=lambda name: self._retire_rung(name, target, floor[0]),
+        )
+
+    def _retire_rung(self, name, model, floor):
+        """Stop paying for a rung the endpoint keeps refusing.
+
+        Two deliberate limits on this:
+
+        - **Never the floor.** A plain prompt has no simpler form to fall
+          back to, and an endpoint refusing one is not saying anything about
+          our schema.
+        - **Never on the first refusal.** A 400 is as often about *this
+          request* — too long, too many properties — as about the shape, and
+          those are exactly the failures the caller recovers from by dividing
+          and asking again. Retiring on one refusal would confiscate the rung
+          the retry needs. Same threshold idiom as the translation-side
+          demotion in `chatgptapi_translator`.
+        """
+        if name == floor:
+            return
+        counts = self._rung_refusals.setdefault(model, {})
+        counts[name] = counts.get(name, 0) + 1
+        if counts[name] == self.RUNG_REFUSAL_THRESHOLD:
+            print(
+                f"[yellow]ℹ '{model}' keeps refusing the {name} request "
+                f"shape; using a simpler one from here on[/yellow]"
+            )
 
     def translate_list(self, text_list):
         """
