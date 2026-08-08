@@ -17,6 +17,38 @@ from tenacity import (
 )
 
 from .base_translator import Base
+from ..structured import RungRejected, extract_json_object, unwrap_schema_echo
+
+
+def _openapi_schema(schema):
+    """JSON Schema -> the OpenAPI subset `response_schema` accepts.
+
+    Gemini's schema dialect has no `additionalProperties` and no `strict`, and
+    spells its types in upper case. Anything it does not understand is a 400,
+    which only costs a rung — but converting is cheap and keeps the strongest
+    rung reachable for the classify schema, whose properties are built at run
+    time from signature names and so can never be a TypedDict.
+    """
+    body = schema.get("schema", schema)
+    return _openapi_node(body)
+
+
+def _openapi_node(node):
+    if not isinstance(node, dict):
+        return node
+    out = {}
+    if node.get("type"):
+        out["type"] = str(node["type"]).upper()
+    for key in ("description", "enum", "required"):
+        if key in node:
+            out[key] = node[key]
+    if isinstance(node.get("properties"), dict):
+        out["properties"] = {
+            name: _openapi_node(spec) for name, spec in node["properties"].items()
+        }
+    if "items" in node:
+        out["items"] = _openapi_node(node["items"])
+    return out
 
 
 def _print_retry_details(retry_state: RetryCallState) -> None:
@@ -127,6 +159,7 @@ class Gemini(Base):
         self,
         key,
         language,
+        api_base=None,
         prompt_template=None,
         prompt_sys_msg=None,
         context_flag=False,
@@ -134,6 +167,10 @@ class Gemini(Base):
         **kwargs,
     ) -> None:
         super().__init__(key, language)
+        # `api_base` used to be swallowed by **kwargs and discarded, so
+        # --api_base was a silent no-op for gemini and every request went to
+        # generativelanguage.googleapis.com regardless.
+        self.api_base = api_base
         self.context_flag = context_flag
         self.prompt = (
             prompt_template
@@ -146,8 +183,14 @@ class Gemini(Base):
             or None  # Allow None, but not empty string
         )
         self.interval = self.DEFAULT_INTERVAL
-        self.client = genai.Client(api_key=next(self.keys))
+        self.client = self._new_client()
         generation_config.temperature = temperature
+
+    def _new_client(self):
+        http_options = (
+            types.HttpOptions(base_url=self.api_base) if self.api_base else None
+        )
+        return genai.Client(api_key=next(self.keys), http_options=http_options)
 
     def _build_config_kwargs(
         self, response_mime_type: str | None = None, response_schema: type | None = None
@@ -191,7 +234,7 @@ class Gemini(Base):
         self.create_convo()
 
     def rotate_key(self):
-        self.client = genai.Client(api_key=next(self.keys))
+        self.client = self._new_client()
         self.create_convo()
 
     def _manage_conversation_history(self) -> None:
@@ -270,6 +313,60 @@ class Gemini(Base):
             else:
                 print(f"Translation failed after all retry attempts: {e}")
             return self.TRANSLATION_ERROR_MARKER
+
+    # ------------------------------------------------- plan classification
+
+    def _generate(self, prompt: str, model=None, **config_kwargs) -> str:
+        """One stateless request. Never `self.convo`.
+
+        Classification must not enter the translation conversation: its
+        question and answer would become context for the paragraphs that
+        follow it.
+        """
+        try:
+            response = self.client.models.generate_content(
+                model=model or getattr(self, "model", None),
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    safety_settings=safety_settings, **config_kwargs
+                ),
+            )
+        except errors.ClientError as e:
+            # 400/422 is "I will not take this request shape"; 401/403/404 are
+            # permanent answers about the endpoint, which a lower rung cannot
+            # fix, so those propagate.
+            if getattr(e, "code", None) in (400, 422):
+                raise RungRejected(e) from e
+            raise
+        return response.text
+
+    def _chat_completion(self, prompt, model=None):
+        return self._generate(prompt, model)
+
+    def _response_schema_rung(self, prompt, schema, model):
+        text = self._generate(
+            prompt,
+            model,
+            response_mime_type="application/json",
+            response_schema=_openapi_schema(schema),
+        )
+        return unwrap_schema_echo(extract_json_object(text))
+
+    def structured_rungs(self, prompt, schema, model=None):
+        """Native constrained decoding first, a described schema underneath.
+
+        No capability probe: with failure-driven descent there is nothing a
+        verdict could decide that the first real request does not decide
+        better, and a probe would cost a request per model to learn it.
+        """
+        target = model or getattr(self, "model", None)
+        return [
+            (
+                "response_schema",
+                lambda: self._response_schema_rung(prompt, schema, target),
+            ),
+            ("prompt", lambda: self._prompt_rung(prompt, schema, target)),
+        ]
 
     _available_models_cache = None
 

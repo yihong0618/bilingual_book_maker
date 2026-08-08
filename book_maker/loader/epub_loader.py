@@ -1,6 +1,10 @@
+import builtins
+import hashlib
+import json
 import os
 import pickle
 import re
+import shlex
 import string
 import sys
 import time
@@ -17,12 +21,28 @@ from bs4 import Tag
 from bs4.element import NavigableString
 from ebooklib import ITEM_DOCUMENT, epub
 from rich import print
+from rich.markup import escape
 from tqdm import tqdm
 
 from book_maker.utils import num_tokens_from_text, prompt_config_to_kwargs
 
 from .base_loader import BaseBookLoader
 from .helper import EPUBBookLoaderHelper, is_text_link, not_trans, shorter_result_link
+from .plan import (
+    PLAN_SCHEMA_VERSION,
+    BookCss,
+    TranslationPlan,
+    file_sha256,
+    is_fixed_layout,
+    load_plan_overrides,
+    partition_file,
+)
+from .classify import (
+    PlanClassifyError,
+    build_agent_prompt,
+    classify_plan,
+    gather_candidates,
+)
 
 
 @dataclass(frozen=True)
@@ -43,6 +63,10 @@ class TranslationJob:
     context_group: str
     batch_index: int
     node: object = field(repr=False, compare=False)
+    # Plan mode (--plan-classify) supplies the partitioned Unit this job was
+    # cut from; it owns the exact text nodes to replace, which the node alone
+    # does not identify. None in tag mode.
+    unit: object = field(default=None, repr=False, compare=False)
 
 
 @dataclass
@@ -104,6 +128,22 @@ class EPUBBookLoader(BaseBookLoader):
         self.retranslate = None
         self.exclude_filelist = ""
         self.only_filelist = ""
+        # --quiet: progress bars and per-paragraph echoes off (log files,
+        # agent runs); reports and error prints stay on
+        self.quiet = False
+        # plan mode (--plan-classify): coverage-complete partition. The flag
+        # is the switch; translate_tags is additionally set to "auto" so the
+        # tag-selection paths keep their established no-match behavior.
+        self.plan_mode = False
+        self.plan_min_coverage = 0.5
+        self.poetry_group_size = 8
+        self.plan_classify = "none"  # none | model | agent, see .classify
+        self.plan_classify_model = None  # user-chosen classifier; failure blocks
+        self._plan_css = None
+        self._plan_overrides = None
+        self._plan_partitions = {}  # file_name -> (soup, FilePlan), see _plan_partition
+        self._plan_fingerprint = None
+        self._resume_plan_fingerprint = None
         self.single_translate = single_translate
         self.block_size = 1  # Default to 1 for better translation quality with delimiter-based batching
         self.sentence_mode = False
@@ -298,6 +338,10 @@ class EPUBBookLoader(BaseBookLoader):
             if self.only_filelist and i.file_name not in self.only_filelist.split(","):
                 continue
 
+            if self._plan_mode:
+                count += len(self._plan_partition(i)[1].units)
+                continue
+
             content = i.content
             soup = bs(content, "html.parser")
             p_list = soup.findAll(trans_taglist)
@@ -314,6 +358,422 @@ class EPUBBookLoader(BaseBookLoader):
                 count += 1
 
         return count
+
+    # ------------------------------------------------------------ plan mode
+
+    @property
+    def _plan_mode(self):
+        # the explicit flag, not the tag string: a user-typed
+        # `--translate-tags auto` must stay an ordinary (matching-nothing)
+        # tag name, not a backdoor into plan mode. The CLI sets both.
+        return self.plan_mode
+
+    def _exclude_tags_tuple(self):
+        return tuple(t for t in self.exclude_translate_tags.split(",") if t)
+
+    def _prepare_translation_plan(self):
+        """Build the coverage-complete plan; fail loud below the coverage gate."""
+        name, _ = os.path.splitext(self.epub_name)
+        plan_path = f"{name}_plan.json"
+        # agent mode hands the plan over on the run that creates it, and
+        # translates on the run that finds one already there
+        plan_existed = os.path.exists(plan_path)
+        overrides = None
+        if plan_existed:
+            overrides = load_plan_overrides(plan_path, self.epub_name)
+            if overrides:
+                print(
+                    f"Applying {len(overrides)} signature override(s) from {plan_path}"
+                )
+
+        self._plan_css = BookCss(self.origin_book)
+        self._plan_overrides = overrides
+
+        if is_fixed_layout(self.origin_book):
+            print(
+                "[bold yellow]warning: this is a fixed-layout (pre-paginated) "
+                "EPUB — its text boxes are sized for the original words, so "
+                "translated text may overflow or misplace.[/bold yellow]"
+            )
+
+        plan = self._build_partitioned_plan()
+        if plan.total_chars == 0:
+            # coverage of an empty plan is vacuously 100%; a plan that
+            # selected nothing is a wrong filter, not a covered book. Gate
+            # before anything is classified or written to disk.
+            print(
+                f"[bold red]The plan selected no translatable text "
+                f"({len(plan.files)} document(s) matched). Check "
+                f"--only_filelist / --exclude_filelist for typos.[/bold red]"
+            )
+            raise SystemExit(1)
+
+        # LLM classification runs exactly once, on the run that creates the
+        # plan JSON: from then on the JSON is the source of truth (user edits
+        # win, resume fingerprints stay stable). Delete it to reclassify.
+        llm_actions = {}
+        if not os.path.exists(plan_path):
+            llm_actions = self._classify_plan(plan)
+            if llm_actions:
+                # the JSON is written from the pre-verdict plan: demoted
+                # signatures still have rows to carry their action
+                plan.save_json(
+                    plan_path, book_path=self.epub_name, llm_actions=llm_actions
+                )
+                print(
+                    f"plan written to {plan_path} with {len(llm_actions)} "
+                    f"llm-decided action(s) (edit signature actions to override)"
+                )
+                overrides = {**(overrides or {}), **llm_actions}
+                self._plan_overrides = overrides
+                self._plan_partitions.clear()
+                plan = self._build_partitioned_plan()
+
+        # Anything that changes the unit list (and therefore the positional
+        # meaning of resume-cache slots) is part of the fingerprint; a cache
+        # written under a different plan must be refused, not misapplied.
+        self._plan_fingerprint = hashlib.sha256(
+            json.dumps(
+                {
+                    "schema_version": PLAN_SCHEMA_VERSION,
+                    # the book itself is part of the slots' meaning: a
+                    # replaced epub at the same path has a different unit
+                    # list, and deleting the (sha-mismatching) plan JSON must
+                    # not resurrect the old book's cache
+                    "book_sha256": file_sha256(self.epub_name),
+                    "overrides": overrides or {},
+                    "exclude_tags": sorted(self._exclude_tags_tuple()),
+                    "only_filelist": self.only_filelist,
+                    "exclude_filelist": self.exclude_filelist,
+                },
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        if (
+            self.resume
+            and self._resume_plan_fingerprint is not None
+            and self._resume_plan_fingerprint != self._plan_fingerprint
+        ):
+            print(
+                f"[bold red]The resume cache {self.bin_path} was written under "
+                f"a different plan (edited plan JSON, changed book file, or "
+                f"changed --exclude-translate-tags / file filters). Its slots "
+                f"no longer line up with the current unit list; delete it to "
+                f"start over, or restore the previous settings.[/bold red]"
+            )
+            raise SystemExit(1)
+        if self.resume and self.p_to_save and self._resume_plan_fingerprint is None:
+            # a legacy list-format cache (tag-mode run): its slots index a
+            # p-tag sequence, not this plan's unit list — positionally
+            # meaningless here, and replaying it would pair units with
+            # unrelated translations
+            print(
+                f"[bold red]The resume cache {self.bin_path} was written by a "
+                f"tag-mode run and carries no plan fingerprint; its slots do "
+                f"not correspond to plan units. Delete it to start "
+                f"over.[/bold red]"
+            )
+            raise SystemExit(1)
+
+        # samples are book text: rich would eat "[Seven] warriors [they were]"
+        print(escape(plan.report()))
+        if os.path.exists(plan_path) and not llm_actions:
+            # never overwrite: the file may carry user-edited signature
+            # actions (and load_plan_overrides already verified its hash)
+            print(f"using existing plan {plan_path}")
+        elif not llm_actions:
+            pending = None
+            if self.plan_classify == "agent":
+                # uncertain signatures go out with action null: an open
+                # question, not a translate default. A rerun that answers
+                # none of them is refused by load_plan_overrides — the
+                # greedy all-translate shortcut must not be reachable by
+                # simply rerunning the command.
+                pending = [c["signature"] for c in gather_candidates(plan)]
+            plan.save_json(plan_path, book_path=self.epub_name, pending=pending)
+            if pending:
+                print(
+                    f"plan written to {plan_path} with {len(pending)} "
+                    f"undecided signature(s) (null actions must be resolved)"
+                )
+            else:
+                print(
+                    f"plan written to {plan_path} (edit signature actions to override)"
+                )
+
+        if plan.coverage < self.plan_min_coverage:
+            print(
+                f"[bold red]Plan coverage {100 * plan.coverage:.1f}% is below the "
+                f"required {100 * self.plan_min_coverage:.1f}% — refusing to "
+                f"translate a fraction of the book silently. Inspect "
+                f"{plan_path}, or lower --plan-min-coverage.[/bold red]"
+            )
+            raise SystemExit(1)
+
+        if self.plan_classify == "agent" and not plan_existed:
+            # Stop here: translating now would spend the whole book before
+            # anyone looked at the questions the plan is asking. A rerun
+            # finds the (possibly edited) plan and goes straight through.
+            # builtins.print, not rich: this block is meant to be copied, and
+            # rich would hard-wrap the paths and the rerun command mid-token.
+            builtins.print(
+                build_agent_prompt(plan_path, self.epub_name, self._rerun_command())
+            )
+            raise SystemExit(0)
+        return plan
+
+    @staticmethod
+    def _rerun_command():
+        """The command that will translate once the plan is edited.
+
+        Reconstructed from argv so the printed instructions name the user's
+        actual invocation (their book, their model, their language) — a
+        generic example would have to be translated back by hand.
+        """
+        parts = [shlex.quote(a) for a in sys.argv]
+        return " ".join(["python3", *parts])
+
+    def _build_partitioned_plan(self):
+        """The plan is built from the same cached partitions the processing
+        pass will consume, over the same files it will process — the coverage
+        gate judges what will actually be translated, and no file is
+        partitioned twice. Filter semantics mirror process_item: an only-list
+        wins outright; exclude applies only without one.
+        """
+        only = {f for f in self.only_filelist.split(",") if f}
+        exclude = {f for f in self.exclude_filelist.split(",") if f}
+        files = []
+        for item in self.origin_book.get_items_of_type(ITEM_DOCUMENT):
+            if only:
+                if item.file_name not in only:
+                    continue
+            elif item.file_name in exclude:
+                continue
+            files.append(self._plan_partition(item)[1])
+        return TranslationPlan(
+            files, self._exclude_tags_tuple(), self.poetry_group_size
+        )
+
+    def _classify_plan(self, plan):
+        """LLM verdicts for the plan's uncertain signatures; {} when disabled
+        or unavailable.
+
+        A classifier model the user chose explicitly must work — a failure
+        stops the run. The default (the translating model) degrades to a
+        printed notice: the heuristics already made a safe plan.
+        """
+        if self.plan_classify != "model":
+            return {}
+        try:
+            actions, candidates = classify_plan(
+                plan,
+                self.translate_model,
+                overrides=self._plan_overrides,
+                model=self.plan_classify_model,
+            )
+        except PlanClassifyError as e:
+            if self.plan_classify_model:
+                print(
+                    f"[bold red]--plan-classify-model "
+                    f"{self.plan_classify_model}: {e}[/bold red]"
+                )
+                raise SystemExit(1)
+            print(
+                f"[yellow]plan classification skipped entirely ({e}); "
+                f"no signature was reviewed. Keeping the heuristic plan, "
+                f"which translates everything it cannot structurally rule "
+                f"out[/yellow]"
+            )
+            return {}
+        if candidates and not actions:
+            print(
+                f"llm classification: {len(candidates)} uncertain "
+                f"signature(s) reviewed, plan unchanged"
+            )
+        elif actions:
+            decisions = ", ".join(
+                f"{sig} -> {'skip' if act == 'llm-skip' else 'translate'}"
+                for sig, act in actions.items()
+            )
+            print(f"llm classification: {escape(decisions)}")
+        return actions
+
+    def _partition_item(self, soup, file_name):
+        fp, _ = partition_file(
+            soup,
+            self._plan_css.resolver_for(file_name, soup),
+            file_name,
+            exclude_tags=self._exclude_tags_tuple(),
+            overrides=self._plan_overrides,
+            poetry_group_size=self.poetry_group_size,
+        )
+        return fp
+
+    def _plan_partition(self, item, consume=False):
+        """Parse + partition an item's original content exactly once.
+
+        The plan build (_prepare_translation_plan) and the job enumeration
+        (_build_translation_plan) share the cached result. Enumeration passes
+        consume=True: execution mutates that soup, so the entry must leave
+        the cache rather than be handed out again.
+        """
+        key = item.file_name
+        cached = self._plan_partitions.get(key)
+        if cached is None:
+            soup = bs(item.content, "html.parser")
+            cached = (soup, self._partition_item(soup, key))
+        if consume:
+            self._plan_partitions.pop(key, None)
+        else:
+            self._plan_partitions[key] = cached
+        return cached
+
+    @staticmethod
+    def _iter_plan_chunks(jobs):
+        """Yield lists of jobs: one poetry window per chunk, others alone.
+
+        Batch identity comes from the job plan (_plan_batch_indexes), so a
+        chunk is the same set of units whether it runs sequentially or on a
+        parallel worker.
+        """
+        chunk = []
+        chunk_batch = None
+        for job in jobs:
+            if chunk and job.batch_index == chunk_batch:
+                chunk.append(job)
+            else:
+                if chunk:
+                    yield chunk
+                chunk = [job]
+                chunk_batch = job.batch_index
+        if chunk:
+            yield chunk
+
+    def _process_plan_chunks(self, jobs, index, p_to_save_len, pbar=None):
+        for chunk in self._iter_plan_chunks(jobs):
+            if self.translate_model._fatal_error_detected:
+                print(
+                    "[bold red]Fatal translation error detected. Stopping chapter processing.[/bold red]"
+                )
+                break
+            index, n = self._process_combined_paragraph(
+                [job.node for job in chunk],
+                index,
+                p_to_save_len,
+                thread_safe=False,
+                plan_units=[job.unit for job in chunk],
+            )
+            if pbar is not None:
+                pbar.update(n)
+        return index
+
+    def _insert_plan_translation(
+        self, unit, t_text, translation_style="", single_translate=False
+    ):
+        """Insert a plan unit's translation without touching text it doesn't own.
+
+        In single-translate mode only the unit's own text nodes are replaced:
+        nested block units, line-number spans, anchors and other
+        skip-classified nodes stay in the document. Replacing the whole
+        element (the tag-mode behavior) would delete them.
+        """
+        if t_text is None:
+            t_text = ""
+        if (
+            self.translate_model.TRANSLATION_ERROR_MARKER is not None
+            and t_text == self.translate_model.TRANSLATION_ERROR_MARKER
+        ):
+            return
+        if single_translate and unit.nodes:
+            # Ruby annotations of text that is about to disappear would
+            # survive as orphaned furigana next to non-Japanese text — collect
+            # the <ruby> wrappers of owned nodes before replacing them.
+            rubies = []
+            for node in unit.nodes:
+                for ancestor in node.parents:
+                    if ancestor is unit.element:
+                        break
+                    if ancestor.name == "ruby":
+                        rubies.append(ancestor)
+            # <br> separated lines the unit merged into one text: once the
+            # later nodes are gone the breaks separate nothing and would
+            # render as blank lines under the translation.
+            owned = set(id(n) for n in unit.nodes)
+            stray_brs = [
+                br
+                for br in unit.element.find_all("br")
+                if any(
+                    id(sib) in owned
+                    for sib in br.next_siblings
+                    if isinstance(sib, NavigableString)
+                )
+                and any(
+                    id(sib) in owned
+                    for sib in br.previous_siblings
+                    if isinstance(sib, NavigableString)
+                )
+            ]
+            unit.nodes[0].replace_with(NavigableString(t_text))
+            for node in unit.nodes[1:]:
+                node.extract()
+            for br in stray_brs:
+                br.extract()
+            for ruby in rubies:
+                for annotation in ruby.find_all(["rt", "rp", "rtc"]):
+                    annotation.extract()
+        else:
+            self._insert_trans_preserving_tags(
+                unit.element, t_text, translation_style, False
+            )
+
+    def _translate_texts_aligned(self, texts, translator=None):
+        """translate_list with an alignment ladder: group -> halves -> singles.
+
+        A response with the wrong item count must never desync originals and
+        translations; instead we split and retry until counts match.
+        `translator` defaults to the shared model; parallel chapters pass
+        their own clone so --use_context stays chapter-local.
+        """
+        if not texts:
+            return []
+        translator = translator or self.translate_model
+        try:
+            result = translator.translate_list(texts)
+        except Exception as e:
+            if translator._fatal_error_detected:
+                # a clone's fatal flag must reach the shared model, or the
+                # other workers keep firing at an endpoint already known dead
+                self.translate_model._fatal_error_detected = True
+                print(
+                    f"[bold red]Fatal translation error detected. "
+                    f"Aborting translation.[/bold red]"
+                )
+                print(f"[bold red]Error: {str(e)}[/bold red]")
+                return [translator.TRANSLATION_ERROR_MARKER] * len(texts)
+            print(f"[bold red]Translation error: {str(e)}[/bold red]")
+            raise
+        if translator._fatal_error_detected:
+            # some translators (gemini) mark fatal and return error markers
+            # instead of raising — the flag must still reach the shared
+            # model, or a clone's death stays invisible to other workers
+            self.translate_model._fatal_error_detected = True
+        if len(result) == len(texts):
+            return result
+        print(
+            f"[bold red]alignment mismatch: sent {len(texts)} paragraphs, "
+            f"received {len(result)} — splitting for realignment[/bold red]"
+        )
+        if len(texts) == 1:
+            t = translator.translate(texts[0])
+            if t is None:
+                raise RuntimeError(
+                    "`t_text` is None: your translation model is not working as expected."
+                )
+            return [t]
+        mid = len(texts) // 2
+        return self._translate_texts_aligned(
+            texts[:mid], translator
+        ) + self._translate_texts_aligned(texts[mid:], translator)
 
     def _insert_trans_preserving_tags(
         self, p, translated_text, translation_style="", single_translate=False
@@ -424,58 +884,51 @@ class EPUBBookLoader(BaseBookLoader):
         return index
 
     def _process_combined_paragraph(
-        self, p_block, index, p_to_save_len, thread_safe=False
+        self, p_block, index, p_to_save_len, thread_safe=False, plan_units=None
     ):
-        """Returns (new_index, processed_count)."""
-        # Each entry: (paragraph, text_to_translate_or_None_if_resumed, cached_translation_or_None)
+        """Returns (new_index, processed_count).
+
+        `plan_units` (plan mode) supplies the Unit objects for each
+        paragraph — pre-cleaned text with line numbers and other
+        skip-classified nodes removed, already vetted for translatability.
+        """
+        # Each entry: (k, paragraph, text_to_translate_or_None_if_resumed, cached_translation_or_None)
         entries = []
         processed_count = 0
 
-        for p in p_block:
+        for k, p in enumerate(p_block):
             if self.is_test and index >= self.test_num:
                 break
 
             # Skip paragraphs that only contain excluded tags (code, pre, etc.)
-            if self._is_content_only_excluded_tags(p):
+            if plan_units is None and self._is_content_only_excluded_tags(p):
                 processed_count += 1
                 continue
 
-            if self.resume and index < p_to_save_len:
+            if (
+                self.resume
+                and index < p_to_save_len
+                and self.p_to_save[index] is not None
+            ):
                 cached = self.p_to_save[index]
-                entries.append((p, None, cached))
+                entries.append((k, p, None, cached))
             else:
-                raw = self._translation_source_text(p).rstrip()
-                entries.append((p, raw, None))
+                raw = (
+                    plan_units[k].text.rstrip()
+                    if plan_units
+                    else self._translation_source_text(p).rstrip()
+                )
+                entries.append((k, p, raw, None))
 
             index += 1
             processed_count += 1
 
         # Translate only the non-resumed paragraphs
-        new_texts = [text for _, text, cached in entries if text is not None]
-
-        if new_texts:
-            try:
-                translated_text_list = self.translate_model.translate_list(new_texts)
-            except Exception as e:
-                # Check if this is a fatal error
-                if self.translate_model._fatal_error_detected:
-                    print(
-                        f"[bold red]Fatal translation error detected. "
-                        f"Aborting translation.[/bold red]"
-                    )
-                    print(f"[bold red]Error: {str(e)}[/bold red]")
-                    # Return early with error markers
-                    translated_text_list = [
-                        self.translate_model.TRANSLATION_ERROR_MARKER
-                    ] * len(new_texts)
-                else:
-                    print(f"[bold red]Translation error: {str(e)}[/bold red]")
-                    raise
-        else:
-            translated_text_list = []
+        new_texts = [text for _, _, text, _ in entries if text is not None]
+        translated_text_list = self._translate_texts_aligned(new_texts)
 
         translate_iter = iter(translated_text_list)
-        for p, text, cached in entries:
+        for k, p, text, cached in entries:
             # Check for fatal error and stop immediately
             if self.translate_model._fatal_error_detected:
                 print(
@@ -486,27 +939,44 @@ class EPUBBookLoader(BaseBookLoader):
             if text is not None:
                 # Fresh translation
                 t = next(translate_iter)
-                self._insert_trans_preserving_tags(
-                    p, t, self.translation_style, self.single_translate
-                )
+                if plan_units is not None:
+                    self._insert_plan_translation(
+                        plan_units[k], t, self.translation_style, self.single_translate
+                    )
+                else:
+                    self._insert_trans_preserving_tags(
+                        p, t, self.translation_style, self.single_translate
+                    )
                 self.p_to_save.append(t)
-                print(text)
+                if not self.quiet:
+                    print(text)
                 # Check if translation failed
                 if (
                     self.translate_model.TRANSLATION_ERROR_MARKER is not None
                     and t == self.translate_model.TRANSLATION_ERROR_MARKER
                 ):
+                    # an error is a signal, not an echo: it prints even in
+                    # quiet mode
                     print(
                         f"[bold red][Translation failed for this paragraph][/bold red]"
                     )
-                else:
+                elif not self.quiet:
                     print(f"[bold green]{t}[/bold green]")
-                print()
+                if not self.quiet:
+                    print()
             else:
                 # Resumed from cache
-                self._insert_trans_preserving_tags(
-                    p, cached, self.translation_style, self.single_translate
-                )
+                if plan_units is not None:
+                    self._insert_plan_translation(
+                        plan_units[k],
+                        cached,
+                        self.translation_style,
+                        self.single_translate,
+                    )
+                else:
+                    self._insert_trans_preserving_tags(
+                        p, cached, self.translation_style, self.single_translate
+                    )
 
         if thread_safe:
             with self._progress_lock:
@@ -520,7 +990,8 @@ class EPUBBookLoader(BaseBookLoader):
         wait_p_list = []
         for i in range(len(p_list)):
             p = p_list[i]
-            print(f"translating {i}/{len(p_list)}")
+            if not self.quiet:
+                print(f"translating {i}/{len(p_list)}")
             temp_p = copy(p)
 
             for p_exclude in self.exclude_translate_tags.split(","):
@@ -794,6 +1265,28 @@ class EPUBBookLoader(BaseBookLoader):
 
         return [index // self.block_size for index in range(len(source_texts))]
 
+    @staticmethod
+    def _plan_batch_indexes(units):
+        """Batch identity for plan units: one window per poetry group.
+
+        Grouped units are contiguous by construction, so numbering them in
+        first-seen order keeps batch indexes monotonic — the same property
+        _assign_batch_indexes gives tag mode.
+        """
+        indexes = []
+        by_group = {}
+        next_free = 0
+        for unit in units:
+            if unit.group_id is None:
+                indexes.append(next_free)
+                next_free += 1
+                continue
+            if unit.group_id not in by_group:
+                by_group[unit.group_id] = next_free
+                next_free += 1
+            indexes.append(by_group[unit.group_id])
+        return indexes
+
     def _build_translation_plan(self, document_items, trans_taglist):
         """Enumerate all EPUB work before requests begin.
 
@@ -805,7 +1298,6 @@ class EPUBBookLoader(BaseBookLoader):
         global_index = 0
 
         for document_index, item in enumerate(document_items):
-            soup = bs(item.content, "html.parser")
             include_in_output = True
             should_translate = True
 
@@ -822,31 +1314,51 @@ class EPUBBookLoader(BaseBookLoader):
 
             nodes = []
             source_texts = []
-            if should_translate:
-                candidate_nodes = soup.find_all(trans_taglist)
-                candidate_nodes = self.filter_nest_list(candidate_nodes, trans_taglist)
-                if self.allow_navigable_strings:
-                    candidate_nodes.extend(soup.find_all(string=True))
+            units = []
+            if self._plan_mode:
+                # The partition already decided what is content, so plan mode
+                # enumerates its units rather than re-running the tag-mode
+                # filters over the same soup.
+                soup, file_plan = self._plan_partition(item, consume=True)
+                if should_translate:
+                    for unit in file_plan.units:
+                        if self.is_test and global_index >= self.test_num:
+                            break
+                        units.append(unit)
+                        nodes.append(unit.element)
+                        source_texts.append(unit.text)
+                        global_index += 1
+                batch_indexes = self._plan_batch_indexes(units)
+            else:
+                soup = bs(item.content, "html.parser")
+                if should_translate:
+                    candidate_nodes = soup.find_all(trans_taglist)
+                    candidate_nodes = self.filter_nest_list(
+                        candidate_nodes, trans_taglist
+                    )
+                    if self.allow_navigable_strings:
+                        candidate_nodes.extend(soup.find_all(string=True))
 
-                for node in candidate_nodes:
-                    if self.is_test and global_index >= self.test_num:
-                        break
-                    source_text = self._translation_source_text(node)
-                    if not source_text or self._is_special_text(source_text):
-                        continue
-                    if self.accumulated_num > 1 and not_trans(source_text):
-                        continue
-                    if self._is_content_only_excluded_tags(node):
-                        continue
-                    nodes.append(node)
-                    source_texts.append(source_text)
-                    global_index += 1
+                    for node in candidate_nodes:
+                        if self.is_test and global_index >= self.test_num:
+                            break
+                        source_text = self._translation_source_text(node)
+                        if not source_text or self._is_special_text(source_text):
+                            continue
+                        if self.accumulated_num > 1 and not_trans(source_text):
+                            continue
+                        if self._is_content_only_excluded_tags(node):
+                            continue
+                        nodes.append(node)
+                        source_texts.append(source_text)
+                        global_index += 1
+                batch_indexes = self._assign_batch_indexes(source_texts)
+                units = [None] * len(nodes)
 
             first_global_index = global_index - len(nodes)
-            batch_indexes = self._assign_batch_indexes(source_texts)
             jobs = []
-            for node_index, (node, source_text, batch_index) in enumerate(
-                zip(nodes, source_texts, batch_indexes)
+            for node_index, (node, source_text, batch_index, unit) in enumerate(
+                zip(nodes, source_texts, batch_indexes, units)
             ):
                 job_global_index = first_global_index + node_index
                 jobs.append(
@@ -864,6 +1376,7 @@ class EPUBBookLoader(BaseBookLoader):
                         context_group=item.file_name,
                         batch_index=batch_index,
                         node=node,
+                        unit=unit,
                     )
                 )
 
@@ -905,6 +1418,19 @@ class EPUBBookLoader(BaseBookLoader):
 
         if not os.path.exists("log"):
             os.makedirs("log")
+
+        if self._plan_mode:
+            if chapter_plan is None:
+                # every plan-mode caller goes through _build_translation_plan;
+                # falling back to tag-mode partitioning here would silently
+                # translate a different set of nodes than the plan promised
+                raise ValueError("plan mode requires a prebuilt chapter plan")
+            index = self._process_plan_chunks(
+                chapter_plan.jobs, index, p_to_save_len, pbar
+            )
+            item.content = chapter_plan.soup.encode(encoding="utf-8")
+            new_book.add_item(item)
+            return index
 
         if chapter_plan is None:
             content = item.content
@@ -971,7 +1497,8 @@ class EPUBBookLoader(BaseBookLoader):
                     if self._process_paragraph_sentence_mode(p, soup):
                         index += 1
                         pbar.update(1)
-                        print()
+                        if not self.quiet:
+                            print()
                         if self.is_test and index >= self.test_num:
                             is_test_done = True
                         continue
@@ -987,12 +1514,14 @@ class EPUBBookLoader(BaseBookLoader):
                         )
                         pbar.update(n)
                         p_block = []
-                        print()
+                        if not self.quiet:
+                            print()
                 else:
                     index = self._process_paragraph(
                         p, new_p, index, p_to_save_len, thread_safe=False
                     )
-                    print()
+                    if not self.quiet:
+                        print()
                     pbar.update(1)
 
                 if self.is_test and index >= self.test_num:
@@ -1058,6 +1587,44 @@ class EPUBBookLoader(BaseBookLoader):
 
             soup = chapter_plan.soup
 
+            if self._plan_mode:
+                # own context buffers: chapters run out of order here
+                plan_translator = self._clone_translator_for_context()
+                for chunk in self._iter_plan_chunks(chapter_plan.jobs):
+                    if self.translate_model._fatal_error_detected:
+                        break
+                    fresh = []
+                    for job in chunk:
+                        idx = job.global_index
+                        if (
+                            self.resume
+                            and idx < p_to_save_len
+                            and self.p_to_save[idx] is not None
+                        ):
+                            self._insert_plan_translation(
+                                job.unit,
+                                self.p_to_save[idx],
+                                self.translation_style,
+                                self.single_translate,
+                            )
+                        else:
+                            fresh.append(job)
+                    if fresh:
+                        translated = self._translate_texts_aligned(
+                            [job.source_text for job in fresh], plan_translator
+                        )
+                        for job, t_text in zip(fresh, translated):
+                            self._record_translation_result(job.global_index, t_text)
+                            self._insert_plan_translation(
+                                job.unit,
+                                t_text,
+                                self.translation_style,
+                                self.single_translate,
+                            )
+                chapter_result["processed_content"] = soup.encode(encoding="utf-8")
+                chapter_result["success"] = True
+                return chapter_result
+
             # Initialize chapter-specific context lists
             chapter_context_list = []
             chapter_translated_list = []
@@ -1077,7 +1644,11 @@ class EPUBBookLoader(BaseBookLoader):
                     p = job.node
                     index = job.global_index
 
-                    if self.resume and index < p_to_save_len:
+                    if (
+                        self.resume
+                        and index < p_to_save_len
+                        and self.p_to_save[index] is not None
+                    ):
                         t_text = self.p_to_save[index]
                     else:
                         # Use chapter-specific context for translation
@@ -1114,6 +1685,35 @@ class EPUBBookLoader(BaseBookLoader):
         """Create a translator instance for a specific chapter with independent context."""
         # Return the main translator - we'll handle context at the chapter level
         return self.translate_model
+
+    def _clone_translator_for_context(self):
+        """A translator with its own context buffers for one parallel chapter.
+
+        Plan mode drives translate_model directly, so with --use_context and
+        --parallel-workers every chapter appended into one global
+        context_list: paragraphs arrive out of reading order *and* two
+        threads mutate the same list. Cloning is shallow on purpose — keys,
+        model config and the API/probe locks stay shared (rate limiting and
+        the structured-output probe must remain global), only the mutable
+        context state is fresh.
+
+        Sequential runs keep the shared instance: there the accumulation is
+        in reading order and worth having.
+        """
+        if self.parallel_workers <= 1 or not getattr(
+            self.translate_model, "context_flag", False
+        ):
+            return self.translate_model
+        clone = copy(self.translate_model)
+        clone.context_list = []
+        clone.context_translated_list = []
+        if hasattr(clone, "create_convo"):
+            # gemini keeps context in its chat object, not the lists above —
+            # a shallow copy would share one convo across chapters (a thread
+            # race and cross-chapter context bleed). Fresh chat, shared
+            # client.
+            clone.create_convo()
+        return clone
 
     def _translate_with_chapter_context(
         self, translator, text, chapter_context_list, chapter_translated_list
@@ -1312,6 +1912,31 @@ class EPUBBookLoader(BaseBookLoader):
             )
             return
 
+        if self._plan_mode:
+            incompatible = {
+                "--retranslate": self.retranslate,
+                "--batch/--batch-use": self.batch_flag or self.batch_use_flag,
+                "--sentence_mode": self.sentence_mode,
+            }
+            active = [flag for flag, on in incompatible.items() if on]
+            if active:
+                print(
+                    f"[bold red]plan mode (--plan-classify) is not compatible "
+                    f"with {', '.join(active)}[/bold red]"
+                )
+                raise SystemExit(1)
+            if self.allow_navigable_strings:
+                print(
+                    "note: --allow_navigable_strings is redundant in plan mode "
+                    "(every text node is already accounted for); ignoring it"
+                )
+            if self.accumulated_num > 1:
+                print(
+                    "note: plan mode batches poetry windows itself; "
+                    "--accumulated_num is ignored"
+                )
+            self._prepare_translation_plan()
+
         self.batch_init_then_wait()
         new_book = self._make_new_book(self.origin_book)
         trans_taglist = self.translate_tags.split(",")
@@ -1337,8 +1962,10 @@ class EPUBBookLoader(BaseBookLoader):
         pbar = tqdm(
             total=self.test_num if self.is_test else all_p_length,
             leave=not self.is_test,
+            disable=self.quiet,
         )
-        print()
+        if not self.quiet:
+            print()
         index = 0
         p_to_save_len = len(self.p_to_save)
         self._pending_translation_results = {}
@@ -1382,10 +2009,16 @@ class EPUBBookLoader(BaseBookLoader):
 
                 # Create a simpler progress bar for parallel processing
                 pbar.close()  # Close the original progress bar
-                chapter_pbar = tqdm(total=len(output_plans), desc="Chapters", unit="ch")
+                chapter_pbar = tqdm(
+                    total=len(output_plans),
+                    desc="Chapters",
+                    unit="ch",
+                    disable=self.quiet,
+                )
 
                 chapter_data_list = [(plan, p_to_save_len) for plan in output_plans]
 
+                failed_chapters = []
                 with ThreadPoolExecutor(max_workers=effective_workers) as executor:
                     future_to_item = {
                         executor.submit(
@@ -1408,6 +2041,10 @@ class EPUBBookLoader(BaseBookLoader):
                             result = future.result()
                             if result["success"] and result["processed_content"]:
                                 item.content = result["processed_content"]
+                            elif not result["success"]:
+                                failed_chapters.append(
+                                    (item.file_name, result["error"])
+                                )
                             new_book.add_item(item)
                             chapter_pbar.update(1)
                             chapter_pbar.set_postfix_str(
@@ -1416,10 +2053,24 @@ class EPUBBookLoader(BaseBookLoader):
 
                         except Exception as e:
                             print(f"❌ Error processing {item.file_name}: {e}")
+                            failed_chapters.append((item.file_name, str(e)))
                             new_book.add_item(item)
                             chapter_pbar.update(1)
 
                 chapter_pbar.close()
+                if failed_chapters:
+                    # fail loud: a partial book must not masquerade as done
+                    for file_name, error in failed_chapters:
+                        print(
+                            f"[bold red]chapter failed: {file_name}: {error}[/bold red]"
+                        )
+                    print(
+                        f"[bold red]{len(failed_chapters)}/{len(output_plans)} "
+                        f"chapters failed — saving progress, not writing the "
+                        f"bilingual book. Re-run with --resume.[/bold red]"
+                    )
+                    self._save_progress()
+                    raise SystemExit(1)
                 print(f"✅ Completed all {len(output_plans)} chapters")
             else:
                 # Sequential processing (original behavior or single chapter)
@@ -1516,6 +2167,11 @@ class EPUBBookLoader(BaseBookLoader):
             self.p_to_save = state["translations"]
             self._checkpoint_job_ids = state["job_ids"]
             self._last_saved_progress = len(self.p_to_save)
+            # plan mode (see _save_progress): which plan — overrides and
+            # schema version — these slots were written under. Absent from
+            # tag-mode checkpoints, and the fingerprint check that consumes
+            # it only runs in plan mode.
+            self._resume_plan_fingerprint = state.get("plan_fingerprint")
         except ValueError:
             raise
         except Exception:
@@ -1532,6 +2188,9 @@ class EPUBBookLoader(BaseBookLoader):
         try:
             for item in origin_book_temp.get_items():
                 if item.get_type() == ITEM_DOCUMENT:
+                    # one plan per document, consumed in document order: the
+                    # replay must walk exactly the selection the processing
+                    # pass walked or global_index lands on unrelated text
                     chapter_plan = next(chapter_plans)
                     if not chapter_plan.include_in_output:
                         continue
@@ -1539,7 +2198,17 @@ class EPUBBookLoader(BaseBookLoader):
                         if job.global_index >= len(self.p_to_save):
                             break
                         translated_text = self.p_to_save[job.global_index]
-                        if isinstance(job.node, NavigableString):
+                        if job.unit is not None:
+                            # plan mode owns specific text nodes; replacing the
+                            # whole element would delete the skip-classified
+                            # nodes it deliberately left alone
+                            self._insert_plan_translation(
+                                job.unit,
+                                translated_text,
+                                self.translation_style,
+                                self.single_translate,
+                            )
+                        elif isinstance(job.node, NavigableString):
                             translated_node = NavigableString(translated_text)
                             job.node.insert_after(translated_node)
                             if self.single_translate:
@@ -1566,16 +2235,19 @@ class EPUBBookLoader(BaseBookLoader):
                 "Cannot save EPUB progress before planning translation jobs"
             )
         try:
+            payload = {
+                "version": self.CHECKPOINT_VERSION,
+                "order": self.CHECKPOINT_ORDER,
+                "job_ids": completed_job_ids,
+                "translations": self.p_to_save,
+            }
+            if self._plan_mode and self._plan_fingerprint:
+                # job ids bind the slots to the book's text; the plan
+                # fingerprint binds them to the decisions that produced the
+                # unit list, which the same text can change between runs
+                payload["plan_fingerprint"] = self._plan_fingerprint
             with open(self.bin_path, "wb") as f:
-                pickle.dump(
-                    {
-                        "version": self.CHECKPOINT_VERSION,
-                        "order": self.CHECKPOINT_ORDER,
-                        "job_ids": completed_job_ids,
-                        "translations": self.p_to_save,
-                    },
-                    f,
-                )
+                pickle.dump(payload, f)
             self._last_saved_progress = len(self.p_to_save)
         except Exception:
             raise Exception("can not save resume file")

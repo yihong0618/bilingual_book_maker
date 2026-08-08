@@ -5,6 +5,8 @@ from openai import OpenAI
 
 from .base_translator import Base
 
+QWEN_MODELS = ("qwen-mt-turbo", "qwen-mt-plus")
+
 
 class QwenTranslator(Base):
     """
@@ -249,6 +251,7 @@ class QwenTranslator(Base):
         """
         self.terminology = terminology or []
         print(f"[blue]Terminology updated: {len(self.terminology)} terms[/blue]")
+        return self.terminology
 
     def set_domain_hint(self, domain_hint):
         """Set domain hint for specialized translation
@@ -259,6 +262,32 @@ class QwenTranslator(Base):
         """
         self.domain_hint = domain_hint or ""
         print(f"[blue]Domain hint set: {self.domain_hint}[/blue]")
+        return self.domain_hint
+
+    def set_model_list(self, model_list):
+        """The `--model_list` surface, so `--provider` can reach this class.
+
+        cli.py calls this for every `--provider`; without it an
+        `api_style: "qwen"` provider died on an AttributeError. Qwen-MT runs
+        one model per run, so the first entry wins — announced, not silently.
+        """
+        models = [m.strip() for m in model_list if m and m.strip()]
+        if not models:
+            raise ValueError("--model_list is empty")
+        if len(models) > 1:
+            print(
+                f"[yellow]ℹ qwen uses one model per run; taking "
+                f"'{models[0]}' and ignoring {len(models) - 1} more[/yellow]"
+            )
+        # set_qwen_model substitutes qwen-mt-turbo for anything it does not
+        # recognize. Silently translating a whole book on a model the user did
+        # not ask for — and billing it — is not a recovery.
+        if models[0] not in QWEN_MODELS:
+            raise ValueError(
+                f"unknown qwen model '{models[0]}'; expected one of "
+                f"{', '.join(QWEN_MODELS)}"
+            )
+        self.set_qwen_model(models[0])
 
     def set_qwen_model(self, model_name):
         """Set Qwen model type
@@ -266,7 +295,7 @@ class QwenTranslator(Base):
         Args:
             model_name: Either "qwen-mt-turbo" or "qwen-mt-plus"
         """
-        if model_name in ["qwen-mt-turbo", "qwen-mt-plus"]:
+        if model_name in QWEN_MODELS:
             self.model = model_name
             print(f"[blue]Qwen model set to: {self.model}[/blue]")
         else:
@@ -274,3 +303,7 @@ class QwenTranslator(Base):
             print(
                 f"[red]Invalid Qwen model: {model_name}. Using default: {self.model}[/red]"
             )
+        # Returned, not just stored: __init__ assigns the result back over
+        # self.model, so a setter returning None wiped the model it had just
+        # set and every request went out with model=None.
+        return self.model
