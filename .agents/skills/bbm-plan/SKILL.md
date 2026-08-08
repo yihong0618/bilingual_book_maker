@@ -32,22 +32,24 @@ step can be redone after a crash or a new session.
 ## 0. Credentials
 
 Copy `assets/env.example` (this skill dir) to `.env` at the repo root and
-have the user fill it.
-The one mandatory field is `MODEL` — the exact model name. Beyond that,
-one API key, whichever provider the model lives at; the key that is filled
-decides the route: an OpenAI-style key → `--model openai
---model_list "$MODEL"`, `BBM_CLAUDE_API_KEY` → `--model claude`,
-`BBM_GOOGLE_GEMINI_KEY` → `--model gemini`, and so on. **Never `--model
-chatgptapi` for an arbitrary model id** — that preset runs a hardcoded
-GPT-3.5-family model discovery and ignores `--model_list` entirely
-(`book_maker/cli.py:806-823`); only `openai` and `groq` honor it. `MODEL`
-and `BBM_API_BASE` are skill-level fields — make_book.py does not read
-them from env; translate them to flags yourself.
+have the user fill it. Two things matter: `MODEL` — the exact model id —
+and one API key for wherever that model lives. `MODEL` and `BBM_API_BASE`
+are skill-level fields; make_book.py does not read them from env, you
+translate them into flags.
 
-Source it in the same Bash call as the run: `set -a; source .env; set +a; …`.
-Never echo values; verify presence with `[ -n "$MODEL" ]`-style checks. If
-`.env` is unfilled, stop and ask — do not accept a pasted key as an
-argument (it leaks into shell history and prompt logs).
+**The model name picks the route; the key only proves you may use it.** An
+id the repo has never heard of cannot go in `--model` at all (argparse
+limits it to `MODEL_DICT` keys) — it travels in `--model_list`, and which
+`--model` carries it depends on the endpoint shape, which step 1b
+establishes by probing. Route table, probe recipes, and the `--provider`
+mechanism for non-OpenAI gateways: **`references/providers.md`**, to read
+before the first command whenever `MODEL` is not a plain `gpt-*` id.
+
+Source `.env` in the same Bash call as the run:
+`set -a; source .env; set +a; …`. Never echo values; verify presence with
+`[ -n "$MODEL" ]`-style checks. If `.env` is unfilled, stop and ask — do not
+accept a pasted key as an argument (it leaks into shell history and prompt
+logs).
 
 ## 1. Intake
 
@@ -55,16 +57,16 @@ Ask for: book path and target `--language` (e.g. `zh-hans`, `ja`). The
 model comes from `.env`. Optional: `--single_translate` (replace instead
 of bilingual), `--translation_style`.
 
-Base command used by every step below (OpenAI-style route shown — swap the
-provider flags per the key, as above):
+Base command used by every step below, with the route flags step 1b
+settled (OpenAI shape shown — the common case):
 
 ```bash
 set -a; source .env; set +a
 API_BASE_FLAG=()
 [ -n "$BBM_API_BASE" ] && API_BASE_FLAG=(--api_base "$BBM_API_BASE")
-python make_book.py --book_name "$BOOK" --model openai \
-  --language "$LANG" --plan-classify agent \
-  --model_list "$MODEL" "${API_BASE_FLAG[@]}"
+ROUTE=(--model openai --model_list "$MODEL")   # ← from step 1b
+python make_book.py --book_name "$BOOK" "${ROUTE[@]}" \
+  --language "$LANG" --plan-classify agent "${API_BASE_FLAG[@]}"
 ```
 
 (The conditional flag is an array on purpose: `${VAR:+--flag "$VAR"}`
@@ -82,46 +84,62 @@ untracked (new) or modified against HEAD count
 the repo's shipped examples, not the user's voice, and are never offered.
 The moment any such new or diff'd file is found, **ask the user first** —
 before linting it, before building any command around it, and never
-silently adopting or ignoring it. Only after the user says yes, lint it;
-the contract (`book_maker/cli.py:parse_prompt_arg`) is:
+silently adopting or ignoring it. Only once the user says yes, lint it and
+keep it out of git: contract and commands in
+`references/prompt-files.md`.
 
-- `.json`: an object with **only** the keys `user` (required) and `system`
-  (optional) — any other key is rejected
-- the `user` template must contain the literal placeholder `{text}`;
-  `{language}` is optional
-- `.txt` becomes the user template as-is (same `{text}` rule);
-  `.md` is parsed as PromptDown
+## 1b. Endpoint probe — infer the route, then verify it (sub-cent)
 
-Fix or report lint problems now — the CLI would reject the file at run
-start anyway, but a traceback after the user already approved a paid run
-is the wrong place to learn about a missing `{text}`.
+Never assume a route from the key alone. Infer it from the **model name**,
+then prove it, so a typo or a wrong shape surfaces here and not after the
+classify work. Three ordered questions, each answered by a call:
 
-Prompt files stay **out of git**, same as `.env` — they are the user's
-personal voice and may carry names/glossary content. If the working
-directory is a repo, check with `git check-ignore prompt.json .env`; add
-whatever isn't covered to `.git/info/exclude` (local-only — never edit the
-project's tracked `.gitignore` for this).
-
-## 1b. Endpoint probe (sub-cent, before anything else)
-
-Prove key + endpoint + model name in one tiny call, so a typo surfaces now
-and not after the classify work:
+**0. Bind `$KEY` and `$ROOT` for the shape you are about to probe**, and
+refuse to curl without them. **The shape names the key variable** — never
+scan for whichever key happens to be set, because a stale export in
+`~/.zshenv` would silently route the run somewhere the user never asked
+for. `route_env` below is copied verbatim from `references/providers.md`,
+which also carries the per-shape defaults:
 
 ```bash
-curl -sS "${BBM_API_BASE:-https://api.openai.com/v1}/chat/completions" \
-  -H "Authorization: Bearer $OPENAI_API_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"'"$MODEL"'","messages":[{"role":"user","content":"hi"}],"max_tokens":1}'
+set -a; source .env; set +a
+route_env openai        # or: anthropic | gemini — sets KEY, ROOT, or exits
 ```
 
-Any JSON with a `choices` array passes. **Probe the format, don't ask the
-user to fix it**: on a 404, retry with `/v1` appended to (or stripped
-from) the base; on an auth-header rejection, try the provider's native
-scheme (`x-api-key` for Anthropic, key-in-query for Gemini) and switch to
-that provider's `--model` flag. Whatever base passes the probe is the one
-`--api_base` gets. Only stop and ask when the key itself is rejected by
-its own provider. (Structured-output capability is *not* tested here; the
-probe at the smoke step does that.)
+**1. Does this model id exist here?** On any OpenAI-shaped base the model
+listing is free:
+
+```bash
+curl -sS "$ROOT/v1/models" -H "Authorization: Bearer $KEY" |
+  python3 -c 'import json,sys; d=json.load(sys.stdin)["data"]; print([m["id"] for m in d])'
+```
+
+If `$MODEL` is absent, stop and show the near matches — a typo'd id and an
+unsupported path both return 404 later, and only this tells them apart.
+Some gateways also return `supported_endpoint_types` per row; when present
+that *is* the answer to question 2, so read it instead of guessing. A
+non-OpenAI-shaped endpoint has no such listing: skip to question 2 there
+and let the probe itself judge the id.
+
+**2. Which shape does it speak?** Take the first candidate from the model
+name — `gpt-*` and unknown ids → OpenAI; `claude-*`/`gemini-*` → OpenAI
+first when `BBM_API_BASE` names a gateway, native when it is the vendor's
+own endpoint — send that shape's smallest request, fall through on failure.
+Use the reference's three recipes **verbatim**, token-cap rule included: no
+cap on the OpenAI shape (a cap of 1 is rejected by gateway floors and by
+o-series/gpt-5, which reads as a dead endpoint when nothing is wrong),
+`max_tokens` mandatory on the anthropic one.
+
+**3. Which flags does that make?** Record them once as the `ROUTE` array
+every later step uses, and state the choice in one line with its reason.
+
+Probe the format, don't ask the user to fix it: on 404 retry with `/v1`
+added or removed; on an auth rejection try that shape's native scheme.
+Whatever passes is what `--api_base` gets. Stop and ask only when the key
+itself is rejected by its own provider.
+
+Structured-output capability is **not** tested here — the run's own probe
+does that at first paid use, and its verdict is not a pass/fail.
 
 ## 2. Plan (free — agent mode makes no API call)
 
@@ -199,9 +217,12 @@ writes the resume cache. Verify by unzipping the partial
 `smoke.log` for error lines. The cache is plan-fingerprint-guarded and
 carries into the full run — nothing paid here is re-paid.
 
-A schema-incapable endpoint, a wrong-language reply, or broken formatting
-all surface **here**, not three chapters into the paid run. (Key and model
-name were already proven at step 1b.)
+A wrong-language reply and broken formatting surface **here**, not three
+chapters into the paid run. (Key, model id and route were proven at step
+1b.) What is *not* a failure at this step: the probe grading the endpoint
+below `strict` and announcing the delimiter method — that is the expected
+line on claude, on most proxies, and on anything not natively OpenAI. The
+output is what you judge, not the probe verdict.
 
 ## 5. Full run
 
@@ -222,6 +243,9 @@ changed intentionally.
 
 | decision | flag | choose it when |
 |---|---|---|
+| route | `--model openai --model_list "$MODEL"` | the endpoint took the OpenAI shape at step 1b — the default for gateways, and the only route that accepts an arbitrary model id without a provider file |
+| | `--model <MODEL_DICT key>` | `$MODEL` is literally one of those keys and you want its native client (`claude-…`, `gemini`, `groq`, `qwen`) |
+| | `--provider <name> --model_list "$MODEL"` | a non-OpenAI shape *and* a custom model id — the only combination the other two cannot express (`references/providers.md`) |
 | output form | *(default)* bilingual | user reads both languages side by side — the usual ask |
 | | `--single_translate` | user wants a translated-only book, original replaced |
 | speed | *(default)* sequential | small book (< ~30 chapters), or first run with a new endpoint |
@@ -248,6 +272,13 @@ agent handoff — the plan run of this workflow is already free).
 - **Progress saves after every chapter** and on interrupt or crash. To halt
   a background run: `kill -INT <pid>` (SIGINT fires the save handler; even
   SIGKILL loses at most the current chapter).
+- **SIGINT does not halt a `--parallel-workers` run promptly.** Every
+  chapter is dispatched up front and the pool drains before the handler
+  runs, so the process exits only after all of them finish — measured
+  260807: a signal at 20/70 chapters done still exited having translated
+  70/70. Checkpoints stay correct and resume cleanly; it is the *stopping*
+  that does not work. Tell the user this before starting a big parallel run,
+  and use SIGKILL when a run must actually stop now.
 - **Resume = rerun the identical command with `--resume`.** Replay is
   positional and fingerprint-guarded: same book, same plan, continues where
   it stopped. This is also why the smoke test is never wasted money.
@@ -283,7 +314,8 @@ spot-checking one early and one late chapter.
 
 | symptom | meaning |
 |---|---|
-| `no strict structured-output support` | model can't do schema output for translation — pick another model |
+| `doesn't apply JSON schema … using delimiter method`, `honors JSON schema shape but not value constraints`, `no strict structured-output support` | **not a failure.** The endpoint does not do strict schema decoding, so translation uses the delimiter method instead. Every route except a `strict` OpenAI-shaped one prints one of these, including claude and most proxies. Note it in the report; do not switch models over it |
+| `refused the … request shape; using a simpler one` | classification's ladder descended a rung. Informational |
 | fingerprint refusal on `--resume` | book file or plan changed since the cache was written; delete cache only if that was intentional |
 | `undecided signature(s)` on plan load | null actions remain — answer every open question in the plan JSON, then rerun |
 | `invalid action` on plan load | typo in a hand-edited `action` — fix the JSON, rerun |
