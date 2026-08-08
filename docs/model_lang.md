@@ -2,7 +2,7 @@
 ## Models
 `-m, --model <Model>` <br>
 
-Currently `bbook_maker` supports these models: `chatgptapi` , `gpt3` , `google` , `caiyun` , `deepl` , `deeplfree` , `gpt4` , `gpt4omini` , `gpt5mini` , `o1-preview` , `o1` , `o1-mini` , `o3-mini` , `claude` , `customapi`.
+Currently `bbook_maker` supports these models: `chatgptapi` , `gpt3` , `google` , `googlev3` , `caiyun` , `deepl` , `deeplfree` , `gpt4` , `gpt4omini` , `gpt5mini` , `o1-preview` , `o1` , `o1-mini` , `o3-mini` , `claude` , `customapi`.
 Default model is `chatgptapi` . 
 
 ### OPENAI models
@@ -110,6 +110,21 @@ Support CustomAPI model. Use `--model customapi --custom_api ${custom_api}` .
 ### Google
 
 Support google model. Use `--model google`
+
+### Google Cloud Translation v3 (official, glossary support)
+
+Use `--model googlev3` for the official Cloud Translation v3 API with optional glossary (terminology) support. Authentication uses Application Default Credentials (`GOOGLE_APPLICATION_CREDENTIALS` or `gcloud auth application-default login`).
+
+    # create a glossary once from a CSV term file (uploads to GCS automatically)
+    python3 scripts/create_glossary.py --project_id my-proj --glossary_id my-terms \
+        --source_lang en --target_lang zh-CN --csv ./terms.csv --gcs_bucket my-bucket
+
+    # translate with the glossary (requires explicit --source_lang)
+    bbook_maker --book_name test_books/animal_farm.epub --model googlev3 \
+        --google_project_id my-proj --google_glossary_id my-terms \
+        --source_lang en --language zh-hans
+
+Omit `--google_glossary_id` for plain official translation. `--google_location` defaults to `us-central1` (the only region supporting glossaries). Env fallbacks: `BBM_GOOGLE_PROJECT_ID`, `BBM_GOOGLE_GLOSSARY_ID`, `BBM_GOOGLE_LOCATION`.
 
 ## Languages
 `--language <LANGUAGE>` <br>
