@@ -69,6 +69,44 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   python3 make_book.py --book_name test_books/animal_farm.epub --model google
   ```
 
+* Google Cloud Translation v3 (official API, with glossary support)
+
+  Use `--model googlev3` for the official [Cloud Translation v3 API](https://cloud.google.com/translate/docs/advanced/translating-text-v3), which supports enforcing your own terminology via a [glossary](https://cloud.google.com/translate/docs/advanced/glossary). Authentication uses Application Default Credentials (ADC) instead of an API key:
+
+  ```shell
+  # one of the following (note: `gcloud auth login` alone is NOT enough for ADC):
+  gcloud auth application-default login                                # personal account
+  export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json  # or service account (roles/cloudtranslate.user)
+
+  # one-time project setup
+  gcloud config set project my-proj
+  gcloud services enable translate.googleapis.com storage.googleapis.com
+  ```
+
+  Create a glossary once from a CSV term file (`source term,target term` per line; the script uploads it to GCS and registers the glossary — this needs `pip install google-cloud-storage` and, for service accounts, roles/cloudtranslate.editor + roles/storage.objectAdmin):
+
+  ```shell
+  # the bucket must exist and be in us-central1
+  gcloud storage buckets create gs://my-bucket --location=us-central1
+
+  python3 scripts/create_glossary.py \
+    --project_id my-proj --glossary_id my-terms \
+    --source_lang en --target_lang zh-CN \
+    --csv ./terms.csv --gcs_bucket my-bucket
+  ```
+
+  Then translate with it (a glossary requires an explicit `--source_lang`; omit `--google_glossary_id` for plain official translation):
+
+  ```shell
+  python3 make_book.py --book_name test_books/animal_farm.epub --model googlev3 \
+    --google_project_id my-proj --google_glossary_id my-terms \
+    --source_lang en --language zh-hans
+  ```
+
+  `--google_project_id` defaults to the ADC project; `--google_location` defaults to `us-central1` (the only region supporting glossaries). Env fallbacks: `BBM_GOOGLE_PROJECT_ID`, `BBM_GOOGLE_GLOSSARY_ID`, `BBM_GOOGLE_LOCATION`.
+
+  Behind a proxy: requests go over REST by default (gRPC ignores proxies and fails with `503 UNAVAILABLE`); with a SOCKS proxy also run `pip install "requests[socks]"`. See [docs/env_settings.md](docs/env_settings.md) for the full setup guide.
+
 * Caiyun Translate
 
   ```shell
@@ -203,6 +241,7 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   | `qwen-mt-turbo` | `--qwen_key` / `BBM_QWEN_API_KEY` | Qwen fast translation model |
   | `qwen-mt-plus` | `--qwen_key` / `BBM_QWEN_API_KEY` | Qwen high-quality translation model |
   | `google` | N/A | Free. No API key needed |
+  | `googlev3` | ADC (`GOOGLE_APPLICATION_CREDENTIALS`) | Official Cloud Translation v3, supports `--google_glossary_id` |
   | `caiyun` | `--caiyun_key` / `BBM_CAIYUN_API_KEY` | Caiyun |
   | `deepl` | `--deepl_key` / `BBM_DEEPL_API_KEY` | DeepL (paid) |
   | `deeplfree` | N/A | DeepL Free |

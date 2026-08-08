@@ -200,6 +200,26 @@ def main():
         help="You can get Qwen Key from  https://bailian.console.aliyun.com/?tab=model#/api-key",
     )
 
+    # for Google Cloud Translation v3 (official API, auth via ADC)
+    parser.add_argument(
+        "--google_project_id",
+        dest="google_project_id",
+        type=str,
+        help="Google Cloud project id for googlev3 model, defaults to the ADC project (or set BBM_GOOGLE_PROJECT_ID)",
+    )
+    parser.add_argument(
+        "--google_glossary_id",
+        dest="google_glossary_id",
+        type=str,
+        help="Glossary id for googlev3 terminology translation, create one with scripts/create_glossary.py (or set BBM_GOOGLE_GLOSSARY_ID)",
+    )
+    parser.add_argument(
+        "--google_location",
+        dest="google_location",
+        type=str,
+        help="Google Cloud location for googlev3 model, default us-central1 (glossaries are only supported there)",
+    )
+
     parser.add_argument(
         "--test",
         dest="test",
@@ -534,6 +554,9 @@ So you are close to reaching the limit. You have to choose your own value, there
         API_KEY = options.xai_key or env.get("BBM_XAI_API_KEY")
     elif options.model and options.model.startswith("qwen-"):
         API_KEY = options.qwen_key or env.get("BBM_QWEN_API_KEY")
+    elif options.model == "googlev3":
+        # auth via Application Default Credentials, no API key needed
+        API_KEY = ""
     elif options.provider:
         env_key_name = provider_cfg.get("env_key", "") if provider_cfg else ""
         API_KEY = options.api_key or (env.get(env_key_name) if env_key_name else "")
@@ -691,6 +714,15 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.translate_model.set_claude_model(options.model)
     if options.model and options.model.startswith("qwen-"):
         e.translate_model.set_qwen_model(options.model)
+    if options.model == "googlev3":
+        e.translate_model.set_config(
+            project_id=options.google_project_id or env.get("BBM_GOOGLE_PROJECT_ID"),
+            location=options.google_location
+            or env.get("BBM_GOOGLE_LOCATION")
+            or "us-central1",
+            glossary_id=options.google_glossary_id
+            or env.get("BBM_GOOGLE_GLOSSARY_ID"),
+        )
     if options.block_size > 0:
         e.block_size = options.block_size
     if options.batch_flag:
