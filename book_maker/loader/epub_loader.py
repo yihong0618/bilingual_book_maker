@@ -166,9 +166,14 @@ class EPUBBookLoader(BaseBookLoader):
                         "%s/%s" % (obj.book.FOLDER_NAME, item.file_name), obj._get_ncx()
                     )
                 elif isinstance(item, epub.EpubNav):
+                    # ebooklib regenerates every EpubNav from book.toc by
+                    # default, which discards translations applied to an
+                    # imported nav document's content. Imported navs carry
+                    # non-empty bytes; newly created navs are empty and still
+                    # need ebooklib's generator.
                     obj.out.writestr(
                         "%s/%s" % (obj.book.FOLDER_NAME, item.file_name),
-                        obj._get_nav(item),
+                        item.content if item.content else obj._get_nav(item),
                     )
                 elif item.manifest:
                     obj.out.writestr(
@@ -216,6 +221,10 @@ class EPUBBookLoader(BaseBookLoader):
 
     def _make_new_book(self, book):
         new_book = epub.EpubBook()
+        # add_metadata() does not populate the scalar fields consumed by
+        # ebooklib's generated navigation document.
+        new_book.title = book.title
+        new_book.language = book.language
         allowed_ns = set(epub.NAMESPACES.keys()) | set(epub.NAMESPACES.values())
 
         for namespace, metas in book.metadata.items():
