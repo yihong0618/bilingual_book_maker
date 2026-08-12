@@ -1,5 +1,6 @@
 import pickle
 import threading
+import zipfile
 
 import pytest
 from ebooklib import ITEM_DOCUMENT, epub
@@ -113,6 +114,54 @@ def _write_epub(path, chapters):
     epub.write_epub(str(path), book)
 
 
+def _replace_epub_member(path, member_name, content):
+    """Replace one archive member without leaving a duplicate ZIP entry."""
+    replacement = path.with_suffix(".replacement.epub")
+    with zipfile.ZipFile(path) as source, zipfile.ZipFile(replacement, "w") as target:
+        for info in source.infolist():
+            target.writestr(
+                info,
+                (
+                    content.encode("utf-8")
+                    if info.filename == member_name
+                    else source.read(info.filename)
+                ),
+            )
+    replacement.replace(path)
+
+
+def _write_epub_with_custom_nav(path):
+    book = epub.EpubBook()
+    book.set_identifier("nav-correctness-baseline")
+    book.set_title("Navigation correctness baseline")
+    book.set_language("en")
+
+    chapter = epub.EpubHtml(
+        uid="chapter", title="Chapter one", file_name="chapter.xhtml", lang="en"
+    )
+    chapter.content = "<html><body><p>Chapter body</p></body></html>"
+    nav = epub.EpubNav(uid="nav", file_name="toc.xhtml")
+    book.add_item(chapter)
+    book.add_item(nav)
+    book.toc = (epub.Link("chapter.xhtml", "Chapter one", "chapter-link"),)
+    book.spine = [nav, chapter]
+    epub.write_epub(str(path), book)
+
+    custom_nav = """<?xml version="1.0" encoding="utf-8"?>
+    <html xmlns="http://www.w3.org/1999/xhtml"
+          xmlns:epub="http://www.idpf.org/2007/ops" lang="en">
+      <head><title>Source navigation title</title></head>
+      <body data-source-marker="preserve-me">
+        <h1>Source navigation heading</h1>
+        <nav epub:type="toc" id="toc" role="doc-toc">
+          <h2>Source table of contents</h2>
+          <ol><li><a href="chapter.xhtml">Chapter one</a></li></ol>
+        </nav>
+      </body>
+    </html>"""
+    _replace_epub_member(path, "EPUB/toc.xhtml", custom_nav)
+
+
 def _make_loader(
     tmp_path,
     monkeypatch,
@@ -151,6 +200,62 @@ def _document_texts(path):
         item.file_name: item.get_body_content().decode("utf-8")
         for item in book.get_items_of_type(ITEM_DOCUMENT)
     }
+
+
+def test_plan_mode_preserves_translated_imported_nav_and_manifest(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "book.epub"
+    _write_epub_with_custom_nav(source)
+    loader = EPUBBookLoader(
+        str(source),
+        RecordingModel,
+        key="",
+        resume=False,
+        language="zh-hans",
+    )
+    loader.plan_mode = True
+    loader.translate_tags = "auto"
+    loader.quiet = True
+
+    loader.make_bilingual_book()
+
+    output = tmp_path / "book_bilingual.epub"
+    with zipfile.ZipFile(output) as archive:
+        nav = archive.read("EPUB/toc.xhtml").decode("utf-8")
+        opf = archive.read("EPUB/content.opf").decode("utf-8")
+    assert 'data-source-marker="preserve-me"' in nav
+    assert 'id="toc"' in nav
+    assert 'id="id"' not in nav
+    assert "Source navigation heading" in nav
+    assert "&lt;T&gt;Source navigation heading&lt;/T&gt;" in nav
+    nav_manifest = next(line for line in opf.splitlines() if 'href="toc.xhtml"' in line)
+    assert 'properties="nav"' in nav_manifest
+
+
+def test_empty_nav_is_generated_with_rebuilt_book_title(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "book.epub"
+    _write_epub(source, [("chapter.xhtml", ["Chapter body"])])
+    loader = EPUBBookLoader(
+        str(source),
+        RecordingModel,
+        key="",
+        resume=False,
+        language="zh-hans",
+    )
+    rebuilt = loader._make_new_book(loader.origin_book)
+    rebuilt.add_item(epub.EpubNav(uid="nav", file_name="generated-nav.xhtml"))
+
+    output = tmp_path / "generated.epub"
+    epub.write_epub(str(output), rebuilt)
+
+    with zipfile.ZipFile(output) as archive:
+        nav = archive.read("EPUB/generated-nav.xhtml").decode("utf-8")
+    assert rebuilt.title == "Correctness baseline"
+    assert rebuilt.language == "en"
+    assert "<h2>Correctness baseline</h2>" in nav
 
 
 def test_epub_sequential_bilingual_output_preserves_source(tmp_path, monkeypatch):
