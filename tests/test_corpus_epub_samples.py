@@ -18,6 +18,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import zipfile
 from collections import Counter
 from pathlib import Path
@@ -46,7 +47,26 @@ ROUND_TRIP_BOOKS = [
     "accessible_epub_3.epub",  # the nav-preservation case
     "mahabharata.epub",  # verse directly under <body>
     "jlreq-in-english.epub",  # table-heavy, vertical writing
+    "childrens-literature.epub",  # rich OPF metadata, clean source
 ]
+
+# Findings the package rewrite is *known* to introduce, pinned exactly, per
+# book. These are the deferred metadata/manifest rewrite (PR 1b): ebooklib
+# emits its own <dc:identifier id="id"> next to the copied one, drops
+# "scripted" from properties, and writes <content src=""/> into a
+# regenerated NCX. Pinned with equality, not tolerance: one finding more
+# than the pin is a regression and fails; one finding fewer means PR 1b
+# landed and this pin must shrink with it — the gate goes red until it does.
+KNOWN_PACKAGE_FINDINGS = {
+    "childrens-literature.epub": Counter(
+        {
+            'RSC-005: Error while parsing file: Duplicate "id"': 2,
+            "OPF-014: The property "
+            '"scripted" should be declared in the OPF file.': 1,
+            "RSC-010: Reference to non-standard resource type found.": 1,
+        }
+    ),
+}
 
 
 def _require_corpus():
@@ -468,10 +488,13 @@ def _epubcheck_findings(jar, path):
 
 
 def _assert_epubcheck_clean(source, output, book_name):
-    """The output may carry no finding its source did not already carry.
+    """The output may carry no finding its source did not already carry,
+    except the exact pinned set in KNOWN_PACKAGE_FINDINGS.
 
     Several IDPF samples are not finding-free themselves, so the baseline is
-    per book rather than absolute.
+    per book rather than absolute. The pin is compared with equality in both
+    directions: findings beyond it are a regression, findings missing from
+    it mean the defect was fixed and the pin is stale — both fail loudly.
     """
     if shutil.which("java") is None:
         pytest.fail("java is required for the corpus gate (Temurin is installed)")
@@ -484,9 +507,20 @@ def _assert_epubcheck_clean(source, output, book_name):
     # Counter subtraction keeps only what grew: one pre-existing RSC-005 in
     # the source no longer absorbs a hundred in the output.
     new = produced - baseline
-    assert not new, f"{book_name}: translation introduced EPUB findings:\n" + "\n".join(
-        f"{count}x {finding} (source had {baseline[finding]})"
-        for finding, count in sorted(new.items())[:20]
+    known = KNOWN_PACKAGE_FINDINGS.get(book_name, Counter())
+    beyond = new - known
+    assert (
+        not beyond
+    ), f"{book_name}: translation introduced EPUB findings:\n" + "\n".join(
+        f"{count}x {finding} (source had {baseline[finding]}, "
+        f"pinned {known[finding]})"
+        for finding, count in sorted(beyond.items())[:20]
+    )
+    stale = known - new
+    assert not stale, (
+        f"{book_name}: pinned package findings no longer occur — the fix "
+        f"landed, so shrink or delete its KNOWN_PACKAGE_FINDINGS entry:\n"
+        + "\n".join(f"{count}x {finding}" for finding, count in sorted(stale.items()))
     )
 
 
@@ -606,6 +640,36 @@ class TestEpubcheckWrapper:
         assert _epubcheck_findings(Path("j.jar"), Path("b.epub")) == Counter(
             {"RSC-005: real": 1}
         )
+
+    def test_a_pinned_finding_passes_and_one_beyond_the_pin_fails(
+        self, monkeypatch, tmp_path
+    ):
+        """The pin admits exactly the recorded PR 1b findings — the very
+        next duplicate id on top of them must still fail the gate."""
+        mod = sys.modules[__name__]
+        pinned = Counter({"RSC-005: dup": 2})
+        monkeypatch.setitem(KNOWN_PACKAGE_FINDINGS, "pinned.epub", pinned)
+        reports = iter([Counter(), Counter({"RSC-005: dup": 2})])
+        monkeypatch.setattr(mod, "_epubcheck_findings", lambda jar, path: next(reports))
+        monkeypatch.setattr(mod, "_epubcheck_jar", lambda: Path("j.jar"))
+        _assert_epubcheck_clean(tmp_path / "s", tmp_path / "o", "pinned.epub")
+
+        reports = iter([Counter(), Counter({"RSC-005: dup": 3})])
+        with pytest.raises(AssertionError, match="introduced EPUB findings"):
+            _assert_epubcheck_clean(tmp_path / "s", tmp_path / "o", "pinned.epub")
+
+    def test_a_stale_pin_fails_instead_of_lingering(self, monkeypatch, tmp_path):
+        """When PR 1b fixes the package writer, the pin must go red until
+        it is deleted — a tolerance that outlives its defect is a hole."""
+        mod = sys.modules[__name__]
+        monkeypatch.setitem(
+            KNOWN_PACKAGE_FINDINGS, "pinned.epub", Counter({"RSC-005: dup": 2})
+        )
+        reports = iter([Counter(), Counter()])
+        monkeypatch.setattr(mod, "_epubcheck_findings", lambda jar, path: next(reports))
+        monkeypatch.setattr(mod, "_epubcheck_jar", lambda: Path("j.jar"))
+        with pytest.raises(AssertionError, match="pin"):
+            _assert_epubcheck_clean(tmp_path / "s", tmp_path / "o", "pinned.epub")
 
     def test_repeated_occurrences_of_one_finding_are_counted(self, monkeypatch):
         """The gate compares by subtraction. With sets, a source carrying one
