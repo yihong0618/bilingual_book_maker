@@ -27,7 +27,15 @@ from tqdm import tqdm
 from book_maker.utils import num_tokens_from_text, prompt_config_to_kwargs
 
 from .base_loader import BaseBookLoader
-from .helper import EPUBBookLoaderHelper, is_text_link, not_trans, shorter_result_link
+from .helper import (
+    EPUBBookLoaderHelper,
+    append_inline_translation,
+    has_restricted_content_model,
+    is_text_link,
+    not_trans,
+    shorter_result_link,
+    strip_duplicate_ids,
+)
 from .plan import (
     PLAN_SCHEMA_VERSION,
     BookCss,
@@ -221,6 +229,12 @@ class EPUBBookLoader(BaseBookLoader):
 
     def _make_new_book(self, book):
         new_book = epub.EpubBook()
+        # ebooklib always writes <spine toc="ncx">, so a book without an NCX
+        # item leaves that reference dangling (epubcheck OPF-049). Adding the
+        # item — uid "ncx", which is what the attribute names — both resolves
+        # it and restores the EPUB 2 fallback table of contents.
+        if not any(isinstance(item, epub.EpubNcx) for item in book.get_items()):
+            new_book.add_item(epub.EpubNcx())
         # add_metadata() does not populate the scalar fields consumed by
         # ebooklib's generated navigation document.
         new_book.title = book.title
@@ -258,6 +272,15 @@ class EPUBBookLoader(BaseBookLoader):
                         continue
                 else:
                     # Unexpected metadata format; skip gracefully
+                    continue
+
+                if name == "link":
+                    # ebooklib parses OPF <link rel=… href=…> into metadata
+                    # but writes every metadata entry back as <meta>, where
+                    # rel/href are not legal attributes — the book then
+                    # fails validation (RSC-005) over an accessibility
+                    # statement it merely copied. Dropping the link loses a
+                    # pointer; keeping it loses the book.
                     continue
 
                 # `others` can be {} or None
@@ -839,12 +862,17 @@ class EPUBBookLoader(BaseBookLoader):
                 p.append(copy(content))
         else:
             # Bilingual mode: keep original paragraph with code, add translation after
+            if has_restricted_content_model(p):
+                append_inline_translation(p, translated_text, translation_style)
+                return
             new_p = copy(p)
             # Remove code tags from translation
             for tag_name in exclude_tags_list:
                 for tag in new_p.find_all(tag_name):
                     tag.extract()
             new_p.string = translated_text
+            # a translated copy is a second rendering, not a second anchor
+            strip_duplicate_ids(new_p)
             if translation_style != "":
                 new_p["style"] = translation_style
             p.insert_after(new_p)
