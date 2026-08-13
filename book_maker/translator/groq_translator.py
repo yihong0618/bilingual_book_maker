@@ -16,6 +16,19 @@ class GroqClient(ChatGPTAPI):
     # would send the capability request to OpenAI with a Groq key.
     SUPPORTS_STRUCTURED_OUTPUTS = False
 
+    def _chat_completion(self, prompt, model=None):
+        """Classification through Groq's own client.
+
+        Inheriting ChatGPTAPI's would have posted a Groq key to
+        api.openai.com. No probe runs here (see above), so the ladder enters
+        at the prompt rung, which is the only one this override serves.
+        """
+        completion = Groq(api_key=next(self.keys)).chat.completions.create(
+            model=model or self.model,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return completion.choices[0].message.content
+
     def rotate_model(self):
         if not self.model_list:
             model_list = list(set(GROQ_MODEL_LIST))

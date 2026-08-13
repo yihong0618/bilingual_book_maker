@@ -222,6 +222,30 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 
   指定需要翻译的标签，使用逗号分隔多个标签。epub 由 html 文件组成，默认情况下，只翻译 `<p>` 中的内容。例如: `--translate-tags h1,h2,h3,p,div`
 
+  **计划模式（`--plan-classify`，仅 epub）**：不再由你挑选标签，而是把书中每一个文本节点要么归入某个翻译单元，要么按明确的理由跳过并计入报告（隐藏内容、page-list 目录、纯符号、链接等）。如果一本书的正文并不放在 `<p>` 里——例如每行一个 `<div>` 或 `<blockquote>` 的诗歌，按默认标签会被静默漏掉——那就该用这个模式。连续的短诗行会被合并成诗节窗口（最多 `--poetry-group-size` 行，默认 8 行）一次请求翻译，让模型能看到相邻诗行的上下文。计划模式下 `--translate-tags` 会被忽略。
+
+  取值决定由谁判断哪些标签签名值得翻译：
+
+  - `none`（默认）：不建计划，照常翻译 `--translate-tags` 选中的标签。
+  - `most`：翻译整个分区，不做分类。
+  - `model`：先让一个 LLM 裁决不确定的签名（标题、正文主干和诗歌分组不会被问到），然后继续翻译。可用 `--plan-classify-model X` 指定分类用的模型——指定了就意味着此模式，且分类失败会中止而不是回退。
+  - `agent`：不调用 API。写出计划 JSON，打印一段可以粘贴进 coding-agent 会话（Claude Code、Codex 等）的指引，然后**在翻译前停下**。改完 action 后重跑同一条命令即可翻译。
+
+  - `--plan-dry-run`：打印按标签签名分组的覆盖率表格，写出 `<book>_plan.json` 后退出。不需要 API key，也不消耗额度。同时遵守 `--only_filelist` / `--exclude_filelist`。
+  - `<book>_plan.json`：把某个签名的 `"action"` 改成 `"skip"` 即可在正式翻译时排除它；该文件一旦存在就不会被覆盖（想重新生成请先删除）。每行带最多 5 条真实 `samples`，不用解包 epub 也能判断。
+  - `--plan-min-coverage`（默认 0.5）：如果计划覆盖的正文比例低于该阈值，计划模式会直接报错退出，而不是闷头只翻译一小部分。
+
+  ```shell
+  # 先免费预览会翻译哪些内容（不需要 key）
+  python3 make_book.py --book_name my_book.epub --plan-dry-run
+  # 翻译整个分区
+  python3 make_book.py --book_name my_book.epub --openai_key ${key} --plan-classify most
+  # 先让模型分流一遍版面装置（页眉、页码等）
+  python3 make_book.py --book_name my_book.epub --openai_key ${key} --plan-classify model
+  # 或交给 coding agent 判断（停下、打印指引，然后重跑）
+  python3 make_book.py --book_name my_book.epub --openai_key ${key} --plan-classify agent
+  ```
+
 - `--book_from`
 
   选项指定电子阅读器类型（现在只有 kobo 可用），并使用 `--device_path` 指定挂载点。
@@ -338,6 +362,9 @@ python3 make_book.py --book_name test_books/animal_farm.epub --provider deepseek
 
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p
+
+# 计划模式：自动发现要翻译的内容（诗歌、列表、无 <p> 包裹的正文都能覆盖）
+python3 make_book.py --book_name test_books/animal_farm.epub --plan-classify most
 
 # 修改prompt
 python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template_sample.txt

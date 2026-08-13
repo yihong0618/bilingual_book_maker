@@ -238,6 +238,52 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   Use `--translate-tags` to specify tags need for translation. Use comma to separate multiple tags.
   For example: `--translate-tags h1,h2,h3,p,div`
 
+- `--plan-classify {none,most,model,agent}` (epub only):
+
+  **Plan mode**: instead of selecting tags, every text node in the book is either assigned
+  to a translation unit or skipped for an explicit, reported reason (hidden content,
+  page-list navs, symbols, links, ...). This is the right choice for books whose text does
+  not live in `<p>` — e.g. poetry rendered as per-line `<div>`s or `<blockquote>`s, which
+  the default would silently skip. Runs of short verse lines are batched into stanza
+  windows (up to `--poetry-group-size` lines, default 8) and translated in one request so
+  the model sees neighboring lines for context.
+
+  The partition is deliberately greedy: it keeps everything it cannot rule out
+  structurally, because guessing from shape used to drop real content (verse numbers,
+  one-word dialogue, drop caps) to save only 0–6% of characters. Deciding what is not
+  worth translating is the classification entry you pick here:
+
+  - `none` (default): no plan — translate the `--translate-tags` selection as usual.
+  - `most`: translate the whole partition, no classification.
+  - `model`: an LLM rules on the uncertain signatures first (headings, the prose spine and
+    poetry groups are never asked about), then the run continues. Use
+    `--plan-classify-model X` to pick a different model for it — naming one implies this
+    mode, and a failure then aborts instead of falling back.
+  - `agent`: makes no API call. Writes the plan, prints a block of instructions to paste
+    into a coding-agent session (Claude Code, Codex, ...), and **stops before translating**.
+    Edit the actions, then rerun the same command to translate.
+
+  In plan mode `--translate-tags` is ignored — the plan partitions the whole book.
+
+  - `--plan-dry-run`: print the per-signature coverage table, write `<book>_plan.json`, and
+    exit. No API key or credits needed. Honors `--only_filelist` / `--exclude_filelist`.
+  - `<book>_plan.json`: edit a signature's `"action"` to `"skip"` to exclude it from the
+    real run; the file is never overwritten once it exists (delete it to regenerate).
+    Each row carries up to 5 real `samples` so you can judge without opening the epub.
+  - `--plan-min-coverage` (default 0.5): plan mode aborts if the plan covers less than this
+    fraction of the book's text, instead of silently translating a fraction of it.
+
+  ```shell
+  # inspect what would be translated (free, no key needed)
+  python3 make_book.py --book_name my_book.epub --plan-dry-run
+  # translate the whole partition
+  python3 make_book.py --book_name my_book.epub --openai_key ${key} --plan-classify most
+  # let a model triage the apparatus first
+  python3 make_book.py --book_name my_book.epub --openai_key ${key} --plan-classify model
+  # or hand the triage to a coding agent (stops, prints instructions, then rerun)
+  python3 make_book.py --book_name my_book.epub --openai_key ${key} --plan-classify agent
+  ```
+
 - `--exclude-translate-tags`:
 
   Use `--exclude-translate-tags` to exclude content within specified HTML tags from translation. This is useful for preserving code blocks, preformatted text, or other special content. Use comma to separate multiple tags.
@@ -406,6 +452,11 @@ python3 make_book.py --book_name test_books/animal_farm.epub --provider deepseek
 
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p
+
+# Plan mode: auto-discover translatable content (poetry, blockquotes, table cells,
+# ...) and batch verse lines in stanza windows; preview the plan with --plan-dry-run
+python3 make_book.py --book_name test_books/animal_farm.epub --plan-dry-run
+python3 make_book.py --book_name test_books/animal_farm.epub --plan-classify most
 
 # Tweaking the prompt
 python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template_sample.txt

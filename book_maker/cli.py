@@ -5,6 +5,7 @@ from os import environ as env
 from pathlib import Path
 
 from rich import print
+from rich.markup import escape
 
 from book_maker.loader import BOOK_LOADER_DICT
 from book_maker.translator import MODEL_DICT
@@ -287,7 +288,58 @@ def main():
         dest="translate_tags",
         type=str,
         default="p",
-        help="example --translate-tags p,blockquote",
+        help="which tags to translate, example --translate-tags p,blockquote "
+        "(default: p). Ignored in plan mode — see --plan-classify",
+    )
+    parser.add_argument(
+        "--plan-dry-run",
+        dest="plan_dry_run",
+        action="store_true",
+        default=False,
+        help="build and print the translation plan (per-signature coverage "
+        "table), write <book>_plan.json, and exit without translating "
+        "(epub only)",
+    )
+    parser.add_argument(
+        "--plan-min-coverage",
+        dest="plan_min_coverage",
+        type=float,
+        default=0.5,
+        help="in plan mode, abort if the plan covers less than this fraction "
+        "of the book's text (default 0.5)",
+    )
+    parser.add_argument(
+        "--poetry-group-size",
+        dest="poetry_group_size",
+        type=int,
+        default=8,
+        help="in plan mode, max poetry lines batched per translation request "
+        "(default 8)",
+    )
+    parser.add_argument(
+        "--plan-classify",
+        dest="plan_classify",
+        choices=["none", "most", "model", "agent"],
+        default="none",
+        help="coverage-complete plan mode (epub only): partition the whole "
+        "book, then decide which tag signatures are worth translating. "
+        "'none' (default): no plan — translate the --translate-tags "
+        "selection as usual. "
+        "'most': translate the whole partition, no classification. "
+        "'model': an LLM rules on the uncertain signatures in-pipeline, then "
+        "the run continues. "
+        "'agent': write the plan JSON with samples, print instructions to "
+        "paste into a coding-agent session, and stop before translating — "
+        "rerun the same command afterwards to translate",
+    )
+    parser.add_argument(
+        "--plan-classify-model",
+        dest="plan_classify_model",
+        type=str,
+        default="",
+        help="model for plan-signature classification (default: the "
+        "translating model). When set explicitly, a classification failure "
+        "aborts the run instead of falling back to the heuristic plan",
     )
     parser.add_argument(
         "--exclude-translate-tags",
@@ -439,6 +491,14 @@ So you are close to reaching the limit. You have to choose your own value, there
         help='JSON string of extra body parameters to pass to the API. Example: --extra_body \'{"chat_template_kwargs": {"enable_thinking": false}}\'',
     )
     parser.add_argument(
+        "--quiet",
+        dest="quiet",
+        action="store_true",
+        help="suppress progress bars and per-paragraph translation echoes "
+        "(for log files and non-interactive runs; reports and errors still "
+        "print). Currently epub only.",
+    )
+    parser.add_argument(
         "--provider",
         dest="provider",
         type=str,
@@ -463,6 +523,55 @@ So you are close to reaching the limit. You have to choose your own value, there
     if not os.path.isfile(options.book_name):
         print(f"Error: the book {options.book_name!r} does not exist.")
         exit(1)
+
+    if options.plan_dry_run:
+        # No translation happens, so no credentials are needed: build the
+        # plan straight from the file, honoring the file filters.
+        if get_book_type(options.book_name) != "epub":
+            print("[bold red]--plan-dry-run only works with epub books[/bold red]")
+            exit(1)
+        from ebooklib import epub as _epub
+
+        from book_maker.loader.plan import build_plan, is_fixed_layout
+
+        book = _epub.read_epub(options.book_name)
+        if is_fixed_layout(book):
+            print(
+                "[bold yellow]warning: this is a fixed-layout (pre-paginated) "
+                "EPUB — its text boxes are sized for the original words, so "
+                "translated text may overflow or misplace.[/bold yellow]"
+            )
+        plan = build_plan(
+            book,
+            exclude_tags=tuple(
+                t for t in options.exclude_translate_tags.split(",") if t
+            ),
+            poetry_group_size=options.poetry_group_size,
+            only_files=set(f for f in options.only_filelist.split(",") if f) or None,
+            exclude_files=set(f for f in options.exclude_filelist.split(",") if f)
+            or None,
+        )
+        # samples are book text: rich would eat "[Seven] warriors [they were]"
+        print(escape(plan.report()))
+        plan_path = f"{os.path.splitext(options.book_name)[0]}_plan.json"
+        if os.path.exists(plan_path):
+            print(
+                f"existing plan {plan_path} kept (may carry your edits); "
+                f"delete it to regenerate"
+            )
+        else:
+            plan.save_json(plan_path, book_path=options.book_name)
+            print(f"plan written to {plan_path} (edit signature actions to override)")
+            # classification needs credentials, which dry-run must not: both
+            # --plan-classify entries act on the run that *creates* the JSON,
+            # and this dry run just created it
+            print(
+                "note: this plan JSON now pins the decisions — a later "
+                "--plan-classify model/agent run will find it and translate "
+                "as-is. Delete it first to let a classifier weigh in, or "
+                "edit the actions here to stay fully manual"
+            )
+        return
 
     PROXY = options.proxy
     if PROXY != "":
@@ -532,7 +641,9 @@ So you are close to reaching the limit. You have to choose your own value, there
         API_KEY = options.groq_key or env.get("BBM_GROQ_API_KEY")
     elif options.model == "xai":
         API_KEY = options.xai_key or env.get("BBM_XAI_API_KEY")
-    elif options.model and options.model.startswith("qwen-"):
+    elif options.model and options.model.startswith("qwen"):
+        # "qwen" itself is a MODEL_DICT choice; matching only "qwen-" left it
+        # with an empty key, so the documented alias could never authenticate.
         API_KEY = options.qwen_key or env.get("BBM_QWEN_API_KEY")
     elif options.provider:
         env_key_name = provider_cfg.get("env_key", "") if provider_cfg else ""
@@ -615,10 +726,61 @@ So you are close to reaching the limit. You have to choose your own value, there
         e.sentence_mode = True
     if options.allow_navigable_strings:
         e.allow_navigable_strings = True
+    # --plan-classify-model names a classifier, which only makes sense in
+    # model mode; asking for it alongside a no-classification mode is a
+    # contradiction, not a preference to resolve silently.
+    classify_mode = options.plan_classify
+    if options.plan_classify_model:
+        if classify_mode in ("most", "agent"):
+            reason = (
+                "agent mode makes no API call"
+                if classify_mode == "agent"
+                else "most mode skips classification"
+            )
+            print(
+                f"[bold red]Error:[/bold red] --plan-classify-model cannot be "
+                f"combined with --plan-classify {classify_mode} ({reason})"
+            )
+            exit(1)
+        classify_mode = "model"
+    # Plan mode is epub-only, and 'agent' in particular promises to stop
+    # before spending anything; silently translating a txt/md book instead
+    # would be the exact opposite of what was asked.
+    if classify_mode != "none" and book_type != "epub":
+        print(
+            f"[bold red]Error:[/bold red] --plan-classify {classify_mode} "
+            f"requires an epub book (plan mode is epub-only); got a "
+            f"{book_type} book"
+        )
+        exit(1)
+
     if options.translate_tags:
         e.translate_tags = options.translate_tags
+    # Any classification choice is a choice to have a plan, and the plan
+    # partitions the whole book — a tag selection has nothing left to select.
+    if classify_mode != "none":
+        if options.translate_tags != "p":
+            # "p" is argparse's default, so an untouched flag stays quiet;
+            # a real selection being discarded deserves a line
+            print(
+                f"note: --plan-classify {classify_mode} plans the whole book; "
+                f"ignoring --translate-tags {options.translate_tags}"
+            )
+        e.plan_mode = True
+        e.translate_tags = "auto"
     if options.exclude_translate_tags:
         e.exclude_translate_tags = options.exclude_translate_tags
+    if hasattr(e, "plan_min_coverage"):
+        e.plan_min_coverage = options.plan_min_coverage
+        e.poetry_group_size = options.poetry_group_size
+        # the loader keeps its original pipeline: plan mode is triggered by
+        # translate_tags == "auto", and its classify entries are
+        # none/model/agent — the CLI's 'most' is plan mode with no
+        # classification, i.e. the loader's 'none'
+        e.plan_classify = classify_mode if classify_mode != "most" else "none"
+        e.plan_classify_model = options.plan_classify_model or None
+    if options.quiet and hasattr(e, "quiet"):
+        e.quiet = True
     if options.exclude_filelist:
         e.exclude_filelist = options.exclude_filelist
     if options.only_filelist:
@@ -665,6 +827,16 @@ So you are close to reaching the limit. You have to choose your own value, there
             raise ValueError(
                 "When using `openai` model, you must also provide `--model_list`. For default model sets use `--model chatgptapi` or `--model gpt4` or `--model gpt4omini` or `--model gpt5mini`",
             )
+    elif options.model_list and options.model != "gemini" and not options.provider:
+        # every other --model value runs its own preset model discovery and
+        # would silently drop the explicit model choice — the worst outcome
+        # for a user pointing at a proxy that only serves that model
+        print(
+            f"[bold red]Error: --model_list is only honored by --model openai, "
+            f"groq or gemini (or a --provider); --model {options.model} uses "
+            f"its own preset models and would silently ignore it.[/bold red]"
+        )
+        exit(1)
     # TODO refactor, quick fix for gpt4 model
     if options.model == "chatgptapi":
         if options.ollama_model:
