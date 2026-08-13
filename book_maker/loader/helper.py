@@ -1,9 +1,11 @@
 import re
 import backoff
 import logging
+import uuid
 from copy import copy
 
 from bs4.element import Tag
+from ebooklib import epub
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
@@ -14,6 +16,72 @@ logger = logging.getLogger(__name__)
 # <figcaption>, and an EPUB 3 navigation document takes one heading before
 # its <ol> and nothing but <a>/<span> inside an <li>.
 SINGLETON_TAGS = frozenset(["figcaption", "caption", "legend", "summary"])
+
+
+def derive_translation_identity(new_book, source_book, *facets):
+    """Give the translated book its own identifier — deterministic, and
+    deliberately not the source's.
+
+    The translation is a different book, so sharing the source identifier
+    would make a library deduplicate one against the other. But ebooklib's
+    default — a fresh uuid on every run — is wrong the other way:
+    regenerate the same translation and every reader sees a brand-new
+    book, duplicating library entries and orphaning reading positions. A
+    UUIDv5 of the source identifier plus the facets that define this
+    translation (target language, bilingual vs single) is stable across
+    runs, distinct from the source, and distinct between facet
+    combinations.
+
+    The seed only has to be stable for the same source file, not
+    semantically primary: ebooklib's reader lets the *last* identified
+    `<dc:identifier>` win `uid`, so adopting it as the book's identity
+    would corrupt `unique-identifier` on multi-identifier sources —
+    deriving from it cannot.
+
+    Returns the `id` attribute now spoken for, so the metadata copy can
+    drop the colliding attribute from the source's own entry; None when
+    the source has no identifier — there is nothing stable to derive
+    from, so ebooklib's per-run uuid stands.
+    """
+    uid = getattr(source_book, "uid", None)
+    if not uid:
+        return None
+    seed = "|".join(["bbook-maker", str(uid), *[str(f) for f in facets]])
+    new_book.set_identifier(str(uuid.uuid5(uuid.NAMESPACE_URL, seed)))
+    return new_book.IDENTIFIER_ID
+
+
+def backfill_toc_hrefs(toc):
+    """Give every `Section` an href, using its first descendant that has one.
+
+    ebooklib's NCX writer says "CAN NOT HAVE EMPTY SRC HERE" and then writes
+    `<content src=""/>` anyway for an hrefless `Section` — which is what a
+    nav `<li>` labelled by a `<span>` rather than an `<a>` becomes
+    (RSC-010): a table-of-contents entry that navigates nowhere on readers
+    using the NCX. An NCX `content` must point somewhere, and the only
+    honest target for a grouping entry is where the group starts.
+    """
+
+    def first_href(node):
+        if isinstance(node, (tuple, list)):
+            for child in node:
+                found = first_href(child)
+                if found:
+                    return found
+            return None
+        if isinstance(node, epub.EpubHtml):
+            return node.file_name
+        return getattr(node, "href", None) or None
+
+    for item in toc:
+        if not isinstance(item, (tuple, list)):
+            continue
+        section, children = item[0], item[1]
+        backfill_toc_hrefs(children)
+        if isinstance(section, epub.Section) and not section.href:
+            section.href = first_href(children) or ""
+
+    return toc
 
 
 def strip_duplicate_ids(element):
