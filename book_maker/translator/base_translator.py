@@ -1,6 +1,8 @@
 import itertools
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
+from dataclasses import dataclass
 
 from rich import print
 
@@ -13,6 +15,44 @@ from ..structured import (
 
 # Special delimiter for batch translation - UUID-based token unlikely to appear in any text
 BATCH_DELIMITER = "\n\n@@\n\n"
+
+
+class AsyncTranslationUnsupported(NotImplementedError):
+    """Raised when a provider has no native asynchronous implementation."""
+
+
+@dataclass(frozen=True)
+class TranslationContext:
+    """Immutable translation history passed explicitly between requests."""
+
+    source_texts: tuple[str, ...] = ()
+    translated_texts: tuple[str, ...] = ()
+
+    def __post_init__(self):
+        if len(self.source_texts) != len(self.translated_texts):
+            raise ValueError("Source and translated context lengths must match")
+
+    def append(
+        self, source_text: str, translated_text: str, limit: int
+    ) -> "TranslationContext":
+        if limit <= 0:
+            return self
+        return type(self)(
+            (self.source_texts + (source_text,))[-limit:],
+            (self.translated_texts + (translated_text,))[-limit:],
+        )
+
+
+@dataclass(frozen=True)
+class TranslationResult:
+    text: str
+    context: TranslationContext
+
+
+@dataclass(frozen=True)
+class BatchTranslationResult:
+    texts: tuple[str, ...]
+    context: TranslationContext
 
 
 class Base(ABC):
@@ -150,6 +190,31 @@ class Base(ABC):
         Subclasses can override for batch efficiency.
         """
         return [self.translate(t) for t in text_list]
+
+    async def translate_async(
+        self, text: str, *, context: TranslationContext | None = None
+    ) -> TranslationResult:
+        raise AsyncTranslationUnsupported(
+            f"{type(self).__name__} does not implement native async translation"
+        )
+
+    async def translate_list_async(
+        self,
+        text_list: Sequence[str],
+        *,
+        context: TranslationContext | None = None,
+    ) -> BatchTranslationResult:
+        """Translate a list sequentially while threading explicit context."""
+        current_context = context or TranslationContext()
+        translations = []
+        for text in text_list:
+            result = await self.translate_async(text, context=current_context)
+            translations.append(result.text)
+            current_context = result.context
+        return BatchTranslationResult(tuple(translations), current_context)
+
+    async def close_async(self) -> None:
+        """Release provider-specific asynchronous resources."""
 
     def _build_batch_prompt(
         self, text_list, prompt_template, system_content, default_prompt
