@@ -131,14 +131,22 @@ def append_inline_translation(element, text, translation_style=""):
     document allows one heading before its <ol> and nothing but <a>/<span>
     inside an <li>; a <figure> allows one <figcaption>. Appending a
     translated sibling there produces a book epubcheck rejects, so the
-    translation joins the element's own content instead — a table-of-
-    contents entry reads "Chapter 1 第一章" and stays valid.
+    translation joins the element's own content instead, on its own line —
+    a table-of-contents entry reads "Chapter 1" over "第一章" and stays
+    valid. A <br/> rather than a space, because running two languages
+    together on one line is exactly the crowding the bilingual sibling
+    layout avoids everywhere else.
     """
     span = Tag(name="span")
     if translation_style:
         span["style"] = translation_style
-    span.string = f" {text}"
-    translation_host(element).append(span)
+    span.string = text
+    host = translation_host(element)
+    # can_be_empty_element makes bs4 serialize the void form <br/>; a bare
+    # Tag("br") comes out as the pair <br></br>, which an HTML5 parser
+    # reads as two line breaks.
+    host.append(Tag(name="br", can_be_empty_element=True))
+    host.append(span)
     return span
 
 

@@ -128,7 +128,10 @@ def test_nav_link_translation_goes_inside_the_link():
 
     li = soup.find("li")
     assert len(li.find_all("a")) == 1
-    assert li.get_text().split() == ["Chapter", "One", "第一章"]
+    # the translation sits on its own line inside the link, not run into
+    # the original's text
+    assert li.find("a").find("br") is not None
+    assert li.get_text(separator=" ").split() == ["Chapter", "One", "第一章"]
 
 
 def test_nav_list_item_translation_goes_inside_its_link_not_after_the_sublist():
@@ -147,8 +150,10 @@ def test_nav_list_item_translation_goes_inside_its_link_not_after_the_sublist():
     outer = soup.find("li")
     _helper().insert_trans(outer.find("a", recursive=False), "前言")
 
-    # the translation is inside the entry's own link …
-    assert outer.find("a", recursive=False).get_text() == "Preface 前言"
+    # the translation is inside the entry's own link, on its own line …
+    link = outer.find("a", recursive=False)
+    assert link.find("br") is not None
+    assert link.get_text(separator=" ") == "Preface 前言"
     # … and the <li>'s direct children are still exactly (a, ol)
     assert [c.name for c in outer.find_all(recursive=False)] == ["a", "ol"]
 
@@ -166,7 +171,7 @@ def test_nav_list_item_owner_targets_its_link():
     _helper().insert_trans(outer, "前言")
 
     assert [c.name for c in outer.find_all(recursive=False)] == ["a", "ol"]
-    assert outer.find("a", recursive=False).get_text() == "Preface 前言"
+    assert outer.find("a", recursive=False).get_text(separator=" ") == "Preface 前言"
 
 
 def test_nav_heading_keeps_its_translation_inside():
