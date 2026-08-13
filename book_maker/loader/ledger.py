@@ -88,6 +88,21 @@ def check_row_state(key, action, decided_by, content_type):
                            enforce; a verdict without it is a snap judgment
                            with no audit trail.
     """
+    # `x in frozenset` needs a hashable x, and these fields arrive from a
+    # file people are told to hand-edit: `"decided_by": ["llm"]` is one
+    # bracket away, and it used to come back as a raw TypeError traceback
+    # instead of this module's promise — a plan that cannot be trusted
+    # fails loud, but clean.
+    if action is not None and not isinstance(action, str):
+        raise PlanLedgerError(
+            f"{key}: action must be a string, not {type(action).__name__} "
+            f"({action!r})"
+        )
+    if decided_by is not None and not isinstance(decided_by, str):
+        raise PlanLedgerError(
+            f"{key}: decided_by must be a string, not "
+            f"{type(decided_by).__name__} ({decided_by!r})"
+        )
     if action is not None and action not in VALID_ACTIONS:
         raise PlanLedgerError(
             f"{key}: invalid action {action!r} — use "

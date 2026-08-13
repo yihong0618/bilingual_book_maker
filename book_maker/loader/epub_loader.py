@@ -32,6 +32,7 @@ from .helper import (
     append_inline_translation,
     has_restricted_content_model,
     is_text_link,
+    make_tag,
     not_trans,
     shorter_result_link,
     strip_duplicate_ids,
@@ -61,6 +62,8 @@ from .classify import (
     PlanUnresolvedError,
     build_agent_prompt,
     classify_plan,
+    decide_everything,
+    mode_policy,
 )
 
 
@@ -422,20 +425,17 @@ class EPUBBookLoader(BaseBookLoader):
         name, _ = os.path.splitext(self.epub_name)
         plan_path = f"{name}_plan.json"
         # agent mode hands the plan over on the run that creates it, and
-        # translates on the run that finds one already there
-        if self.plan_classify == "most":
-            # The explicit translate-everything escape hatch: no questions,
-            # so no plan file to read and none to write. Half-loading an old
-            # plan's skips would make "most" quietly mean "most, except what
-            # some earlier run decided" — which is not what was asked for.
-            if os.path.exists(plan_path):
-                print(
-                    f"note: --plan-classify most ignores the existing plan "
-                    f"{plan_path}; it translates the whole partition"
-                )
+        # translates on the run that finds one already there. What each mode
+        # does with the file is one table in classify/, not a condition
+        # repeated at every branch that happens to care.
+        policy = mode_policy(self.plan_classify)
+        plan_existed = os.path.exists(plan_path)
+        if plan_existed and not policy.reads_saved_plan:
+            print(
+                f"note: --plan-classify {policy.name} ignores the existing plan "
+                f"{plan_path}; it translates the whole partition"
+            )
             plan_existed = False
-        else:
-            plan_existed = os.path.exists(plan_path)
         overrides = None
         saved_ledger = None
         if plan_existed:
@@ -483,14 +483,10 @@ class EPUBBookLoader(BaseBookLoader):
         if saved_ledger is not None:
             added = set(ledger.rows) - set(saved_ledger.rows)
             dropped = set(saved_ledger.rows) - set(ledger.rows)
-        if self.plan_classify == "most":
+        if policy.name == "most":
             # "most" answers every question the same way, on purpose and out
-            # loud. Recording it as a user decision keeps the one rule that
-            # matters intact: nothing is translated that nobody decided to.
-            for key in ledger.undecided_keys():
-                # "unclassified" is the honest name: nobody looked at this
-                # signature, and the row must not pretend otherwise.
-                ledger.decide(key, "translate", "user", "unclassified")
+            # loud — see classify/most.py for why that is not a default.
+            decide_everything(ledger)
             plan.record_dispositions(ledger)
 
         # LLM classification is owed to whatever is still a question — on the
@@ -516,7 +512,17 @@ class EPUBBookLoader(BaseBookLoader):
                 self._plan_overrides = overrides
                 self._plan_partitions.clear()
                 plan = self._build_partitioned_plan()
-                plan.record_dispositions(ledger)
+                # This plan, not the pre-classification one, is what gets
+                # written back to the book. A skipped inline signature
+                # changes the segmentation around it, so a run that cannot
+                # be placed can exist only here — guard the plan that ships.
+                self._guard_unsafe_units(plan)
+            # Unconditionally: `decide()` sets the verdict, never the
+            # disposition, and the only other call happened while every row
+            # was still a question. A run whose model skipped nothing used to
+            # save a plan claiming a decision on every row and an outcome on
+            # none of them.
+            plan.record_dispositions(ledger)
             plan.save_json(plan_path, book_path=self.epub_name, ledger=ledger)
             print(
                 f"plan written to {plan_path} (override a verdict by editing its "
@@ -572,7 +578,7 @@ class EPUBBookLoader(BaseBookLoader):
 
         # samples are book text: rich would eat "[Seven] warriors [they were]"
         print(escape(plan.report(ledger)))
-        if plan_written or self.plan_classify == "most":
+        if plan_written or not policy.writes_plan_file:
             # already written above with its own message, or ("most") a mode
             # that asks nothing and therefore writes no plan file
             pass
@@ -631,7 +637,7 @@ class EPUBBookLoader(BaseBookLoader):
                     unresolved=undecided,
                 )
             )
-            raise SystemExit(1 if self.plan_classify != "agent" else 0)
+            raise SystemExit(policy.handoff_exit_code)
         # The last gate before money is spent: nothing undecided, and no
         # decision without a decider and a named content type. It repeats
         # what `decide` and `Ledger.load` already enforce on purpose —
@@ -905,7 +911,7 @@ class EPUBBookLoader(BaseBookLoader):
         the element because tag mode has no runs to anchor to, and needs
         `translation_host()` to find the same place from the outside.
         """
-        span = Tag(name="span")
+        span = make_tag("span")
         if translation_style:
             span["style"] = translation_style
         span.string = f" {t_text}"
@@ -921,17 +927,15 @@ class EPUBBookLoader(BaseBookLoader):
         text sits between instead of after the whole wrapper.
         """
         tail = inline_subtree_root(unit.nodes[-1], unit.resolver)
-        span = Tag(name="span")
+        span = make_tag("span")
         if translation_style:
             span["style"] = translation_style
         span.string = t_text
-        tail.insert_after(span)
-        # can_be_empty_element, or bs4 writes the pair "<br></br>": still
-        # well-formed XML (and epubcheck accepts it), but an HTML5 parser
-        # reads the closing tag as a *second* <br>, so a reading system in
-        # compatibility mode renders a double line break between every run
-        # and its translation.
-        tail.insert_after(Tag(name="br", can_be_empty_element=True))
+        # inserted in the order they are read — run, break, translation.
+        # `make_tag` is what keeps the break a single <br/>; see helper.py.
+        line_break = make_tag("br")
+        tail.insert_after(line_break)
+        line_break.insert_after(span)
 
     @staticmethod
     def _write_single_translation(unit, t_text, owned):

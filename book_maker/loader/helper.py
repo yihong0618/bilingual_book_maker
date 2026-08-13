@@ -15,22 +15,27 @@ logger = logging.getLogger(__name__)
 # its <ol> and nothing but <a>/<span> inside an <li>.
 SINGLETON_TAGS = frozenset(["figcaption", "caption", "legend", "summary"])
 
+# Void elements: HTML5 spells them without a closing tag.
+VOID_TAGS = frozenset(
+    ["area", "br", "col", "embed", "hr", "img", "input", "source", "track", "wbr"]
+)
 
-def strip_duplicate_ids(element):
-    """Remove every id from a cloned element and its descendants.
 
-    A translated copy is a second rendering of the same content, not a
-    second anchor for it. Leaving the ids in produces a document where two
-    elements answer to one fragment identifier — epubcheck RSC-005, and an
-    internal cross-reference that may land on the translation instead of
-    the passage it cites.
+def make_tag(name, **attrs):
+    """A hand-built tag bs4 will serialize the way the spec spells it.
+
+    bs4 learns which tags are void from a parser builder, and a tag built by
+    hand has no builder: `Tag(name="br")` comes out as the *pair*
+    `<br></br>`. XML accepts that and so does epubcheck, but an HTML5 parser
+    reads the closing tag as a second `<br>`, so a reading system in
+    compatibility mode shows a double line break.
+
+    `soup.new_tag()` would ask the builder — but there is no soup to ask
+    from here: `element.soup` is `None` on parsed nodes (bs4 4.14), so an
+    element cannot hand us the tree it belongs to. Naming the void elements
+    is the honest way to get the same answer.
     """
-    if isinstance(element, Tag):
-        element.attrs.pop("id", None)
-        for descendant in element.descendants:
-            if isinstance(descendant, Tag):
-                descendant.attrs.pop("id", None)
-    return element
+    return Tag(name=name, can_be_empty_element=name in VOID_TAGS, attrs=attrs or {})
 
 
 def has_restricted_content_model(element):
@@ -66,7 +71,7 @@ def append_inline_translation(element, text, translation_style=""):
     translation joins the element's own content instead — a table-of-
     contents entry reads "Chapter 1 第一章" and stays valid.
     """
-    span = Tag(name="span")
+    span = make_tag("span")
     if translation_style:
         span["style"] = translation_style
     span.string = f" {text}"
@@ -172,8 +177,15 @@ class EPUBBookLoaderHelper:
 url_pattern = r"(http[s]?://|www\.)+(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"
 
 
+# Compiled once at import. `is_pure_url` is called on every translatable
+# segment a partition produces — six figures on the corpus's worst book —
+# and re.compile per call pays a cache lookup for a constant pattern.
+_URL_RE = re.compile(url_pattern)
+_URL_TAIL_RE = re.compile(r".*" + url_pattern + r"$")
+
+
 def is_text_link(text):
-    return bool(re.compile(url_pattern).match(text.strip()))
+    return bool(_URL_RE.match(text.strip()))
 
 
 def is_pure_url(text):
@@ -184,13 +196,12 @@ def is_pure_url(text):
     prefix-matching threw away the prose after it. Anchored at both ends,
     a URL only skips when it is the whole of what is being judged.
     """
-    return bool(re.compile(url_pattern).fullmatch(text.strip()))
+    return bool(_URL_RE.fullmatch(text.strip()))
 
 
 def is_text_tail_link(text, num=80):
     text = text.strip()
-    pattern = r".*" + url_pattern + r"$"
-    return bool(re.compile(pattern).match(text)) and len(text) < num
+    return bool(_URL_TAIL_RE.match(text)) and len(text) < num
 
 
 def shorter_result_link(text, num=20):

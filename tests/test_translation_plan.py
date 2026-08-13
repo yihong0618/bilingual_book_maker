@@ -161,6 +161,46 @@ MINI_GILGAMESH = """
 """
 
 
+class TestMediaQueries:
+    """`@media` decides whether a `display:none` is evidence, a verdict, or
+    nothing at all — and `not` inverts every one of those answers."""
+
+    @staticmethod
+    def _verdict(prelude):
+        from book_maker.loader.plan import _media_verdict
+
+        return _media_verdict(prelude)
+
+    def test_a_negated_print_query_applies_on_screen(self):
+        # `not print` is true on every medium except print — including the
+        # screen an ebook reader renders on. Matching "print" as a substring
+        # read it as a print rule and dropped it.
+        assert self._verdict("@media not print") == ("unconditional", None)
+        assert self._verdict("@media print")[0] == "drop"
+
+    def test_a_negated_screen_query_never_applies_here(self):
+        assert self._verdict("@media not screen")[0] == "drop"
+        assert self._verdict("@media not all")[0] == "drop"
+
+    def test_a_negated_feature_query_stays_conditional(self):
+        # true on a wide screen, false on a narrow one: still device-specific
+        verdict, condition = self._verdict("@media not screen and (max-width: 600px)")
+        assert verdict == "conditional"
+        assert "not screen" in condition
+
+    def test_a_not_print_rule_hides_text_from_the_partition(self):
+        # the consequence, end to end: text a reader cannot see must not
+        # reach the classifier as ordinary prose
+        resolver = _make_resolver("@media not print { .apparatus { display: none } }")
+        soup = bs(
+            '<body><p>keep this</p><p class="apparatus">gone</p></body>',
+            "html.parser",
+        )
+        fp = partition_soup(soup, resolver, "x.html")
+        assert [u.text for u in fp.units] == ["keep this"]
+        assert fp.skipped.get("hidden") == len("gone")
+
+
 class TestPartition:
     def _partition(self, html):
         soup = bs(html, "html.parser")
@@ -661,6 +701,18 @@ class ClassifyingModel(FakeModel):
         return {k: {"verdict": "translate", "content_type": "prose"} for k in keys}
 
 
+class SkipOneModel(ClassifyingModel):
+    """...and skips exactly one signature, which forces a re-partition."""
+
+    def structured_json(self, prompt, schema, model=None, accept=None):
+        answers = super().structured_json(prompt, schema, model, accept)
+        answers[self.classified[-1][-1]] = {
+            "verdict": "skip",
+            "content_type": "apparatus",
+        }
+        return answers
+
+
 def _write_decided_plan(loader, action="translate"):
     """Run agent mode to emit the plan, then answer every open question.
 
@@ -871,6 +923,47 @@ class TestLoaderPlanMode:
         rows = json.loads(plan_path.read_text())["signatures"]
         assert all(r["action"] == "translate" for r in rows)
         assert all(r["decided_by"] == "llm" for r in rows)
+
+    def test_a_model_run_that_skips_nothing_still_records_dispositions(self, tmp_path):
+        # `decide()` writes the verdict, never the outcome, and the only
+        # other place that computed one ran while every row was still a
+        # question. A run whose model skipped nothing therefore saved a plan
+        # claiming a decision on every row and an outcome on none of them.
+        loader, src = _make_loader(tmp_path, ClassifyingModel)
+        loader.only_filelist = "index_split_004.html"
+        loader.plan_classify = "model"
+        loader.make_bilingual_book()
+
+        rows = json.loads((src.parent / (src.stem + "_plan.json")).read_text())[
+            "signatures"
+        ]
+        assert rows and all(r["action"] == "translate" for r in rows)
+        assert all(r["disposition"] for r in rows), [
+            r["key"] for r in rows if not r["disposition"]
+        ]
+
+    def test_the_plan_that_ships_is_the_plan_that_was_guarded(
+        self, tmp_path, monkeypatch
+    ):
+        # A skip re-partitions the book, and *that* plan is what gets written
+        # back. Guarding only the pre-classification one left this mode able
+        # to write a run to a position the guard exists to refuse.
+        from book_maker.loader.epub_loader import EPUBBookLoader
+
+        guarded = []
+        monkeypatch.setattr(
+            EPUBBookLoader,
+            "_guard_unsafe_units",
+            lambda self, plan: guarded.append(plan),
+        )
+        loader, _ = _make_loader(tmp_path, SkipOneModel)
+        loader.only_filelist = "index_split_004.html"
+        loader.plan_classify = "model"
+        loader.plan_min_coverage = 0.0
+        loader.make_bilingual_book()
+
+        assert len(guarded) == 2, "the re-partitioned plan was never guarded"
+        assert guarded[1] is not guarded[0]
 
     def test_a_signature_a_settings_change_introduces_reaches_the_plan(self, tmp_path):
         # A decided plan plus a widened file filter: the new document's
@@ -1273,6 +1366,27 @@ class TestEpubHardening:
         written = soup.decode()
         assert "<br></br>" not in written, written
         assert "<br/>" in written
+        # order is what a reader sees: the run, then the break, then the
+        # translation — not the translation wedged between run and break
+        assert soup.find("p").decode_contents().startswith("one<br/><span>YI</span>")
+
+    def test_make_tag_knows_which_tags_are_void(self):
+        """The rule the insertion paths depend on, stated once. bs4 learns
+        void elements from a parser builder, and a hand-built tag has none;
+        `soup.new_tag()` cannot stand in because `element.soup` is None on
+        parsed nodes, so an element cannot hand us its tree."""
+        from bs4 import BeautifulSoup
+
+        from book_maker.loader.helper import make_tag
+
+        assert str(make_tag("br")) == "<br/>"
+        assert str(make_tag("hr")) == "<hr/>"
+        assert str(make_tag("span")) == "<span></span>"
+        assert 'style="x"' in str(make_tag("span", style="x"))
+        # the premise of the docstring above, pinned: if a future bs4 starts
+        # populating .soup, new_tag becomes an option and this can be revisited
+        node = BeautifulSoup("<body><p>hi</p></body>", "html.parser").find("p")
+        assert getattr(node, "soup", None) is None
 
     def test_bilingual_single_run_owner_still_clones(self, tmp_path):
         """The rule must not overreach: an ordinary one-run paragraph keeps
@@ -1704,6 +1818,7 @@ from book_maker.loader.classify.model import (
     PAGE_SIZE,
     VERDICTS,
     PlanClassifyError,
+    PlanClassifyFatal,
     PlanUnresolvedError,
     build_prompt,
     build_schema,
@@ -2135,6 +2250,22 @@ class TestLedgerRowStateMachine:
 
     # ------------------------------------------------------------ decide()
 
+    def test_a_hand_edited_list_fails_clean_not_with_a_traceback(self, tmp_path):
+        # These are the fields the tool's own instructions tell people to
+        # edit, so `"decided_by": ["llm"]` is one bracket away — and
+        # `x in frozenset` needs a hashable x, so it came back as a raw
+        # `TypeError: unhashable type: 'list'` instead of this module's
+        # promise: a plan that cannot be trusted fails loud, but clean.
+        path = self._write(
+            tmp_path, self._row(action="skip", decided_by=["llm"], content_type="x")
+        )
+        with pytest.raises(PlanLedgerError, match="must be a string"):
+            Ledger.load(path, expected_sha256="a" * 64)
+
+        path = self._write(tmp_path, self._row(action={"a": 1}, decided_by="llm"))
+        with pytest.raises(PlanLedgerError, match="must be a string"):
+            Ledger.load(path, expected_sha256="a" * 64)
+
     def test_an_action_without_a_decider_is_refused(self):
         ledger = _ledger([("block", "p", ["prose"])])
         with pytest.raises(PlanLedgerError, match="decided_by null"):
@@ -2303,6 +2434,60 @@ class TestClassifyPaging:
             "block:p.h1",
             "block:p.h2",
         }
+
+
+class TestModePolicy:
+    """What each mode does with the plan *file* is a table, not a condition
+    repeated wherever the loader happens to branch on the mode's name."""
+
+    def test_every_mode_carries_a_policy(self):
+        from book_maker.loader.classify import MODES, mode_policy
+
+        assert [mode_policy(m).name for m in MODES] == list(MODES)
+        # "most" asks nothing, so it neither reads nor writes the file
+        assert not mode_policy("most").reads_saved_plan
+        assert not mode_policy("most").writes_plan_file
+        # the agent handoff *is* the job: stopping there is a success
+        assert mode_policy("agent").handoff_exit_code == 0
+        assert mode_policy("model").handoff_exit_code == 1
+
+    def test_an_invented_mode_is_refused(self):
+        from book_maker.loader.classify import mode_policy
+
+        with pytest.raises(ValueError, match="unknown --plan-classify mode"):
+            mode_policy("vibes")
+
+
+class TestFileSha256Cache:
+    def test_the_book_is_hashed_once_per_state(self, tmp_path):
+        # One run hashes the book to validate a saved plan, to stamp the one
+        # it writes, and to build the resume fingerprint — three full reads
+        # of a file that has not changed.
+        from book_maker.loader.plan import file_sha256
+
+        book = tmp_path / "b.epub"
+        book.write_bytes(b"one")
+        first = file_sha256(book)
+        assert file_sha256(book) is first, "recomputed an unchanged file"
+
+        book.write_bytes(b"two different bytes")
+        assert file_sha256(book) != first, "served a stale hash"
+
+
+class TestClassifyErrorState:
+    def test_evidence_does_not_leak_between_failures(self):
+        """`considered` and `verdicts` were class attributes. Nothing mutates
+        them in place today — every site assigns — but a dict on the class is
+        one `e.considered[k] = v` away from carrying one run's evidence into
+        the next."""
+        first = PlanClassifyError("first")
+        first.considered["block:p"] = "prose"
+        first.verdicts["block:p"] = {"verdict": "translate"}
+
+        second = PlanClassifyError("second")
+        assert second.considered == {} and second.verdicts == {}
+        assert PlanClassifyError("third").considered == {}
+        assert PlanClassifyFatal("fatal").verdicts == {}
 
 
 class TestInlineDisposition:

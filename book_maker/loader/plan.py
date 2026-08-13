@@ -32,6 +32,7 @@ job now (see the classify package and --plan-classify).
 
 import hashlib
 import json
+import os
 import re
 import statistics
 from collections import Counter
@@ -180,11 +181,24 @@ def _media_verdict(prelude):
         alternative = alternative.strip()
         if not alternative:
             continue
-        if _PLAIN_SCREEN_RE.fullmatch(alternative):
+        # `not` negates the whole query, so it inverts every verdict below:
+        # `not print` applies on every medium *except* print — which is to
+        # say, on the screen an ebook reader renders. Matching "print" as a
+        # substring read that as a print rule and dropped it, and a
+        # `display:none` that genuinely hides text on screen reached the
+        # classifier as ordinary visible prose.
+        negated = alternative.startswith("not ")
+        core = alternative[4:].strip() if negated else alternative
+        if _PLAIN_SCREEN_RE.fullmatch(core):
+            if negated:
+                continue  # "not screen" / "not all": never applies here
             # applies to every screen; nothing to defer to a device
             return "unconditional", None
-        if _NON_SCREEN_MEDIA_RE.search(alternative):
-            continue
+        if _NON_SCREEN_MEDIA_RE.search(core):
+            if not negated:
+                continue
+            # "not print": true on screen, and true unconditionally there
+            return "unconditional", None
         surviving.append(alternative)
     if not surviving:
         return "drop", None
@@ -1269,8 +1283,17 @@ class TranslationPlan:
         """
         ledger = Ledger()
         for f in self.files:
+            # one pass per file, not two: the conditional-CSS evidence is
+            # gathered as each unit goes by. A second walk cost another
+            # O(units) on books whose unit count runs to six figures.
+            resolver = f.resolver
+            conditional = bool(getattr(resolver, "conditional", None))
             for u in f.all_units:
                 ledger.add_occurrence("block", u.signature, u.chars, u.text)
+                if conditional:
+                    conditions = resolver.conditions_for(u.element)
+                    if conditions:
+                        ledger.note_conditional_css("block", u.signature, conditions)
             for row in f.inline_rows:
                 ledger.add_occurrence(
                     "inline",
@@ -1279,20 +1302,10 @@ class TranslationPlan:
                     row["text"],
                     parent_key=row["parent_key"],
                 )
-        for f in self.files:
-            for row in f.inline_rows:
                 if row.get("conditional_css"):
                     ledger.note_conditional_css(
                         "inline", row["signature"], row["conditional_css"]
                     )
-            resolver = f.resolver
-            conditional = getattr(resolver, "conditional", None) or {}
-            if not conditional:
-                continue
-            for u in f.all_units:
-                conditions = resolver.conditions_for(u.element)
-                if conditions:
-                    ledger.note_conditional_css("block", u.signature, conditions)
         ledger.finalize(self.total_chars)
         if decisions is not None:
             for key, row in ledger.rows.items():
@@ -1392,12 +1405,26 @@ class TranslationPlan:
         return ledger
 
 
+# One run hashes the same book up to three times — validating a saved plan,
+# stamping the plan it writes, and feeding the resume fingerprint — and the
+# file is streamed in 1 MB chunks each time. Keyed on identity *and* the
+# stat that changes when the bytes do, so a book replaced mid-run is hashed
+# again rather than remembered wrong.
+_SHA256_CACHE = {}
+
+
 def file_sha256(path):
+    stat = os.stat(path)
+    key = (os.path.abspath(path), stat.st_ino, stat.st_size, stat.st_mtime_ns)
+    cached = _SHA256_CACHE.get(key)
+    if cached is not None:
+        return cached
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
-    return h.hexdigest()
+    _SHA256_CACHE[key] = h.hexdigest()
+    return _SHA256_CACHE[key]
 
 
 def load_plan_overrides(json_path, book_path):

@@ -29,15 +29,22 @@ class PlanClassifyError(Exception):
     """
 
     fatal = False
-    # {key: content_type} for rows a verdict *named* without ruling on them.
-    # An "unsure" is a refusal to decide, not a refusal to look, and the name
-    # it produced is evidence worth keeping across a later failure — losing it
-    # means paying for the same look again.
-    considered = {}
-    # {key: verdict} answered before the failure, carried out through the
-    # recursion so a page's other answers survive one signature nobody can
-    # settle. Same principle as `considered`, one level up.
-    verdicts = {}
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        # Per instance, never class-level: a dict on the class is shared by
+        # every exception ever raised, so one failure's evidence would leak
+        # into the next run's.
+        #
+        # {key: content_type} for rows a verdict *named* without ruling on
+        # them. An "unsure" is a refusal to decide, not a refusal to look,
+        # and the name it produced is evidence worth keeping across a later
+        # failure — losing it means paying for the same look again.
+        self.considered = {}
+        # {key: verdict} answered before the failure, carried out through the
+        # recursion so a page's other answers survive one signature nobody
+        # can settle. Same principle as `considered`, one level up.
+        self.verdicts = {}
 
 
 class PlanClassifyFatal(PlanClassifyError):
