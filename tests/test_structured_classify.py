@@ -37,40 +37,29 @@ from book_maker.loader.classify.model import (
     classify_plan,
     lint_verdicts,
 )
-from book_maker.loader.plan import FilePlan, TranslationPlan, Unit
+from book_maker.loader.ledger import Ledger
 
 # ----------------------------------------------------------------- fixtures
 
 
-def _unit(sig, text):
-    return Unit(
-        element=None,
-        file_name="x.html",
-        signature=sig,
-        text=text,
-        chars=len(text),
-        group_id=None,
-        poetry=False,
-    )
+def key_of(signature):
+    """Ledger keys are scoped; the fixtures name bare signatures."""
+    return signature if signature.startswith("block:") else f"block:{signature}"
 
 
-PROSE = _unit("p", "He who saw the Deep, the country's foundation, " * 40)
-
-
-def _plan_with(signatures):
-    """A plan whose only uncertain signatures are `signatures`."""
-    units = [PROSE]
-    for sig in signatures:
-        units.extend(_unit(sig, "GILGAMESH") for _ in range(4))
-    fp = FilePlan(file_name="x.html")
-    fp.units = units
-    fp.total_chars = sum(u.chars for u in units)
-    return TranslationPlan([fp], ("sup", "code"), 8)
+def _ledger_with(signatures):
+    """A ledger whose open questions are exactly `signatures`."""
+    ledger = Ledger()
+    for signature in signatures:
+        for _ in range(4):
+            ledger.add_occurrence("block", signature, 9, "GILGAMESH")
+    return ledger.finalize(9 * 4 * max(1, len(signatures)))
 
 
 def _verdicts_for(signatures, verdict="skip"):
     return {
-        sig: {"content_type": "running head", "verdict": verdict} for sig in signatures
+        key_of(sig): {"content_type": "running head", "verdict": verdict}
+        for sig in signatures
     }
 
 
@@ -106,7 +95,7 @@ def _answers(signatures, verdict="skip"):
     """A reply function answering every signature the prompt asks about."""
 
     def reply(prompt):
-        asked = [s for s in signatures if f'"{s}"' in prompt]
+        asked = [s for s in signatures if f'"{key_of(s)}"' in prompt]
         return json.dumps(_verdicts_for(asked, verdict))
 
     return reply
@@ -175,7 +164,7 @@ class TestJSONRecovery:
             "type": "object",
             "properties": {"p.header": {"type": "object", "description": "..."}},
         }
-        cands = [{"signature": "p.header", "units": 1, "chars": 9, "samples": ["X"]}]
+        cands = [{"key": key_of("p.header"), "units": 1, "chars": 9, "samples": ["X"]}]
         _, answered = lint_verdicts(unwrap_schema_echo(echoed), cands)
         assert answered == set()
 
@@ -183,8 +172,8 @@ class TestJSONRecovery:
 class TestPromptedSchema:
     def _rendered(self):
         cands = [
-            {"signature": "p.header", "units": 9, "chars": 81, "samples": ["G"]},
-            {"signature": "td.no", "units": 4, "chars": 8, "samples": ["No"]},
+            {"key": key_of("p.header"), "units": 9, "chars": 81, "samples": ["G"]},
+            {"key": key_of("td.no"), "units": 4, "chars": 8, "samples": ["No"]},
         ]
         return render_schema_for_prompt(build_schema(cands))
 
@@ -198,7 +187,7 @@ class TestPromptedSchema:
     def test_an_example_instance_carries_the_shape(self):
         rendered = self._rendered()
         assert "content_type" in rendered and "verdict" in rendered
-        assert '"p.header"' in rendered and '"td.no"' in rendered
+        assert '"block:p.header"' in rendered and '"block:td.no"' in rendered
 
     def test_the_enum_is_stated_but_not_demonstrated(self):
         # showing one enum value filled in would anchor every verdict on it
@@ -250,9 +239,9 @@ class TestLadderDescent:
 class TestProviderNeutralTranslator:
     def test_a_prompt_only_translator_classifies(self):
         llm = FakeLLM(_answers(["p.header"]))
-        actions, cands = classify_plan(_plan_with(["p.header"]), llm)
+        actions, cands = classify_plan(_ledger_with(["p.header"]), llm)
 
-        assert actions == {"p.header": "llm-skip"}
+        assert actions == {key_of("p.header"): ("skip", "running head")}
         assert len(cands) == 1
         # the schema had to travel in the prompt, as an example instance
         assert "Shaped like this example" in llm.prompts[0]
@@ -264,8 +253,8 @@ class TestProviderNeutralTranslator:
                 f"Sure — here are my verdicts:\n```json\n{body}\n```\nHope that helps!"
             )
 
-        actions, _ = classify_plan(_plan_with(["p.header"]), FakeLLM(reply))
-        assert actions == {"p.header": "llm-skip"}
+        actions, _ = classify_plan(_ledger_with(["p.header"]), FakeLLM(reply))
+        assert actions == {key_of("p.header"): ("skip", "running head")}
 
     def test_an_echoed_schema_is_recovered_not_silently_unsure(self):
         def reply(prompt):
@@ -277,8 +266,8 @@ class TestProviderNeutralTranslator:
                 }
             )
 
-        actions, _ = classify_plan(_plan_with(["p.header"]), FakeLLM(reply))
-        assert actions == {"p.header": "llm-skip"}
+        actions, _ = classify_plan(_ledger_with(["p.header"]), FakeLLM(reply))
+        assert actions == {key_of("p.header"): ("skip", "running head")}
 
     def test_a_translator_without_a_prompt_channel_is_refused(self):
         class MTOnly(Base):
@@ -290,7 +279,7 @@ class TestProviderNeutralTranslator:
 
         assert MTOnly("k", "zh-hans").supports_structured_json() is False
         with pytest.raises(PlanClassifyError, match="structured-output"):
-            classify_plan(_plan_with(["p.header"]), MTOnly("k", "zh-hans"))
+            classify_plan(_ledger_with(["p.header"]), MTOnly("k", "zh-hans"))
 
 
 # -------------------------------------------------------- divide and resend
@@ -328,7 +317,7 @@ class TestDivideAndResend:
             return None if len(asked) == 8 else _verdicts_for(asked)
 
         clf = Scripted(answer)
-        actions, _ = classify_plan(_plan_with(signatures), clf)
+        actions, _ = classify_plan(_ledger_with(signatures), clf)
 
         assert len(actions) == 8
         assert [len(p) for p in clf.pages] == [8, 4, 4]
@@ -338,14 +327,16 @@ class TestDivideAndResend:
         signatures = [f"p.h{i}" for i in range(12)]
 
         def answer(asked):
-            answered = [s for s in asked if s != "p.h7"] if len(asked) > 1 else asked
+            answered = (
+                [s for s in asked if s != key_of("p.h7")] if len(asked) > 1 else asked
+            )
             return _verdicts_for(answered)
 
         clf = Scripted(answer)
-        actions, _ = classify_plan(_plan_with(signatures), clf)
+        actions, _ = classify_plan(_ledger_with(signatures), clf)
 
         assert len(actions) == 12
-        assert clf.pages[1] == ["p.h7"]
+        assert clf.pages[1] == [key_of("p.h7")]
         assert len(clf.pages) == 2
 
     def test_verdicts_from_split_pages_merge_like_an_unsplit_one(self):
@@ -356,8 +347,8 @@ class TestDivideAndResend:
         )
 
         assert (
-            classify_plan(_plan_with(signatures), whole)[0]
-            == classify_plan(_plan_with(signatures), split)[0]
+            classify_plan(_ledger_with(signatures), whole)[0]
+            == classify_plan(_ledger_with(signatures), split)[0]
         )
 
     def test_a_single_signature_that_never_answers_is_terminal(self):
@@ -367,21 +358,21 @@ class TestDivideAndResend:
         signatures = [f"p.h{i}" for i in range(4)]
 
         def answer(asked):
-            return _verdicts_for([s for s in asked if s != "p.h2"])
+            return _verdicts_for([s for s in asked if s != key_of("p.h2")])
 
         with pytest.raises(PlanClassifyError, match="p.h2"):
-            classify_plan(_plan_with(signatures), Scripted(answer))
+            classify_plan(_ledger_with(signatures), Scripted(answer))
 
     def test_the_failure_names_what_the_rungs_did(self):
         with pytest.raises(PlanClassifyError, match="every rung failed"):
-            classify_plan(_plan_with(["p.header"]), Scripted(lambda asked: None))
+            classify_plan(_ledger_with(["p.header"]), Scripted(lambda asked: None))
 
     def test_request_count_stays_bounded(self):
         signatures = [f"p.h{i}" for i in range(PAGE_SIZE * 2)]
         clf = Scripted(lambda asked: {})  # answers nothing, ever
 
         with pytest.raises(PlanClassifyError):
-            classify_plan(_plan_with(signatures), clf)
+            classify_plan(_ledger_with(signatures), clf)
         assert len(clf.pages) <= 4 * len(signatures) + 8
 
     def test_a_transport_failure_is_not_divided_into_many(self):
@@ -394,13 +385,13 @@ class TestDivideAndResend:
 
         clf = Explodes(lambda asked: {})
         with pytest.raises(PlanClassifyError, match="invalid api key"):
-            classify_plan(_plan_with([f"p.h{i}" for i in range(6)]), clf)
+            classify_plan(_ledger_with([f"p.h{i}" for i in range(6)]), clf)
         assert len(clf.pages) == 1
 
     def test_splitting_is_reported(self, capsys):
         signatures = [f"p.h{i}" for i in range(4)]
         clf = Scripted(lambda asked: None if len(asked) == 4 else _verdicts_for(asked))
-        classify_plan(_plan_with(signatures), clf)
+        classify_plan(_ledger_with(signatures), clf)
 
         # a run that limped through must not read like one that did not
         assert "smaller pieces" in capsys.readouterr().out
@@ -408,22 +399,34 @@ class TestDivideAndResend:
 
 class TestLintAuthority:
     CANDS = [
-        {"signature": "p.header", "units": 9, "chars": 81, "samples": ["GILGAMESH"]},
-        {"signature": "td.no", "units": 4, "chars": 8, "samples": ["No"]},
+        {"key": key_of("p.header"), "units": 9, "chars": 81, "samples": ["GILGAMESH"]},
+        {"key": key_of("td.no"), "units": 4, "chars": 8, "samples": ["No"]},
     ]
 
     def test_a_deliberate_unsure_is_not_a_coerced_one(self):
+        # a deliberate unsure still names what it looked at; a reply that
+        # skipped the naming did not do the reasoning the schema asked for
         deliberate = {
-            "p.header": {"verdict": "unsure"},
-            "td.no": {"verdict": "unsure"},
+            key_of("p.header"): {"verdict": "unsure", "content_type": "running head"},
+            key_of("td.no"): {"verdict": "unsure", "content_type": "table cell"},
         }
-        coerced = {"p.header": {"verdict": "banana"}, "td.no": "skip"}
+        coerced = {
+            key_of("p.header"): {"verdict": "banana", "content_type": "x"},
+            key_of("td.no"): "skip",
+        }
 
-        assert lint_verdicts(deliberate, self.CANDS)[1] == {"p.header", "td.no"}
+        assert lint_verdicts(deliberate, self.CANDS)[1] == {
+            key_of("p.header"),
+            key_of("td.no"),
+        }
         assert lint_verdicts(coerced, self.CANDS)[1] == set()
-        # both read the same downstream, which is why the second value exists
-        assert lint_verdicts(deliberate, self.CANDS)[0] == (
-            lint_verdicts(coerced, self.CANDS)[0]
+        # both leave the row undecided, which is why the second value exists:
+        # only `answered` tells a considered "unsure" from a garbled reply
+        assert all(
+            v[0] == "unsure" for v in lint_verdicts(deliberate, self.CANDS)[0].values()
+        )
+        assert all(
+            v[0] == "unsure" for v in lint_verdicts(coerced, self.CANDS)[0].values()
         )
 
     def test_a_coerced_page_is_re_asked_rather_than_believed(self):
@@ -437,8 +440,9 @@ class TestLintAuthority:
                 return {s: {"verdict": "banana"} for s in asked}
             return _verdicts_for(asked, "translate")
 
-        actions, cands = classify_plan(_plan_with(signatures), Scripted(answer))
-        assert actions == {}  # "translate" changes nothing under greedy
+        actions, cands = classify_plan(_ledger_with(signatures), Scripted(answer))
+        # every verdict is recorded now, agreement included
+        assert actions == {key_of(s): ("translate", "running head") for s in signatures}
         assert len(cands) == 4
         assert seen[0] == 4 and len(seen) > 1
 
@@ -508,14 +512,14 @@ class TestClaudeWiring:
 
 class TestGeminiWiring:
     def test_the_schema_is_converted_to_geminis_dialect(self):
-        cands = [{"signature": "p.header", "units": 9, "chars": 81, "samples": ["G"]}]
+        cands = [{"key": key_of("p.header"), "units": 9, "chars": 81, "samples": ["G"]}]
         converted = _openapi_schema(build_schema(cands))
 
         assert converted["type"] == "OBJECT"
         # gemini's dialect has neither of these and 400s on both
         assert "additionalProperties" not in json.dumps(converted)
         assert "strict" not in converted
-        verdict = converted["properties"]["p.header"]["properties"]["verdict"]
+        verdict = converted["properties"][key_of("p.header")]["properties"]["verdict"]
         assert verdict["type"] == "STRING"
         assert verdict["enum"] == ["translate", "skip", "unsure"]
 
@@ -650,7 +654,7 @@ class TestRungRetirement:
 
         def _chat_completion(self, prompt, model=None):
             self.calls += 1
-            asked = [s for s in self.signatures if f'"{s}"' in prompt]
+            asked = [s for s in self.signatures if f'"{key_of(s)}"' in prompt]
             if len(asked) > self.limit:
                 raise RungRejected("400 context length exceeded")
             return json.dumps(_verdicts_for(asked))
@@ -658,13 +662,13 @@ class TestRungRetirement:
     def test_a_size_refusal_leaves_the_rung_available_for_the_retry(self):
         llm = self.Sized(limit=2)
         llm.signatures = [f"p.h{i}" for i in range(5)]
-        big = " ".join(f'"{s}"' for s in llm.signatures)
+        big = " ".join(f'"{key_of(s)}"' for s in llm.signatures)
         with pytest.raises(StructuredJSONFailed):
             llm.structured_json(big, build_schema([]))
         before = llm.calls
 
         # the floor is never retired, so a smaller ask still reaches the wire
-        assert llm.structured_json('"p.h0"', build_schema([]))
+        assert llm.structured_json(f'"{key_of("p.h0")}"', build_schema([]))
         assert llm.calls == before + 1
 
     def test_divide_and_resend_survives_a_page_too_big_for_the_endpoint(self):
@@ -672,7 +676,7 @@ class TestRungRetirement:
         llm = self.Sized(limit=2)
         llm.signatures = signatures
 
-        actions, cands = classify_plan(_plan_with(signatures), llm)
+        actions, cands = classify_plan(_ledger_with(signatures), llm)
 
         assert len(actions) == 4 and len(cands) == 4
         assert llm.calls > 1  # the whole page failed; the halves did not

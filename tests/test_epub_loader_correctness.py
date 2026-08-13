@@ -300,7 +300,7 @@ def test_epub_sequential_honors_excluded_files(tmp_path, monkeypatch):
 
 
 def test_epub_sequential_honors_only_filelist(tmp_path, monkeypatch):
-    loader, _ = _make_loader(
+    loader, output = _make_loader(
         tmp_path,
         monkeypatch,
         [("keep.xhtml", ["translate me"]), ("skip.xhtml", ["do not translate"])],
@@ -310,6 +310,38 @@ def test_epub_sequential_honors_only_filelist(tmp_path, monkeypatch):
     loader.make_bilingual_book()
 
     assert loader.translate_model.calls == ["translate me"]
+    # --only_filelist narrows the *work*, not the book. Dropping the other
+    # documents leaves the copied spine, the nav and the NCX pointing at
+    # files the package no longer contains (epubcheck RSC-007).
+    documents = _document_texts(output)
+    assert set(documents) >= {"keep.xhtml", "skip.xhtml"}
+    assert "do not translate" in documents["skip.xhtml"]
+    assert "&lt;T&gt;do not translate&lt;/T&gt;" not in documents["skip.xhtml"]
+
+
+def test_epub_parallel_only_filelist_keeps_the_untranslated_documents(
+    tmp_path, monkeypatch
+):
+    # same invariant on the parallel path, which assembles the output book
+    # from a different list
+    loader, output = _make_loader(
+        tmp_path,
+        monkeypatch,
+        [
+            ("keep.xhtml", ["translate me"]),
+            ("skip.xhtml", ["do not translate"]),
+            ("also.xhtml", ["nor this"]),
+        ],
+        parallel_workers=4,
+    )
+    loader.only_filelist = "keep.xhtml"
+
+    loader.make_bilingual_book()
+
+    assert loader.translate_model.calls == ["translate me"]
+    documents = _document_texts(output)
+    assert set(documents) >= {"keep.xhtml", "skip.xhtml", "also.xhtml"}
+    assert "nor this" in documents["also.xhtml"]
 
 
 def test_epub_sequential_test_num_limits_requests(tmp_path, monkeypatch):
@@ -451,10 +483,6 @@ def test_epub_sequential_batch_excludes_inline_code_content(tmp_path, monkeypatc
     assert loader.translate_model.calls == ["before  after"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="sequential translation errors currently terminate with a success exit code",
-)
 def test_epub_sequential_translation_failure_exits_nonzero(tmp_path, monkeypatch):
     loader, _ = _make_loader(
         tmp_path,
@@ -684,3 +712,106 @@ def test_epub_parallel_honors_block_size(tmp_path, monkeypatch):
         ["three", "four"],
     ]
     assert sorted(loader.translate_model.calls) == ["four", "one", "three", "two"]
+
+
+# --------------------------------------------- EPUB validity of the output
+# Three defects the 45-book corpus gate caught with epubcheck. Pinned here
+# too: the corpus gate is slow and opt-in, and these are cheap to check.
+
+
+def _bilingual_soup(html, **loader_kwargs):
+    from bs4 import BeautifulSoup as bs
+
+    from book_maker.loader.epub_loader import EPUBBookLoader
+    from book_maker.loader.helper import EPUBBookLoaderHelper
+    from book_maker.loader.plan import DisplayResolver, partition_soup
+
+    soup = bs(html, "html.parser")
+    fp = partition_soup(soup, DisplayResolver([]), "x.xhtml")
+    loader = EPUBBookLoader.__new__(EPUBBookLoader)
+    loader.translate_model = type(
+        "M", (), {"TRANSLATION_ERROR_MARKER": None, "_fatal_error_detected": False}
+    )()
+    loader.exclude_translate_tags = "sup,code"
+    loader.helper = EPUBBookLoaderHelper(loader.translate_model, 1, "", False)
+    for unit in fp.units:
+        loader._insert_plan_translation(unit, f"T[{unit.text}]", "", False)
+    return soup
+
+
+def test_bilingual_copy_does_not_duplicate_ids():
+    # epubcheck RSC-005: two elements answering to one fragment identifier,
+    # and an internal link that may land on the translation instead of the
+    # passage it cites
+    soup = _bilingual_soup(
+        '<html><body><p id="p1">Hello <span id="s1">world</span></p></body></html>'
+    )
+    for attr in ("p1", "s1"):
+        assert len(soup.find_all(id=attr)) == 1, f"duplicate id {attr}"
+    assert "T[Hello world]" in soup.get_text()
+
+
+def test_nav_translations_go_inside_their_element():
+    # an EPUB 3 nav document allows one heading before its <ol> and nothing
+    # but <a>/<span> inside an <li>; a translated sibling is invalid there
+    soup = _bilingual_soup(
+        "<html><body><nav epub:type='toc'><h2>Contents</h2>"
+        "<ol><li><a href='c1.xhtml'>Chapter 1</a></li></ol></nav></body></html>"
+    )
+    nav = soup.find("nav")
+    assert len(nav.find_all("h2")) == 1, "a second heading breaks nav grammar"
+    assert len(nav.find_all("li")) == 1
+    assert nav.find("li").find_all(True, recursive=False) == nav.find("li").find_all(
+        ["a", "span"], recursive=False
+    )
+    assert "T[Contents]" in nav.h2.get_text()
+    assert "T[Chapter 1]" in nav.find("a").get_text()
+
+
+def test_figcaption_translation_stays_inside_the_caption():
+    # <figure> accepts exactly one <figcaption>
+    soup = _bilingual_soup(
+        "<html><body><figure><img src='x.png'/>"
+        "<figcaption>A tree</figcaption></figure></body></html>"
+    )
+    assert len(soup.find_all("figcaption")) == 1
+    assert "T[A tree]" in soup.find("figcaption").get_text()
+
+
+def test_a_book_without_an_ncx_still_resolves_its_spine_toc(tmp_path):
+    # ebooklib always writes <spine toc="ncx">; without the item that
+    # reference dangles (epubcheck OPF-049)
+    from ebooklib import epub
+
+    from book_maker.loader.epub_loader import EPUBBookLoader
+
+    src = epub.EpubBook()
+    src.set_identifier("id")
+    src.set_title("T")
+    src.set_language("en")
+    loader = EPUBBookLoader.__new__(EPUBBookLoader)
+    new_book = loader._make_new_book(src)
+    assert any(isinstance(i, epub.EpubNcx) for i in new_book.get_items())
+
+
+def test_opf_link_metadata_is_not_written_as_meta():
+    # ebooklib parses OPF <link rel= href=> into metadata and writes every
+    # entry back as <meta>, where those attributes are illegal
+    from ebooklib import epub
+
+    from book_maker.loader.epub_loader import EPUBBookLoader
+
+    src = epub.EpubBook()
+    src.set_identifier("id")
+    src.set_title("T")
+    src.set_language("en")
+    src.add_metadata(
+        "http://www.idpf.org/2007/opf",
+        "link",
+        None,
+        {"rel": "dcterms:conformsTo", "href": "http://example.org/a11y"},
+    )
+    loader = EPUBBookLoader.__new__(EPUBBookLoader)
+    new_book = loader._make_new_book(src)
+    opf_meta = new_book.metadata.get("http://www.idpf.org/2007/opf", {})
+    assert "link" not in opf_meta

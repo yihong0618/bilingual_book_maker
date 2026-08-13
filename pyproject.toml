@@ -51,3 +51,12 @@ requires = ["pdm-backend>=2.0.0"]
 build-backend = "pdm.backend"
 [tool.pdm.version]
 source = "scm"
+
+[tool.pytest.ini_options]
+markers = [
+    "corpus: the 45-book ./epub-sample acceptance gate (slow, offline; run with -m corpus)",
+]
+# the corpus gate is an acceptance run, not a unit-test run: it partitions
+# every sample book and writes real EPUBs, so it stays out of the default
+# selection and is asked for by name
+addopts = "-m 'not corpus'"

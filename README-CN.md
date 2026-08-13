@@ -227,12 +227,16 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   取值决定由谁判断哪些标签签名值得翻译：
 
   - `none`（默认）：不建计划，照常翻译 `--translate-tags` 选中的标签。
-  - `most`：翻译整个分区，不做分类。
-  - `model`：先让一个 LLM 裁决不确定的签名（标题、正文主干和诗歌分组不会被问到），然后继续翻译。可用 `--plan-classify-model X` 指定分类用的模型——指定了就意味着此模式，且分类失败会中止而不是回退。
-  - `agent`：不调用 API。写出计划 JSON，打印一段可以粘贴进 coding-agent 会话（Claude Code、Codex 等）的指引，然后**在翻译前停下**。改完 action 后重跑同一条命令即可翻译。
+  - `most`：翻译整个分区，不做分类。它不提出任何问题，因此不写计划 JSON，也会忽略已有的计划文件；它打印的账本里每个签名都记为明确的 `user` 决定，避免出现“没有人决定却被翻译”的内容。
+  - `model`：先让一个 LLM 裁决**每一个**尚未决定的签名，然后继续翻译整本书。可用 `--plan-classify-model X` 指定分类用的模型——指定了就意味着此模式，且分类失败会中止而不是回退。若仍有签名没被裁决，运行会停下并把这些行交给 agent 流程，而不是按默认值直接翻译。
+  - `agent`：不调用 API。写出计划 JSON，打印一段可以粘贴进 coding-agent 会话（Claude Code、Codex 等）的指引，然后**在翻译前停下**。按指引把每一行决定好之后，重跑同一条命令即可翻译。
 
-  - `--plan-dry-run`：打印按标签签名分组的覆盖率表格，写出 `<book>_plan.json` 后退出。不需要 API key，也不消耗额度。同时遵守 `--only_filelist` / `--exclude_filelist`。
-  - `<book>_plan.json`：把某个签名的 `"action"` 改成 `"skip"` 即可在正式翻译时排除它；该文件一旦存在就不会被覆盖（想重新生成请先删除）。每行带最多 5 条真实 `samples`，不用解包 epub 也能判断。
+  注意后两者在花费上的区别：`agent` 一定会停下；而 `model` 只要分类全部完成，就会在同一条命令里直接把整本书翻译完。想先小样试跑，请加 `--test --test_num 20`。
+
+  只有 `--plan-classify`（或 `--plan-dry-run`）才会进入计划模式；进入后 `--translate-tags` 会被忽略，计划会对整本书做划分。
+
+  - `--plan-dry-run`：打印按标签签名分组的覆盖率表格，写出 `<book>_plan.json` 后退出。不需要 API key，也不消耗额度。同时遵守 `--only_filelist` / `--exclude_filelist`。它写出的行全部处于未决状态——之后用 `model` 跑会由 LLM 裁决，用 `agent` 跑会把这些行交给 coding agent，你也可以自己改。
+  - `<book>_plan.json`：一行要算“已决定”，必须同时填三个字段——`"action"`（`"translate"` 或 `"skip"`）、`"decided_by"`（自己手改就写 `"user"`）、以及说明这段文字是什么的 `"content_type"`。先命名再裁决，命名本身就是理由；没有它的判断无法复核，运行会直接拒绝。每行带最多 5 条真实 `samples`，不用解包 epub 也能判断。你已经做出的决定不会被覆盖；只有当设置变化引入了新的签名时，文件才会被重写以补上这些新行（想完全重新生成请先删除）。
   - `--plan-min-coverage`（默认 0.5）：如果计划覆盖的正文比例低于该阈值，计划模式会直接报错退出，而不是闷头只翻译一小部分。
 
   ```shell

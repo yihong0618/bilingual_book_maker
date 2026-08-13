@@ -3,17 +3,19 @@
 Fixtures:
 - test_books/animal_farm.epub  (committed) — poem lines are per-line
   <blockquote class="calibre_14|calibre_17">; default tag selection missed them.
-- gilgamesh.epub (repo root, local only, 3.8MB) — 51% of text lives in
+- books/gilgamesh.epub (local only, 3.8MB) — 51% of text lives in
   div.poetry_line*; tests skip if the file is absent.
 """
 
 import copy as copy_mod
+import json
 import os
 import re
 import shutil
 import zipfile
 from collections import Counter
 from io import StringIO
+from unittest import mock
 from pathlib import Path
 
 import pytest
@@ -35,7 +37,7 @@ from book_maker.loader.plan import (
 REPO = Path(__file__).resolve().parent.parent
 ANIMAL_FARM = REPO / "test_books" / "animal_farm.epub"
 LIBER_ESTHER = REPO / "test_books" / "Liber_Esther.epub"
-GILGAMESH = REPO / "gilgamesh.epub"
+GILGAMESH = REPO / "books" / "gilgamesh.epub"
 
 needs_gilgamesh = pytest.mark.skipif(
     not GILGAMESH.exists(), reason="local-only fixture gilgamesh.epub not present"
@@ -88,7 +90,7 @@ class TestCssDisplay:
         span.linenum { display : inline-block }
         div.run-in, p.also { display: inline; }
         """
-        m = parse_css_display(css)
+        m, _conditional = parse_css_display(css)
         assert m[(None, "poem")] == "block"
         assert m[("span", "linenum")] == "inline-block"
         assert m[("div", "run-in")] == "inline"
@@ -96,7 +98,7 @@ class TestCssDisplay:
 
     def test_resolver_css_overrides_defaults(self):
         css = "span.verse { display: block; } div.note { display: inline; }"
-        resolver = DisplayResolver([parse_css_display(css)])
+        resolver = _make_resolver(css)
         soup = bs(
             '<div><span class="verse">a</span><div class="note">b</div>'
             "<span>c</span><p>d</p></div>",
@@ -114,7 +116,7 @@ class TestCssDisplay:
         # specificity by declaration order — .hidden is declared last here,
         # so both elements are hidden.
         css = ".visible { display: block } .hidden { display: none }"
-        resolver = DisplayResolver([parse_css_display(css)])
+        resolver = _make_resolver(css)
         soup = bs(
             '<div><p class="visible hidden">a</p>'
             '<p class="hidden visible">b</p></div>',
@@ -124,9 +126,7 @@ class TestCssDisplay:
         assert displays == ["none", "none"]
 
     def test_later_stylesheet_wins_over_earlier(self):
-        first = parse_css_display(".x { display: none }")
-        second = parse_css_display(".x { display: block }")
-        resolver = DisplayResolver([first, second])
+        resolver = _make_resolver(".x { display: none }", ".x { display: block }")
         soup = bs('<p class="x">a</p>', "html.parser")
         assert resolver.display_of(soup.find("p")) == "block"
 
@@ -134,9 +134,15 @@ class TestCssDisplay:
         # specificity still dominates: p.note (0,1,1) beats .plain (0,1,0)
         # even though .plain is declared later
         css = "p.note { display: none } .plain { display: block }"
-        resolver = DisplayResolver([parse_css_display(css)])
+        resolver = _make_resolver(css)
         soup = bs('<p class="note plain">a</p>', "html.parser")
         assert resolver.display_of(soup.find("p")) == "none"
+
+
+def _make_resolver(*css_texts):
+    """A DisplayResolver from stylesheet sources, unconditional + conditional."""
+    maps = [parse_css_display(c) for c in css_texts if c]
+    return DisplayResolver([m[0] for m in maps], [m[1] for m in maps])
 
 
 # ---------------------------------------------------------------- partition
@@ -171,6 +177,8 @@ class TestPartition:
             "h2.chapter_title",
             "div.poetry_line",
             "div.poetry_line_indented",
+            # the <sup> footnote marker splits its paragraph into two runs
+            "p",
             "p",
         ]
 
@@ -216,10 +224,14 @@ class TestPartition:
         assert not any(u.signature in ("ul", "ol") for u in fp.units)
 
     def test_sup_excluded_by_default(self):
+        # The excluded <sup> stays in the document and renders between the
+        # words around it, so it is a run barrier: the paragraph becomes two
+        # segments and the marker keeps its place between their translations.
         fp, _ = self._partition(MINI_GILGAMESH)
-        p = next(u for u in fp.units if u.signature == "p")
-        assert "1" not in p.text
-        assert "footnote marker" in p.text
+        paragraphs = [u for u in fp.units if u.signature == "p"]
+        joined = " ".join(u.text for u in paragraphs)
+        assert "1" not in joined
+        assert "Prose paragraph" in joined and "footnote marker" in joined
 
     def test_total_partition_invariant(self):
         fp, _ = self._partition(MINI_GILGAMESH)
@@ -462,14 +474,20 @@ class TestNoShortUnitSweep:
             f"<h3 class='lbl'>Ch.</h3><p>{self.LONG}</p></body>"
         )
         assert [u.group_id for u in units] == [None, None, None, None]
-        assert not any(u.poetry for u in units)
 
     def test_poetry_still_groups(self):
         stanza = "".join(f"<div class='line'>verse line {i}</div>" for i in range(4))
         units = self._units(f"<body><div class='st'>{stanza}</div></body>")
         assert len({u.group_id for u in units}) == 1
         assert all(u.group_id is not None for u in units)
-        assert all(u.poetry for u in units)
+
+    def test_units_carry_no_semantic_poetry_flag(self):
+        # zombie guard: a window is a batching shape, never a claim about
+        # genre — the flag that conflated them suppressed classification of
+        # half the corpus
+        stanza = "".join(f"<div class='line'>verse line {i}</div>" for i in range(4))
+        units = self._units(f"<body><div class='st'>{stanza}</div></body>")
+        assert not any(hasattr(u, "poetry") for u in units)
 
 
 # ------------------------------------------------------------ whole books
@@ -525,8 +543,10 @@ class TestGilgameshPlan:
 
     def test_poetry_lines_are_units_without_line_numbers(self, plan):
         units = [u for f in plan.files for u in f.units]
-        poetry = [u for u in units if u.signature.startswith("div.poetry_line")]
-        assert len(poetry) > 4500
+        # signatures carry every class, sorted: div.TS1.poetry_line and
+        # div.poetry_line are different shapes and different questions
+        poetry = [u for u in units if "poetry_line" in u.signature]
+        assert len(poetry) > 4000
         sample = next(u for u in poetry if "He who saw the Deep" in u.text)
         assert not sample.text.startswith("I 5")
 
@@ -540,7 +560,7 @@ class TestGilgameshPlan:
         # "he <em>walks</em> [<em>back and forth</em>,]": the skipped " ["
         # node must still separate the words it stood between
         units = [u for f in plan.files for u in f.units]
-        assert any("he walks back and forth" in u.text for u in units)
+        assert any("he walks [back and forth,]" in u.text for u in units)
         assert not any("walksback" in u.text for u in units)
 
     def test_report_samples_survive_rich_markup(self, plan):
@@ -551,7 +571,7 @@ class TestGilgameshPlan:
         console = Console(file=StringIO(), width=200)
         console.print(escape(plan.report()))
         rendered = re.sub(r"\x1b\[[0-9;]*m", "", console.file.getvalue())
-        assert "[Seven] warriors [they were]" in rendered
+        assert "[Gilgamesh, who] saw the Deep" in rendered
 
 
 # ------------------------------------------------------- plan artifact I/O
@@ -563,7 +583,7 @@ class TestPlanArtifact:
         plan = build_plan(book)
         text = plan.report()
         assert "coverage" in text.lower()
-        assert "blockquote.calibre_17" in text
+        assert "block:blockquote.calibre_17" in text
 
         out = tmp_path / "plan.json"
         plan.save_json(out, book_path=str(ANIMAL_FARM))
@@ -572,12 +592,14 @@ class TestPlanArtifact:
         data = json.loads(out.read_text())
         assert data["coverage"] == pytest.approx(plan.coverage)
         assert data["book_sha256"]
-        sigs = {s["signature"]: s for s in data["signatures"]}
-        assert sigs["blockquote.calibre_17"]["action"] == "translate"
+        rows = {s["key"]: s for s in data["signatures"]}
+        # every row is a question until someone answers it
+        assert rows["block:blockquote.calibre_17"]["action"] is None
+        assert rows["block:blockquote.calibre_17"]["samples"]
 
     def test_signature_override_skip(self, tmp_path):
         book = epub.read_epub(str(ANIMAL_FARM))
-        overrides = {"blockquote.calibre_17": "skip"}
+        overrides = {"block:blockquote.calibre_17": ("skip", "user")}
         plan = build_plan(book, overrides=overrides)
         units = [u for f in plan.files for u in f.units]
         assert not any(u.signature == "blockquote.calibre_17" for u in units)
@@ -623,6 +645,45 @@ class MisalignedOnceModel(FakeModel):
         return [f"T[{t}]" for t in text_list]
 
 
+class ClassifyingModel(FakeModel):
+    """A translator that can also answer the plan's questions."""
+
+    def __init__(self, key, language, **kwargs):
+        super().__init__(key, language, **kwargs)
+        self.classified = []
+
+    def supports_structured_json(self):
+        return True
+
+    def structured_json(self, prompt, schema, model=None, accept=None):
+        keys = list(schema["schema"]["required"])
+        self.classified.append(keys)
+        return {k: {"verdict": "translate", "content_type": "prose"} for k in keys}
+
+
+def _write_decided_plan(loader, action="translate"):
+    """Run agent mode to emit the plan, then answer every open question.
+
+    The agent flow is the one that produces a plan file: it stops before
+    translating so a person or an agent can rule on the rows. Tests that
+    need a decided plan take the same two steps a user would.
+    """
+    loader.plan_classify = "agent"
+    with pytest.raises(SystemExit) as exit_info:
+        loader.make_bilingual_book()
+    assert exit_info.value.code == 0
+    plan_path = Path(loader.epub_name).with_name(
+        Path(loader.epub_name).stem + "_plan.json"
+    )
+    data = json.loads(plan_path.read_text())
+    for row in data["signatures"]:
+        row["action"] = action
+        row["decided_by"] = "agent"
+        row["content_type"] = "prose"
+    plan_path.write_text(json.dumps(data, ensure_ascii=False, indent=1))
+    return plan_path
+
+
 def _make_loader(tmp_path, model_cls, book=ANIMAL_FARM):
     from book_maker.loader.epub_loader import EPUBBookLoader
 
@@ -638,6 +699,9 @@ def _make_loader(tmp_path, model_cls, book=ANIMAL_FARM):
     )
     loader.plan_mode = True
     loader.translate_tags = "auto"
+    # tests that exercise the plan JSON set this to "agent"; the default is
+    # the deliberate translate-everything mode, which writes no plan file
+    loader.plan_classify = "most"
     return loader, src
 
 
@@ -738,28 +802,103 @@ class TestLoaderPlanMode:
 
     def test_plan_file_not_overwritten_and_overrides_survive(self, tmp_path):
         # Finding #2: a user-edited plan JSON must survive the real run.
-        import json
-
         loader, src = _make_loader(tmp_path, FakeModel)
         loader.only_filelist = "index_split_004.html"
-        loader.make_bilingual_book()
+        plan_path = _write_decided_plan(loader)
 
-        plan_path = src.parent / (src.stem + "_plan.json")
         data = json.loads(plan_path.read_text())
-        for sig in data["signatures"]:
-            if sig["signature"] == "blockquote.calibre_17":
-                sig["action"] = "skip"
-        plan_path.write_text(json.dumps(data))
+        for row in data["signatures"]:
+            if row["key"] == "block:blockquote.calibre_17":
+                row["action"] = "skip"
+        plan_path.write_text(json.dumps(data, ensure_ascii=False, indent=1))
         edited = plan_path.read_text()
 
         loader2, _ = _make_loader(tmp_path, FakeModel)
         loader2.only_filelist = "index_split_004.html"
+        loader2.plan_classify = "agent"
         loader2.make_bilingual_book()
 
         assert plan_path.read_text() == edited, "edited plan was overwritten"
         # and the override was actually applied: no calibre_17 text translated
         sent = [t for call in loader2.translate_model.list_calls for t in call]
         assert not any("Beasts of every land and clime" in t for t in sent)
+
+    def test_a_plan_of_open_questions_is_asked_again_not_refused(
+        self, tmp_path, capsys
+    ):
+        # --plan-dry-run (and agent mode's own first run) write a plan whose
+        # rows are all null *by design*. The next run must put those
+        # questions back to whoever can answer them — refusing the file we
+        # told the user to generate turns the documented workflow into a
+        # traceback.
+        loader, src = _make_loader(tmp_path, FakeModel)
+        loader.only_filelist = "index_split_004.html"
+        loader.plan_classify = "agent"
+        with pytest.raises(SystemExit) as first:
+            loader.make_bilingual_book()
+        assert first.value.code == 0
+        plan_path = src.parent / (src.stem + "_plan.json")
+        rows = json.loads(plan_path.read_text())["signatures"]
+        assert rows and all(r["action"] is None for r in rows)
+
+        capsys.readouterr()
+        loader2, _ = _make_loader(tmp_path, FakeModel)
+        loader2.only_filelist = "index_split_004.html"
+        loader2.plan_classify = "agent"
+        with pytest.raises(SystemExit) as second:
+            loader2.make_bilingual_book()
+        assert second.value.code == 0
+        assert "Paste the block below" in capsys.readouterr().out
+        assert not loader2.translate_model.list_calls, "nothing may be paid for"
+
+    def test_model_mode_answers_a_plan_that_only_drafted_the_questions(self, tmp_path):
+        # The other half of the same seam: an existing plan file is not
+        # proof that its questions were answered, so classification is owed
+        # to whatever is still null in it.
+        loader, src = _make_loader(tmp_path, ClassifyingModel)
+        loader.only_filelist = "index_split_004.html"
+        loader.plan_classify = "agent"
+        with pytest.raises(SystemExit):
+            loader.make_bilingual_book()
+        plan_path = src.parent / (src.stem + "_plan.json")
+
+        loader2, _ = _make_loader(tmp_path, ClassifyingModel)
+        loader2.only_filelist = "index_split_004.html"
+        loader2.plan_classify = "model"
+        loader2.make_bilingual_book()
+
+        assert loader2.translate_model.classified, "the drafted rows went unasked"
+        rows = json.loads(plan_path.read_text())["signatures"]
+        assert all(r["action"] == "translate" for r in rows)
+        assert all(r["decided_by"] == "llm" for r in rows)
+
+    def test_a_signature_a_settings_change_introduces_reaches_the_plan(self, tmp_path):
+        # A decided plan plus a widened file filter: the new document's
+        # signatures are new questions. Listing them in the prompt while the
+        # JSON has no row to edit makes the instruction impossible to follow
+        # — every rerun would print the same demand.
+        loader, src = _make_loader(tmp_path, FakeModel)
+        loader.only_filelist = "index_split_004.html"
+        plan_path = _write_decided_plan(loader)
+        before = {r["key"] for r in json.loads(plan_path.read_text())["signatures"]}
+
+        loader2, _ = _make_loader(tmp_path, FakeModel)
+        loader2.only_filelist = "index_split_004.html,index_split_003.html"
+        loader2.plan_classify = "agent"
+        with pytest.raises(SystemExit) as exit_info:
+            loader2.make_bilingual_book()
+        assert exit_info.value.code == 0
+
+        rows = json.loads(plan_path.read_text())["signatures"]
+        keys = {r["key"] for r in rows}
+        assert keys - before, "the widened filter added no signature to work with"
+        # the new rows are askable, and the answered ones were left alone
+        assert {r["key"] for r in rows if r["action"] is None} == keys - before
+        assert all(
+            r["action"] == "translate" and r["decided_by"] == "agent"
+            for r in rows
+            if r["key"] in before
+        )
 
     def test_parallel_resume_cache_is_document_ordered(self, tmp_path):
         # Finding #1: cache slots must follow document order, not thread
@@ -865,15 +1004,15 @@ class TestLoaderPlanMode:
 
         loader, src = _make_loader(tmp_path, FakeModel)
         loader.only_filelist = "index_split_004.html"
-        loader.make_bilingual_book()
+        plan_path = _write_decided_plan(loader)
 
-        data = json.loads((src.parent / (src.stem + "_plan.json")).read_text())
+        data = json.loads(plan_path.read_text())
         ref = build_plan(epub.read_epub(str(src)), only_files={"index_split_004.html"})
         whole = build_plan(epub.read_epub(str(src)))
         assert data["total_chars"] == ref.total_chars < whole.total_chars
-        assert {s["signature"] for s in data["signatures"]} == {
-            r["signature"] for r in ref.signature_rows()
-        }
+        assert {row["key"] for row in data["signatures"]} == set(
+            ref.build_ledger().rows
+        )
 
     def test_resume_refuses_plan_edited_after_crash(self, tmp_path):
         # Resume slots are positional over the unit list; a plan edited
@@ -899,20 +1038,24 @@ class TestLoaderPlanMode:
             )
             loader.plan_mode = True
             loader.translate_tags = "auto"
+            loader.plan_classify = "agent"
             return loader
 
-        loader, src = _make_loader(tmp_path, ExplodesOnBeasts)
+        setup, src = _make_loader(tmp_path, FakeModel)
+        plan_path = _write_decided_plan(setup)
+        original = plan_path.read_text()
+
+        loader, _ = _make_loader(tmp_path, ExplodesOnBeasts)
+        loader.plan_classify = "agent"
         with pytest.raises(SystemExit):
             loader.make_bilingual_book()
         assert (src.parent / f".{src.stem}.temp.bin").exists()
 
-        plan_path = src.parent / (src.stem + "_plan.json")
-        original = plan_path.read_text()
         data = json.loads(original)
-        for sig in data["signatures"]:
-            if sig["signature"] == "blockquote.calibre_17":
-                sig["action"] = "skip"
-        plan_path.write_text(json.dumps(data))
+        for row in data["signatures"]:
+            if row["key"] == "block:blockquote.calibre_17":
+                row["action"] = "skip"
+        plan_path.write_text(json.dumps(data, ensure_ascii=False, indent=1))
 
         with pytest.raises(SystemExit) as excinfo:
             make_resume_loader(src).make_bilingual_book()
@@ -953,7 +1096,7 @@ class TestEpubHardening:
 
     def _partition(self, html, css=""):
         soup = bs(html, "html.parser")
-        resolver = DisplayResolver([parse_css_display(css)] if css else [])
+        resolver = _make_resolver(css)
         return partition_soup(soup, resolver, file_name="x.html"), soup
 
     # -- item 2: ruby ------------------------------------------------------
@@ -991,17 +1134,53 @@ class TestEpubHardening:
         assert "かんじ" not in soup.get_text()
         assert "It is kanji." in soup.get_text()
 
-    def test_single_translate_drops_breaks_that_separate_nothing(self, tmp_path):
-        # review finding: <br>-separated lines merge into one unit, so after
-        # the later text nodes are extracted the breaks separate nothing and
-        # rendered as blank lines under the translation. Tag mode (which
-        # replaces the whole element) never had them.
+    def test_single_translate_keeps_a_wrapper_holding_a_link_target(self, tmp_path):
+        # <span> is an emptied husk, but the <a id> inside it is the target
+        # of every cross-reference to this chapter. Deleting the wrapper
+        # takes the target with it and breaks links elsewhere in the book —
+        # having an id and containing one are the same thing here.
+        loader, _ = _make_loader(tmp_path, FakeModel)
+        soup = bs(
+            '<body><p><span><a id="target">chapter</a></span> one</p></body>',
+            "html.parser",
+        )
+        fp = partition_soup(soup, DisplayResolver([]), "x.html")
+        loader._insert_plan_translation(fp.units[0], "ZHANG YI", single_translate=True)
+        assert soup.find(id="target") is not None
+        assert "ZHANG YI" in soup.get_text()
+
+    def test_single_translate_still_removes_a_husk_that_targets_nothing(self, tmp_path):
+        # the complement: an emptied wrapper with nothing to preserve is
+        # still removed, so the fix above does not turn into "keep everything"
+        loader, _ = _make_loader(tmp_path, FakeModel)
+        soup = bs("<body><p><span><a>chapter</a></span> one</p></body>", "html.parser")
+        fp = partition_soup(soup, DisplayResolver([]), "x.html")
+        loader._insert_plan_translation(fp.units[0], "ZHANG YI", single_translate=True)
+        assert soup.find("span") is None and soup.find("a") is None
+
+    def test_single_translate_keeps_breaks_between_its_lines(self, tmp_path):
+        # <br>-separated lines are separate runs now: each is translated
+        # where it stands, and the breaks that separate them stay. The old
+        # behaviour merged them into one unit and then had to delete the
+        # breaks it had made meaningless.
         loader, _ = _make_loader(tmp_path, FakeModel)
         soup = bs("<body><p>one<br/>two<br/>three</p></body>", "html.parser")
         fp = partition_soup(soup, DisplayResolver([]), "x.html")
-        loader._insert_plan_translation(fp.units[0], "YI ER SAN", single_translate=True)
-        assert soup.find("br") is None
-        assert soup.find("p").get_text().strip() == "YI ER SAN"
+        assert [u.text for u in fp.units] == ["one", "two", "three"]
+        for unit, translated in zip(fp.units, ["YI", "ER", "SAN"]):
+            loader._insert_plan_translation(unit, translated, single_translate=True)
+        assert len(soup.find_all("br")) == 2
+        assert soup.find("p").get_text().split() == ["YI", "ER", "SAN"]
+
+    def test_single_translate_keeps_breaks_inside_pre(self, tmp_path):
+        # inside <pre> a break is part of the preformatted text, not a
+        # separator between runs, so the run spans it and it must survive
+        loader, _ = _make_loader(tmp_path, FakeModel)
+        soup = bs("<body><pre>one<br/>two</pre></body>", "html.parser")
+        fp = partition_soup(soup, DisplayResolver([]), "x.html")
+        assert len(fp.units) == 1
+        loader._insert_plan_translation(fp.units[0], "YI ER", single_translate=True)
+        assert soup.find("br") is not None
 
     def test_single_translate_keeps_breaks_it_does_not_own(self, tmp_path):
         # a leading/trailing break is layout around the unit, not a
@@ -1013,14 +1192,98 @@ class TestEpubHardening:
         assert soup.find("br") is not None
 
     def test_bilingual_mode_leaves_the_original_breaks_alone(self, tmp_path):
-        # the default path appends a translation paragraph and must not
-        # touch the original's line structure
+        # the source's own line structure must survive: "one" and "two" stay
+        # separate lines, and both source lines stay in the document.
+        # (This used to assert a single <br>, from when a two-run paragraph
+        # was cloned whole. Cloning is what reversed multi-run translations;
+        # the run's translation is now anchored to the run instead, which
+        # adds a break of its own.)
         loader, _ = _make_loader(tmp_path, FakeModel)
         soup = bs("<body><p>one<br/>two</p></body>", "html.parser")
         fp = partition_soup(soup, DisplayResolver([]), "x.html")
-        loader._insert_plan_translation(fp.units[0], "YI ER", single_translate=False)
-        assert len(soup.find_all("br")) == 1
-        assert "one" in soup.get_text() and "YI ER" in soup.get_text()
+        loader._insert_plan_translation(fp.units[0], "YI", single_translate=False)
+        assert list(soup.find("p").stripped_strings) == ["one", "YI", "two"]
+        assert len(soup.find_all("p")) == 1
+
+    def test_bilingual_multi_run_owner_keeps_each_translation_with_its_run(
+        self, tmp_path
+    ):
+        """Every run of a <br>-separated paragraph is translated where it
+        stands, in document order.
+
+        Cloning the owner once per run put all three copies immediately
+        after the source *in reverse* — T3, T2, T1 — because each
+        insert_after() landed before the previous one, and none of them
+        next to the line it translated. <br>-hung verse is the common
+        shape here, not a corner case.
+        """
+        loader, _ = _make_loader(tmp_path, FakeModel)
+        soup = bs("<body><p>one<br/>two<br/>three</p></body>", "html.parser")
+        fp = partition_soup(soup, DisplayResolver([]), "x.html")
+        assert [u.text for u in fp.units] == ["one", "two", "three"]
+        assert {u.owner_runs for u in fp.units} == {3}
+
+        for unit, translated in zip(fp.units, ["T1", "T2", "T3"]):
+            loader._insert_plan_translation(unit, translated, single_translate=False)
+
+        # exact document order: each translation directly after its own run
+        assert list(soup.find("p").stripped_strings) == [
+            "one",
+            "T1",
+            "two",
+            "T2",
+            "three",
+            "T3",
+        ]
+        # and still one paragraph — no clone of the whole owner
+        assert len(soup.find_all("p")) == 1
+
+    def test_bilingual_run_split_by_a_retained_skip_stays_paired(self, tmp_path):
+        """The other way an owner holds several runs: something retained
+        renders between them. Here an excluded <code> splits the sentence,
+        so the two halves must keep their own translations."""
+        loader, _ = _make_loader(tmp_path, FakeModel)
+        soup = bs("<body><p>before <code>ls</code> after</p></body>", "html.parser")
+        fp = partition_soup(soup, DisplayResolver([]), "x.html", exclude_tags=("code",))
+        assert [u.text for u in fp.units] == ["before", "after"]
+
+        for unit, translated in zip(fp.units, ["QIAN", "HOU"]):
+            loader._insert_plan_translation(unit, translated, single_translate=False)
+
+        assert list(soup.find("p").stripped_strings) == [
+            "before",
+            "QIAN",
+            "ls",
+            "after",
+            "HOU",
+        ]
+        assert len(soup.find_all("p")) == 1
+
+    def test_the_break_before_a_translation_is_written_self_closing(self, tmp_path):
+        """`<br></br>` is well-formed XML — epubcheck accepts it — but an
+        HTML5 parser reads the closing tag as a second <br>, so a reading
+        system in compatibility mode shows a double line break between every
+        run and its translation. bs4 writes the pair unless the tag is
+        marked as a void element."""
+        loader, _ = _make_loader(tmp_path, FakeModel)
+        soup = bs("<body><p>one<br/>two</p></body>", "html.parser")
+        fp = partition_soup(soup, DisplayResolver([]), "x.html")
+        loader._insert_plan_translation(fp.units[0], "YI", single_translate=False)
+
+        written = soup.decode()
+        assert "<br></br>" not in written, written
+        assert "<br/>" in written
+
+    def test_bilingual_single_run_owner_still_clones(self, tmp_path):
+        """The rule must not overreach: an ordinary one-run paragraph keeps
+        the readable side-by-side block it always produced."""
+        loader, _ = _make_loader(tmp_path, FakeModel)
+        soup = bs("<body><p>alpha</p></body>", "html.parser")
+        fp = partition_soup(soup, DisplayResolver([]), "x.html")
+        assert fp.units[0].owner_runs == 1
+        loader._insert_plan_translation(fp.units[0], "JIA", single_translate=False)
+
+        assert [p.get_text() for p in soup.find_all("p")] == ["alpha", "JIA"]
 
     # -- item 3: inline hiding + footnote exemption ------------------------
 
@@ -1065,33 +1328,50 @@ class TestEpubHardening:
     # -- item 4: @media ----------------------------------------------------
 
     def test_media_print_rules_do_not_hide_screen_text(self):
-        m = parse_css_display("@media print { .noscreen { display: none } }")
-        assert m == {}
+        m, conditional = parse_css_display(
+            "@media print { .noscreen { display: none } }"
+        )
+        assert m == {} and conditional == {}
 
     def test_media_screen_rules_are_unwrapped(self):
-        m = parse_css_display("@media screen { span.verse { display: block } }")
+        m, conditional = parse_css_display(
+            "@media screen { span.verse { display: block } }"
+        )
         assert m[("span", "verse")] == "block"
+        assert conditional == {}
 
     def test_font_face_and_page_blocks_dropped(self):
-        m = parse_css_display(
+        m, _conditional = parse_css_display(
             "@font-face { font-family: x; src: url(y) } "
             "@page { margin: 1em } p { display: block }"
         )
         assert m == {("p", None): "block"}
 
-    def test_supports_unwrapped_and_nested_media(self):
-        m = parse_css_display(
+    def test_supports_is_conditional_and_nested_print_still_drops(self):
+        # @supports is true on some reading systems and false on others, so
+        # its rules are evidence, never applied; a print branch inside it is
+        # dropped either way.
+        m, conditional = parse_css_display(
             "@supports (display: flex) { @media print { .a { display:none } } "
             ".b { display: inline } }"
         )
-        assert (None, "a") not in m
-        assert m[(None, "b")] == "inline"
+        assert m == {}
+        assert (None, "a") not in conditional
+        assert conditional[(None, "b")] == ["@supports (display: flex)"]
 
     # -- item 5: br / whitespace glue --------------------------------------
 
-    def test_br_separates_words(self):
+    def test_br_separates_runs(self):
+        # a <br> renders between the lines, so one translation cannot span
+        # both: each line is its own run, written back where it belongs
         fp, _ = self._partition("<body><p>line one<br/>line two</p></body>")
-        assert [u.text for u in fp.units] == ["line one line two"]
+        assert [u.text for u in fp.units] == ["line one", "line two"]
+
+    def test_br_inside_pre_is_not_a_barrier(self):
+        # inside <pre> the break is already rendered by the source's own
+        # whitespace; splitting there would fragment preformatted text
+        fp, _ = self._partition("<body><pre>line one<br/>line two</pre></body>")
+        assert [u.text for u in fp.units] == ["line oneline two"]
 
     def test_whitespace_only_nodes_glue_inline_siblings(self):
         fp, _ = self._partition("<body><p><b>one</b> <b>two</b></p></body>")
@@ -1120,19 +1400,29 @@ class TestEpubHardening:
         fp, _ = self._partition(
             "<body><p>he <em>walks</em> [<em>back and forth</em>,]</p></body>"
         )
-        assert [u.text for u in fp.units] == ["he walks back and forth"]
-        assert fp.skipped["symbol"] > 0
+        # segment-level classification: the brackets are prose punctuation
+        # that happens to sit in its own text node, not decorative symbols
+        assert [u.text for u in fp.units] == ["he walks [back and forth,]"]
+        # nothing was charged to "symbol": the punctuation is in the text
+        assert fp.skipped["symbol"] == 0
 
-    def test_skipped_node_glue_does_not_double_space(self):
+    def test_isolated_punctuation_stays_in_the_segment(self):
         fp, _ = self._partition("<body><p><b>one</b> [ <b>two</b></p></body>")
-        assert [u.text for u in fp.units] == ["one two"]
+        assert [u.text for u in fp.units] == ["one [ two"]
+
+    def test_a_symbol_only_segment_still_skips(self):
+        fp, _ = self._partition("<body><p><span>\u2766</span></p></body>")
+        assert fp.units == []
+        assert fp.skipped["symbol"] == 1
 
     def test_unit_clean_text_glues_skipped_nodes_too(self):
         soup = bs(
             "<body><p>he <em>walks</em> [<em>back and forth</em>,]</p></body>",
             "html.parser",
         )
-        assert unit_clean_text(soup.p, DisplayResolver([])) == "he walks back and forth"
+        assert (
+            unit_clean_text(soup.p, DisplayResolver([])) == "he walks [back and forth,]"
+        )
 
     # -- item 6: svg / math ------------------------------------------------
 
@@ -1142,7 +1432,8 @@ class TestEpubHardening:
             "appears here.</p>"
             "<svg><title>Diagram title</title><text>axis label</text></svg></body>"
         )
-        assert [u.text for u in fp.units] == ["Formula appears here."]
+        # <math> renders between the words, so it separates the two runs
+        assert [u.text for u in fp.units] == ["Formula", "appears here."]
         assert fp.skipped["non-content"] > 0
 
     # -- item 7: role="doc-pagebreak" --------------------------------------
@@ -1266,7 +1557,10 @@ class TestEpubHardening:
                     raise RuntimeError("boom")
                 return super().translate_list(text_list)
 
-        loader, src = _make_loader(tmp_path, ExplodesOnBeasts)
+        setup, src = _make_loader(tmp_path, FakeModel)
+        _write_decided_plan(setup)
+        loader, _ = _make_loader(tmp_path, ExplodesOnBeasts)
+        loader.plan_classify = "agent"
         with pytest.raises(SystemExit):
             loader.make_bilingual_book()
 
@@ -1405,40 +1699,31 @@ class TestEpubHardening:
 # ------------------------------------------- llm signature classification
 
 
-from book_maker.loader.plan import FilePlan, TranslationPlan, Unit
 from book_maker.loader.classify.candidates import gather_candidates
 from book_maker.loader.classify.model import (
     PAGE_SIZE,
     VERDICTS,
     PlanClassifyError,
+    PlanUnresolvedError,
     build_prompt,
     build_schema,
     classify_plan,
     lint_verdicts,
-    merge_verdicts,
+    verdict_decisions,
 )
+from book_maker.loader.ledger import Ledger, PlanLedgerError, make_key
 
 
-def _cunit(sig, text, group_id=None, poetry=False):
-    return Unit(
-        element=None,
-        file_name="x.html",
-        signature=sig,
-        text=text,
-        chars=len(text),
-        group_id=group_id,
-        poetry=poetry,
-    )
+def _ledger(rows):
+    """rows: [(scope, signature, [texts])] -> a finalized Ledger."""
+    ledger = Ledger()
+    for scope, signature, texts in rows:
+        for text in texts:
+            ledger.add_occurrence(scope, signature, len(text), text)
+    return ledger.finalize(sum(len(t) for _s, _g, ts in rows for t in ts))
 
 
-def _cplan(units=()):
-    fp = FilePlan(file_name="x.html")
-    fp.units = list(units)
-    fp.total_chars = sum(u.chars for u in fp.units)
-    return TranslationPlan([fp], ("sup", "code"), 8)
-
-
-PROSE = _cunit("p", "He who saw the Deep, the country's foundation, " * 40)
+PROSE_LINE = "He who saw the Deep, the country's foundation, and knew it all."
 
 
 class FakeClassifier:
@@ -1453,500 +1738,165 @@ class FakeClassifier:
         return self.result
 
 
-class TestClassifyCandidates:
-    def test_prose_spine_is_never_a_candidate(self):
-        plan = _cplan([PROSE])
-        cands = gather_candidates(plan)
-        assert cands == []
+def _answer(keys, verdict="translate", content_type="prose"):
+    return {k: {"verdict": verdict, "content_type": content_type} for k in keys}
 
-    def test_poetry_groups_are_never_candidates(self):
-        verses = [
-            _cunit("div.verse", f"short line {i}", group_id=0, poetry=True)
-            for i in range(9)
-        ]
-        cands = gather_candidates(_cplan([PROSE, *verses]))
-        assert cands == []
 
-    def test_short_apparatus_from_the_real_pipeline_is_a_candidate(self):
-        # built through partition_file, not hand-set group_ids, so the
-        # exemption is tested against what assign_groups actually does —
-        # this is the test that caught the removed second grouping tier
-        # silently exempting windowed apparatus from classification
-        rows = "".join(
-            f"<p class='pn'>4{i}</p><div class='vn'>1.{i}</div>" for i in range(10)
+class TestCandidateTotality:
+    """Every signature is a question. The shape filters that used to stand
+    between a signature and the classifier are the defect, not the design."""
+
+    def test_code_like_and_name_like_signatures_are_both_asked_about(self):
+        # the two 260811 smoke failures, verbatim: pre.screen was withheld as
+        # "long and varied", p.editor as "poetry"
+        ledger = _ledger(
+            [
+                (
+                    "block",
+                    "pre.screen",
+                    [f"<div id='x{i}'>markup line</div>" * 6 for i in range(103)],
+                ),
+                ("block", "p.editor", ["Brian Sawyer", "Dan Fauxsmith"]),
+                ("block", "h2.chapter_title", [f"Chapter {i}" for i in range(9)]),
+                ("block", "p", [PROSE_LINE] * 60),
+            ]
         )
-        prose = "a fully formed prose sentence that anchors the spine " * 40
-        soup = bs(f"<body><p class='txt'>{prose}</p>{rows}</body>", "html.parser")
-        fp, _ = partition_file(soup, DisplayResolver([]), "x.html")
-        short = [u for u in fp.units if u.signature in ("p.pn", "div.vn")]
-        assert short and not any(u.poetry for u in short)
-        plan = TranslationPlan([fp], ("sup", "code"), 8)
-        cands = gather_candidates(plan)
-        assert {c["signature"] for c in cands} == {"p.pn", "div.vn"}
+        keys = [c["key"] for c in gather_candidates(ledger)]
+        for expected in (
+            "block:pre.screen",
+            "block:p.editor",
+            "block:h2.chapter_title",
+            "block:p",
+        ):
+            assert expected in keys, f"{expected} was withheld from the classifier"
 
-    def test_running_head_shape_is_a_candidate(self):
-        heads = [_cunit("p.header", "GILGAMESH") for _ in range(20)]
-        cands = gather_candidates(_cplan([PROSE, *heads]))
-        assert [c["signature"] for c in cands] == ["p.header"]
-        assert "GILGAMESH" in cands[0]["samples"][0]
-
-    def test_headings_are_never_candidates(self):
-        # live finding: gpt-4o-mini demoted h2.chapter_title to skip — a wrong
-        # verdict here silently loses every chapter title, so headings are
-        # structurally certain and never sent
-        titles = [_cunit("h2.chapter_title", "Appendix") for _ in range(8)]
-        cands = gather_candidates(_cplan([PROSE, *titles]))
-        assert cands == []
-
-    def test_user_overridden_signature_is_not_asked_about(self):
-        heads = [_cunit("p.header", "GILGAMESH") for _ in range(20)]
-        cands = gather_candidates(
-            _cplan([PROSE, *heads]), overrides={"p.header": "skip"}
+    def test_candidates_are_every_undecided_row_largest_first(self):
+        ledger = _ledger(
+            [
+                ("block", "p", [PROSE_LINE] * 20),
+                ("block", "p.note", ["note"] * 3),
+                ("inline", "span.line-no", ["I 5", "I 6"]),
+            ]
         )
-        assert cands == []
+        assert [c["key"] for c in gather_candidates(ledger)] == list(ledger.rows)
+        assert len(gather_candidates(ledger)) == 3
+        chars = [c["chars"] for c in gather_candidates(ledger)]
+        assert chars == sorted(chars, reverse=True)
 
-    def test_short_units_are_ordinary_candidates(self):
-        # what the trivial filter used to eat is now a plain unit signature,
-        # so it reaches the classifier through the one candidate path
-        sigla = [_cunit("td.no", "No") for _ in range(4)]
-        cands = gather_candidates(_cplan([PROSE, *sigla]))
-        assert [c["signature"] for c in cands] == ["td.no"]
-
-    def test_five_samples_per_signature(self):
-        # more samples per signature is cheap insurance against a verdict
-        # formed on an unrepresentative pair of lines
-        heads = [_cunit("p.header", f"HEAD {i}") for i in range(20)]
-        cands = gather_candidates(_cplan([PROSE, *heads]))
-        assert len(cands[0]["samples"]) == 5
-
-    def test_nothing_is_dropped_paging_replaces_the_cap(self):
-        # the old cap silently left the smallest signatures unreviewed;
-        # model mode pages through all of them instead
-        units = [
-            _cunit(f"p.h{i}", f"HEAD {i}")
-            for i in range(PAGE_SIZE + 3)
-            for _ in range(4)
+        ledger.decide("block:p.note", "translate", "user", "prose")
+        assert [c["key"] for c in gather_candidates(ledger)] == [
+            "block:p",
+            "inline:span.line-no",
         ]
-        cands = gather_candidates(_cplan([PROSE, *units]))
-        assert len(cands) == PAGE_SIZE + 3
 
-
-class TestClassifyVerdicts:
-    CANDS = [
-        {
-            "signature": "p.header",
-            "units": 9,
-            "chars": 81,
-            "samples": ["GILGAMESH"],
-        },
-        {
-            "signature": "td.no",
-            "units": 4,
-            "chars": 8,
-            "samples": ["No"],
-        },
-    ]
-
-    def test_schema_pins_one_enum_verdict_per_signature(self):
-        schema = build_schema(self.CANDS)["schema"]
-        assert set(schema["properties"]) == {"p.header", "td.no"}
-        entry = schema["properties"]["p.header"]
-        assert entry["properties"]["verdict"]["enum"] == VERDICTS
-        assert entry["required"] == ["content_type", "verdict"]
-        assert sorted(schema["required"]) == ["p.header", "td.no"]
-        assert schema["additionalProperties"] is False
-
-    def test_content_type_is_declared_before_verdict(self):
-        # generation follows schema property order: the model must name the
-        # content before ruling on it, not rationalize a verdict after
-        entry = build_schema(self.CANDS)["schema"]["properties"]["p.header"]
-        assert list(entry["properties"]) == ["content_type", "verdict"]
-
-    def test_every_field_carries_a_description(self):
-        entry = build_schema(self.CANDS)["schema"]["properties"]["p.header"]
-        assert entry["description"]
-        assert all(p["description"] for p in entry["properties"].values())
-
-    def test_prompt_shows_labeled_samples_without_current_verdicts(self):
-        prompt = build_prompt(self.CANDS)
-        assert "Sample: GILGAMESH" in prompt
-        assert "Sample: No" in prompt
-        # the model judges cold: no anchoring on the heuristic decision
-        assert "currently" not in prompt
-        assert "keep it as is" in prompt
-
-    def test_only_affirmative_skips_become_actions(self):
-        # greedy plans translate every candidate already, so "translate" is
-        # the status quo and only "skip" moves anything
-        result = {
-            "p.header": {"content_type": "running head", "verdict": "skip"},
-            "td.no": {"content_type": "dialogue", "verdict": "translate"},
+    def test_every_candidate_reaches_the_schema_and_the_prompt(self):
+        ledger = _ledger(
+            [
+                ("block", "pre.screen", ["<b>code</b>"] * 4),
+                ("inline", "span.line-no", ["I 5"]),
+            ]
+        )
+        candidates = gather_candidates(ledger)
+        schema = build_schema(candidates)
+        assert set(schema["schema"]["required"]) == {
+            "block:pre.screen",
+            "inline:span.line-no",
         }
-        assert merge_verdicts(result, self.CANDS) == {"p.header": "llm-skip"}
+        prompt = build_prompt(candidates)
+        assert "block:pre.screen" in prompt and "inline:span.line-no" in prompt
 
-    def test_unsure_and_status_quo_change_nothing(self):
-        result = {
-            "p.header": {"content_type": "?", "verdict": "unsure"},
-            "td.no": {"content_type": "dialogue", "verdict": "translate"},
-        }
-        assert merge_verdicts(result, self.CANDS) == {}
+    def test_no_shape_gate_constants_survive(self):
+        # zombie guard: re-adding any of these re-adds a decision we made
+        # for the model without showing it the question
+        from book_maker.loader.classify import candidates as mod
 
-    def test_malformed_entries_count_as_unsure(self):
-        # shape-only endpoints may ignore value constraints or flatten shapes
-        result = {
-            "p.header": {"content_type": "x", "verdict": "banana"},
-            "td.no": "translate",
-        }
-        assert merge_verdicts(result, self.CANDS) == {}
+        for gone in (
+            "CERTAIN_TAGS",
+            "UNCERTAIN_MAX_PCT",
+            "UNCERTAIN_MEAN_CHARS",
+            "UNCERTAIN_UNIQUE_RATIO",
+            "uncertain_candidates",
+        ):
+            assert not hasattr(mod, gone), f"{gone} is back"
 
 
-class TestClassifyPlan:
-    def _uncertain_plan(self):
-        heads = [_cunit("p.header", "GILGAMESH") for _ in range(20)]
-        return _cplan([PROSE, *heads])
-
-    def test_happy_path_returns_actions(self):
+class TestVerdictPersistence:
+    def test_translate_verdicts_persist_with_provenance(self):
+        ledger = _ledger([("block", "p", ["prose"]), ("block", "p.c", ["(c) 2020"])])
         clf = FakeClassifier(
-            {"p.header": {"content_type": "running head", "verdict": "skip"}}
+            {
+                "block:p": {"verdict": "translate", "content_type": "prose"},
+                "block:p.c": {
+                    "verdict": "skip",
+                    "content_type": "publisher boilerplate",
+                },
+            }
         )
-        actions, cands = classify_plan(self._uncertain_plan(), clf, model="clf-x")
-        assert actions == {"p.header": "llm-skip"}
-        assert [c["signature"] for c in cands] == ["p.header"]
-        call = clf.calls[0]
-        # the schema is built per request: one pinned verdict per signature
-        assert call["schema"]["schema"]["required"] == ["p.header"]
-        assert call["model"] == "clf-x"
-        assert "p.header" in call["prompt"] and "GILGAMESH" in call["prompt"]
+        decisions, _ = classify_plan(ledger, clf)
+        for key, (verdict, content_type) in decisions.items():
+            ledger.decide(key, verdict, "llm", content_type)
 
-    def test_no_candidates_never_touches_the_translator(self):
-        actions, cands = classify_plan(_cplan([PROSE]), translator=None)
-        assert actions == {} and cands == []
+        assert ledger.rows["block:p"]["action"] == "translate"
+        assert ledger.rows["block:p"]["decided_by"] == "llm"
+        assert ledger.rows["block:p"]["content_type"] == "prose"
+        assert ledger.rows["block:p.c"]["action"] == "skip"
+        assert ledger.undecided_keys() == []
 
-    def test_translator_without_structured_support_raises(self):
-        with pytest.raises(PlanClassifyError, match="structured-output"):
-            classify_plan(self._uncertain_plan(), object())
+    def test_no_llm_skip_action_exists(self):
+        from book_maker.loader.plan import VALID_PLAN_ACTIONS
 
-    def test_no_json_at_all_raises(self):
-        # every rung of the ladder failed, and dividing down to one signature
-        # did not help either: that signature is named and the run stops
-        with pytest.raises(PlanClassifyError, match="p.header"):
-            classify_plan(self._uncertain_plan(), FakeClassifier(None))
+        assert "llm-skip" not in VALID_PLAN_ACTIONS
+        assert "force-translate" not in VALID_PLAN_ACTIONS
+        assert set(VALID_PLAN_ACTIONS) == {"translate", "skip"}
 
-    def test_malformed_response_raises(self):
-        with pytest.raises(PlanClassifyError, match="malformed"):
-            classify_plan(self._uncertain_plan(), FakeClassifier(["not", "a", "dict"]))
+    def test_round_trip_is_idempotent(self, tmp_path):
+        ledger = _ledger([("block", "p", ["prose"]), ("block", "p.c", ["(c)"])])
+        ledger.decide("block:p", "translate", "llm", "prose")
+        ledger.decide("block:p.c", "skip", "agent", "boilerplate")
+        meta = {"book_sha256": "a" * 64}
+        path = tmp_path / "plan.json"
+        ledger.save(path, meta)
+        first = path.read_text()
 
-    def test_request_error_raises(self):
-        class Explodes:
-            def structured_json(self, prompt, schema, model=None, accept=None):
-                raise RuntimeError("boom")
-
-        with pytest.raises(PlanClassifyError, match="boom"):
-            classify_plan(self._uncertain_plan(), Explodes())
+        reloaded = Ledger.load(path, expected_sha256="a" * 64)
+        reloaded.save(path, meta)
+        assert path.read_text() == first
+        # a skipped row keeps its row, its evidence and its provenance
+        assert reloaded.rows["block:p.c"]["decided_by"] == "agent"
+        assert reloaded.rows["block:p.c"]["samples"]
 
 
-class TestClassifyPartitionActions:
-    TABLE = (
-        "<body><table><tr><td class='no'>No</td></tr></table>"
-        "<p>Real prose sentence, long enough to matter.</p></body>"
-    )
-
-    def _partition(self, html, overrides=None):
-        soup = bs(html, "html.parser")
-        return partition_soup(
-            soup, DisplayResolver([]), file_name="x.html", overrides=overrides
+class TestFailClosedResidue:
+    def test_unsure_leaves_the_row_undecided_and_raises(self):
+        ledger = _ledger([("block", "p", ["prose"]), ("block", "p.x", ["???"])])
+        clf = FakeClassifier(
+            {
+                "block:p": {"verdict": "translate", "content_type": "prose"},
+                "block:p.x": {"verdict": "unsure", "content_type": "unclear"},
+            }
         )
+        with pytest.raises(PlanUnresolvedError) as excinfo:
+            classify_plan(ledger, clf)
+        error = excinfo.value
+        assert error.unresolved == ["block:p.x"]
+        assert error.resolved == {"block:p": ("translate", "prose")}
 
-    def test_short_cells_are_planned_units(self):
-        fp = self._partition(self.TABLE)
-        assert "No" in [u.text for u in fp.units]
-        assert "trivial" not in fp.skipped
-        assert fp.total_chars == sum(u.chars for u in fp.units) + sum(
-            fp.skipped.values()
+    def test_a_missing_content_type_is_not_an_answer(self):
+        # a reply that skipped naming the content did not do the reasoning
+        # the schema asked for
+        ledger = _ledger([("block", "p", ["prose"])])
+        candidates = gather_candidates(ledger)
+        verdicts, answered = lint_verdicts({"block:p": {"verdict": "skip"}}, candidates)
+        assert answered == set()
+        assert verdicts["block:p"][0] == "unsure"
+
+        verdicts, answered = lint_verdicts(
+            {"block:p": {"verdict": "skip", "content_type": "  "}}, candidates
         )
-
-    def test_llm_skip_counts_llm_excluded(self):
-        html = (
-            "<body><p class='head'>GILGAMESH</p>"
-            "<p>Real prose sentence, long enough to matter.</p></body>"
-        )
-        fp = self._partition(html, overrides={"p.head": "llm-skip"})
-        assert fp.skipped["llm-excluded"] == len("GILGAMESH")
-        assert fp.skipped["user-excluded"] == 0
-        assert all(u.signature != "p.head" for u in fp.units)
-
-
-class TestClassifyPlanArtifact:
-    def test_llm_actions_round_trip_via_plan_json(self, tmp_path):
-        import json
-
-        from book_maker.loader.plan import load_plan_overrides
-
-        heads = [_cunit("p.header", "GILGAMESH") for _ in range(3)]
-        plan = _cplan([PROSE, *heads])
-        path = tmp_path / "book_plan.json"
-        plan.save_json(
-            str(path), book_path=str(ANIMAL_FARM), llm_actions={"p.header": "llm-skip"}
-        )
-
-        data = json.loads(path.read_text())
-        assert data["schema_version"] == 3
-        by_sig = {r["signature"]: r for r in data["signatures"]}
-        assert by_sig["p.header"]["action"] == "llm-skip"
-        assert by_sig["p.header"]["decided_by"] == "llm"
-        # user-facing default rows stay untouched
-        assert by_sig["p"]["action"] == "translate"
-        assert "decided_by" not in by_sig["p"]
-
-        assert load_plan_overrides(str(path), str(ANIMAL_FARM)) == {
-            "p.header": "llm-skip"
-        }
-
-    def test_verdict_for_an_unplanned_signature_fails_loud(self, tmp_path):
-        # greedy plans have a row for every candidate, so a verdict about a
-        # signature the plan lacks means the classifier answered the wrong
-        # question — synthesizing a row would hide that
-        plan = _cplan([PROSE])
-        with pytest.raises(ValueError, match="absent from the plan"):
-            plan.save_json(
-                str(tmp_path / "book_plan.json"),
-                book_path=str(ANIMAL_FARM),
-                llm_actions={"td.gone": "llm-skip"},
-            )
-
-    def test_legacy_force_translate_loads_as_plain_translate(self, tmp_path, capsys):
-        # schema<=2 JSONs (gilgamesh_plan.json) must keep loading: the action
-        # is still valid to parse, it just no longer bypasses anything
-        import json
-
-        from book_maker.loader.plan import load_plan_overrides
-
-        plan = _cplan([PROSE])
-        path = tmp_path / "book_plan.json"
-        plan.save_json(str(path), book_path=str(ANIMAL_FARM))
-        data = json.loads(path.read_text())
-        data["signatures"][0]["action"] = "force-translate"
-        path.write_text(json.dumps(data))
-
-        assert load_plan_overrides(str(path), str(ANIMAL_FARM)) == {}
-        assert "force-translate" in capsys.readouterr().out
-
-    def test_unknown_action_in_plan_json_fails_loud(self, tmp_path):
-        # a typo like "skiip" silently treated as translate would quietly
-        # undo the user's decision
-        import json
-
-        from book_maker.loader.plan import load_plan_overrides
-
-        plan = _cplan([PROSE])
-        path = tmp_path / "book_plan.json"
-        plan.save_json(str(path), book_path=str(ANIMAL_FARM))
-        data = json.loads(path.read_text())
-        data["signatures"][0]["action"] = "skiip"
-        path.write_text(json.dumps(data))
-
-        with pytest.raises(ValueError, match="invalid action.*skiip"):
-            load_plan_overrides(str(path), str(ANIMAL_FARM))
-
-    def test_pending_signatures_written_as_null(self, tmp_path):
-        # candidates go out undecided: a null action is a question, not a
-        # default, and the planner must answer it
-        import json
-
-        heads = [_cunit("p.header", "GILGAMESH") for _ in range(3)]
-        plan = _cplan([PROSE, *heads])
-        path = tmp_path / "book_plan.json"
-        plan.save_json(str(path), book_path=str(ANIMAL_FARM), pending=["p.header"])
-
-        by_sig = {r["signature"]: r for r in json.loads(path.read_text())["signatures"]}
-        assert by_sig["p.header"]["action"] is None
-        assert by_sig["p"]["action"] == "translate"
-
-    def test_pending_for_an_unplanned_signature_fails_loud(self, tmp_path):
-        plan = _cplan([PROSE])
-        with pytest.raises(ValueError, match="absent from the plan"):
-            plan.save_json(
-                str(tmp_path / "book_plan.json"),
-                book_path=str(ANIMAL_FARM),
-                pending=["td.gone"],
-            )
-
-    def test_undecided_null_refuses_to_load(self, tmp_path):
-        # an unanswered question must stop the run, not silently translate
-        from book_maker.loader.plan import load_plan_overrides
-
-        heads = [_cunit("p.header", "GILGAMESH") for _ in range(3)]
-        plan = _cplan([PROSE, *heads])
-        path = tmp_path / "book_plan.json"
-        plan.save_json(str(path), book_path=str(ANIMAL_FARM), pending=["p.header"])
-
-        with pytest.raises(ValueError, match="undecided.*p\\.header"):
-            load_plan_overrides(str(path), str(ANIMAL_FARM))
-
-    def test_resolved_null_loads_as_override(self, tmp_path):
-        import json
-
-        from book_maker.loader.plan import load_plan_overrides
-
-        heads = [_cunit("p.header", "GILGAMESH") for _ in range(3)]
-        plan = _cplan([PROSE, *heads])
-        path = tmp_path / "book_plan.json"
-        plan.save_json(str(path), book_path=str(ANIMAL_FARM), pending=["p.header"])
-        data = json.loads(path.read_text())
-        for row in data["signatures"]:
-            if row["signature"] == "p.header":
-                row["action"] = "skip"
-        path.write_text(json.dumps(data))
-
-        assert load_plan_overrides(str(path), str(ANIMAL_FARM)) == {"p.header": "skip"}
-
-    def test_row_missing_its_action_key_is_still_invalid(self, tmp_path):
-        # only an explicit null means "undecided"; a vanished key means the
-        # edit damaged the row
-        import json
-
-        from book_maker.loader.plan import load_plan_overrides
-
-        plan = _cplan([PROSE])
-        path = tmp_path / "book_plan.json"
-        plan.save_json(str(path), book_path=str(ANIMAL_FARM))
-        data = json.loads(path.read_text())
-        del data["signatures"][0]["action"]
-        path.write_text(json.dumps(data))
-
-        with pytest.raises(ValueError, match="invalid action"):
-            load_plan_overrides(str(path), str(ANIMAL_FARM))
-
-
-class TestLoaderClassifyPolicy:
-    """Failure policy: an explicitly chosen classifier model blocks, the
-    default degrades to a printed notice."""
-
-    def _loader(self, tmp_path):
-        loader, _ = _make_loader(tmp_path, FakeModel)
-        loader.plan_classify = "model"
-        return loader
-
-    def _uncertain_plan(self):
-        heads = [_cunit("p.header", "GILGAMESH") for _ in range(20)]
-        return _cplan([PROSE, *heads])
-
-    def test_default_model_failure_falls_back_with_notice(self, tmp_path, capsys):
-        loader = self._loader(tmp_path)  # FakeModel has no structured_json
-        assert loader._classify_plan(self._uncertain_plan()) == {}
-        assert "plan classification skipped" in capsys.readouterr().out
-
-    def test_explicit_model_failure_blocks(self, tmp_path):
-        loader = self._loader(tmp_path)
-        loader.plan_classify_model = "clf-x"
-        with pytest.raises(SystemExit) as excinfo:
-            loader._classify_plan(self._uncertain_plan())
-        assert excinfo.value.code == 1
-
-    def test_none_mode_disables_classification(self, tmp_path):
-        loader = self._loader(tmp_path)
-        loader.plan_classify = "none"
-        loader.translate_model = FakeClassifier(
-            {"p.header": {"content_type": "running head", "verdict": "skip"}}
-        )
-        assert loader._classify_plan(self._uncertain_plan()) == {}
-        assert loader.translate_model.calls == []
-
-    def test_agent_mode_never_calls_the_model(self, tmp_path):
-        loader = self._loader(tmp_path)
-        loader.plan_classify = "agent"
-        loader.translate_model = FakeClassifier(
-            {"p.header": {"content_type": "running head", "verdict": "skip"}}
-        )
-        assert loader._classify_plan(self._uncertain_plan()) == {}
-        assert loader.translate_model.calls == []
-
-    def test_verdicts_are_returned_and_summarized(self, tmp_path, capsys):
-        loader = self._loader(tmp_path)
-        loader.translate_model = FakeClassifier(
-            {"p.header": {"content_type": "running head", "verdict": "skip"}}
-        )
-        assert loader._classify_plan(self._uncertain_plan()) == {"p.header": "llm-skip"}
-        assert "p.header" in capsys.readouterr().out
-
-
-class TestClassifyLint:
-    """Below strict decoding nothing about the response is guaranteed, so
-    every field is untrusted and 'unsure' is the safe reading."""
-
-    CANDS = [
-        {"signature": "p.header", "units": 9, "chars": 81, "samples": ["GILGAMESH"]},
-        {"signature": "td.no", "units": 4, "chars": 8, "samples": ["No"]},
-    ]
-
-    def test_missing_signature_is_unsure(self):
-        result = {"p.header": {"verdict": "skip"}}
-        verdicts, answered = lint_verdicts(result, self.CANDS)
-        assert verdicts == {"p.header": "skip", "td.no": "unsure"}
-        # ...and the caller can tell that "unsure" was never anyone's answer
-        assert answered == {"p.header"}
-
-    def test_out_of_enum_verdict_is_unsure(self):
-        result = {
-            "p.header": {"verdict": "banana"},
-            "td.no": {"verdict": "SKIP"},  # case counts: enum is exact
-        }
-        verdicts, answered = lint_verdicts(result, self.CANDS)
-        assert set(verdicts.values()) == {"unsure"}
         assert answered == set()
 
-    def test_non_dict_entry_is_unsure(self):
-        result = {"p.header": "skip", "td.no": None}
-        verdicts, answered = lint_verdicts(result, self.CANDS)
-        assert set(verdicts.values()) == {"unsure"}
-        assert answered == set()
-
-    def test_extra_signatures_are_ignored(self):
-        # a hallucinated key must not become an action for a signature the
-        # plan never asked about — to_dict would reject it downstream
-        result = {
-            "p.header": {"verdict": "skip"},
-            "td.no": {"verdict": "translate"},
-            "div.invented": {"verdict": "skip"},
-        }
-        verdicts, _ = lint_verdicts(result, self.CANDS)
-        assert set(verdicts) == {"p.header", "td.no"}
-
-    def test_non_dict_response_fails_loud(self):
-        with pytest.raises(PlanClassifyError, match="malformed"):
-            lint_verdicts(["not", "a", "dict"], self.CANDS)
-
-
-class TestClassifyPaging:
-    def test_candidates_are_paged_and_merged(self):
-        units = [_cunit(f"p.h{i}", f"HEAD {i}") for i in range(25) for _ in range(4)]
-        plan = _cplan([PROSE, *units])
-
-        class Pager:
-            model = "fake"
-
-            def __init__(self):
-                self.pages = []
-
-            def structured_json(self, prompt, schema, model=None, accept=None):
-                sigs = schema["schema"]["required"]
-                self.pages.append(sigs)
-                return {s: {"verdict": "skip"} for s in sigs}
-
-        clf = Pager()
-        actions, cands = classify_plan(plan, clf)
-
-        assert len(cands) == 25
-        assert [len(p) for p in clf.pages] == [12, 12, 1]
-        assert len(actions) == 25
-        # every signature appears exactly once across the pages
-        flat = [s for page in clf.pages for s in page]
-        assert len(set(flat)) == 25
-
-    def test_one_failing_page_fails_the_whole_run(self):
-        # a half-classified plan is indistinguishable from a complete one in
-        # the JSON, so it must never be written
-        units = [_cunit(f"p.h{i}", f"HEAD {i}") for i in range(20) for _ in range(4)]
+    def test_partial_page_failure_keeps_the_verdicts_it_bought(self):
+        rows = [("block", f"p.h{i}", [f"HEAD {i}"]) for i in range(20)]
 
         class SecondPageExplodes:
             model = "fake"
@@ -1956,135 +1906,479 @@ class TestClassifyPaging:
                 type(self).calls += 1
                 if self.calls > 1:
                     raise RuntimeError("boom")
-                return {s: {"verdict": "skip"} for s in schema["schema"]["required"]}
+                return _answer(schema["schema"]["required"], "skip", "running head")
 
-        with pytest.raises(PlanClassifyError, match="boom"):
-            classify_plan(_cplan([PROSE, *units]), SecondPageExplodes())
+        with pytest.raises(PlanUnresolvedError) as excinfo:
+            classify_plan(_ledger(rows), SecondPageExplodes())
+        # the first page's twelve answers were paid for and are still true
+        assert len(excinfo.value.resolved) == PAGE_SIZE
+        assert len(excinfo.value.unresolved) == 20 - PAGE_SIZE
+        assert "boom" in str(excinfo.value)
+
+    def test_partial_ledger_is_written_atomically(self, tmp_path):
+        # a reader must never see a half-written plan: it cannot tell a
+        # crashed writer from a damaged plan
+        ledger = _ledger([("block", "p", ["prose"])])
+        ledger.decide("block:p", "translate", "llm", "prose")
+        path = tmp_path / "plan.json"
+
+        real_replace = os.replace
+        seen = {}
+
+        def spy(src, dst):
+            seen["tmp_existed"] = os.path.exists(src)
+            seen["dst_existed_before"] = os.path.exists(dst)
+            return real_replace(src, dst)
+
+        with mock.patch("book_maker.loader.ledger.os.replace", spy):
+            ledger.save(path, {"book_sha256": "a" * 64})
+        assert seen == {"tmp_existed": True, "dst_existed_before": False}
+        assert json.loads(path.read_text())["signatures"][0]["action"] == "translate"
+
+    def test_a_failed_save_leaves_no_temp_file_behind(self, tmp_path):
+        ledger = _ledger([("block", "p", ["prose"])])
+        path = tmp_path / "plan.json"
+        with mock.patch(
+            "book_maker.loader.ledger.json.dump", side_effect=RuntimeError("disk")
+        ):
+            with pytest.raises(RuntimeError):
+                ledger.save(path, {"book_sha256": "a" * 64})
+        assert list(tmp_path.iterdir()) == []
+
+
+class TestLedgerContract:
+    def test_schema_mismatch_is_a_hard_error(self, tmp_path):
+        path = tmp_path / "plan.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 3,
+                    "book_sha256": "a" * 64,
+                    "signatures": [{"key": "block:p", "action": "translate"}],
+                }
+            )
+        )
+        with pytest.raises(PlanLedgerError, match="schema 3"):
+            Ledger.load(path, expected_sha256="a" * 64)
+
+    def test_undecided_rows_refuse_to_translate(self, tmp_path):
+        ledger = _ledger([("block", "p", ["prose"])])
+        path = tmp_path / "plan.json"
+        ledger.save(path, {"book_sha256": "a" * 64})
+        loaded = Ledger.load(path, expected_sha256="a" * 64)
+        with pytest.raises(PlanLedgerError, match="undecided"):
+            loaded.require_decided(path)
+
+    def test_a_verdict_about_an_unknown_row_is_a_bug(self):
+        ledger = _ledger([("block", "p", ["prose"])])
+        with pytest.raises(PlanLedgerError, match="never asked about"):
+            ledger.decide("block:nope", "skip", "llm", "x")
+
+    def test_samples_stride_the_whole_book_not_its_first_page(self):
+        texts = [f"line {i:03d}" for i in range(200)]
+        ledger = _ledger([("block", "p.v", texts)])
+        samples = ledger.rows["block:p.v"]["samples"]
+        assert len(samples) == 5
+        assert samples[0] == "line 000"
+        # evidence from the end of the book, not five consecutive openers
+        assert any(s > "line 100" for s in samples)
+
+
+class TestConsideredButUndecided:
+    """An "unsure" is a refusal to decide, not a refusal to look.
+
+    The name the model produced is paid-for evidence, and it used to be
+    dropped on every path — including the graceful one — so an agent
+    answering the row started from nothing.
+    """
+
+    def test_unsure_names_survive_a_later_fatal_page(self):
+        """Page one answers twelve rows "unsure" (with names); page two dies
+        of a transport failure. Nothing is decided — correctly — but the
+        twelve names must come back out with the error instead of vanishing."""
+        from book_maker.loader.classify.model import PlanClassifyFatal, classify_plan
+
+        rows = [("block", f"p.s{i}", [f"SAMPLE {i}"]) for i in range(13)]
+        ledger = _ledger(rows)
+
+        class DiesOnSecondPage:
+            model = "fake-clf"
+
+            def __init__(self):
+                self.calls = 0
+
+            def structured_json(self, prompt, schema, model=None, accept=None):
+                self.calls += 1
+                if self.calls > 1:
+                    raise PlanClassifyFatal("transport down")
+                return {
+                    key: {"verdict": "unsure", "content_type": "editorial apparatus"}
+                    for key in schema["schema"]["required"]
+                }
+
+        with pytest.raises(PlanClassifyFatal) as failure:
+            classify_plan(ledger, DiesOnSecondPage())
+
+        considered = failure.value.considered
+        assert considered, "the names from the answered page were thrown away"
+        assert set(considered.values()) == {"editorial apparatus"}
+
+        # and they can be recorded without deciding anything
+        for key, name in considered.items():
+            ledger.note_content_type(key, name)
+        assert ledger.rows["block:p.s0"]["content_type"] == "editorial apparatus"
+        assert ledger.rows["block:p.s0"]["action"] is None
+        assert ledger.rows["block:p.s0"]["decided_by"] is None
+        assert len(ledger.undecided_keys()) == 13
+
+    def test_unsure_names_ride_along_with_the_graceful_failure(self):
+        from book_maker.loader.classify.model import PlanUnresolvedError, classify_plan
+
+        ledger = _ledger([("block", "p", [PROSE_LINE]), ("block", "p.x", ["X"])])
+        clf = FakeClassifier(
+            {
+                "block:p": {"verdict": "translate", "content_type": "prose"},
+                "block:p.x": {"verdict": "unsure", "content_type": "sigla"},
+            }
+        )
+        with pytest.raises(PlanUnresolvedError) as failure:
+            classify_plan(ledger, clf)
+
+        assert failure.value.resolved == {"block:p": ("translate", "prose")}
+        assert failure.value.considered["block:p.x"] == "sigla"
+
+    def test_a_name_never_decides_anything_by_itself(self):
+        ledger = _ledger([("block", "p", ["prose"])])
+        ledger.note_content_type("block:p", "running head")
+        assert ledger.rows["block:p"]["action"] is None
+        # and a decided row is not silently re-named
+        ledger.decide("block:p", "skip", "user", "running head")
+        assert ledger.note_content_type("block:p", "something else") is None
+        assert ledger.rows["block:p"]["content_type"] == "running head"
+
+
+class TestInlineConditionalCssEvidence:
+    def test_an_inline_row_records_the_css_that_hides_it_on_some_devices(self):
+        """`@media (max-width: 600px) { span.line-no { display: none } }` is
+        the strongest evidence there is that a span carries apparatus rather
+        than prose — and the inline decision path is exactly where it was
+        being dropped. Evidence, never a verdict: the row still asks."""
+        from book_maker.loader.plan import TranslationPlan, partition_soup
+
+        resolver = _make_resolver(
+            "@media (max-width: 600px) { span.line-no { display: none } }"
+        )
+        soup = bs(
+            "<body><p>The wine-dark sea "
+            '<span class="line-no">I 5</span> rolled on.</p></body>',
+            "html.parser",
+        )
+        fp = partition_soup(soup, resolver, "x.html")
+
+        plan = TranslationPlan([fp], (), 8)
+        ledger = plan.build_ledger()
+
+        row = ledger.rows["inline:span.line-no"]
+        assert row["conditional_css"] == ["@media (max-width: 600px)"]
+        assert row["action"] is None
+
+    def test_an_inline_row_with_no_conditional_css_stays_empty(self):
+        from book_maker.loader.plan import TranslationPlan, partition_soup
+
+        soup = bs(
+            '<body><p>Prose <span class="term">here</span> ends.</p></body>',
+            "html.parser",
+        )
+        fp = partition_soup(soup, _make_resolver(""), "x.html")
+        plan = TranslationPlan([fp], (), 8)
+
+        assert plan.build_ledger().rows["inline:span.term"]["conditional_css"] == []
+
+
+class TestLedgerRowStateMachine:
+    """A row is either an open question or an accountable decision.
+
+    Anything between the two is the state schema 4 exists to abolish: an
+    action nobody is recorded as having taken, on content nobody named.
+    """
+
+    def _row(self, **overrides):
+        row = {
+            "key": "block:p.note",
+            "scope": "block",
+            "units": 1,
+            "chars": 10,
+            "samples": ["sample"],
+            "conditional_css": [],
+            "action": None,
+            "decided_by": None,
+            "content_type": None,
+            "disposition": None,
+        }
+        row.update(overrides)
+        return row
+
+    def _write(self, tmp_path, *rows):
+        from book_maker.loader.ledger import PLAN_SCHEMA_VERSION
+
+        path = tmp_path / "plan.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": PLAN_SCHEMA_VERSION,
+                    "book_sha256": "a" * 64,
+                    "signatures": list(rows),
+                }
+            )
+        )
+        return path
+
+    # ------------------------------------------------------------ decide()
+
+    def test_an_action_without_a_decider_is_refused(self):
+        ledger = _ledger([("block", "p", ["prose"])])
+        with pytest.raises(PlanLedgerError, match="decided_by null"):
+            ledger.decide("block:p", "skip", None, "running head")
+
+    def test_an_action_without_a_content_type_is_refused(self):
+        ledger = _ledger([("block", "p", ["prose"])])
+        with pytest.raises(PlanLedgerError, match="no content_type"):
+            ledger.decide("block:p", "skip", "llm")
+
+    def test_a_blank_content_type_is_no_content_type(self):
+        ledger = _ledger([("block", "p", ["prose"])])
+        with pytest.raises(PlanLedgerError, match="no content_type"):
+            ledger.decide("block:p", "translate", "user", "   ")
+
+    def test_a_decider_without_an_action_is_refused(self):
+        ledger = _ledger([("block", "p", ["prose"])])
+        with pytest.raises(PlanLedgerError, match="was not made"):
+            ledger.decide("block:p", None, "llm", "prose")
+
+    def test_an_unsure_name_is_kept_and_can_be_ruled_on_later(self):
+        """A model that answers "unsure" still named the content. That name
+        is evidence: it stays on the undecided row, and a later decision may
+        rest on it instead of re-deriving it."""
+        ledger = _ledger([("block", "p", ["prose"])])
+        ledger.rows["block:p"]["content_type"] = "editorial apparatus"
+
+        ledger.decide("block:p", "skip", "agent")
+
+        assert ledger.rows["block:p"]["content_type"] == "editorial apparatus"
+        assert ledger.rows["block:p"]["decided_by"] == "agent"
+
+    # -------------------------------------------------------------- load()
+
+    def test_load_refuses_an_action_with_no_provenance(self, tmp_path):
+        path = self._write(tmp_path, self._row(action="skip"))
+        with pytest.raises(PlanLedgerError, match="decided_by null"):
+            Ledger.load(path, expected_sha256="a" * 64)
+
+    def test_load_refuses_an_action_with_no_content_type(self, tmp_path):
+        path = self._write(tmp_path, self._row(action="skip", decided_by="user"))
+        with pytest.raises(PlanLedgerError, match="no content_type"):
+            Ledger.load(path, expected_sha256="a" * 64)
+
+    def test_load_refuses_a_decider_with_no_action(self, tmp_path):
+        path = self._write(tmp_path, self._row(decided_by="llm"))
+        with pytest.raises(PlanLedgerError, match="was not made"):
+            Ledger.load(path, expected_sha256="a" * 64)
+
+    def test_load_refuses_duplicate_keys(self, tmp_path):
+        """Last-wins would make the effective decision depend on JSON order
+        and silently discard one of two contradictory edits."""
+        path = self._write(
+            tmp_path,
+            self._row(action="translate", decided_by="user", content_type="prose"),
+            self._row(action="skip", decided_by="user", content_type="prose"),
+        )
+        with pytest.raises(PlanLedgerError, match="duplicate key"):
+            Ledger.load(path, expected_sha256="a" * 64)
+
+    def test_load_refuses_a_scope_that_contradicts_its_key(self, tmp_path):
+        path = self._write(tmp_path, self._row(scope="inline"))
+        with pytest.raises(PlanLedgerError, match="contradicts the key"):
+            Ledger.load(path, expected_sha256="a" * 64)
+
+    def test_load_refuses_a_row_missing_a_contract_field(self, tmp_path):
+        row = self._row()
+        del row["decided_by"]
+        path = self._write(tmp_path, row)
+        with pytest.raises(PlanLedgerError, match="missing field"):
+            Ledger.load(path, expected_sha256="a" * 64)
+
+    def test_load_refuses_malformed_evidence(self, tmp_path):
+        path = self._write(tmp_path, self._row(samples="not a list"))
+        with pytest.raises(PlanLedgerError, match="malformed samples"):
+            Ledger.load(path, expected_sha256="a" * 64)
+
+    def test_load_refuses_an_unusable_key(self, tmp_path):
+        path = self._write(tmp_path, self._row(key="p.note"))
+        with pytest.raises(PlanLedgerError, match="unusable key"):
+            Ledger.load(path, expected_sha256="a" * 64)
+
+    def test_load_keeps_an_undecided_row_that_names_its_content(self, tmp_path):
+        path = self._write(tmp_path, self._row(content_type="editorial apparatus"))
+        loaded = Ledger.load(path, expected_sha256="a" * 64)
+        assert loaded.rows["block:p.note"]["content_type"] == "editorial apparatus"
+        assert loaded.rows["block:p.note"]["action"] is None
+
+    # ---------------------------------------------------- require_decided()
+
+    def test_require_decided_catches_a_row_written_behind_the_api(self, tmp_path):
+        """Defense in depth: this is the last gate before money is spent, so
+        it re-checks rather than trusting that every writer used decide()."""
+        ledger = _ledger([("block", "p", ["prose"])])
+        ledger.rows["block:p"]["action"] = "translate"  # no decided_by, no name
+
+        with pytest.raises(PlanLedgerError, match="decided_by null"):
+            ledger.require_decided(tmp_path / "plan.json")
+
+
+class TestClassifyPaging:
+    def test_candidates_are_paged_and_merged(self):
+        rows = [("block", f"p.h{i}", [f"HEAD {i}"]) for i in range(25)]
+
+        class Pager:
+            model = "fake"
+
+            def __init__(self):
+                self.pages = []
+
+            def structured_json(self, prompt, schema, model=None, accept=None):
+                keys = schema["schema"]["required"]
+                self.pages.append(keys)
+                return _answer(keys, "skip", "running head")
+
+        clf = Pager()
+        decisions, candidates = classify_plan(_ledger(rows), clf)
+
+        assert len(candidates) == 25
+        assert [len(p) for p in clf.pages] == [12, 12, 1]
+        assert len(decisions) == 25
+        flat = [k for page in clf.pages for k in page]
+        assert len(set(flat)) == 25
+
+    def test_an_unanswered_page_is_re_asked_in_smaller_pieces(self):
+        rows = [("block", f"p.h{i}", [f"HEAD {i}"]) for i in range(4)]
+
+        class HalfDeaf:
+            model = "fake"
+
+            def __init__(self):
+                self.sizes = []
+
+            def structured_json(self, prompt, schema, model=None, accept=None):
+                keys = list(schema["schema"]["required"])
+                self.sizes.append(len(keys))
+                if len(keys) > 1:
+                    # answers all but the last: the ladder should re-ask
+                    # only what went unanswered, not halve blindly
+                    return _answer(keys[:-1], "translate", "prose")
+                return _answer(keys, "translate", "prose")
+
+        clf = HalfDeaf()
+        decisions, _ = classify_plan(_ledger(rows), clf)
+        assert len(decisions) == 4
+        assert clf.sizes[0] == 4 and clf.sizes[1] == 1
+
+    def test_a_failed_singleton_keeps_the_answers_around_it(self):
+        # The page answered three of four; the fourth could not be settled
+        # even alone. Unwinding out of the split loop threw away three
+        # answers that were asked for, paid for, and correct.
+        rows = [("block", f"p.h{i}", [f"HEAD {i}"]) for i in range(4)]
+
+        class DeafOnOne:
+            model = "fake"
+
+            def structured_json(self, prompt, schema, model=None, accept=None):
+                keys = [k for k in schema["schema"]["required"] if k != "block:p.h3"]
+                return _answer(keys, "translate", "prose")
+
+        with pytest.raises(PlanUnresolvedError) as info:
+            classify_plan(_ledger(rows), DeafOnOne())
+        assert info.value.unresolved == ["block:p.h3"]
+        assert set(info.value.resolved) == {
+            "block:p.h0",
+            "block:p.h1",
+            "block:p.h2",
+        }
+
+
+class TestInlineDisposition:
+    """`disposition` is the audit trail's claim about what happened. A row
+    that says "translated" when nothing was translated is worse than no
+    disposition at all."""
+
+    @staticmethod
+    def _plan(overrides=None):
+        from book_maker.loader.plan import TranslationPlan
+
+        soup = bs(
+            '<body><p class="note">note <span class="ref">A1</span> tail</p>' "</body>",
+            "html.parser",
+        )
+        fp = partition_soup(
+            soup, DisplayResolver([]), "x.html", overrides=overrides or {}
+        )
+        return TranslationPlan([fp], (), 8)
+
+    @staticmethod
+    def _decide(plan, ledger, **actions):
+        for key, action in actions.items():
+            ledger.decide(key, action, "user", "prose")
+        return plan.record_dispositions(ledger)
+
+    def test_inline_inside_a_skipped_block_is_not_called_translated(self):
+        plan = self._plan(overrides={"block:p.note": ("skip", "user")})
+        ledger = plan.build_ledger()
+        self._decide(
+            plan, ledger, **{"block:p.note": "skip", "inline:span.ref": "translate"}
+        )
+        disposition = ledger.rows["inline:span.ref"]["disposition"]
+        assert disposition.startswith("not translated")
+
+    def test_inline_inside_a_translated_block_says_so(self):
+        plan = self._plan()
+        ledger = plan.build_ledger()
+        self._decide(
+            plan,
+            ledger,
+            **{"block:p.note": "translate", "inline:span.ref": "translate"},
+        )
+        assert (
+            ledger.rows["inline:span.ref"]["disposition"] == "translated with its block"
+        )
+
+    def test_an_undecided_row_reports_no_disposition(self):
+        # The agent handoff writes the plan *before* anyone has ruled. Saying
+        # "translated: 563 chars" there described a run that cannot happen —
+        # the run refuses to start while a row is null — and then sat in the
+        # file contradicting the skip the agent recorded on that same row.
+        ledger = self._plan().build_ledger()
+        assert [r["action"] for r in ledger.rows.values()] == [None, None]
+        assert [r["disposition"] for r in ledger.rows.values()] == [None, None]
 
 
 class TestAgentPrompt:
-    def _prompt(self):
+    def test_prompt_scopes_itself_to_the_open_rows(self):
         from book_maker.loader.classify import build_agent_prompt
 
-        return build_agent_prompt(
-            "book_plan.json", "book.epub", "python3 make_book.py --book_name book.epub"
+        prompt = build_agent_prompt(
+            "/tmp/book_plan.json",
+            "/tmp/book.epub",
+            "python3 make_book.py --book_name /tmp/book.epub",
+            unresolved=["block:p.x", "inline:span.line-no"],
         )
+        assert "2 row(s) are still undecided" in prompt
+        assert "block:p.x" in prompt and "inline:span.line-no" in prompt
+        assert "/tmp/book_plan.json" in prompt
+        # the inline scope changes what a skip *means*, so it must be explained
+        assert "splits the sentence" in prompt
 
-    def test_prompt_is_self_contained(self):
-        text = self._prompt()
-        # a session with no skill installed must learn everything from this
-        for needed in [
-            "book_plan.json",
-            "book.epub",
-            "python3 make_book.py --book_name book.epub",
-            "samples",
-            "book_sha256",
-            "unzip -p",
-        ]:
-            assert needed in text, needed
+    def test_prompt_without_a_residue_list_asks_for_every_null(self):
+        from book_maker.loader.classify import build_agent_prompt
 
-    def test_prompt_states_the_asymmetry_of_mistakes(self):
-        # wrapped prose, so compare on collapsed whitespace
-        text = " ".join(self._prompt().split())
-        assert "losing content is not" in text
-
-    def test_prompt_demands_a_decision_for_every_null(self):
-        text = " ".join(self._prompt().split())
-        assert "null" in text
-        assert "refuse" in text
-        # the same discipline the model schema enforces: name the content
-        # before ruling on it
-        assert "name what the text is" in text
-
-
-class TestAgentModeFlow:
-    """agent mode writes the plan, prints instructions, and stops. Stopping
-    is the feature: translating first would spend the book before anyone
-    looked at the questions."""
-
-    def test_first_run_writes_plan_prints_prompt_and_does_not_translate(
-        self, tmp_path, capsys
-    ):
-        import json
-
-        loader, src = _make_loader(tmp_path, FakeModel)
-        loader.plan_classify = "agent"
-
-        with pytest.raises(SystemExit) as excinfo:
-            loader.make_bilingual_book()
-        assert excinfo.value.code == 0
-
-        plan_path = src.parent / (src.stem + "_plan.json")
-        assert plan_path.exists()
-        out = capsys.readouterr().out
-        assert "Paste the block below" in out
-        assert str(plan_path) in out
-        # nothing was translated, and no book was produced
-        assert loader.translate_model.list_calls == []
-        assert not (src.parent / (src.stem + "_bilingual.epub")).exists()
-
-        rows = json.loads(plan_path.read_text())["signatures"]
-        assert all("samples" in r for r in rows)
-        assert any(len(r["samples"]) > 1 for r in rows)
-        # the uncertain signatures arrive as open questions, not defaults:
-        # a lazy rerun that answers none of them must not translate
-        nulls = {r["signature"] for r in rows if r["action"] is None}
-        assert nulls == {"blockquote.calibre_7", "p.calibre_15"}
-
-    def test_rerun_refuses_while_nulls_remain(self, tmp_path):
-        loader, src = _make_loader(tmp_path, FakeModel)
-        loader.plan_classify = "agent"
-        with pytest.raises(SystemExit):
-            loader.make_bilingual_book()
-
-        loader2, _ = _make_loader(tmp_path, FakeModel)
-        loader2.plan_classify = "agent"
-        with pytest.raises(ValueError, match="undecided"):
-            loader2.make_bilingual_book()
-        assert loader2.translate_model.list_calls == []
-
-    def test_second_run_translates_using_the_edited_plan(self, tmp_path):
-        import json
-
-        loader, src = _make_loader(tmp_path, FakeModel)
-        loader.plan_classify = "agent"
-        loader.only_filelist = "index_split_004.html"
-        with pytest.raises(SystemExit):
-            loader.make_bilingual_book()
-
-        plan_path = src.parent / (src.stem + "_plan.json")
-        data = json.loads(plan_path.read_text())
-        for sig in data["signatures"]:
-            if sig["signature"] == "blockquote.calibre_17":
-                sig["action"] = "skip"
-            elif sig["action"] is None:
-                # answer the plan's open question (blockquote.calibre_7)
-                sig["action"] = "translate"
-        plan_path.write_text(json.dumps(data))
-
-        # same command again: the plan is on disk, so it translates
-        loader2, _ = _make_loader(tmp_path, FakeModel)
-        loader2.plan_classify = "agent"
-        loader2.only_filelist = "index_split_004.html"
-        loader2.make_bilingual_book()
-
-        assert (src.parent / (src.stem + "_bilingual.epub")).exists()
-        sent = [t for call in loader2.translate_model.list_calls for t in call]
-        assert sent, "second run must translate"
-        assert not any("Beasts of every land and clime" in t for t in sent)
-
-    def test_samples_are_distinct_and_clipped(self, tmp_path):
-        import json
-
-        loader, src = _make_loader(tmp_path, FakeModel)
-        loader.plan_classify = "agent"
-        with pytest.raises(SystemExit):
-            loader.make_bilingual_book()
-
-        rows = json.loads((src.parent / (src.stem + "_plan.json")).read_text())[
-            "signatures"
-        ]
-        for row in rows:
-            assert len(row["samples"]) == len(set(row["samples"]))
-            assert len(row["samples"]) <= 5
-            assert all(len(s) <= 81 for s in row["samples"])  # 80 + ellipsis
+        prompt = build_agent_prompt("/p.json", "/b.epub", "rerun")
+        assert "still undecided" not in prompt
+        assert "null" in prompt

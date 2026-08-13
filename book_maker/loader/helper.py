@@ -74,6 +74,23 @@ def append_inline_translation(element, text, translation_style=""):
     return span
 
 
+def strip_duplicate_ids(element):
+    """Remove every id from a cloned element and its descendants.
+
+    A translated copy is a second rendering of the same content, not a
+    second anchor for it. Leaving the ids in produces a document where two
+    elements answer to one fragment identifier — epubcheck RSC-005, and an
+    internal cross-reference that may land on the translation instead of
+    the passage it cites.
+    """
+    if isinstance(element, Tag):
+        element.attrs.pop("id", None)
+        for descendant in element.descendants:
+            if isinstance(descendant, Tag):
+                descendant.attrs.pop("id", None)
+    return element
+
+
 class EPUBBookLoaderHelper:
     def __init__(
         self, translate_model, accumulated_num, translation_style, context_flag
@@ -157,6 +174,17 @@ url_pattern = r"(http[s]?://|www\.)+(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0
 
 def is_text_link(text):
     return bool(re.compile(url_pattern).match(text.strip()))
+
+
+def is_pure_url(text):
+    """The text is a URL and nothing else.
+
+    `is_text_link` prefix-matches, which tag mode can afford. A partition
+    cannot: ``https://example.org — see Appendix A`` starts with a URL, and
+    prefix-matching threw away the prose after it. Anchored at both ends,
+    a URL only skips when it is the whole of what is being judged.
+    """
+    return bool(re.compile(url_pattern).fullmatch(text.strip()))
 
 
 def is_text_tail_link(text, num=80):

@@ -325,9 +325,10 @@ def main():
         "book, then decide which tag signatures are worth translating. "
         "'none' (default): no plan — translate the --translate-tags "
         "selection as usual. "
-        "'most': translate the whole partition, no classification. "
-        "'model': an LLM rules on the uncertain signatures in-pipeline, then "
-        "the run continues. "
+        "'most': translate the whole partition, no classification, no plan "
+        "file. "
+        "'model': an LLM rules on every undecided signature, then the run "
+        "continues and translates the book; unresolved rows stop it instead. "
         "'agent': write the plan JSON with samples, print instructions to "
         "paste into a coding-agent session, and stop before translating — "
         "rerun the same command afterwards to translate",
@@ -561,15 +562,16 @@ So you are close to reaching the limit. You have to choose your own value, there
             )
         else:
             plan.save_json(plan_path, book_path=options.book_name)
-            print(f"plan written to {plan_path} (edit signature actions to override)")
-            # classification needs credentials, which dry-run must not: both
-            # --plan-classify entries act on the run that *creates* the JSON,
-            # and this dry run just created it
             print(
-                "note: this plan JSON now pins the decisions — a later "
-                "--plan-classify model/agent run will find it and translate "
-                "as-is. Delete it first to let a classifier weigh in, or "
-                "edit the actions here to stay fully manual"
+                f"plan written to {plan_path} — every row is a question: decide "
+                f'it by setting "action", "decided_by" and "content_type"'
+            )
+            # classification needs credentials, which a dry run must not
+            print(
+                "note: nothing here is decided yet. A later --plan-classify "
+                "model run rules on every row still null, an agent run hands "
+                "them to a coding agent, and rows you decide yourself are "
+                "left alone by both"
             )
         return
 
@@ -773,11 +775,12 @@ So you are close to reaching the limit. You have to choose your own value, there
     if hasattr(e, "plan_min_coverage"):
         e.plan_min_coverage = options.plan_min_coverage
         e.poetry_group_size = options.poetry_group_size
-        # the loader keeps its original pipeline: plan mode is triggered by
-        # translate_tags == "auto", and its classify entries are
-        # none/model/agent — the CLI's 'most' is plan mode with no
-        # classification, i.e. the loader's 'none'
-        e.plan_classify = classify_mode if classify_mode != "most" else "none"
+        # plan mode is triggered by translate_tags == "auto"; the classify
+        # entry reaches the loader as chosen. "most" in particular must stay
+        # distinguishable from "no plan": it is the deliberate
+        # translate-everything decision, and the loader has to know it was
+        # made rather than infer it from the absence of one.
+        e.plan_classify = classify_mode
         e.plan_classify_model = options.plan_classify_model or None
     if options.quiet and hasattr(e, "quiet"):
         e.quiet = True

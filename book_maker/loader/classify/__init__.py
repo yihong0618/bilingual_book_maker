@@ -1,29 +1,39 @@
 """Signature classification for plan mode — one module per entry.
 
-Greedy partitioning translates everything it cannot structurally rule out,
-which is the safe default but keeps apparatus (running heads, page numbers,
-sigla) in the book. Deciding what to drop is a judgment call, and there are
-three ways to make it:
+The partition says what text a book *has*. Which of it a reader wants
+translated is a judgment, and there are three ways to make it:
 
-    none    no judgment: translate the whole partition (the default)
+    most    no judgment, by explicit request: translate the whole partition
     model   an LLM rules, in-pipeline, one request per page of signatures
     agent   no API call: the plan JSON carries the evidence and a coding
-            agent edits the actions, then the run is repeated
+            agent (or a person) fills in the actions, then the run repeats
+
+There is deliberately no fourth mode where nobody rules and the code
+translates whatever it could not rule out — that silent default is what
+made a heuristic's blind spot look like a decision. `most` is the same
+outcome chosen out loud.
 
 Each entry lives in its own module so none of them can quietly borrow
-another's logic; `candidates.py` holds the one thing they must share — which
-signatures are worth asking about, and with what evidence.
+another's logic; `candidates.py` holds the one thing they share — which
+rows go to a decider.
 """
 
 from .agent import build_agent_prompt
 from .candidates import gather_candidates
-from .model import PlanClassifyError, classify_plan
+from .model import (
+    PlanClassifyError,
+    PlanClassifyFatal,
+    PlanUnresolvedError,
+    classify_plan,
+)
 
-MODES = ("none", "model", "agent")
+MODES = ("most", "model", "agent")
 
 __all__ = [
     "MODES",
     "PlanClassifyError",
+    "PlanClassifyFatal",
+    "PlanUnresolvedError",
     "build_agent_prompt",
     "classify_plan",
     "gather_candidates",

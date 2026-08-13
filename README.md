@@ -254,22 +254,37 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   worth translating is the classification entry you pick here:
 
   - `none` (default): no plan — translate the `--translate-tags` selection as usual.
-  - `most`: translate the whole partition, no classification.
-  - `model`: an LLM rules on the uncertain signatures first (headings, the prose spine and
-    poetry groups are never asked about), then the run continues. Use
-    `--plan-classify-model X` to pick a different model for it — naming one implies this
-    mode, and a failure then aborts instead of falling back.
+  - `most`: translate the whole partition, no classification. It asks nothing, so it
+    writes no plan JSON and ignores an existing one; every signature is recorded in the
+    ledger it prints as an explicit `user` decision, so nothing is translated that
+    nobody decided to translate.
+  - `model`: an LLM rules on **every** signature the plan has not already decided, then the
+    run continues and translates the book. Use `--plan-classify-model X` to pick a
+    different model for it — naming one implies this mode, and a failure then aborts
+    instead of falling back. If the model leaves any signature unresolved, the run stops
+    and hands those rows to the agent flow rather than translating them by default.
   - `agent`: makes no API call. Writes the plan, prints a block of instructions to paste
     into a coding-agent session (Claude Code, Codex, ...), and **stops before translating**.
     Edit the actions, then rerun the same command to translate.
 
-  In plan mode `--translate-tags` is ignored — the plan partitions the whole book.
+  Note the difference in cost between the last two: `agent` always stops, while a `model`
+  run whose classification fully resolves goes straight on to translate the whole book in
+  the same command. Add `--test --test_num 20` to sample it first.
+
+  Plan mode is entered only by `--plan-classify` (or `--plan-dry-run`), and in it
+  `--translate-tags` is ignored — the plan partitions the whole book.
 
   - `--plan-dry-run`: print the per-signature coverage table, write `<book>_plan.json`, and
     exit. No API key or credits needed. Honors `--only_filelist` / `--exclude_filelist`.
-  - `<book>_plan.json`: edit a signature's `"action"` to `"skip"` to exclude it from the
-    real run; the file is never overwritten once it exists (delete it to regenerate).
-    Each row carries up to 5 real `samples` so you can judge without opening the epub.
+    Its rows are all undecided — a later `model` run classifies them, an `agent` run hands
+    them over, and editing them yourself works too.
+  - `<book>_plan.json`: a signature is decided by setting three fields together —
+    `"action"` (`"translate"` or `"skip"`), `"decided_by"` (`"user"` when you edit it by
+    hand), and `"content_type"`, the name of what the text is. Naming it is the reasoning;
+    a verdict without one cannot be audited, and the run refuses it. Each row carries up
+    to 5 real `samples` so you can judge without opening the epub. Your decisions are
+    never overwritten; the file is rewritten only to add rows for signatures a settings
+    change introduced (delete it to regenerate from scratch).
   - `--plan-min-coverage` (default 0.5): plan mode aborts if the plan covers less than this
     fraction of the book's text, instead of silently translating a fraction of it.
 
