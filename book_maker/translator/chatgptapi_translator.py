@@ -1057,6 +1057,23 @@ class ChatGPTAPI(Base):
                 f"Expected {plist_len} translations, got {len(paragraphs)}"
             )
 
+        # Count is not alignment. A model that merges two source lines into
+        # one slot (routine on verse: one sentence spans two pādas) keeps
+        # the count by shifting the rest and padding a slot with "" — the
+        # only unambiguous symptom of the shift. An empty slot for a
+        # non-empty input is therefore a misaligned window, never a valid
+        # translation: retry it.
+        empty_slots = [
+            i
+            for i, (src, out) in enumerate(zip(text_list, paragraphs))
+            if not out.strip() and src.strip()
+        ]
+        if empty_slots:
+            raise ValueError(
+                f"Empty translation for non-empty paragraph(s) {empty_slots}: "
+                f"batch alignment lost"
+            )
+
         if self.context_flag:
             for orig, trans in zip(text_list, paragraphs):
                 self.save_context(orig, trans)
