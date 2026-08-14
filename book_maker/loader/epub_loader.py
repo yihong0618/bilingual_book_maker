@@ -306,7 +306,18 @@ class EPUBBookLoader(BaseBookLoader):
                 else:
                     new_book.add_metadata(namespace, name, value)
 
-        new_book.spine = book.spine
+        # ebooklib's _load_spine turns every child of <spine> into an
+        # (idref, linear) tuple — including XML comments, which become
+        # (None, None) and crash lxml at write time with "Argument must be
+        # bytes or unicode" (vertically-scrollable-manga.epub keeps a
+        # commented-out page-progression-direction inside its spine). An
+        # entry with no idref references nothing, so dropping it loses
+        # neither content nor reading order.
+        new_book.spine = [
+            entry
+            for entry in book.spine
+            if not (isinstance(entry, tuple) and not entry[0])
+        ]
         new_book.toc = self._fix_toc_uids(book.toc)
         return new_book
 

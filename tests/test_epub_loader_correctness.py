@@ -234,6 +234,51 @@ def test_plan_mode_preserves_translated_imported_nav_and_manifest(
     assert 'properties="nav"' in nav_manifest
 
 
+def test_spine_comment_survives_the_rebuild_instead_of_crashing_it(
+    tmp_path, monkeypatch
+):
+    """An XML comment inside <spine> must not become an itemref.
+
+    ebooklib's _load_spine turns every child of <spine> into an
+    (idref, linear) tuple, comments included — they come back as
+    (None, None), and writing that book dies inside lxml with "Argument
+    must be bytes or unicode, got 'NoneType'".
+    vertically-scrollable-manga.epub keeps a commented-out
+    page-progression-direction exactly there.
+    """
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "book.epub"
+    _write_epub(source, [("chapter.xhtml", ["Chapter body"])])
+    with zipfile.ZipFile(source) as archive:
+        opf = archive.read("EPUB/content.opf").decode("utf-8")
+    assert "<spine" in opf
+    head, _, tail = opf.partition("<spine")
+    tag, _, rest = tail.partition(">")
+    _replace_epub_member(
+        source,
+        "EPUB/content.opf",
+        f'{head}<spine{tag}><!-- page-progression-direction="rtl" -->{rest}',
+    )
+
+    loader = EPUBBookLoader(
+        str(source),
+        RecordingModel,
+        key="",
+        resume=False,
+        language="zh-hans",
+    )
+    # Pin the trigger: if ebooklib stops parsing the comment into the spine,
+    # this fails and the filter below is dead code to remove.
+    assert (None, None) in loader.origin_book.spine
+
+    rebuilt = loader._make_new_book(loader.origin_book)
+    assert (None, None) not in rebuilt.spine
+    assert len(rebuilt.spine) == len(loader.origin_book.spine) - 1
+    assert all(entry[0] for entry in rebuilt.spine)
+
+    epub.write_epub(str(tmp_path / "rebuilt.epub"), rebuilt)
+
+
 def test_empty_nav_is_generated_with_rebuilt_book_title(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     source = tmp_path / "book.epub"
