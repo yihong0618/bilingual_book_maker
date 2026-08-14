@@ -936,9 +936,26 @@ class EPUBBookLoader(BaseBookLoader):
         or <body> itself — the translated copy goes immediately after this
         run's own markup, so it lands between the same neighbours the source
         text sits between instead of after the whole wrapper.
+
+        When that markup covers the whole run — <span class="lin"> holding
+        one verse line — the translation is a clone of it, not a bare
+        <span>: the book's CSS (`span.lin { margin-left: 5em }`) must style
+        both renderings, the same rule block clones already follow. A tag
+        covering only part of the run keeps the bare <span>, because
+        cloning it would hand the whole sentence a fragment's styling —
+        the hazard `_write_single_translation` documents.
         """
         tail = inline_subtree_root(unit.nodes[-1], unit.resolver)
-        span = make_tag("span")
+        owned = {id(n) for n in unit.nodes}
+        if isinstance(tail, Tag) and owned <= {
+            id(n) for n in tail.descendants if isinstance(n, NavigableString)
+        }:
+            span = copy(tail)
+            span.clear()
+            # a translated copy is a second rendering, not a second anchor
+            strip_duplicate_ids(span)
+        else:
+            span = make_tag("span")
         if translation_style:
             span["style"] = translation_style
         span.string = t_text

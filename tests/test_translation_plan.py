@@ -1331,6 +1331,46 @@ class TestEpubHardening:
         # and still one paragraph — no clone of the whole owner
         assert len(soup.find_all("p")) == 1
 
+    def test_bilingual_anchored_translation_clones_the_run_wrapper(self, tmp_path):
+        """A run whose markup covers the whole line renders its translation
+        in a clone of that markup, not a bare <span>.
+
+        `span.lin { margin-left: 5em }` is the mahabharata's verse indent:
+        a bare <span> put every Sanskrit line at 5em and every English line
+        at 0. Ids are stripped from the clone — a second rendering, not a
+        second anchor — same as block clones."""
+        loader, _ = _make_loader(tmp_path, FakeModel)
+        soup = bs(
+            '<body><p><span class="lin" id="v1">one</span><br/>'
+            '<span class="lin">two</span></p></body>',
+            "html.parser",
+        )
+        fp = partition_soup(soup, DisplayResolver([]), "x.html")
+        assert [u.text for u in fp.units] == ["one", "two"]
+        for unit, translated in zip(fp.units, ["T1", "T2"]):
+            loader._insert_plan_translation(unit, translated, single_translate=False)
+
+        trans = [s for s in soup.find_all("span") if s.get_text() in ("T1", "T2")]
+        assert [s.get("class") for s in trans] == [["lin"], ["lin"]]
+        assert all(s.get("id") is None for s in trans)
+        assert list(soup.find("p").stripped_strings) == ["one", "T1", "two", "T2"]
+
+    def test_bilingual_anchored_translation_keeps_bare_span_for_fragment_markup(
+        self, tmp_path
+    ):
+        """The complement: markup covering only part of the run must not be
+        cloned — an <em> around one word would italicize the whole
+        translated sentence."""
+        loader, _ = _make_loader(tmp_path, FakeModel)
+        soup = bs("<body><p>one <em>two</em><br/>three</p></body>", "html.parser")
+        fp = partition_soup(soup, DisplayResolver([]), "x.html")
+        assert fp.units[0].text == "one two"
+        loader._insert_plan_translation(fp.units[0], "T1", single_translate=False)
+
+        assert len(soup.find_all("em")) == 1  # no cloned <em>
+        trans = soup.find("span")
+        assert trans.get_text() == "T1"
+
     def test_bilingual_run_split_by_a_retained_skip_stays_paired(self, tmp_path):
         """The other way an owner holds several runs: something retained
         renders between them. Here an excluded <code> splits the sentence,
