@@ -451,10 +451,6 @@ def test_epub_sequential_batch_excludes_inline_code_content(tmp_path, monkeypatc
     assert loader.translate_model.calls == ["before  after"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="sequential translation errors currently terminate with a success exit code",
-)
 def test_epub_sequential_translation_failure_exits_nonzero(tmp_path, monkeypatch):
     loader, _ = _make_loader(
         tmp_path,
@@ -684,3 +680,25 @@ def test_epub_parallel_honors_block_size(tmp_path, monkeypatch):
         ["three", "four"],
     ]
     assert sorted(loader.translate_model.calls) == ["four", "one", "three", "two"]
+
+
+def test_a_failed_final_write_exits_nonzero(tmp_path, monkeypatch):
+    """A run whose output cannot be written has failed; exiting 0 tells
+    every caller the opposite, with no artifact to contradict it."""
+    loader, output = _make_loader(
+        tmp_path, monkeypatch, [("chapter.xhtml", ["Chapter body"])]
+    )
+    writes = []
+
+    def failing_write(name, book, options=None):
+        writes.append(name)
+        raise OSError("synthetic write failure")
+
+    monkeypatch.setattr("book_maker.loader.epub_loader.epub.write_epub", failing_write)
+
+    with pytest.raises(SystemExit) as excinfo:
+        loader.make_bilingual_book()
+
+    assert writes, "the failure must come from the final write, not earlier"
+    assert excinfo.value.code == 1
+    assert not output.exists()
