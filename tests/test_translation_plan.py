@@ -2098,6 +2098,31 @@ class TestLedgerContract:
         # evidence from the end of the book, not five consecutive openers
         assert any(s > "line 100" for s in samples)
 
+    def test_the_longest_occurrence_is_always_shown(self):
+        # GhV-oeb-page.epub, live 260813: block:article strided to five short
+        # credit lines, so the model named it "publisher boilerplate" and
+        # skipped 4102 chars — including a 1552-char acknowledgements
+        # paragraph of ordinary prose that no sample had shown.
+        texts = [f"credit line {i}" for i in range(40)]
+        texts.insert(
+            17,
+            "Nous exprimons nos tres vifs remerciements aux 900 "
+            "membres des commissions de degustation reunies "
+            "specialement pour l'elaboration de ce guide.",
+        )
+        ledger = _ledger([("block", "article", texts)])
+        samples = ledger.rows["block:article"]["samples"]
+        assert len(samples) == 5
+        assert any(s.startswith("Nous exprimons") for s in samples), samples
+
+    def test_reserving_the_longest_slot_keeps_the_stride(self):
+        texts = [f"line {i:03d}" for i in range(200)]
+        ledger = _ledger([("block", "p.v", texts)])
+        samples = ledger.rows["block:p.v"]["samples"]
+        # all same length here, so nothing is displaced and the stride stands
+        assert samples[0] == "line 000"
+        assert any(s > "line 100" for s in samples)
+
 
 class TestConsideredButUndecided:
     """An "unsure" is a refusal to decide, not a refusal to look.

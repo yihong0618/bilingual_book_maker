@@ -146,12 +146,22 @@ def clip_sample(text):
 
 
 def stride_samples(texts, cap=SIGNATURE_SAMPLE_CAP):
-    """Up to `cap` deduped excerpts spread across *all* occurrences.
+    """Up to `cap` deduped excerpts spread across *all* occurrences, always
+    including the longest one.
 
     Striding, not slicing: the first N occurrences of a signature are the
     front matter of whatever document happens to sort first, which is how a
     103-occurrence code signature came to be judged on five consecutive
     lines of the same listing.
+
+    The longest occurrence is reserved a slot because a stride can miss the
+    only unit that shows what a row really holds. Measured live (tier 2,
+    260813): `GhV-oeb-page.epub`'s `block:article` strided to five short
+    credit lines — "Direction de l'ouvrage : …", "© 2010, Hachette Livre" —
+    so the model named it "credits / publisher boilerplate" and skipped all
+    4102 chars, including a 1552-char acknowledgements paragraph of ordinary
+    French prose that no sample had shown. `mean_chars` hinted at it; nothing
+    the model could *read* did.
     """
     uniq = list(dict.fromkeys(t for t in texts if t))
     if not uniq:
@@ -161,6 +171,10 @@ def stride_samples(texts, cap=SIGNATURE_SAMPLE_CAP):
     else:
         step = len(uniq) / cap
         chosen = [uniq[int(i * step)] for i in range(cap)]
+        longest = max(uniq, key=len)
+        if longest not in chosen:
+            # the last slot, so the stride's own coverage of the book is kept
+            chosen[-1] = longest
     return [clip_sample(t) for t in chosen]
 
 
