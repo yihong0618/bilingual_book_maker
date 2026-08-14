@@ -21,6 +21,9 @@ def test_epub_loader_handles_custom_metadata(tmp_path):
         epub.write_epub(str(tmp_path / "legacy.epub"), legacy_book)
 
     loader = EPUBBookLoader.__new__(EPUBBookLoader)
+    loader.origin_book = source_book
+    loader.language = "zh-hans"
+    loader.single_translate = False
     rebuilt_book = loader._make_new_book(source_book)
 
     output_path = tmp_path / "rebuilt.epub"

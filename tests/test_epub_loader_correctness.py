@@ -823,40 +823,28 @@ def test_figcaption_translation_stays_inside_the_caption():
     assert "T[A tree]" in soup.find("figcaption").get_text()
 
 
-def test_a_book_without_an_ncx_still_resolves_its_spine_toc(tmp_path):
-    # ebooklib always writes <spine toc="ncx">; without the item that
-    # reference dangles (epubcheck OPF-049)
-    from ebooklib import epub
-
-    from book_maker.loader.epub_loader import EPUBBookLoader
-
-    src = epub.EpubBook()
-    src.set_identifier("id")
-    src.set_title("T")
-    src.set_language("en")
-    loader = EPUBBookLoader.__new__(EPUBBookLoader)
-    new_book = loader._make_new_book(src)
-    assert any(isinstance(i, epub.EpubNcx) for i in new_book.get_items())
+# The NCX-item and OPF-<link> defects this file used to pin are covered by
+# test_epub_output_validity.py, whose `_rebuilder` gives `_make_new_book` the
+# source book, language and mode its derived identity now needs.
 
 
-def test_opf_link_metadata_is_not_written_as_meta():
-    # ebooklib parses OPF <link rel= href=> into metadata and writes every
-    # entry back as <meta>, where those attributes are illegal
-    from ebooklib import epub
-
-    from book_maker.loader.epub_loader import EPUBBookLoader
-
-    src = epub.EpubBook()
-    src.set_identifier("id")
-    src.set_title("T")
-    src.set_language("en")
-    src.add_metadata(
-        "http://www.idpf.org/2007/opf",
-        "link",
-        None,
-        {"rel": "dcterms:conformsTo", "href": "http://example.org/a11y"},
+def test_a_failed_final_write_exits_nonzero(tmp_path, monkeypatch):
+    """A run whose output cannot be written has failed; exiting 0 tells
+    every caller the opposite, with no artifact to contradict it."""
+    loader, output = _make_loader(
+        tmp_path, monkeypatch, [("chapter.xhtml", ["Chapter body"])]
     )
-    loader = EPUBBookLoader.__new__(EPUBBookLoader)
-    new_book = loader._make_new_book(src)
-    opf_meta = new_book.metadata.get("http://www.idpf.org/2007/opf", {})
-    assert "link" not in opf_meta
+    writes = []
+
+    def failing_write(name, book, options=None):
+        writes.append(name)
+        raise OSError("synthetic write failure")
+
+    monkeypatch.setattr("book_maker.loader.epub_loader.epub.write_epub", failing_write)
+
+    with pytest.raises(SystemExit) as excinfo:
+        loader.make_bilingual_book()
+
+    assert writes, "the failure must come from the final write, not earlier"
+    assert excinfo.value.code == 1
+    assert not output.exists()

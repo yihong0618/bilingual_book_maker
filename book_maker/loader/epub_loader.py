@@ -30,6 +30,8 @@ from .base_loader import BaseBookLoader
 from .helper import (
     EPUBBookLoaderHelper,
     append_inline_translation,
+    backfill_toc_hrefs,
+    derive_translation_identity,
     has_restricted_content_model,
     is_text_link,
     make_tag,
@@ -121,6 +123,7 @@ class EPUBBookLoader(BaseBookLoader):
         parallel_workers=1,
     ):
         self.epub_name = epub_name
+        self.language = language
         self.new_epub = epub.EpubBook()
         self.translate_model = model(
             key,
@@ -256,6 +259,15 @@ class EPUBBookLoader(BaseBookLoader):
         # ebooklib's generated navigation document.
         new_book.title = book.title
         new_book.language = book.language
+        # Identity is derived from the *source* book even when rebuilding
+        # from an earlier output (--retranslate), so the same source,
+        # language and mode always name the same translated book.
+        identifier_id = derive_translation_identity(
+            new_book,
+            self.origin_book,
+            self.language,
+            "single" if self.single_translate else "bilingual",
+        )
         allowed_ns = set(epub.NAMESPACES.keys()) | set(epub.NAMESPACES.values())
 
         for namespace, metas in book.metadata.items():
@@ -300,6 +312,16 @@ class EPUBBookLoader(BaseBookLoader):
                     # pointer; keeping it loses the book.
                     continue
 
+                if (
+                    identifier_id
+                    and name == "identifier"
+                    and (others or {}).get("id") == identifier_id
+                ):
+                    # the derived identity above owns this id attribute
+                    # (RSC-005 otherwise); the source's value stays, as a
+                    # secondary identifier without it
+                    others = {k: v for k, v in others.items() if k != "id"}
+
                 # `others` can be {} or None
                 if others:
                     new_book.add_metadata(namespace, name, value, others)
@@ -318,7 +340,7 @@ class EPUBBookLoader(BaseBookLoader):
             for entry in book.spine
             if not (isinstance(entry, tuple) and not entry[0])
         ]
-        new_book.toc = self._fix_toc_uids(book.toc)
+        new_book.toc = backfill_toc_hrefs(self._fix_toc_uids(book.toc))
         return new_book
 
     def _fix_toc_uids(self, toc, counter=None):
@@ -2442,11 +2464,18 @@ class EPUBBookLoader(BaseBookLoader):
                 traceback.print_exc()
             if self.accumulated_num == 1:
                 print("Saving progress...")
-                self._save_progress()
-                self._save_temp_book()
-            # A crashed translation must not report success: `set -euo
-            # pipefail` wrappers and CI both read the exit code, and exiting
-            # 0 here made every failure below look like a finished book.
+                try:
+                    self._save_progress()
+                    self._save_temp_book()
+                except Exception:
+                    # `_save_temp_book` re-raises so a failed recovery book is
+                    # never silent, but here it is already reported and the
+                    # run's own failure is the one that owes the caller an
+                    # exit code — letting it escape would lose the sys.exit
+                    # below and report the wrong cause.
+                    traceback.print_exc()
+            # the run failed and there is no output book; exiting 0 would
+            # tell every caller the opposite
             sys.exit(1)
 
     def load_state(self):

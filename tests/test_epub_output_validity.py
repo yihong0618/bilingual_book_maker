@@ -6,6 +6,7 @@ docstrings so a failure points straight at what a reading system would
 reject.
 """
 
+import uuid
 import zipfile
 from copy import copy
 
@@ -13,7 +14,12 @@ from bs4 import BeautifulSoup as bs
 from ebooklib import epub
 
 from book_maker.loader.epub_loader import EPUBBookLoader
-from book_maker.loader.helper import EPUBBookLoaderHelper, strip_duplicate_ids
+from book_maker.loader.helper import (
+    EPUBBookLoaderHelper,
+    backfill_toc_hrefs,
+    derive_translation_identity,
+    strip_duplicate_ids,
+)
 
 
 def _helper():
@@ -22,6 +28,15 @@ def _helper():
 
 def _soup(html):
     return bs(html, "html.parser")
+
+
+def _rebuilder(source, language="zh-hans", single=False):
+    """A loader with only what `_make_new_book` touches."""
+    loader = EPUBBookLoader.__new__(EPUBBookLoader)
+    loader.origin_book = source
+    loader.language = language
+    loader.single_translate = single
+    return loader
 
 
 def _loader():
@@ -113,7 +128,10 @@ def test_nav_link_translation_goes_inside_the_link():
 
     li = soup.find("li")
     assert len(li.find_all("a")) == 1
-    assert li.get_text().split() == ["Chapter", "One", "第一章"]
+    # the translation sits on its own line inside the link, not run into
+    # the original's text
+    assert li.find("a").find("br") is not None
+    assert li.get_text(separator=" ").split() == ["Chapter", "One", "第一章"]
 
 
 def test_nav_list_item_translation_goes_inside_its_link_not_after_the_sublist():
@@ -132,8 +150,10 @@ def test_nav_list_item_translation_goes_inside_its_link_not_after_the_sublist():
     outer = soup.find("li")
     _helper().insert_trans(outer.find("a", recursive=False), "前言")
 
-    # the translation is inside the entry's own link …
-    assert outer.find("a", recursive=False).get_text() == "Preface 前言"
+    # the translation is inside the entry's own link, on its own line …
+    link = outer.find("a", recursive=False)
+    assert link.find("br") is not None
+    assert link.get_text(separator=" ") == "Preface 前言"
     # … and the <li>'s direct children are still exactly (a, ol)
     assert [c.name for c in outer.find_all(recursive=False)] == ["a", "ol"]
 
@@ -151,7 +171,7 @@ def test_nav_list_item_owner_targets_its_link():
     _helper().insert_trans(outer, "前言")
 
     assert [c.name for c in outer.find_all(recursive=False)] == ["a", "ol"]
-    assert outer.find("a", recursive=False).get_text() == "Preface 前言"
+    assert outer.find("a", recursive=False).get_text(separator=" ") == "Preface 前言"
 
 
 def test_nav_heading_keeps_its_translation_inside():
@@ -221,7 +241,7 @@ def test_new_book_gets_an_ncx_when_the_source_has_none(tmp_path):
     source.set_title("No NCX Here")
     source.set_language("en")
 
-    rebuilt = EPUBBookLoader.__new__(EPUBBookLoader)._make_new_book(source)
+    rebuilt = _rebuilder(source)._make_new_book(source)
 
     assert [i for i in rebuilt.get_items() if isinstance(i, epub.EpubNcx)]
 
@@ -232,7 +252,7 @@ def test_new_book_does_not_add_a_second_ncx(tmp_path):
     source.set_language("en")
     source.add_item(epub.EpubNcx())
 
-    rebuilt = EPUBBookLoader.__new__(EPUBBookLoader)._make_new_book(source)
+    rebuilt = _rebuilder(source)._make_new_book(source)
 
     assert len([i for i in rebuilt.get_items() if isinstance(i, epub.EpubNcx)]) <= 1
 
@@ -258,7 +278,7 @@ def test_link_metadata_is_dropped_rather_than_written_as_meta(tmp_path):
         },
     )
 
-    rebuilt = EPUBBookLoader.__new__(EPUBBookLoader)._make_new_book(source)
+    rebuilt = _rebuilder(source)._make_new_book(source)
 
     for namespace, entries in rebuilt.metadata.items():
         assert "link" not in entries, f"link metadata survived in {namespace!r}"
@@ -269,3 +289,113 @@ def test_link_metadata_is_dropped_rather_than_written_as_meta(tmp_path):
         opf = next(n for n in book.namelist() if n.endswith(".opf"))
         content = book.read(opf).decode("utf-8")
     assert 'rel="dcterms:conformsTo"' not in content
+
+
+# ------------------------------------------------------- the book's identity
+
+
+def _opf_of(path):
+    with zipfile.ZipFile(path) as archive:
+        name = next(n for n in archive.namelist() if n.endswith(".opf"))
+        return archive.read(name).decode("utf-8")
+
+
+def _identified_source(uid="http://www.gutenberg.org/ebooks/25545"):
+    source = epub.EpubBook()
+    source.set_identifier(uid)
+    source.set_title("Identified")
+    source.set_language("en")
+    return source
+
+
+def test_translation_identity_is_deterministic_and_distinct():
+    """Rebuilding the same translation must name the same book — ebooklib's
+    per-run uuid makes every rerun a new library entry — but it must not be
+    the source's identifier either, or a reader deduplicates the
+    translation against the original."""
+    source = _identified_source()
+
+    first = _rebuilder(source)._make_new_book(source)
+    second = _rebuilder(source)._make_new_book(source)
+
+    assert first.uid == second.uid
+    assert first.uid != source.uid
+    uuid.UUID(first.uid)  # a well-formed uuid, not a concatenation
+
+
+def test_translation_identity_varies_with_language_and_mode():
+    """zh and ja translations of one source are different books, and so are
+    the bilingual and single renderings."""
+    source = _identified_source()
+
+    zh = _rebuilder(source, "zh-hans")._make_new_book(source).uid
+    ja = _rebuilder(source, "ja")._make_new_book(source).uid
+    single = _rebuilder(source, "zh-hans", single=True)._make_new_book(source).uid
+
+    assert len({zh, ja, single}) == 3
+
+
+def test_source_identifier_is_kept_without_a_colliding_id(tmp_path):
+    """RSC-005 'Duplicate "id"': the derived identity is written under
+    ebooklib's id="id"; a source identifier that also carries id="id" must
+    lose the attribute, not the value."""
+    source = _identified_source()
+    rebuilt = _rebuilder(source)._make_new_book(source)
+
+    out = tmp_path / "identified.epub"
+    epub.write_epub(str(out), rebuilt)
+    opf = _opf_of(out)
+
+    assert opf.count('id="id"') == 1, "two elements answer to the same id"
+    assert rebuilt.uid in opf
+    assert "http://www.gutenberg.org/ebooks/25545" in opf
+
+
+def test_an_identifierless_source_derives_nothing():
+    """No identifier means nothing stable to derive from; the helper must
+    say so instead of minting an identity out of thin air."""
+    new_book = epub.EpubBook()
+    before = new_book.uid
+
+    class Bare:
+        uid = None
+
+    assert derive_translation_identity(new_book, Bare(), "zh-hans") is None
+    assert new_book.uid == before  # untouched
+
+
+# ------------------------------------------------------------------ the NCX
+
+
+def test_a_section_without_an_href_is_given_one():
+    """RSC-010: ebooklib writes <content src=""/> for an hrefless Section —
+    a TOC entry that navigates nowhere on NCX-reading systems."""
+    toc = [
+        (
+            epub.Section("Part One"),
+            [epub.Link("ch01.xhtml", "One", "ch01")],
+        )
+    ]
+
+    backfill_toc_hrefs(toc)
+
+    assert toc[0][0].href == "ch01.xhtml"
+
+
+def test_nested_sections_are_backfilled_from_their_own_subtree():
+    inner = (epub.Section("Inner"), [epub.Link("ch02.xhtml", "Two", "ch02")])
+    outer = (epub.Section("Outer"), [inner])
+
+    backfill_toc_hrefs([outer])
+
+    assert inner[0].href == "ch02.xhtml"
+    assert outer[0].href == "ch02.xhtml"
+
+
+def test_a_section_with_an_href_keeps_it():
+    section = epub.Section("Named", href="intro.xhtml")
+    toc = [(section, [epub.Link("ch01.xhtml", "One", "ch01")])]
+
+    backfill_toc_hrefs(toc)
+
+    assert section.href == "intro.xhtml"
