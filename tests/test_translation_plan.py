@@ -2567,3 +2567,119 @@ class TestAgentPrompt:
         prompt = build_agent_prompt("/p.json", "/b.epub", "rerun")
         assert "still undecided" not in prompt
         assert "null" in prompt
+
+
+class TestNumericSignatureSuffix:
+    """A signature that names two kinds of content has no right answer.
+
+    Live 260812 on childrens-literature.epub: `block:h3` was 4 real headings
+    (BIBLIOGRAPHY) plus 15 bare page folios (`<h3>190</h3>`) — one row, one
+    verdict. The model answered `translate`, which is the *correct* answer to
+    a mixed row, and every folio got a translated sibling: the reader sees
+    each page number twice, 15 of 15 in the offline replay.
+
+    The fix is a finer key, not a shape filter: digit-only and roman-numeral
+    runs get their own signature so the decider gets a row it can answer
+    separately. Nothing here skips anything — verse numbers are content, and
+    deciding that is still the classifier's job.
+    """
+
+    @staticmethod
+    def _partition(html, overrides=None):
+        soup = bs(html, "html.parser")
+        return (
+            partition_soup(
+                soup, DisplayResolver([]), "x.html", overrides=overrides or {}
+            ),
+            soup,
+        )
+
+    def test_folios_and_headings_are_separate_rows(self):
+        fp, _ = self._partition(
+            "<body><h3>BIBLIOGRAPHY</h3><h3>190</h3><h3>191</h3></body>"
+        )
+        sigs = {u.text: u.signature for u in fp.units}
+        assert sigs["BIBLIOGRAPHY"] == "h3"
+        assert sigs["190"] == sigs["191"] != "h3"
+
+    def test_the_mixed_row_can_now_be_answered_separately(self):
+        # the whole point: skipping folios must not cost the real headings
+        html = "<body><h3>BIBLIOGRAPHY</h3><h3>190</h3><h3>191</h3></body>"
+        fp, _ = self._partition(html)
+        folio_key = next(u.key for u in fp.units if u.text == "190")
+        kept, _ = self._partition(html, overrides={folio_key: ("skip", "llm")})
+        assert [u.text for u in kept.units] == ["BIBLIOGRAPHY"]
+
+    def test_roman_numerals_are_deliberately_not_detected(self):
+        # Measured over the corpus, a strict canonical roman matcher was
+        # wrong 4 rows out of 5: an index's group letters (C, D, I, L, M) and
+        # jlreq's character specimens (C, I, V, d, m) are alphabet labels that
+        # spell numerals. Splitting them is a worse partition than the mixed
+        # row. Roman folios stay a known limitation, on purpose.
+        fp, _ = self._partition(
+            "<body><h3>C</h3><h3>D</h3><h3>I</h3><h3>L</h3><h3>M</h3></body>"
+        )
+        assert {u.signature for u in fp.units} == {"h3"}
+
+    def test_non_ascii_digit_forms_are_not_folios(self):
+        # `str.isdigit()` is true of these; they are jlreq's subject matter,
+        # not its page numbers
+        fp, _ = self._partition("<body><p>\uff10</p><p>\u2460</p><p>\u2776</p></body>")
+        assert {u.signature for u in fp.units} == {"p"}
+
+    def test_text_that_merely_contains_a_number_is_untouched(self):
+        fp, _ = self._partition(
+            "<body><p>Chapter 3</p><p>1984 was a cold year.</p></body>"
+        )
+        assert {u.signature for u in fp.units} == {"p"}
+
+    def test_decorated_folios_still_read_as_numeric(self):
+        fp, _ = self._partition("<body><p>[190]</p><p>— 12 —</p></body>")
+        assert all(u.signature != "p" for u in fp.units)
+        assert len({u.signature for u in fp.units}) == 1
+
+    def test_english_words_that_look_roman_stay_prose(self):
+        # strict canonical roman only: DID/LID/CIVIC are words, not numerals
+        fp, _ = self._partition("<body><p>DID</p><p>LID</p><p>CIVIC</p></body>")
+        assert {u.signature for u in fp.units} == {"p"}
+
+    def test_classes_survive_the_suffix(self):
+        fp, _ = self._partition('<body><p class="folio b">190</p></body>')
+        assert fp.units[0].signature.startswith("p.b.folio")
+        assert fp.units[0].signature != "p.b.folio"
+
+    def test_the_suffix_cannot_be_spelled_by_a_document(self):
+        # linear-algebra.epub really does carry 1152 class names containing
+        # `#`, so `#num` was a collision; a class token cannot hold whitespace
+        fp, _ = self._partition(
+            '<body><p class="x#num">Real prose here.</p><p>190</p></body>'
+        )
+        sigs = {u.text: u.signature for u in fp.units}
+        assert sigs["Real prose here."] == "p.x#num"
+        assert sigs["190"] != sigs["Real prose here."]
+        assert " " in sigs["190"]
+
+    def test_fragments_left_by_an_excluded_tag_are_not_folios(self):
+        # epub30-spec.epub, verbatim: <code> is an excluded tag, so this one
+        # sentence survives as three runs — "0:", ", 30:", ", 38:" — and each
+        # fragment reads as a numeral while the sentence does not. A folio is
+        # a whole element's text.
+        fp, _ = self._partition(
+            "<body><p>0: <code>PK</code>, 30: <code>mimetype</code>, "
+            "38: <code>application/epub+zip</code></p></body>"
+        )
+        assert len(fp.units) == 3
+        assert {u.signature for u in fp.units} == {"p"}
+
+    def test_inline_parent_key_tracks_the_suffixed_row(self):
+        # parents_of() drives the inline disposition; a parent_key naming a
+        # row the ledger no longer has would report "not translated" on text
+        # that was translated
+        from book_maker.loader.plan import TranslationPlan
+
+        fp, _ = self._partition('<body><p>190 <span class="ref">A1</span></p></body>')
+        plan = TranslationPlan([fp], (), 8)
+        ledger = plan.build_ledger()
+        parent = fp.inline_rows[0]["parent_key"]
+        assert parent in ledger.rows
+        assert parent == fp.units[0].key

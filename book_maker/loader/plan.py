@@ -464,6 +464,87 @@ def _signature(element):
     return element.name
 
 
+# Decoration a folio or a verse number routinely wears. Stripped from the
+# ends before the numeral test, never from the middle: "1984 was a cold year"
+# must stay one prose token sequence.
+_NUMERAL_DECORATION = " \t\r\n[](){}<>.,;:!?*·§¶\"'‘’“”«»—–-−_/\\|"
+# Separators *inside* a numeric run: "12-13", "1. 2. 3", "4/5".
+_NUMERAL_SEPARATORS = re.compile(r"[\s.,;:/\-–—−]+")
+
+# Roman numerals are deliberately NOT detected. Measured over the 45-book
+# corpus, a strict canonical matcher produced five rows and four of them were
+# wrong: `h3.groupletter` (an index's group letters C, D, I, L, M) and
+# `td.character` (character specimens C, I, V, d, m) are alphabet labels that
+# happen to spell numerals, and splitting them left A, B, E… in one row and
+# C, D, I… in another — a worse partition than the mixed row it replaced.
+# The one true hit was 2 units / 4 chars. Roman folios stay a known
+# limitation; see docs/260813-fix-FOLIO_SIGNATURE_SUFFIX.md.
+
+
+def _numeral_kind(text):
+    """``"num"`` if this run is made of numbers rather than words, else None.
+
+    Evidence for a *key*, never a verdict. Nothing here skips anything: a
+    verse number is content, and schema 3 deleted the content heuristics
+    that used to decide otherwise. What this restores is only the classifier's
+    ability to answer the question at all — `<h3>190</h3>` and
+    `<h3>BIBLIOGRAPHY</h3>` are one row without it, and no single verdict is
+    right for both.
+
+    ASCII digits only. `str.isdigit()` is true of ideographic and enclosed
+    forms too, which filed jlreq's character-specimen table (`０`, `①`, `⓶`,
+    `❸`) as page numbers — those are the book's subject matter, not its
+    apparatus.
+    """
+    core = text.strip(_NUMERAL_DECORATION)
+    if not core:
+        return None
+    tokens = [t for t in _NUMERAL_SEPARATORS.split(core) if t]
+    if tokens and all(t.isascii() and t.isdigit() for t in tokens):
+        return "num"
+    return None
+
+
+def _owner_numeral_kinds(runs):
+    """{id(owner): kind} for owners whose every surviving run is that kind.
+
+    Decided per *owner* rather than per run so that one element always
+    answers to one row. The alternative splits an owner's runs across two
+    keys, and an inline row's ``parent_key`` — which the disposition reads to
+    ask whether any block holding its text survived — can then name a row
+    that holds none of it.
+
+    Mixed owners keep the bare signature: a run this cannot name is exactly
+    the case the classifier should still see whole.
+    """
+    kinds = {}
+    for owner, text in runs:
+        key = id(owner)
+        # A second run means this owner's text was cut by something rendering
+        # between the pieces — an excluded <code>/<sup>, a nested block. Each
+        # piece may read as a numeral while the sentence it came from does
+        # not: epub30-spec's `0: <code>PK…</code>, 30: <code>mimetype</code>`
+        # leaves the fragments "0:", ", 30:", ", 38:". A folio is a whole
+        # element's text, so require that.
+        kinds[key] = None if key in kinds else _numeral_kind(text)
+    return {k: v for k, v in kinds.items() if v is not None}
+
+
+# Whitespace, because a class token cannot contain any: `class="a b"` is two
+# tokens, so no element can ever produce a signature holding this separator.
+# `#` looked natural and was not safe — linear-algebra.epub carries 1152 real
+# class names with `#` in them (`span.broken.fcla-xml-2.30li6.xhtml#x7-6000…`),
+# and a suffix a document can spell itself is a key collision waiting to
+# merge two different questions into one row.
+_ROW_SIGNATURE_SEPARATOR = " #"
+
+
+def _row_signature(element, kind):
+    """The ledger key's signature: element shape, plus what its text is made of."""
+    signature = _signature(element)
+    return f"{signature}{_ROW_SIGNATURE_SEPARATOR}{kind}" if kind else signature
+
+
 def _inline_hidden(element):
     """display:none via the style attribute, or the HTML ``hidden`` attribute.
 
@@ -1025,25 +1106,6 @@ def partition_soup(
             )
             entry["chars"] += chars
             entry["parts"].append(str(node))
-    for entry in inline_seen.values():
-        fp.inline_rows.append(
-            {
-                "signature": entry["signature"],
-                "chars": entry["chars"],
-                "text": _normalize_text("".join(entry["parts"])),
-                "parent_key": make_key("block", _signature(entry["owner"])),
-                # Resolved here, while the element is still in hand: the row
-                # outlives it, and a `@media (max-width: 600px) {display:none}`
-                # on span.line-no is exactly the evidence an inline verdict
-                # turns on. Block rows get this too, from their own elements.
-                "conditional_css": (
-                    resolver.conditions_for(entry["element"])
-                    if getattr(resolver, "conditional", None)
-                    else []
-                ),
-            }
-        )
-
     position = {}
     owners, owner_order = {}, []
     for index, (node, chars, reason, owner) in enumerate(records):
@@ -1089,6 +1151,14 @@ def partition_soup(
             )
     found.sort(key=lambda s: s[0])
 
+    # What each owner's text is made of, over the runs that survive to become
+    # units — a dropped run is not text anybody will be asked about.
+    numeral_kinds = _owner_numeral_kinds(
+        (owner, text)
+        for _pos, owner, _ri, _or, _nodes, text in found
+        if classify_skip(text) is None
+    )
+
     for _pos, owner, run_index, owner_runs, seg_nodes, text in found:
         chars = sum(len(str(n).strip()) for n in seg_nodes)
         reason = classify_skip(text)
@@ -1099,7 +1169,7 @@ def partition_soup(
             Unit(
                 element=owner,
                 file_name=file_name,
-                signature=_signature(owner),
+                signature=_row_signature(owner, numeral_kinds.get(id(owner))),
                 text=text,
                 chars=chars,
                 nodes=seg_nodes,
@@ -1107,6 +1177,32 @@ def partition_soup(
                 owner_runs=owner_runs,
                 resolver=resolver,
             )
+        )
+
+    # Inline rows are emitted here, after the owners' kinds are known, so that
+    # `parent_key` names the same row the owner's units carry.
+    for entry in inline_seen.values():
+        fp.inline_rows.append(
+            {
+                "signature": entry["signature"],
+                "chars": entry["chars"],
+                "text": _normalize_text("".join(entry["parts"])),
+                "parent_key": make_key(
+                    "block",
+                    _row_signature(
+                        entry["owner"], numeral_kinds.get(id(entry["owner"]))
+                    ),
+                ),
+                # Resolved here, while the element is still in hand: the row
+                # outlives it, and a `@media (max-width: 600px) {display:none}`
+                # on span.line-no is exactly the evidence an inline verdict
+                # turns on. Block rows get this too, from their own elements.
+                "conditional_css": (
+                    resolver.conditions_for(entry["element"])
+                    if getattr(resolver, "conditional", None)
+                    else []
+                ),
+            }
         )
 
     fp.units = list(fp.all_units)
