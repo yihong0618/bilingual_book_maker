@@ -59,6 +59,44 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   python3 make_book.py --book_name test_books/animal_farm.epub --model google
   ```
 
+* Google Cloud Translation v3（官方 API，支持术语表）
+
+  使用 `--model googlev3` 走官方 [Cloud Translation v3 API](https://cloud.google.com/translate/docs/advanced/translating-text-v3)，可通过 [glossary 术语表](https://cloud.google.com/translate/docs/advanced/glossary) 强制指定术语翻译。认证使用 ADC（Application Default Credentials），不需要 API key：
+
+  ```shell
+  # 二选一（注意：只跑 `gcloud auth login` 不够，ADC 是独立的一套凭证）：
+  gcloud auth application-default login                                # 个人账号
+  export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json  # 或服务账号（需 roles/cloudtranslate.user）
+
+  # 一次性项目配置
+  gcloud config set project my-proj
+  gcloud services enable translate.googleapis.com storage.googleapis.com
+  ```
+
+  先用 CSV 术语文件（每行 `源术语,目标术语`）一次性创建术语表（脚本会自动上传到 GCS 并注册 glossary，需要 `pip install google-cloud-storage`；服务账号还需 roles/cloudtranslate.editor 和 roles/storage.objectAdmin）：
+
+  ```shell
+  # bucket 必须已存在且位于 us-central1
+  gcloud storage buckets create gs://my-bucket --location=us-central1
+
+  python3 scripts/create_glossary.py \
+    --project_id my-proj --glossary_id my-terms \
+    --source_lang en --target_lang zh-CN \
+    --csv ./terms.csv --gcs_bucket my-bucket
+  ```
+
+  然后翻译时引用（使用术语表时必须显式指定 `--source_lang`；不传 `--google_glossary_id` 则为普通官方翻译）：
+
+  ```shell
+  python3 make_book.py --book_name test_books/animal_farm.epub --model googlev3 \
+    --google_project_id my-proj --google_glossary_id my-terms \
+    --source_lang en --language zh-hans
+  ```
+
+  `--google_project_id` 缺省时取 ADC 默认项目；`--google_location` 默认 `us-central1`（glossary 仅该区域支持）。环境变量兜底：`BBM_GOOGLE_PROJECT_ID`、`BBM_GOOGLE_GLOSSARY_ID`、`BBM_GOOGLE_LOCATION`。
+
+  代理环境：请求默认走 REST（gRPC 不识别代理，会报 `503 UNAVAILABLE`）；SOCKS 代理下还需 `pip install "requests[socks]"`。完整配置指南见 [docs/env_settings.md](docs/env_settings.md)。
+
 * 彩云小译
 
   ```shell
@@ -189,6 +227,7 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   | `qwen-mt-turbo` | `--qwen_key` / `BBM_QWEN_API_KEY` | 通义千问快速翻译模型 |
   | `qwen-mt-plus` | `--qwen_key` / `BBM_QWEN_API_KEY` | 通义千问高质量翻译模型 |
   | `google` | 无需 key | 免费谷歌翻译 |
+  | `googlev3` | ADC（`GOOGLE_APPLICATION_CREDENTIALS`） | 官方 Cloud Translation v3，支持 `--google_glossary_id` 术语表 |
   | `caiyun` | `--caiyun_key` / `BBM_CAIYUN_API_KEY` | 彩云小译 |
   | `deepl` | `--deepl_key` / `BBM_DEEPL_API_KEY` | DeepL（付费） |
   | `deeplfree` | 无需 key | DeepL 免费版 |
