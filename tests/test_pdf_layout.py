@@ -1,7 +1,17 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import pytest
+
 from book_maker.loader.pdf_loader import create_bilingual_pdf
+
+# `--pdf_layout` is an opt-in output format and reportlab is declared in no
+# requirements file, so `create_bilingual_pdf` reports the missing import and
+# returns False rather than breaking a translation run. Asserting that return
+# value without the dependency turns "optional extra absent" into a failing
+# test on every clean checkout — the same importorskip guard test_pdf_cli.py
+# uses for fitz.
+pytest.importorskip("reportlab")
 
 
 def _run_check(tmp_dir):
