@@ -46,8 +46,8 @@ sections after it provide additional notes for selected workflows.
 | `--prompt VALUE_OR_FILE` | User/system prompt template; the user template requires `{text}`. |
 | `--temperature FLOAT` | Sampling temperature; default `1.0`. |
 | `--use_context` | Send an evolving narrative context with compatible translators. |
-| `--context_paragraph_limit N` | Context limit used with `--use_context`; default `0`. |
-| `--accumulated_num N` | Legacy EPUB token accumulation; ignored in plan mode. |
+| `--context_paragraph_limit N` | Context history limit used with `--use_context`. Parser default `0` means the translator default (3 paragraphs for ChatGPT), not zero history. |
+| `--accumulated_num N` | EPUB token/character accumulation and SRT subtitle-block character batching (capped at 512 for SRT); ignored in EPUB plan mode. |
 | `--batch_size N` | Aggregated unit count for loaders that support it. |
 | `--block_size N` | Merge paragraphs into delimiter-translated blocks. |
 | `--sentence_mode` | Translate EPUB paragraphs sentence by sentence; incompatible with plan mode. |
@@ -55,7 +55,7 @@ sections after it provide additional notes for selected workflows.
 | `--batch` | Submit an EPUB ChatGPT Batch API job; incompatible with plan mode. |
 | `--batch-use` | Consume a previously submitted batch job; incompatible with plan mode. |
 | `--interval SECONDS` | Gemini request interval; default `0.01`. |
-| `--extra_body JSON` | Extra model request fields as a JSON object. |
+| `--extra_body JSON` | Extra request fields for ChatGPT/OpenAI-derived request paths (including OpenAI-style custom providers and xAI); other translators such as Claude, Gemini, Qwen, and Groq ignore it. |
 | `--quiet` | Suppress EPUB progress bars and paragraph echoes, not reports/errors. |
 | `--proxy URL` | Set HTTP/HTTPS proxy environment variables for the run. |
 
@@ -80,8 +80,10 @@ sections after it provide additional notes for selected workflows.
 | `--caiyun_key KEY` | Caiyun key; prefer `BBM_CAIYUN_API_KEY`. |
 | `--custom_api VALUE` | Legacy custom translator API; prefer `BBM_CUSTOM_API`. |
 
-Do not put secrets directly on a shared command line. Environment variables or a local,
-git-ignored `.env` are safer for agent and CI use.
+Do not put secrets directly on a shared command line. Environment variables are safer for
+agent and CI use. The CLI does **not** load `.env` files itself: export the variables first,
+or source a local git-ignored file before running, for example
+`set -a; source .env; set +a; bbook_maker ...`.
 
 ## Test translate
 `--test` <br>

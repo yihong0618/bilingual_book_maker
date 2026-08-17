@@ -516,6 +516,17 @@ So you are close to reaching the limit. You have to choose your own value, there
     if options.provider and options.model:
         parser.error("--provider and --model are mutually exclusive")
 
+    # Kobo mode supplies the source book itself. Resolve it before validating
+    # --book_name so users do not need a meaningless placeholder file.
+    if options.book_from == "kobo":
+        from book_maker import obok
+
+        if options.device_path is None:
+            raise Exception(
+                "Device path is not given, please specify the path by --device_path <DEVICE_PATH>",
+            )
+        options.book_name = obok.cli_main(options.device_path)
+
     if not options.book_name:
         print("Error: please provide the path of your book using --book_name <path>")
         exit(1)
@@ -653,16 +664,6 @@ So you are close to reaching the limit. You have to choose your own value, there
     else:
         API_KEY = ""
 
-    if options.book_from == "kobo":
-        from book_maker import obok
-
-        device_path = options.device_path
-        if device_path is None:
-            raise Exception(
-                "Device path is not given, please specify the path by --device_path <DEVICE_PATH>",
-            )
-        options.book_name = obok.cli_main(device_path)
-
     book_type = get_book_type(options.book_name)
     support_type_list = list(BOOK_LOADER_DICT.keys())
     if book_type not in support_type_list:
@@ -709,17 +710,41 @@ So you are close to reaching the limit. You have to choose your own value, there
         parallel_workers=options.parallel_workers,
         **loader_kwargs,
     )
-    # Parse and set extra_body if provided
+    # Parse and set extra_body only on request paths that consume it. Setting
+    # an arbitrary attribute on the other translators used to print success
+    # and then silently drop the fields.
     if options.extra_body:
-        try:
-            import json
-
-            extra_body = json.loads(options.extra_body)
-            e.translate_model.extra_body = extra_body
-            print(f"[bold blue]Extra body parameters:[/bold blue] {extra_body}")
-        except json.JSONDecodeError as e:
-            print(f"[bold red]Error:[/bold red] Invalid JSON in --extra_body: {e}")
-            exit(1)
+        openai_models = {
+            "openai",
+            "chatgptapi",
+            "gpt4",
+            "gpt4omini",
+            "gpt4o",
+            "gpt5mini",
+            "o1preview",
+            "o1",
+            "o1mini",
+            "o3mini",
+            "xai",
+        }
+        supports_extra_body = options.model in openai_models or (
+            options.provider
+            and provider_cfg
+            and provider_cfg.get("api_style") == "openai"
+        )
+        if not supports_extra_body:
+            print(
+                f"[bold yellow]Warning:[/bold yellow] --extra_body is ignored "
+                f"by the selected {options.model or options.provider} route"
+            )
+        else:
+            try:
+                extra_body = json.loads(options.extra_body)
+                e.translate_model.extra_body = extra_body
+                print(f"[bold blue]Extra body parameters:[/bold blue] {extra_body}")
+            except json.JSONDecodeError as ex:
+                print(f"[bold red]Error:[/bold red] Invalid JSON in --extra_body: {ex}")
+                exit(1)
     # other options
     if options.sentence_mode:
         e.sentence_mode = True

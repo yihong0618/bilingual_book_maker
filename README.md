@@ -425,7 +425,9 @@ bbook_maker --book_name test_books/animal_farm.epub --openai_key ${openai_key} -
 
 - `--extra_body`:
 
-  Pass additional JSON parameters to the API. This is useful for models that support extra configuration options. Provide a JSON string with the desired parameters.
+  Pass additional JSON parameters on ChatGPT/OpenAI-derived request paths, including
+  OpenAI-style custom providers and xAI. Claude, Gemini, Qwen, Groq, and other translators
+  currently ignore this option. Provide a JSON string with the desired parameters.
 
   ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --extra_body '{"chat_template_kwargs": {"enable_thinking": false}}'
