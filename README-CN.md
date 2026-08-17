@@ -9,7 +9,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 1. ChatGPT or OpenAI token [^token]
 2. epub/txt/md books
 3. 能正常联网的环境或 proxy
-4. python3.8+
+4. Python 3.10+
 
 ## 快速开始
 
@@ -20,7 +20,7 @@ pip install -r requirements.txt
 python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 或
 pip install -U bbook_maker
-bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
+bbook_maker --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 ```
 
 ## 翻译服务
@@ -181,7 +181,7 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   | `o1mini` | `--openai_key` / `BBM_OPENAI_API_KEY` | o1-mini |
   | `o3mini` | `--openai_key` / `BBM_OPENAI_API_KEY` | o3-mini |
   | `openai` | `--openai_key` / `BBM_OPENAI_API_KEY` | **必须配合 `--model_list`**，可使用任意 OpenAI 兼容模型 |
-  | `claude-*` | `--claude_key` / `BBM_CLAUDE_API_KEY` | 前缀匹配，如 `--model claude-sonnet-4-20250514` |
+  | `claude` 及已列出的 `claude-*` ID | `--claude_key` / `BBM_CLAUDE_API_KEY` | 只接受 `--help` 展示的精确内置值；未列出的 ID 需使用 `--provider` 或 `openai` 路由 |
   | `gemini` | `--gemini_key` / `BBM_GOOGLE_GEMINI_KEY` | Gemini Flash，支持 `--model_list` 自定义 |
   | `geminipro` | `--gemini_key` / `BBM_GOOGLE_GEMINI_KEY` | Gemini Pro |
   | `groq` | `--groq_key` / `BBM_GROQ_API_KEY` | **必须配合 `--model_list`** |
@@ -199,7 +199,11 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 
 - `--test`:
 
-  如果大家没付费可以加上这个先看看效果（有 limit 稍微有些慢）
+  如果大家没付费可以加上这个先看看效果（有 limit 稍微有些慢）。
+
+- `--test_num`:
+
+  配合 `--test` 指定测试翻译的文本单元数量，默认 10。
 
 - `--language`: 指定目标语言
 
@@ -245,6 +249,12 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   # 或交给 coding agent 判断（停下、打印指引，然后重跑）
   python3 make_book.py --book_name my_book.epub --openai_key ${key} --plan-classify agent
   ```
+
+- `--exclude-translate-tags`:
+
+  指定不翻译其内部内容的 HTML 标签，多个标签用逗号分隔，默认 `sup,code`。
+  例如 `--exclude-translate-tags code,pre`；传入空字符串
+  `--exclude-translate-tags ""` 可取消默认排除。
 
 - `--book_from`
 
@@ -307,9 +317,44 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 
 - `--translation_style`:
 
-  如: `--translation_style "color: #808080; font-style: italic;"`
+  为 EPUB 译文应用完整 CSS，例如
+  `--translation_style "color: #808080; font-style: italic;"`。
 
-- `--retranslate "$translated_filepath" "file_name_in_epub" "start_str" "end_str"(optional)`:
+- `--translation_color`:
+
+  只设置 EPUB 译文颜色的快捷参数，例如 `--translation_color "#1e90ff"`。
+  如果同时传入 `--translation_style`，完整样式优先。
+
+- `--pdf_layout {none,top-bottom,side-by-side,all}`:
+
+  为 PDF 输入选择额外生成的双语 PDF 版式。默认 `none` 不额外生成 PDF；
+  `all` 会同时尝试上下对照和左右对照。双语 TXT 和 EPUB 输出不受该参数影响。
+
+- `--sentence_mode`:
+
+  将 EPUB 的每个段落拆成句子逐句翻译，而不是整段翻译。与 EPUB 计划模式不兼容。
+
+- `--batch` / `--batch-use`:
+
+  使用 ChatGPT Batch API 的两阶段 EPUB 流程。先用 `--batch` 提交任务，再以
+  `--batch-use` 重跑以等待并使用结果。二者都与计划模式不兼容。
+
+- `--interval`:
+
+  Gemini 请求间隔秒数，默认 `0.01`；其他模型路由不会使用此参数。
+
+- `--parallel-workers`:
+
+  并行处理 EPUB 章节或 Markdown 批次/分段，默认 1，建议 2–4。其他输入加载器目前
+  虽然接受这个共享参数，但不会并行执行。EPUB 的 `--use_context` 在并行模式下是
+  章节内上下文，而不是全书共享上下文。
+
+- `--quiet`:
+
+  关闭 EPUB 进度条和逐段原文/译文输出，但保留报告与错误。适合日志文件和 Agent
+  非交互运行。
+
+- `--retranslate "$translated_filepath" "file_name_in_epub" "start_str" "end_str"`:
 
   - 重新翻译，从 start_str 到 end_str 的标记:
 
@@ -317,10 +362,19 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which' 'This kind of thing is not a good symptom. Obviously'
   ```
 
-  - 重新翻译, 从start_str 的标记开始:
+  - 只重新翻译包含 `start_str` 的标签时，第四个参数传入空字符串：
 
   ```shell
-  python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which'
+  python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which' ''
+  ```
+
+- `--extra_body`:
+
+  以 JSON 字符串向 ChatGPT/OpenAI 衍生请求路径透传额外参数，包括 OpenAI 风格的
+  自定义 provider 和 xAI。Claude、Gemini、Qwen、Groq 等其他翻译器目前会忽略该参数。例如：
+
+  ```shell
+  python3 make_book.py --book_name book.epub --extra_body '{"chat_template_kwargs":{"enable_thinking":false}}'
   ```
 
 - `--provider`:
@@ -333,7 +387,7 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 
 ### 示范用例
 
-**如果使用 `pip install bbook_maker` 以下命令都可以改成 `bbook args`**
+**如果使用 `pip install bbook_maker`，以下命令都可以改成 `bbook_maker args`。**
 
 ```shell
 # 如果你想快速测一下
