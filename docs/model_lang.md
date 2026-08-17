@@ -1,125 +1,110 @@
-# Model and Languages
-## Models
-`-m, --model <Model>` <br>
+# Models and languages
 
-Currently `bbook_maker` supports these models: `chatgptapi` , `gpt3` , `google` , `caiyun` , `deepl` , `deeplfree` , `gpt4` , `gpt4omini` , `gpt5mini` , `o1-preview` , `o1` , `o1-mini` , `o3-mini` , `claude` , `customapi`.
-Default model is `chatgptapi` . 
+`book_maker/translator/__init__.py::MODEL_DICT` and `bbook_maker --help` are the source of
+truth for built-in `--model` choices. The list changes as providers add and retire models;
+do not infer a valid CLI value from a marketing model name.
 
-### OPENAI models
+## Model routing
 
-There are several models you can choose from.
+`--model` selects a built-in translator route. It is mutually exclusive with `--provider`.
 
-* gpt3
+### OpenAI-compatible routes
 
-    
+| `--model` value | Behavior |
+|---|---|
+| `chatgptapi` | Default GPT-3.5-family preset/discovery route. |
+| `gpt4` | GPT-4 preset/discovery route. |
+| `gpt4omini` | GPT-4o-mini preset. |
+| `gpt4o` | GPT-4o preset. |
+| `gpt5mini` | GPT-5-mini preset. |
+| `o1preview`, `o1`, `o1mini`, `o3mini` | Matching reasoning-model presets. |
+| `openai` | Arbitrary OpenAI-compatible model IDs; requires `--model_list`. |
 
-        bbook_maker --book_name test_books/animal_farm.epub --model gpt3 --openai_key ${openai_key}
+Use `--openai_key` or, preferably, `BBM_OPENAI_API_KEY`. `OPENAI_API_KEY` remains supported
+for backward compatibility.
 
-    
+```sh
+bbook_maker --book_name book.epub --model openai \
+  --model_list gpt-4.1-mini --language ja
+```
 
-* chatgpiapi
+An OpenAI-compatible gateway can be selected with `--api_base`. The endpoint still has to
+serve the OpenAI chat-completions request shape.
 
+### Anthropic Claude
 
-    `chatgptapi` is [GPT-3.5-turbo](https://openai.com/blog/introducing-chatgpt-and-whisper-apis), which is used by ChatGPT currently.
+`claude` selects the translator's default Claude model. Exact built-in Claude IDs are also
+accepted, including the Claude 4/4.1/4.5/4.6 entries shown by `bbook_maker --help`.
+Because argparse validates `--model`, an arbitrary `claude-*` string is **not** accepted
+unless it is in that displayed list. Use `BBM_CLAUDE_API_KEY` (or `--claude_key`).
 
-        bbook_maker --book_name test_books/animal_farm.epub --model chatgptapi --openai_key ${openai_key}
+```sh
+bbook_maker --book_name book.epub --model claude-sonnet-4-6 --language zh-hans
+```
 
-* gpt4
+For an unlisted Claude ID on a gateway, use `--provider` or an OpenAI-compatible gateway
+with `--model openai --model_list ...`.
 
-    
+### Gemini
 
-        bbook_maker --book_name test_books/animal_farm.epub --model gpt4 --openai_key ${openai_key}
+- `--model gemini`: Gemini Flash route; accepts an exact comma-separated `--model_list`.
+- `--model geminipro`: Gemini Pro preset.
+- `--interval`: Gemini request interval in seconds.
 
-    If using `gpt4` , you can add `--use_context` to add a context paragraph to each passage sent to the model for translation.
+Use `BBM_GOOGLE_GEMINI_KEY` (or `--gemini_key`).
 
-  
+### Qwen-MT
 
-            
-        bbook_maker --book_name test_books/animal_farm.epub --model gpt4 --openai_key ${openai_key} --use_context
+- `--model qwen` defaults to `qwen-mt-turbo`.
+- `--model qwen-mt-turbo` selects the faster/cheaper MT model.
+- `--model qwen-mt-plus` selects the higher-quality MT model.
+- `--source_lang` sets the source language; its default is `auto`.
 
-    The option `--use_context` prompts the GPT4 model to create a one-paragraph summary. 
+Use `BBM_QWEN_API_KEY` (or `--qwen_key`).
 
-    
+### Other built-in routes
 
-    If it is the beginning of the translation, it will summarize the entire passage sent (the size depending on `--accumulated_num` ).
+| `--model` value | Credential |
+|---|---|
+| `groq` | `BBM_GROQ_API_KEY`; requires `--model_list`. |
+| `xai` | `BBM_XAI_API_KEY`. |
+| `google` | No API key. |
+| `caiyun` | `BBM_CAIYUN_API_KEY`. |
+| `deepl` | `BBM_DEEPL_API_KEY`. |
+| `deeplfree` | No API key. |
+| `tencentransmart` | No API key. |
+| `customapi` | `BBM_CUSTOM_API` (legacy custom translator). |
 
-    
+## Custom providers
 
-    If it has any proceeding passage, it will amend the summary to include details from the most recent passage, creating a running one-paragraph context payload of the important details of the entire translated work, which improves consistency of flow and tone of each translation.
+Use `--provider NAME` for a provider declared in project-level
+`./bbm_providers.json` or global `~/.bbm/providers.json`. A provider may use the `openai`,
+`claude`, `gemini`, or `qwen` API style and can supply a base URL, default model IDs, and
+the name of its key environment variable.
 
-* gpt5mini
+```sh
+bbook_maker --book_name book.epub --provider deepseek \
+  --model_list deepseek-chat --language zh-hans
+```
 
-    `gpt5mini` uses the `gpt-5-mini` model.
+Prefer the provider's configured environment variable. `--api_key` works but exposes a
+secret in shell history and process listings.
 
-        bbook_maker --book_name test_books/animal_farm.epub --model gpt5mini --openai_key ${openai_key}
+## Ollama
 
-**Note 1: Use `--openai_key` option to specify OpenAI API key. If you have multiple keys, separate them by commas (xxx, xxx, xxx) to reduce errors caused by API call limits.**
-
-**Note 2: You can just set the environment variable `BBM_OPENAI_API_KEY` instead the openai_key. See [Environment setting](settings.md).**
-
-### CAIYUN 
-
-Using Caiyun model to translate. The api currently only support: 
-
-        
-
-1. Simplified Chinese <-> English
-2. Simplified Chinese <-> Japanese
-
-The official Caiyun has provided a test token (3975l6lr5pcbvidl6jl2). You can apply your own token by following this [tutorial].(https://bobtranslate.com/service/translate/caiyun.html)
-
-            
-    bbook_maker --model caiyun --caiyun_key 3975l6lr5pcbvidl6jl2 --book_name test_books/animal_farm.epub
-
-### DEEPL
-
-There are two models you can choose from.
-
-    
-
-* deepl: [DeepL Translator](https://rapidapi.com/splintPRO/api/dpl-translator). <br>
-
-    
-
-    Need to pay to get the token. Use `--model deepl --deepl_key ${deepl_key}`
-
-        
-
-        bbook_maker --book_name test_books/animal_farm.epub --model deepl --deepl_key ${deepl_key}
-
-        
-
-* deeplfree: DeepL free model
-
-        
-
-        bbook_maker --book_name test_books/animal_farm.epub --model deeplfree
-
-### Claude
-
-Support [Claude](https://console.anthropic.com/docs) model. Use `--model claude --claude_key ${claude_key}` .
-
-    bbook_maker --book_name test_books/animal_farm.epub --model claude --claude_key ${claude_key}
-            
-
-### Custom API
-Support CustomAPI model. Use `--model customapi --custom_api ${custom_api}` .
-
-    bbook_maker --book_name test_books/animal_farm.epub --model customapi --custom_api ${custom_api}  
-
-### Google
-
-Support google model. Use `--model google`
+`--ollama_model MODEL` uses the local OpenAI-compatible Ollama endpoint. The default base
+is `http://localhost:11434/v1`; override it with `--api_base` for a remote server.
 
 ## Languages
-`--language <LANGUAGE>` <br>
 
-Set target languages. All models except for `caiyun` supports lots of languages. You can use `bbook_maker --help` to check available languages. Default target language is `"Simplified Chinese"` .
-
-```sh
-bbook_maker --book_name test_books/animal_farm.epub --model chatgptapi --openai_key ${openai_key} --language ja
-```
+`--language LANGUAGE` sets the target language and defaults to `zh-hans`. The accepted
+choices are generated from `book_maker/utils.py`; run the installed CLI to see the current
+list:
 
 ```sh
-bbook_maker --book_name test_books/animal_farm.epub --model chatgptapi --openai_key ${openai_key} --language "Simplified Chinese"
+bbook_maker --help
+bbook_maker --book_name book.epub --model google --language ja
 ```
+
+Not every provider supports every language accepted by the common parser. Provider-specific
+translators may map or reject unsupported source/target combinations.

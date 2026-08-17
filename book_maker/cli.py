@@ -404,11 +404,10 @@ So you are close to reaching the limit. You have to choose your own value, there
         dest="retranslate",
         nargs=4,
         type=str,
-        help="""--retranslate "$translated_filepath" "file_name_in_epub" "start_str" "end_str"(optional)
-        Retranslate from start_str to end_str's tag:
-        python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which' 'This kind of thing is not a good symptom. Obviously'
-        Retranslate start_str's tag:
-        python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which'
+        help="""--retranslate "$translated_filepath" "file_name_in_epub" "start_str" "end_str"
+        Retranslate from start_str through end_str. All four arguments are required;
+        pass an empty end_str ('') to retranslate only the start_str tag, and an empty
+        file_name_in_epub ('') to find the internal filename automatically.
 """,
     )
     parser.add_argument(
@@ -456,7 +455,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         "--model_list",
         type=str,
         dest="model_list",
-        help="Rather than using our preset lists of models, specify exactly the models you want as a comma separated list `gpt-4-32k,gpt-3.5-turbo-0125` (Currently only supports: `openai`)",
+        help="Rather than using preset model lists, specify exact model IDs as a comma-separated list. Supported with --model openai, groq, or gemini, and with --provider",
     )
     parser.add_argument(
         "--batch",
@@ -481,7 +480,7 @@ So you are close to reaching the limit. You have to choose your own value, there
         dest="parallel_workers",
         type=int,
         default=1,
-        help="Number of parallel workers for EPUB chapter processing. Use 2-4 for better performance. Default: 1",
+        help="Number of parallel workers for EPUB chapters or Markdown batches/sections. Use 2-4 for better performance. Default: 1",
     )
     parser.add_argument(
         "--extra_body",
