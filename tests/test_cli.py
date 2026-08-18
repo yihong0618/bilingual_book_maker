@@ -5,6 +5,7 @@ def test_get_book_type_uses_final_suffix_and_lowercases():
     assert get_book_type("/tmp/books/source.v1.README.MD") == "md"
 
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +13,21 @@ from types import ModuleType
 
 REPO = Path(__file__).resolve().parent.parent
 BOOK = REPO / "test_books" / "animal_farm.epub"
+# tests/hermetic/sitecustomize.py swaps the `google` translator for an
+# offline one at interpreter startup. These are CLI *contract* tests — flag
+# wiring, mode selection, what gets written — and routing them through a
+# public translation endpoint made them fail on proxy errors (observed:
+# HTTP 502) and impossible to run offline at all. Live provider calls belong
+# to tests/test_integration.py, which is explicitly about talking to them.
+HERMETIC = Path(__file__).resolve().parent / "hermetic"
+
+
+def _env():
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(
+        [str(HERMETIC), env.get("PYTHONPATH", "")]
+    ).rstrip(os.pathsep)
+    return env
 
 
 def _run(tmp_path, *args):
@@ -30,6 +46,7 @@ def _run(tmp_path, *args):
         cwd=REPO,
         capture_output=True,
         text=True,
+        env=_env(),
     )
     return proc, src.parent / (src.stem + "_plan.json")
 
@@ -121,6 +138,7 @@ def test_classify_flag_rejects_non_epub_books(tmp_path):
         cwd=REPO,
         capture_output=True,
         text=True,
+        env=_env(),
     )
     assert proc.returncode == 1
     assert "epub-only" in proc.stdout

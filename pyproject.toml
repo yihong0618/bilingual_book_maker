@@ -51,3 +51,15 @@ requires = ["pdm-backend>=2.0.0"]
 build-backend = "pdm.backend"
 [tool.pdm.version]
 source = "scm"
+
+[tool.pytest.ini_options]
+markers = [
+    "live_provider: calls a real translation provider (needs keys and network; run with -m live_provider)",
+]
+# live_provider is about the network, not about scope: the CLI contract
+# tests are integration tests too, and they stay in the default run because
+# they go through an offline stand-in. What deselects here is spending real
+# quota — a bare `pytest` must not, and on a fork's CI run there is neither
+# key nor secret to spend. Asked for by name; the default selection is
+# hermetic.
+addopts = "-m 'not live_provider'"
