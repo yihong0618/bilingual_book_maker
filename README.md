@@ -7,18 +7,20 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 
 ![image](https://user-images.githubusercontent.com/15976103/222317531-a05317c5-4eee-49de-95cd-04063d9539d9.png)
 
-## Supported Models
+## Supported models
 
-gpt-5-mini, gpt-4, gpt-3.5-turbo, claude-2, palm, llama-2, azure-openai, command-nightly, gemini, qwen-mt-turbo, qwen-mt-plus
-For using Non-OpenAI models, use class `liteLLM()` - liteLLM supports all models above.
-Find more info here for using liteLLM: https://github.com/BerriAI/litellm/blob/main/setup.py
+Built-in routes include OpenAI presets and arbitrary OpenAI-compatible model IDs, current
+Claude choices, Gemini, Qwen-MT, Groq, xAI, DeepL, Google, Caiyun, and Tencent TranSmart.
+The exact `--model` choices come from the installed version, so use
+`python3 make_book.py --help`. Unlisted gateways and native-provider model IDs can be
+configured with `--provider`; see [Models and languages](./docs/model_lang.md).
 
 ## Preparation
 
 1. ChatGPT or OpenAI token [^token]
 2. epub/txt/md/pdf books
 3. Environment with internet access or proxy
-4. Python 3.8+
+4. Python 3.10+
 
 ## Quick Start
 
@@ -29,7 +31,7 @@ pip install -r requirements.txt
 python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 OR
 pip install -U bbook_maker
-bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
+bbook_maker --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 ```
 
 ## Translate Service
@@ -195,7 +197,7 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   | `o1mini` | `--openai_key` / `BBM_OPENAI_API_KEY` | o1-mini |
   | `o3mini` | `--openai_key` / `BBM_OPENAI_API_KEY` | o3-mini |
   | `openai` | `--openai_key` / `BBM_OPENAI_API_KEY` | **Requires `--model_list`**. Use any OpenAI-compatible model |
-  | `claude-*` | `--claude_key` / `BBM_CLAUDE_API_KEY` | Prefix match. e.g. `--model claude-sonnet-4-20250514` |
+  | `claude` and listed `claude-*` IDs | `--claude_key` / `BBM_CLAUDE_API_KEY` | Exact built-in choices shown by `--help`; arbitrary unlisted IDs require `--provider` or the `openai` route |
   | `gemini` | `--gemini_key` / `BBM_GOOGLE_GEMINI_KEY` | Gemini Flash. Supports `--model_list` |
   | `geminipro` | `--gemini_key` / `BBM_GOOGLE_GEMINI_KEY` | Gemini Pro |
   | `groq` | `--groq_key` / `BBM_GROQ_API_KEY` | **Requires `--model_list`** |
@@ -365,7 +367,10 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 
 - `--parallel-workers`:
 
-  Use `--parallel-workers` to enable parallel EPUB chapter processing. Values greater than `1` spin up multiple workers (recommended: `2-4`) and automatically fall back to sequential mode for single-chapter books.
+  Use `--parallel-workers` to process EPUB chapters or Markdown batches/sections in
+  parallel. Values greater than `1` spin up multiple workers (recommended: `2-4`) and
+  automatically fall back to sequential mode when there is only one unit of work. Other
+  input loaders currently accept this shared CLI option but do not parallelize their work.
 
 - `--temperature`:
 
@@ -383,9 +388,43 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
 
 - `--translation_style`:
 
-  example: `--translation_style "color: #808080; font-style: italic;"`
+  Apply custom CSS to translated EPUB text, for example
+  `--translation_style "color: #808080; font-style: italic;"`.
 
-- `--retranslate "$translated_filepath" "file_name_in_epub" "start_str" "end_str"(optional)`:
+- `--translation_color`:
+
+  Shorthand for setting only the translated EPUB text color, for example
+  `--translation_color "#1e90ff"`. If `--translation_style` is also present, the full style
+  takes precedence.
+
+- `--pdf_layout {none,top-bottom,side-by-side,all}`:
+
+  Select additional bilingual PDF outputs for PDF inputs. The default `none` creates no
+  extra PDF; `all` attempts both top-bottom and side-by-side layouts. The bilingual TXT and
+  EPUB outputs are unaffected.
+
+- `--sentence_mode`:
+
+  Translate EPUB text sentence by sentence instead of translating each paragraph as one
+  unit. It is incompatible with EPUB plan mode.
+
+- `--batch` / `--batch-use`:
+
+  Two-stage EPUB translation through the ChatGPT Batch API. First run with `--batch` to
+  submit the batch, then rerun with `--batch-use` to wait for and consume its results.
+  These flags are incompatible with plan mode.
+
+- `--interval`:
+
+  Gemini request interval in seconds (default `0.01`). It has no effect on other model
+  routes.
+
+- `--quiet`:
+
+  Suppress EPUB progress bars and per-paragraph source/translation echoes while retaining
+  reports and errors. Recommended for log files and non-interactive agent runs.
+
+- `--retranslate "$translated_filepath" "file_name_in_epub" "start_str" "end_str"`:
 
   Retranslate from start_str to end_str's tag:
 
@@ -393,15 +432,17 @@ bbook --book_name test_books/animal_farm.epub --openai_key ${openai_key} --test
   python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which' 'This kind of thing is not a good symptom. Obviously'
   ```
 
-  Retranslate start_str's tag:
+  To retranslate only the tag containing `start_str`, pass an empty fourth argument:
 
   ```shell
-  python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which'
+  python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which' ''
   ```
 
 - `--extra_body`:
 
-  Pass additional JSON parameters to the API. This is useful for models that support extra configuration options. Provide a JSON string with the desired parameters.
+  Pass additional JSON parameters on ChatGPT/OpenAI-derived request paths, including
+  OpenAI-style custom providers and xAI. Claude, Gemini, Qwen, Groq, and other translators
+  currently ignore this option. Provide a JSON string with the desired parameters.
 
   ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key} --extra_body '{"chat_template_kwargs": {"enable_thinking": false}}'

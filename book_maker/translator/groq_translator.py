@@ -29,6 +29,21 @@ class GroqClient(ChatGPTAPI):
         )
         return completion.choices[0].message.content
 
+    def set_model_list(self, model_list):
+        """Accept explicit Groq model IDs without OpenAI endpoint validation.
+
+        ChatGPTAPI's implementation lists models through its OpenAI client.
+        This subclass sends translation requests through the Groq SDK, so
+        inheriting that validation would query api.openai.com with a Groq key.
+        Groq will validate each ID on the first real request instead.
+        """
+        models = list(dict.fromkeys(m.strip() for m in model_list if m.strip()))
+        if not models:
+            raise ValueError("--model_list is empty")
+        print(f"Using model list {models}")
+        self.model_list = cycle(models)
+        self.model = models[0]
+
     def rotate_model(self):
         if not self.model_list:
             model_list = list(set(GROQ_MODEL_LIST))

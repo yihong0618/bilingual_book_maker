@@ -3,9 +3,9 @@ After successfully install the package, you can see `bbook-maker` is in the outp
 
 ## Preparation
 1. ChatGPT or OpenAI [token](https://platform.openai.com/account/api-keys)
-2. epub/txt books
+2. EPUB, TXT, Markdown, SRT, or PDF input
 3. Environment with internet access or proxy
-4. Python 3.8+
+4. Python 3.10+
 
 ## Use
 You can use by command `bbook_maker`. A sample book, `test_books/animal_farm.epub`, is provided for testing purposes.
@@ -23,7 +23,11 @@ python3 make_book.py --book_name ${path of a book} --openai_key ${openai_key}
 python3 make_book.py --book_name test_books/animal_farm.epub --openai_key ${openai_key}
 ```
 
-Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated.
+The output extension depends on the input loader. EPUB inputs produce
+`${book_name}_bilingual.epub`; TXT, Markdown, and SRT use their corresponding text/subtitle
+formats. PDF inputs always keep a bilingual TXT fallback and also attempt an EPUB, with
+optional PDF layouts selected by `--pdf_layout`.
 
-
-**Note: If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`. A book named `${book_name}_bilingual_temp.epub` would be generated. You can simply rename it to any desired name.**
+Use `--resume` after an interruption. Loader-specific temporary output and checkpoint files
+are generated beside the source; do not rename a partial result as complete without checking
+it.
