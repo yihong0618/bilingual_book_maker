@@ -94,6 +94,16 @@ bbook_maker --book_name test_books/animal_farm.epub --openai_key ${openai_key} -
   python3 make_book.py --book_name test_books/animal_farm.epub --model xai --xai_key ${xai_key}
   ```
 
+* [OrcaRouter](https://www.orcarouter.ai)
+
+  支持 [OrcaRouter](https://www.orcarouter.ai) 网关，默认使用 `orcarouter/auto` 智能路由模型。
+  它在同一端点上为 AI 代理提供网关级的零信任安全——默认拒绝地筛查每个 prompt/response
+  并管控每个工具调用，无需改任何应用代码。
+
+  ```shell
+  python3 make_book.py --book_name test_books/animal_farm.epub --model orcarouter --orcarouter_key ${orcarouter_key}
+  ```
+
 * [Ollama](https://github.com/ollama/ollama)
 
   使用 [Ollama](https://github.com/ollama/ollama) 自托管模型进行翻译。

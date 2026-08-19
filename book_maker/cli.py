@@ -193,6 +193,14 @@ def main():
         help="You can get xAI Key from  https://console.x.ai/",
     )
 
+    # for OrcaRouter
+    parser.add_argument(
+        "--orcarouter_key",
+        dest="orcarouter_key",
+        type=str,
+        help="You can get OrcaRouter Key from  https://www.orcarouter.ai",
+    )
+
     # for Qwen
     parser.add_argument(
         "--qwen_key",
@@ -651,6 +659,10 @@ So you are close to reaching the limit. You have to choose your own value, there
         API_KEY = options.groq_key or env.get("BBM_GROQ_API_KEY")
     elif options.model == "xai":
         API_KEY = options.xai_key or env.get("BBM_XAI_API_KEY")
+    elif options.model == "orcarouter":
+        API_KEY = options.orcarouter_key or env.get("BBM_ORCAROUTER_API_KEY")
+        if not API_KEY:
+            raise Exception("Please provide orcarouter key")
     elif options.model and options.model.startswith("qwen"):
         # "qwen" itself is a MODEL_DICT choice; matching only "qwen-" left it
         # with an empty key, so the documented alias could never authenticate.
@@ -726,6 +738,7 @@ So you are close to reaching the limit. You have to choose your own value, there
             "o1mini",
             "o3mini",
             "xai",
+            "orcarouter",
         }
         supports_extra_body = options.model in openai_models or (
             options.provider

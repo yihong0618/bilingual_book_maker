@@ -75,6 +75,7 @@ sections after it provide additional notes for selected workflows.
 | `--gemini_key KEY` | Gemini key; prefer `BBM_GOOGLE_GEMINI_KEY`. |
 | `--groq_key KEY` | Groq key; prefer `BBM_GROQ_API_KEY`. |
 | `--xai_key KEY` | xAI key; prefer `BBM_XAI_API_KEY`. |
+| `--orcarouter_key KEY` | OrcaRouter key; prefer `BBM_ORCAROUTER_API_KEY`. |
 | `--qwen_key KEY` | Qwen key; prefer `BBM_QWEN_API_KEY`. |
 | `--deepl_key KEY` | DeepL key; prefer `BBM_DEEPL_API_KEY`. |
 | `--caiyun_key KEY` | Caiyun key; prefer `BBM_CAIYUN_API_KEY`. |

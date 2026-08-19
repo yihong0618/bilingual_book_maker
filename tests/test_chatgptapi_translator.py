@@ -561,6 +561,29 @@ def test_groq_never_probes_for_structured_outputs():
 
 
 # --------------------------------------------------------------------------
+# OrcaRouter: named OpenAI-compatible gateway route
+# --------------------------------------------------------------------------
+
+
+def test_orcarouter_uses_orca_endpoint_and_default_model():
+    from book_maker.translator.orcarouter_translator import OrcaRouterTranslator
+
+    translator = OrcaRouterTranslator("sk-orca-test", "Chinese")
+    assert translator.api_base == "https://api.orcarouter.ai/v1"
+    assert translator.openai_client.base_url == "https://api.orcarouter.ai/v1/"
+    translator.rotate_model()
+    assert translator.model == "orcarouter/auto"
+
+
+def test_orcarouter_honors_custom_api_base():
+    from book_maker.translator.orcarouter_translator import OrcaRouterTranslator
+
+    translator = OrcaRouterTranslator("sk-orca-test", "Chinese", api_base="http://proxy.local/v1")
+    assert translator.api_base == "http://proxy.local/v1"
+    assert translator.openai_client.base_url == "http://proxy.local/v1/"
+
+
+# --------------------------------------------------------------------------
 # Item 6: temperature must not be forced onto models that only accept their
 # default, and a temperature 400 must not be blamed on the JSON schema
 # --------------------------------------------------------------------------

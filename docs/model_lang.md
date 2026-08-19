@@ -68,6 +68,7 @@ Use `BBM_QWEN_API_KEY` (or `--qwen_key`).
 |---|---|
 | `groq` | `BBM_GROQ_API_KEY`; requires `--model_list`. |
 | `xai` | `BBM_XAI_API_KEY`. |
+| `orcarouter` | `BBM_ORCAROUTER_API_KEY`. Defaults to the `orcarouter/auto` smart-routing model; override the endpoint with `--api_base https://api.orcarouter.ai/v1`. |
 | `google` | No API key. |
 | `caiyun` | `BBM_CAIYUN_API_KEY`. |
 | `deepl` | `BBM_DEEPL_API_KEY`. |
