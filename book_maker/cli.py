@@ -8,6 +8,7 @@ from rich import print
 from rich.markup import escape
 
 from book_maker.loader import BOOK_LOADER_DICT
+from book_maker.loader.ledger import PlanLedgerError
 from book_maker.translator import MODEL_DICT
 from book_maker.provider_loader import get_provider, get_translator_class
 from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE
@@ -919,7 +920,15 @@ So you are close to reaching the limit. You have to choose your own value, there
                     "Provider has no default_models. Please provide --model_list"
                 )
 
-    e.make_bilingual_book()
+    try:
+        e.make_bilingual_book()
+    except PlanLedgerError as err:
+        # The plan JSON is the one file this workflow asks a person (or an
+        # agent) to hand-edit, so its lint errors are the failure a user is
+        # most likely to see — print them like every other plan failure,
+        # not as a traceback.
+        print(f"[bold red]{escape(str(err))}[/bold red]")
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

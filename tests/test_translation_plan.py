@@ -1227,6 +1227,43 @@ class TestEpubHardening:
         assert "かんじ" not in soup.get_text()
         assert "It is kanji." in soup.get_text()
 
+    def test_single_translate_leaves_no_empty_ruby_husk(self, tmp_path):
+        # RSC-005 "element ruby incomplete": the annotation used to be
+        # extracted *after* the husk cleanup had already inspected the
+        # wrapper, so a <ruby> that lost its base text kept its <rt> just
+        # long enough to be spared, then lost that too — 1,892 empty
+        # <ruby></ruby> on kusamakura, every one a file epubcheck rejects.
+        loader, _ = _make_loader(tmp_path, FakeModel)
+        soup = bs(
+            "<body><p><span><ruby>山路<rt>やまみち</rt></ruby>"
+            "<ruby>登<rt>のぼ</rt></ruby></span>りながら。</p></body>",
+            "html.parser",
+        )
+        fp = partition_soup(soup, DisplayResolver([]), "x.html")
+        loader._insert_plan_translation(
+            fp.units[0], "Climbing the mountain path.", single_translate=True
+        )
+        assert soup.find("ruby") is None
+        assert soup.find("rt") is None
+        assert "Climbing the mountain path." in soup.get_text()
+
+    def test_single_translate_cleans_husks_on_the_covered_path_too(self, tmp_path):
+        # the same husk, other branch: when the wrapper covers the whole run
+        # the translation replaces nodes[0] in place, and the later nodes'
+        # rubies used to be extracted with no cleanup at all
+        loader, _ = _make_loader(tmp_path, FakeModel)
+        soup = bs(
+            "<body><p><span><ruby>山<rt>やま</rt></ruby>"
+            "<ruby>路<rt>みち</rt></ruby></span></p></body>",
+            "html.parser",
+        )
+        fp = partition_soup(soup, DisplayResolver([]), "x.html")
+        loader._insert_plan_translation(
+            fp.units[0], "Mountain path.", single_translate=True
+        )
+        assert soup.find("ruby") is None
+        assert "Mountain path." in soup.get_text()
+
     def test_single_translate_keeps_a_wrapper_holding_a_link_target(self, tmp_path):
         # <span> is an emptied husk, but the <a id> inside it is the target
         # of every cross-reference to this chapter. Deleting the wrapper

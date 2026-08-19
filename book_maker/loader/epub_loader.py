@@ -36,6 +36,7 @@ from .helper import (
     is_text_link,
     make_tag,
     not_trans,
+    rebase_ncx_srcs,
     shorter_result_link,
     strip_duplicate_ids,
 )
@@ -44,20 +45,13 @@ from .plan import (
     BookCss,
     TranslationPlan,
     UnsafeSingleTranslateError,
-    file_sha256,
-    is_fixed_layout,
-    load_plan_overrides,
     file_segment_hazards,
+    file_sha256,
     inline_subtree_root,
+    is_fixed_layout,
     is_simple_owner,
+    load_plan_overrides,
     partition_file,
-)
-
-# Inline elements that mean something without holding text: a link target,
-# an image, a line break. Emptying a wrapper is a reason to delete it; these
-# were never wrappers.
-_KEEP_WHEN_EMPTY = frozenset(
-    ["img", "br", "hr", "svg", "input", "video", "audio", "object", "iframe"]
 )
 from .classify import (
     PlanClassifyError,
@@ -66,6 +60,13 @@ from .classify import (
     classify_plan,
     decide_everything,
     mode_policy,
+)
+
+# Inline elements that mean something without holding text: a link target,
+# an image, a line break. Emptying a wrapper is a reason to delete it; these
+# were never wrappers.
+_KEEP_WHEN_EMPTY = frozenset(
+    ["img", "br", "hr", "svg", "input", "video", "audio", "object", "iframe"]
 )
 
 
@@ -191,7 +192,8 @@ class EPUBBookLoader(BaseBookLoader):
             for item in obj.book.get_items():
                 if isinstance(item, epub.EpubNcx):
                     obj.out.writestr(
-                        "%s/%s" % (obj.book.FOLDER_NAME, item.file_name), obj._get_ncx()
+                        "%s/%s" % (obj.book.FOLDER_NAME, item.file_name),
+                        rebase_ncx_srcs(obj._get_ncx(), item.file_name),
                     )
                 elif isinstance(item, epub.EpubNav):
                     # ebooklib regenerates every EpubNav from book.toc by
@@ -532,7 +534,7 @@ class EPUBBookLoader(BaseBookLoader):
             decisions = self._classify_plan(ledger, plan, plan_path)
             for key, (verdict, content_type) in decisions.items():
                 ledger.decide(key, verdict, "llm", content_type)
-            skips = {k: v for k, v in ledger.skip_keys().items()}
+            skips = ledger.skip_keys()
             print(
                 f"llm classification: {len(decisions)} verdict(s), "
                 f"{len(skips)} skip(s)"
@@ -900,19 +902,30 @@ class EPUBBookLoader(BaseBookLoader):
             return
         if single_translate and unit.nodes:
             # Ruby annotations of text that is about to disappear would
-            # survive as orphaned furigana next to non-Japanese text — collect
-            # the <ruby> wrappers of owned nodes before replacing them.
-            rubies = []
+            # survive as orphaned furigana next to non-Japanese text. The
+            # wrapper goes with them, *before* the translation is written:
+            # EPUB's schema has no annotationless <ruby> — the element
+            # requires an rt/rtc after its base (RSC-005 "element ruby
+            # incomplete"), so both a <ruby></ruby> husk and a
+            # <ruby>translation</ruby> are files epubcheck rejects
+            # (1,897 findings on kusamakura between them). Attributes ride
+            # on into a <span>: an id here is a link target the book still
+            # needs, and unwrap() would drop it.
+            rubies = {}
             for node in unit.nodes:
                 for ancestor in node.parents:
                     if ancestor is unit.element:
                         break
                     if ancestor.name == "ruby":
-                        rubies.append(ancestor)
-            self._write_single_translation(unit, t_text, {id(n) for n in unit.nodes})
-            for ruby in rubies:
+                        rubies[id(ancestor)] = ancestor
+            for ruby in rubies.values():
                 for annotation in ruby.find_all(["rt", "rp", "rtc"]):
                     annotation.extract()
+                if ruby.attrs:
+                    ruby.name = "span"
+                else:
+                    ruby.unwrap()
+            self._write_single_translation(unit, t_text)
         elif has_restricted_content_model(unit.element):
             self._append_inline_translation(unit, t_text, translation_style)
         elif unit.resolver is not None and (
@@ -951,6 +964,20 @@ class EPUBBookLoader(BaseBookLoader):
         unit.nodes[-1].insert_after(span)
 
     @staticmethod
+    def _markup_covers_run(markup, owned):
+        """Does `markup` hold this run's text and nothing else of the book's?
+
+        The question both insertion paths turn on: a tag that covers the
+        whole run can carry the translation (as a clone, or by replacement),
+        while one covering only part of it must not — handing a whole
+        sentence a fragment's styling is what makes an <a> swallow the
+        sentence into a link, or a drop-cap <span> into its first letter.
+        """
+        return isinstance(markup, Tag) and owned <= {
+            id(n) for n in markup.descendants if isinstance(n, NavigableString)
+        }
+
+    @staticmethod
     def _insert_anchored_translation(unit, t_text, translation_style=""):
         """Append a translation next to the run it translates.
 
@@ -968,10 +995,7 @@ class EPUBBookLoader(BaseBookLoader):
         the hazard `_write_single_translation` documents.
         """
         tail = inline_subtree_root(unit.nodes[-1], unit.resolver)
-        owned = {id(n) for n in unit.nodes}
-        if isinstance(tail, Tag) and owned <= {
-            id(n) for n in tail.descendants if isinstance(n, NavigableString)
-        }:
+        if EPUBBookLoader._markup_covers_run(tail, {id(n) for n in unit.nodes}):
             span = copy(tail)
             span.clear()
             # a translated copy is a second rendering, not a second anchor
@@ -988,7 +1012,7 @@ class EPUBBookLoader(BaseBookLoader):
         line_break.insert_after(span)
 
     @staticmethod
-    def _write_single_translation(unit, t_text, owned):
+    def _write_single_translation(unit, t_text):
         """Put a segment's translation where the segment was.
 
         The translation replaces the first owned node *only when the markup
@@ -1004,30 +1028,44 @@ class EPUBBookLoader(BaseBookLoader):
         container = unit.nodes[0]
         if unit.resolver is not None:
             container = inline_subtree_root(unit.nodes[0], unit.resolver)
-        covers_segment = isinstance(container, Tag) and owned <= {
-            id(n) for n in container.descendants if isinstance(n, NavigableString)
-        }
-        if covers_segment:
+        if EPUBBookLoader._markup_covers_run(container, {id(n) for n in unit.nodes}):
+            # Wrappers of the *later* nodes empty here just as they do on the
+            # anchored path below: a run of several <ruby> bases keeps only
+            # its first position, and the other bases' now-annotationless
+            # rubies would survive as <ruby></ruby> — a file epubcheck
+            # rejects (RSC-005 "element ruby incomplete", 53 on kusamakura).
+            emptied = EPUBBookLoader._collect_wrappers(unit.nodes[1:], unit.element)
             unit.nodes[0].replace_with(NavigableString(t_text))
             for node in unit.nodes[1:]:
                 node.extract()
+            EPUBBookLoader._remove_emptied_wrappers(emptied)
             return
 
         anchor = container if isinstance(container, Tag) else unit.nodes[0]
         # only wrappers *we* empty are ours to remove: an already-empty
         # <a id="…"> is a link target the book still needs
-        emptied = {}
+        emptied = EPUBBookLoader._collect_wrappers(unit.nodes, unit.element)
+        anchor.insert_before(NavigableString(t_text))
         for node in unit.nodes:
+            node.extract()
+        EPUBBookLoader._remove_emptied_wrappers(emptied)
+
+    @staticmethod
+    def _collect_wrappers(nodes, stop):
+        """The inline ancestors these nodes are about to leave empty,
+        outermost first, each once."""
+        emptied = {}
+        for node in nodes:
             for ancestor in node.parents:
-                if ancestor is unit.element:
+                if ancestor is stop:
                     break
                 # by identity: the same wrapper holds several owned nodes,
                 # and visiting it twice would decompose an already-gone tag
                 emptied[id(ancestor)] = ancestor
-        emptied = list(emptied.values())
-        anchor.insert_before(NavigableString(t_text))
-        for node in unit.nodes:
-            node.extract()
+        return list(emptied.values())
+
+    @staticmethod
+    def _remove_emptied_wrappers(emptied):
         # depth-first so an inner wrapper is gone before its parent is judged
         for element in reversed(emptied):
             if element.parent is None or element.attrs is None:
@@ -2307,9 +2345,11 @@ class EPUBBookLoader(BaseBookLoader):
             # --exclude_filelist, or simply holding nothing to translate —
             # goes into the book exactly as it came, without a parse and
             # serialize round-trip it has no reason to pay for.
-            output_plans = [plan for plan in chapter_plans if plan.jobs]
+            output_plans = []
             for plan in chapter_plans:
-                if not plan.jobs:
+                if plan.jobs:
+                    output_plans.append(plan)
+                else:
                     new_book.add_item(plan.item)
 
             if self.enable_parallel and len(output_plans) > 1:
@@ -2512,6 +2552,8 @@ class EPUBBookLoader(BaseBookLoader):
             raise Exception("can not load resume file")
 
     def _save_temp_book(self):
+        name, _ = os.path.splitext(self.epub_name)
+        temp_path = f"{name}_bilingual_temp.epub"
         origin_book_temp = epub.read_epub(self.epub_name)
         new_temp_book = self._make_new_book(origin_book_temp)
         trans_taglist = self.translate_tags.split(",")
@@ -2554,16 +2596,14 @@ class EPUBBookLoader(BaseBookLoader):
                             )
                     item.content = chapter_plan.soup.encode()
                 new_temp_book.add_item(item)
-            name, _ = os.path.splitext(self.epub_name)
-            epub.write_epub(f"{name}_bilingual_temp.epub", new_temp_book, {})
+            epub.write_epub(temp_path, new_temp_book, {})
         except Exception as e:
             # The recovery book is the only artifact a crashed run leaves
             # behind. Swallowing this told the user nothing and they found
             # out at the next --resume, with no temp book to show.
             print(
                 f"[bold red]could not write the recovery book "
-                f"{os.path.splitext(self.epub_name)[0]}_bilingual_temp.epub: "
-                f"{e}[/bold red]"
+                f"{temp_path}: {e}[/bold red]"
             )
             raise
 

@@ -1,3 +1,4 @@
+import posixpath
 import re
 import backoff
 import logging
@@ -6,6 +7,7 @@ from copy import copy
 
 from bs4.element import Tag
 from ebooklib import epub
+from lxml import etree
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
@@ -54,6 +56,30 @@ def derive_translation_identity(new_book, source_book, *facets):
     seed = "|".join(["bbook-maker", str(uid), *[str(f) for f in facets]])
     new_book.set_identifier(str(uuid.uuid5(uuid.NAMESPACE_URL, seed)))
     return new_book.IDENTIFIER_ID
+
+
+def rebase_ncx_srcs(ncx_bytes, ncx_path):
+    """Make a regenerated NCX's links resolve from where the NCX actually is.
+
+    ebooklib's `_get_ncx()` writes navpoint srcs as item file_names — paths
+    relative to the OPF root, which is the only place its own `EpubNcx()`
+    ever lives. A book that keeps its NCX in a subdirectory (kusamakura:
+    `xhtml/toc.ncx`) gets every src doubled on resolution
+    (`xhtml/xhtml/…` — epubcheck RSC-007, a dead EPUB 2 table of contents),
+    because the writer keeps the imported location but not its coordinate
+    system. Step each src out of that directory instead. Root-located NCX
+    bytes pass through untouched.
+    """
+    base = posixpath.dirname(ncx_path)
+    if not base:
+        return ncx_bytes
+    tree = etree.fromstring(ncx_bytes)
+    for el in tree.iter("{http://www.daisy.org/z3986/2005/ncx/}content"):
+        src = el.get("src") or ""
+        path, sep, frag = src.partition("#")
+        if path and "://" not in path and not path.startswith("/"):
+            el.set("src", posixpath.relpath(path, base) + sep + frag)
+    return etree.tostring(tree, xml_declaration=True, encoding="utf-8")
 
 
 def backfill_toc_hrefs(toc):

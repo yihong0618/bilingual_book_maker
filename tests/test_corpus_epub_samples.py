@@ -16,6 +16,8 @@ cost money and judgment, and neither belongs in a unit-test run.
 
 import json
 import os
+import posixpath
+import re
 import shutil
 import subprocess
 import sys
@@ -48,6 +50,15 @@ ROUND_TRIP_BOOKS = [
     "mahabharata.epub",  # verse directly under <body>
     "jlreq-in-english.epub",  # table-heavy, vertical writing
     "childrens-literature.epub",  # rich OPF metadata, clean source
+    "wasteland.epub",  # non-default package prefix (cc:) used by a <meta
+    # property> — the OPF-028 class 20 of the 45 books could show. The one
+    # other prefix-bearing book here (mahabharata) only uses cc: via a
+    # <link rel> a separate rule drops, so without this book the gate
+    # cannot see the deliberate prefix drop at all.
+    "kusamakura-japanese-vertical-writing.epub",  # NCX in a subdirectory
+    # (xhtml/toc.ncx) — the regenerated NCX must rebase its srcs to that
+    # location or every EPUB 2 TOC link is dead (RSC-007); also a second
+    # prefix name (foaf:) for the OPF-028 class.
 ]
 
 # Findings the package rewrite is *known* to introduce, pinned exactly, per
@@ -60,10 +71,23 @@ ROUND_TRIP_BOOKS = [
 KNOWN_PACKAGE_FINDINGS = {
     "childrens-literature.epub": Counter(
         {
-            'RSC-005: Error while parsing file: Duplicate "id"': 2,
             "OPF-014: The property "
             '"scripted" should be declared in the OPF file.': 1,
-            "RSC-010: Reference to non-standard resource type found.": 1,
+        }
+    ),
+    # The deliberate package-prefix drop (see
+    # docs/260813-fix-PR554_PACKAGE_DOCUMENT_AND_INLINE_BR.md) orphans the
+    # cc: property this book's metadata uses. Restoring prefix preservation
+    # makes this pin stale and the gate red — by design.
+    "wasteland.epub": Counter(
+        {
+            'OPF-028: Undeclared prefix: "cc".': 1,
+        }
+    ),
+    # same prefix drop, different prefix: six foaf: meta properties
+    "kusamakura-japanese-vertical-writing.epub": Counter(
+        {
+            'OPF-028: Undeclared prefix: "foaf".': 6,
         }
     ),
 }
@@ -346,6 +370,23 @@ def test_round_trip_produces_a_valid_book(book_name, single, tmp_path):
             assert (
                 len(soup.find_all("body")) <= 1
             ), f"{book_name}/{name} has more than one <body>"
+        # The EPUB 2 fallback TOC must point at files that exist. Checked
+        # structurally, not left to the epubcheck diff: the NCX is
+        # regenerated with OPF-root-relative srcs, so a book that keeps its
+        # NCX in a subdirectory needs them rebased (kusamakura), and a
+        # source book with its own broken links must not absorb ours.
+        for name in z.namelist():
+            if not name.endswith(".ncx"):
+                continue
+            base = posixpath.dirname(name)
+            for src in re.findall(r'src="([^"#]*)', z.read(name).decode("utf-8")):
+                if not src or "://" in src or src.startswith("/"):
+                    continue
+                target = posixpath.normpath(posixpath.join(base, src))
+                assert target in z.namelist(), (
+                    f"{book_name}/{name} NCX links to {src!r} -> {target}, "
+                    f"which is not in the book"
+                )
 
     _assert_epubcheck_clean(source, out, book_name)
 

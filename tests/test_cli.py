@@ -5,6 +5,7 @@ def test_get_book_type_uses_final_suffix_and_lowercases():
     assert get_book_type("/tmp/books/source.v1.README.MD") == "md"
 
 
+import json
 import os
 import subprocess
 import sys
@@ -121,6 +122,25 @@ def test_plan_dry_run_writes_a_fresh_plan(tmp_path):
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert plan.exists()
     assert "plan written to" in proc.stdout
+
+
+def test_a_corrupted_plan_fails_clean_not_with_a_traceback(tmp_path):
+    # the plan JSON is the one file this workflow asks a person to hand-edit,
+    # so its lint failure is the error a user is most likely to meet. All four
+    # corruption classes already fail correctly (exit 1, before any API call,
+    # accurate message) — this pins the *presentation*: the ledger's own
+    # words, not an 18-line Python traceback.
+    proc, plan = _run(tmp_path, "--plan-classify", "agent")
+    assert plan.exists()
+    data = json.loads(plan.read_text())
+    data["signatures"][0]["action"] = "translate-everything"
+    plan.write_text(json.dumps(data))
+    proc, _ = _run(tmp_path, "--plan-classify", "agent")
+    assert proc.returncode == 1
+    assert "Traceback" not in proc.stderr
+    flat = " ".join(proc.stdout.split())
+    assert "invalid row" in flat
+    assert "invalid action" in flat
 
 
 def test_classify_flag_rejects_non_epub_books(tmp_path):
