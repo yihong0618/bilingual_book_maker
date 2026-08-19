@@ -164,8 +164,10 @@ def lint_verdicts(result, candidates):
     for cand in candidates:
         key = cand["key"]
         entry = result.get(key)
-        verdict = entry.get("verdict") if isinstance(entry, dict) else None
-        content_type = entry.get("content_type") if isinstance(entry, dict) else None
+        if not isinstance(entry, dict):
+            entry = {}
+        verdict = entry.get("verdict")
+        content_type = entry.get("content_type")
         if not isinstance(content_type, str) or not content_type.strip():
             content_type = None
         if verdict in VERDICTS and content_type:

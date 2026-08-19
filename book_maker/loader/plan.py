@@ -31,8 +31,8 @@ job now (see the classify package and --plan-classify).
 """
 
 import hashlib
-import json
 import os
+import posixpath
 import re
 import statistics
 from collections import Counter
@@ -53,13 +53,11 @@ from ebooklib import ITEM_DOCUMENT
 
 from .helper import is_pure_url
 from .ledger import (
-    PLAN_SCHEMA_VERSION,
-    SAMPLE_MAX_CHARS,
-    SIGNATURE_SAMPLE_CAP,
+    # re-exported: the plan file's schema version is this module's API too —
+    # callers ask .plan about the plan, not about its storage layer
+    PLAN_SCHEMA_VERSION,  # noqa: F401
     VALID_ACTIONS,
     Ledger,
-    PlanLedgerError,
-    clip_sample,
     make_key,
 )
 
@@ -68,8 +66,6 @@ from .ledger import (
 # the user's decision. Schema 4 has exactly two, plus null for "not yet
 # decided": who decided lives in `decided_by`, not inside the action.
 VALID_PLAN_ACTIONS = VALID_ACTIONS
-
-__all_reexported__ = (PLAN_SCHEMA_VERSION, SIGNATURE_SAMPLE_CAP, SAMPLE_MAX_CHARS)
 
 
 # --------------------------------------------------------------------- CSS
@@ -399,10 +395,9 @@ class DisplayResolver:
         """
         found = []
         tag = element.name
+        classes = element.get("class") or []
         for key in (
-            [(tag, c) for c in (element.get("class") or [])]
-            + [(None, c) for c in (element.get("class") or [])]
-            + [(tag, None)]
+            [(tag, c) for c in classes] + [(None, c) for c in classes] + [(tag, None)]
         ):
             for condition in self.conditional.get(key, ()):
                 if condition not in found:
@@ -708,6 +703,31 @@ def _iter_owner_events(owner, owned_ids, resolver):
 
     Text under a descendant block belongs to another owner and is not
     yielded at all; crossing one only records a barrier.
+
+    ``barrier`` is what makes two owned runs *non-adjacent in the rendered
+    document*, so one translation written across both would land in the
+    wrong place. Three kinds:
+
+    ``block``    a descendant block element — its text belongs to another
+                 owner and renders between these two runs;
+    ``skipped``  a retained node that renders between them without being in
+                 either one (skip-classified visible text, an excluded
+                 <code>, a rendered void like <img>);
+    ``br``       a line break outside <pre>.
+
+    Whitespace-only text never forms a barrier: it is glue, and gluing is
+    exactly what keeps words apart across inline tags.
+
+    Inline *markup* boundaries are deliberately not barriers. Splitting
+    ``See <a href="ch3">chapter 3</a> for details.`` into three would
+    fragment prose at every cross-reference — common in exactly the
+    reference books this mode exists for — and each fragment translates
+    worse than the sentence. Placement is solved instead by the insertion
+    container rule; the cost is that single-translate mode cannot keep
+    inline link markup *inside* a rewritten sentence (bilingual mode keeps
+    the original, links and all). Preserving it needs the placeholder
+    protocol the 260811 review ranked highest-complexity and did not
+    recommend for v1.
     """
     state = {"pending": None}
 
@@ -755,39 +775,6 @@ def _iter_owner_events(owner, owned_ids, resolver):
                 yield "invisible", child, None
 
     yield from walk(owner)
-
-
-def _iter_owned_with_barriers(owner, owned_ids, resolver):
-    """Yield ``(text_node, barrier_kind_or_None)`` for an owner's own text.
-
-    A barrier is what makes two owned runs *non-adjacent in the rendered
-    document*, so one translation written across both would land in the
-    wrong place. Three kinds:
-
-    ``block``    a descendant block element — its text belongs to another
-                 owner and renders between these two runs;
-    ``skipped``  a retained node that renders between them without being in
-                 either one (skip-classified visible text, an excluded
-                 <code>, a rendered void like <img>);
-    ``br``       a line break outside <pre>.
-
-    Whitespace-only text never forms a barrier: it is glue, and gluing is
-    exactly what keeps words apart across inline tags.
-
-    Inline *markup* boundaries are deliberately not barriers. Splitting
-    ``See <a href="ch3">chapter 3</a> for details.`` into three requests
-    would fragment prose at every cross-reference — common in exactly the
-    reference books this mode exists for — and each fragment translates
-    worse than the sentence. Placement is solved instead by the insertion
-    container rule; the cost is that single-translate mode cannot keep
-    inline link markup *inside* a rewritten sentence (bilingual mode keeps
-    the original, links and all). Preserving it needs the placeholder
-    protocol the 260811 review ranked highest-complexity and did not
-    recommend for v1.
-    """
-    for kind, node, barrier in _iter_owner_events(owner, owned_ids, resolver):
-        if kind == "owned":
-            yield node, barrier
 
 
 def _owner_segments(owner, owned_ids, resolver):
@@ -984,43 +971,6 @@ def file_segment_hazards(fp):
                 yield unit, ["noncontiguous"]
 
 
-def single_translate_hazards(unit, resolver):
-    """Why this unit's translation cannot be written where its text is.
-
-    One condition that no insertion rule can repair:
-
-    ``noncontiguous``  something renders between the unit's own runs, so no
-                       single position in the document holds all of it.
-
-    That is a segmentation failure, and the invariant checker for it: every
-    run of all 45 sample books must report ``[]``. Everything else the flat
-    model got wrong is an *insertion* problem with an insertion fix —
-    partial inline markup around a contiguous run (a drop-cap span, an <a>
-    covering half a sentence) is handled by the container rule, and a
-    <body> owner is handled by anchoring instead of cloning.
-
-    ``body-host`` used to be listed here. It was a real hazard when a
-    body-owned "unit" meant a whole chapter flattened into one string with
-    nowhere to put it; a body-owned *run* is one line, anchored after its
-    own markup, and `is_simple_owner` keeps <body> out of the clone path.
-    """
-    hazards = []
-    nodes = unit.nodes or []
-    if len(nodes) < 2:
-        # nothing can render *between* a single node and itself, and most
-        # runs are one node — checking them would re-walk the owner's whole
-        # subtree once per unit, which is quadratic on chapter-sized owners
-        return hazards
-    owned_ids = {id(n) for n in nodes}
-    # A barrier *before* the first node separates this run from a previous
-    # one — that is what made them separate runs. Only a barrier between two
-    # of this unit's own nodes means the unit spans something.
-    inner = list(_iter_owned_with_barriers(unit.element, owned_ids, resolver))[1:]
-    if any(barrier is not None for _node, barrier in inner):
-        hazards.append("noncontiguous")
-    return hazards
-
-
 def _classed_inline_ancestors(node, owner):
     """Inline elements between a text node and its owner that carry a class.
 
@@ -1209,8 +1159,9 @@ def partition_soup(
     if overrides:
         kept = []
         for unit in fp.units:
-            if _action_of(overrides.get(unit.key)) == "skip":
-                fp.skipped[_skip_reason(overrides.get(unit.key))] += unit.chars
+            decision = overrides.get(unit.key)
+            if _action_of(decision) == "skip":
+                fp.skipped[_skip_reason(decision)] += unit.chars
             else:
                 kept.append(unit)
         fp.units = kept
@@ -1255,6 +1206,13 @@ def assign_context_windows(units, group_size=8, next_group_id=0):
     parent change, or recurrence of a minority "stanza head" class
     (calibre_14 in Animal Farm) — capped at `group_size` lines.
     Returns the next unused group id.
+
+    Stanza-shaped windows are the only grouping. A second tier that swept
+    leftover short units into windows was measured across four real books at
+    5-33 saved requests each (0.5-4%) — not worth its window-membership
+    nondeterminism, and it caused the tier-2/poetry classification
+    conflation bug. Removed; the classifier judges short apparatus
+    signature-by-signature instead.
     """
     runs = []
     current = []
@@ -1304,21 +1262,6 @@ def assign_context_windows(units, group_size=8, next_group_id=0):
     return next_group_id
 
 
-def assign_groups(units, group_size=8, next_group_id=0):
-    """Group units into batched requests. Returns the next unused id.
-
-    Stanza-shaped windows only. A second tier that swept leftover short
-    units into windows was measured across four real books at 5-33 saved
-    requests each (0.5-4%) — not worth its window-membership
-    nondeterminism, and it caused the tier-2/poetry classification
-    conflation bug. Removed; the classifier judges short apparatus
-    signature-by-signature instead.
-    """
-    return assign_context_windows(
-        units, group_size=group_size, next_group_id=next_group_id
-    )
-
-
 def partition_file(
     soup,
     resolver,
@@ -1332,7 +1275,7 @@ def partition_file(
     fp = partition_soup(
         soup, resolver, file_name, exclude_tags=exclude_tags, overrides=overrides
     )
-    next_group_id = assign_groups(
+    next_group_id = assign_context_windows(
         fp.units, group_size=poetry_group_size, next_group_id=next_group_id
     )
     return fp, next_group_id
@@ -1420,6 +1363,7 @@ class TranslationPlan:
         for f in self.files:
             for u in f.units:
                 translated[u.key] += u.chars
+        translated_keys = set(translated)
         for key, row in ledger.rows.items():
             if row["action"] is None:
                 # No action has been applied, so nothing has happened to this
@@ -1443,7 +1387,7 @@ class TranslationPlan:
                 # the one record an auditor reads.
                 row["disposition"] = (
                     "translated with its block"
-                    if ledger.parents_of(key) & set(translated)
+                    if ledger.parents_of(key) & translated_keys
                     else "not translated: every block holding it was skipped"
                 )
             else:
@@ -1519,8 +1463,9 @@ def file_sha256(path):
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
-    _SHA256_CACHE[key] = h.hexdigest()
-    return _SHA256_CACHE[key]
+    digest = h.hexdigest()
+    _SHA256_CACHE[key] = digest
+    return digest
 
 
 def load_plan_overrides(json_path, book_path):
@@ -1561,9 +1506,6 @@ class BookCss:
     """
 
     def __init__(self, book):
-        import posixpath
-
-        self._posixpath = posixpath
         self.by_path = {}
         for item in book.get_items():
             name = getattr(item, "file_name", "") or ""
@@ -1582,7 +1524,6 @@ class BookCss:
         return DisplayResolver([m[0] for m in maps], [m[1] for m in maps])
 
     def resolver_for(self, file_name, soup):
-        posixpath = self._posixpath
         base = posixpath.dirname(file_name)
         maps = []
         for link in soup.find_all("link"):

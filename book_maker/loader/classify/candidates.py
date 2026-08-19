@@ -19,4 +19,4 @@ def gather_candidates(ledger):
     the list, and the rows that matter most should never be the ones a
     budget cuts. Nothing is dropped here.
     """
-    return [row for row in ledger.rows.values() if row["action"] is None]
+    return [ledger.rows[key] for key in ledger.undecided_keys()]
