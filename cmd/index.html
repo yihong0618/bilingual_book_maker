@@ -1,0 +1,1461 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+        <link rel="prev" href="../model_lang/">
+      
+      
+        <link rel="next" href="../book_source/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Command line options - bilingual book maker</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#command-line-options" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="bilingual book maker" class="md-header__button md-logo" aria-label="bilingual book maker" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            bilingual book maker
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Command line options
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../installation/" class="md-tabs__link">
+          
+  
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../model_lang/" class="md-tabs__link">
+          
+  
+  
+  Usage
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../disclaimer/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Disclaimer
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="bilingual book maker" class="md-nav__button md-logo" aria-label="bilingual book maker" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    bilingual book maker
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QuickStart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../model_lang/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model and languages
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Command line options
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Command line options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#complete-option-inventory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete option inventory
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Complete option inventory">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#input-scope-and-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Input, scope, and output
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#epub-plan-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EPUB plan mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#translation-and-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Translation and execution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#model-routing-and-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model routing and credentials
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-translate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test translate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resume
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retranslate-epub-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retranslate (epub only)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#customize-output-style-epub-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Customize output style (epub only)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#proxy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Proxy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api-base" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API base
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#microsoft-azure-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Microsoft Azure Endpoints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#batch-size-txt-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Batch size (txt only)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accumulated-num" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accumulated Num
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../book_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Translate from different source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../env_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Environment setting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../prompt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tweak the prompt
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../disclaimer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Disclaimer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#complete-option-inventory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete option inventory
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Complete option inventory">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#input-scope-and-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Input, scope, and output
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#epub-plan-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EPUB plan mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#translation-and-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Translation and execution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#model-routing-and-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model routing and credentials
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-translate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test translate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resume
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retranslate-epub-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retranslate (epub only)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#customize-output-style-epub-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Customize output style (epub only)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#proxy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Proxy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api-base" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API base
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#microsoft-azure-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Microsoft Azure Endpoints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#batch-size-txt-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Batch size (txt only)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accumulated-num" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accumulated Num
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="command-line-options">Command Line Options</h1>
+<p><code>book_maker/cli.py</code> and <code>python3 make_book.py --help</code> are the runtime source of truth.
+The inventory below is checked against every long option registered with <code>argparse</code>; the
+sections after it provide additional notes for selected workflows.</p>
+<h2 id="complete-option-inventory">Complete option inventory</h2>
+<h3 id="input-scope-and-output">Input, scope, and output</h3>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--book_name PATH</code></td>
+<td>Input EPUB, TXT, Markdown, SRT, or PDF path (required).</td>
+</tr>
+<tr>
+<td><code>--book_from kobo</code></td>
+<td>Import from a Kobo device instead of a normal source path.</td>
+</tr>
+<tr>
+<td><code>--device_path PATH</code></td>
+<td>Kobo mount path used with <code>--book_from</code>.</td>
+</tr>
+<tr>
+<td><code>--language LANGUAGE</code></td>
+<td>Target language; default <code>zh-hans</code>.</td>
+</tr>
+<tr>
+<td><code>--source_lang LANGUAGE</code></td>
+<td>Source language for models such as Qwen; default <code>auto</code>.</td>
+</tr>
+<tr>
+<td><code>--single_translate</code></td>
+<td>Output translation only instead of bilingual text.</td>
+</tr>
+<tr>
+<td><code>--translate-tags TAGS</code></td>
+<td>Comma-separated EPUB tags; default <code>p</code>, ignored in plan mode.</td>
+</tr>
+<tr>
+<td><code>--exclude-translate-tags TAGS</code></td>
+<td>EPUB ancestor tags to exclude; default <code>sup,code</code>; <code>""</code> clears it.</td>
+</tr>
+<tr>
+<td><code>--allow_navigable_strings</code></td>
+<td>Include otherwise untagged EPUB strings; redundant in plan mode.</td>
+</tr>
+<tr>
+<td><code>--only_filelist FILES</code></td>
+<td>Include only these comma-separated internal EPUB files.</td>
+</tr>
+<tr>
+<td><code>--exclude_filelist FILES</code></td>
+<td>Exclude these comma-separated internal EPUB files.</td>
+</tr>
+<tr>
+<td><code>--translation_style CSS</code></td>
+<td>CSS applied to translated EPUB entries.</td>
+</tr>
+<tr>
+<td><code>--translation_color COLOR</code></td>
+<td>Color-only shorthand; <code>--translation_style</code> takes precedence.</td>
+</tr>
+<tr>
+<td><code>--pdf_layout MODE</code></td>
+<td>Additional PDF output: <code>none</code>, <code>top-bottom</code>, <code>side-by-side</code>, or <code>all</code>.</td>
+</tr>
+<tr>
+<td><code>--retranslate OUT FILE START END</code></td>
+<td>Retranslate an EPUB range in an existing output.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="epub-plan-mode">EPUB plan mode</h3>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--plan-dry-run</code></td>
+<td>Build/report a free EPUB plan and exit.</td>
+</tr>
+<tr>
+<td><code>--plan-classify {none,most,model,agent}</code></td>
+<td>Select no plan, greedy plan, model triage, or coding-agent triage.</td>
+</tr>
+<tr>
+<td><code>--plan-classify-model MODEL</code></td>
+<td>Classification model; implies model mode and conflicts with <code>most</code>/<code>agent</code>.</td>
+</tr>
+<tr>
+<td><code>--plan-min-coverage FRACTION</code></td>
+<td>Fail if selected planned text is below this fraction; default <code>0.5</code>.</td>
+</tr>
+<tr>
+<td><code>--poetry-group-size N</code></td>
+<td>Maximum verse lines per planned translation request; default <code>8</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="translation-and-execution">Translation and execution</h3>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--test</code></td>
+<td>Translate only a preview sample.</td>
+</tr>
+<tr>
+<td><code>--test_num N</code></td>
+<td>Number of test units; default <code>10</code>.</td>
+</tr>
+<tr>
+<td><code>--resume</code></td>
+<td>Continue from the loader's saved checkpoint.</td>
+</tr>
+<tr>
+<td><code>--prompt VALUE_OR_FILE</code></td>
+<td>User/system prompt template; the user template requires <code>{text}</code>.</td>
+</tr>
+<tr>
+<td><code>--temperature FLOAT</code></td>
+<td>Sampling temperature; default <code>1.0</code>.</td>
+</tr>
+<tr>
+<td><code>--use_context</code></td>
+<td>Send an evolving narrative context with compatible translators.</td>
+</tr>
+<tr>
+<td><code>--context_paragraph_limit N</code></td>
+<td>Context history limit used with <code>--use_context</code>. Parser default <code>0</code> means the translator default (3 paragraphs for ChatGPT), not zero history.</td>
+</tr>
+<tr>
+<td><code>--accumulated_num N</code></td>
+<td>EPUB token/character accumulation and SRT subtitle-block character batching (capped at 512 for SRT); ignored in EPUB plan mode.</td>
+</tr>
+<tr>
+<td><code>--batch_size N</code></td>
+<td>Aggregated unit count for loaders that support it.</td>
+</tr>
+<tr>
+<td><code>--block_size N</code></td>
+<td>Merge paragraphs into delimiter-translated blocks.</td>
+</tr>
+<tr>
+<td><code>--sentence_mode</code></td>
+<td>Translate EPUB paragraphs sentence by sentence; incompatible with plan mode.</td>
+</tr>
+<tr>
+<td><code>--parallel-workers N</code></td>
+<td>Parallel EPUB chapters or Markdown batches/sections; default <code>1</code>.</td>
+</tr>
+<tr>
+<td><code>--batch</code></td>
+<td>Submit an EPUB ChatGPT Batch API job; incompatible with plan mode.</td>
+</tr>
+<tr>
+<td><code>--batch-use</code></td>
+<td>Consume a previously submitted batch job; incompatible with plan mode.</td>
+</tr>
+<tr>
+<td><code>--interval SECONDS</code></td>
+<td>Gemini request interval; default <code>0.01</code>.</td>
+</tr>
+<tr>
+<td><code>--extra_body JSON</code></td>
+<td>Extra request fields for ChatGPT/OpenAI-derived request paths (including OpenAI-style custom providers and xAI); other translators such as Claude, Gemini, Qwen, and Groq ignore it.</td>
+</tr>
+<tr>
+<td><code>--quiet</code></td>
+<td>Suppress EPUB progress bars and paragraph echoes, not reports/errors.</td>
+</tr>
+<tr>
+<td><code>--proxy URL</code></td>
+<td>Set HTTP/HTTPS proxy environment variables for the run.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="model-routing-and-credentials">Model routing and credentials</h3>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--model MODEL</code> / <code>-m MODEL</code></td>
+<td>Built-in translator route. Mutually exclusive with <code>--provider</code>.</td>
+</tr>
+<tr>
+<td><code>--model_list IDS</code></td>
+<td>Exact comma-separated IDs for OpenAI, Groq, Gemini, or a custom provider.</td>
+</tr>
+<tr>
+<td><code>--provider NAME</code></td>
+<td>Provider from project/global <code>bbm_providers.json</code>; conflicts with <code>--model</code>.</td>
+</tr>
+<tr>
+<td><code>--api_key KEY</code></td>
+<td>Custom-provider key; prefer its configured environment variable.</td>
+</tr>
+<tr>
+<td><code>--api_base URL</code></td>
+<td>Override the selected translator endpoint.</td>
+</tr>
+<tr>
+<td><code>--deployment_id ID</code></td>
+<td>Azure OpenAI deployment; also requires <code>--api_base</code>.</td>
+</tr>
+<tr>
+<td><code>--ollama_model MODEL</code></td>
+<td>Ollama model; defaults its endpoint to <code>http://localhost:11434/v1</code>.</td>
+</tr>
+<tr>
+<td><code>--openai_key KEY</code></td>
+<td>OpenAI-compatible key; prefer <code>BBM_OPENAI_API_KEY</code>.</td>
+</tr>
+<tr>
+<td><code>--claude_key KEY</code></td>
+<td>Anthropic key; prefer <code>BBM_CLAUDE_API_KEY</code>.</td>
+</tr>
+<tr>
+<td><code>--gemini_key KEY</code></td>
+<td>Gemini key; prefer <code>BBM_GOOGLE_GEMINI_KEY</code>.</td>
+</tr>
+<tr>
+<td><code>--groq_key KEY</code></td>
+<td>Groq key; prefer <code>BBM_GROQ_API_KEY</code>.</td>
+</tr>
+<tr>
+<td><code>--xai_key KEY</code></td>
+<td>xAI key; prefer <code>BBM_XAI_API_KEY</code>.</td>
+</tr>
+<tr>
+<td><code>--orcarouter_key KEY</code></td>
+<td>OrcaRouter key; prefer <code>BBM_ORCAROUTER_API_KEY</code>.</td>
+</tr>
+<tr>
+<td><code>--qwen_key KEY</code></td>
+<td>Qwen key; prefer <code>BBM_QWEN_API_KEY</code>.</td>
+</tr>
+<tr>
+<td><code>--deepl_key KEY</code></td>
+<td>DeepL key; prefer <code>BBM_DEEPL_API_KEY</code>.</td>
+</tr>
+<tr>
+<td><code>--caiyun_key KEY</code></td>
+<td>Caiyun key; prefer <code>BBM_CAIYUN_API_KEY</code>.</td>
+</tr>
+<tr>
+<td><code>--custom_api VALUE</code></td>
+<td>Legacy custom translator API; prefer <code>BBM_CUSTOM_API</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Do not put secrets directly on a shared command line. Environment variables are safer for
+agent and CI use. The CLI does <strong>not</strong> load <code>.env</code> files itself: export the variables first,
+or source a local git-ignored file before running, for example
+<code>set -a; source .env; set +a; bbook_maker ...</code>.</p>
+<h2 id="test-translate">Test translate</h2>
+<p><code>--test</code> <br></p>
+<p>Use this option to preview the result if you haven't paid for the service or just want to test. Note that there is a limit and it may take some time.</p>
+<pre><code class="language-sh">bbook_maker --book_name test_books/Lex_Fridman_episode_322.srt --openai_key ${openai_key}  --test
+</code></pre>
+<pre><code class="language-sh">bbook_maker --book_name test_books/animal_farm.epub --openai_key ${openai_key}  --test --language zh-hans
+</code></pre>
+<p><code>--test_num &lt;TEST_NUM&gt;</code><br></p>
+<p>Use this option to set how many paragraph you want to translate for testing. Default is 10.</p>
+<h2 id="resume">Resume</h2>
+<p><code>--resume</code> <br></p>
+<p>Use this option to manually resume the process after an interruption.</p>
+<h2 id="retranslate-epub-only">Retranslate (epub only)</h2>
+<p><code>--retranslate &lt;translated_filepath&gt; &lt;file_name_in_epub&gt; &lt;start_str&gt; &lt;end_str&gt;</code><br></p>
+<p>If a file in an EPUB is not translated well, this re-translates part of it separately.
+Argparse requires all four values. Use an empty <code>end_str</code> to retranslate only the starting
+tag; an empty <code>file_name_in_epub</code> enables automatic filename lookup.</p>
+<ul>
+<li>
+<p>Retranslate from start_str to end_str's tag:</p>
+<pre><code>bbook_maker --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which' 'This kind of thing is not a good symptom. Obviously'
+</code></pre>
+</li>
+<li>
+<p>Retranslate the <code>start_str</code> tag (empty fourth value):</p>
+<pre><code>bbook_maker --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which' ''
+</code></pre>
+</li>
+<li>
+<p>Retranslate the <code>start_str</code> tag and auto-find the filename (empty second and fourth values):</p>
+<pre><code>bbook_maker --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' '' 'in spite of the present book shortage which' ''
+</code></pre>
+</li>
+</ul>
+<p><strong>Warning:</strong></p>
+<p><strong>It deletes from the tag at start_str of the finished book to the next tag at end_str, and then re-translates.</strong></p>
+<p><strong>Therefore, make sure the tag after <code>end_str</code> is translated content. When <code>end_str</code> is an empty string, the tag after <code>start_str</code> is used. There can be missing translations between the two strings, but a non-translated end boundary will cause problems.</strong></p>
+<h2 id="customize-output-style-epub-only">Customize output style (epub only)</h2>
+<p><code>--translation_style &lt;TRANSLATION_STYLE&gt;</code><br></p>
+<p>Support changing the output style of epub files.</p>
+<pre><code>bbook_maker --book_name test_books/animal_farm.epub --translation_style "color: #4a4a4a; font-style: normal; background-color: #f7f7f7; padding: 5px; margin: 10px 0; border-radius: 5px;"
+</code></pre>
+<p><img alt="output_style" src="https://user-images.githubusercontent.com/89069008/226104545-7c029bb1-5325-46d4-a1eb-ec4e7bbaee97.png" /></p>
+<h2 id="proxy">Proxy</h2>
+<p><code>--proxy &lt;PROXY&gt;</code> <br></p>
+<p>Use this option to specify proxy server for internet access. Enter a string such as <code>http://127.0.0.1:7890</code> .</p>
+<h2 id="api-base">API base</h2>
+<p><code>--api_base &lt;API_BASE_URL&gt;</code><br></p>
+<p>If you want to change api_base like using Cloudflare Workers, use this option to support it.<br></p>
+<pre><code>bbook_maker --book_name 'animal_farm.epub' --openai_key sk-XXXXX --api_base 'https://xxxxx/v1'
+</code></pre>
+<p><strong>Note: the api url should be '<code>https://xxxx/v1</code>'. Quotation marks are required.</strong></p>
+<h2 id="microsoft-azure-endpoints">Microsoft Azure Endpoints</h2>
+<p><code>--api_base &lt;API_BASE_URL&gt;</code> <code>--deployment_id &lt;DEPLOYMENT_ID&gt;</code><br></p>
+<p>You can use the api endpoint provided from Microsoft.</p>
+<pre><code>bbook_maker --book_name 'animal_farm.epub' --openai_key XXXXX --api_base 'https://example-endpoint.openai.azure.com' --deployment_id 'deployment-name'
+</code></pre>
+<p><strong>Note : Current only support chatgptapi model for deployment_id. And <code>api_base</code> must be provided when using <code>deployment_id</code>. You can check <a href="https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/create-resource?pivots=web-portal">here</a> for more information about <code>deployment_id</code>.</strong></p>
+<h2 id="batch-size-txt-only">Batch size (txt only)</h2>
+<p><code>--batch_size</code><br></p>
+<p>Use this parameter to specify the number of lines for batch translation. Default is 10. (Currently only effective for txt files).</p>
+<pre><code class="language-sh">python3 make_book.py --book_name test_books/the_little_prince.txt --test --batch_size 20
+</code></pre>
+<h2 id="accumulated-num">Accumulated Num</h2>
+<p><code>--accumulated_num &lt;ACCUMULATED_NUM&gt;</code><br></p>
+<p>Wait for how many tokens have been accumulated before starting the translation. gpt3.5 limits the total_token to 4090. </p>
+<p>For example, if you use --accumulated_num 1600, maybe openai will
+output 2200 tokens and maybe 200 tokens for other messages in the system messages user messages. 1600+2200+200=4000, so you are close to the limit. </p>
+<p>You have to choose your own
+value, there is no way to tell if the limit is reached before sending request.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
