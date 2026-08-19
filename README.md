@@ -10,7 +10,7 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 ## Supported models
 
 Built-in routes include OpenAI presets and arbitrary OpenAI-compatible model IDs, current
-Claude choices, Gemini, Qwen-MT, Groq, xAI, DeepL, Google, Caiyun, and Tencent TranSmart.
+Claude choices, Gemini, Qwen-MT, Groq, xAI, OrcaRouter, DeepL, Google, Caiyun, and Tencent TranSmart.
 The exact `--model` choices come from the installed version, so use
 `python3 make_book.py --help`. Unlisted gateways and native-provider model IDs can be
 configured with `--provider`; see [Models and languages](./docs/model_lang.md).
@@ -110,6 +110,17 @@ bbook_maker --book_name test_books/animal_farm.epub --openai_key ${openai_key} -
   python3 make_book.py --book_name test_books/animal_farm.epub --model xai --xai_key ${xai_key}
   ```
 
+* [OrcaRouter](https://www.orcarouter.ai)
+
+  Support [OrcaRouter](https://www.orcarouter.ai) gateway, defaulting to the
+  `orcarouter/auto` smart-routing model. It also runs gateway-level, zero-trust
+  security for AI agents on the same endpoint — screening every prompt/response and
+  governing every tool call on a default-deny basis, with no application code changes.
+
+  ```shell
+  python3 make_book.py --book_name test_books/animal_farm.epub --model orcarouter --orcarouter_key ${orcarouter_key}
+  ```
+
 * [Ollama](https://github.com/ollama/ollama)
 
   Support [Ollama](https://github.com/ollama/ollama) self-host models,
@@ -202,6 +213,7 @@ bbook_maker --book_name test_books/animal_farm.epub --openai_key ${openai_key} -
   | `geminipro` | `--gemini_key` / `BBM_GOOGLE_GEMINI_KEY` | Gemini Pro |
   | `groq` | `--groq_key` / `BBM_GROQ_API_KEY` | **Requires `--model_list`** |
   | `xai` | `--xai_key` / `BBM_XAI_API_KEY` | Grok |
+  | `orcarouter` | `--orcarouter_key` / `BBM_ORCAROUTER_API_KEY` | OrcaRouter smart routing; defaults to `orcarouter/auto` |
   | `qwen-mt-turbo` | `--qwen_key` / `BBM_QWEN_API_KEY` | Qwen fast translation model |
   | `qwen-mt-plus` | `--qwen_key` / `BBM_QWEN_API_KEY` | Qwen high-quality translation model |
   | `google` | N/A | Free. No API key needed |
