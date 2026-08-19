@@ -6,6 +6,13 @@ from pathlib import Path
 
 import pytest
 
+# every test here shells out to a real provider: live network, real keys,
+# real quota. Deselected from the default run and asked for by name. The
+# marker names the network dependency, not the test's scope — the CLI
+# contract tests are integration tests too and stay in the default run,
+# because they translate through an offline stand-in.
+pytestmark = pytest.mark.live_provider
+
 
 @pytest.fixture()
 def test_book_dir() -> str:

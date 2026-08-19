@@ -1,9 +1,26 @@
+import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
 fitz = pytest.importorskip("fitz")
+
+# Same offline stand-in test_cli.py uses: tests/hermetic/sitecustomize.py
+# swaps the `google` translator at interpreter startup. This test is about
+# what the CLI writes for a PDF input, not about translation quality, and
+# routing it through the public endpoint made it fail whenever that endpoint
+# rate-limited the run — the flake the retry wrapper exists to paper over.
+HERMETIC = Path(__file__).resolve().parent / "hermetic"
+
+
+def _env():
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(
+        [str(HERMETIC), env.get("PYTHONPATH", "")]
+    ).rstrip(os.pathsep)
+    return env
 
 
 def test_pdf_cli_creates_txt_and_optional_epub(tmp_path):
@@ -27,11 +44,15 @@ def test_pdf_cli_creates_txt_and_optional_epub(tmp_path):
             "google",
         ],
         check=True,
+        env=_env(),
     )
 
     txt_out = tmp_path / "cli_test_bilingual.txt"
     assert txt_out.exists()
     assert txt_out.stat().st_size > 0
+    # the stand-in's marker: proof the CLI wrote a *translation*, which a
+    # size check alone never established
+    assert "[offline]" in txt_out.read_text(encoding="utf-8")
 
     # if ebooklib is installed, an epub should be created
     try:

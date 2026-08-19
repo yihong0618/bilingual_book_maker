@@ -42,6 +42,17 @@ jobs:
         run: |
             pip install .
 
+      # The default selection is hermetic — no network, no keys, no fixtures
+      # beyond test_books/ — so it runs on every PR, including forks, which
+      # receive none of the secrets the provider steps below depend on. It
+      # runs first because it is the fast, deterministic signal: ~40s, versus
+      # the live translation calls below. The live-provider suite deselects
+      # itself by marker (see pyproject.toml).
+      - name: Run the test suite
+        run: |
+            pip install pytest
+            pytest -q
+
       # The free Google endpoint rate-limits back-to-back runs from CI
       # runners. A failed run now exits nonzero instead of masking the
       # failure, so the known-transient refusals need a real retry here.
