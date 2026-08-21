@@ -21,7 +21,34 @@ VERDICTS = ["translate", "skip", "unsure"]
 
 
 class PlanClassifyError(Exception):
-    """The translator cannot produce a usable verdict."""
+    """The translator cannot produce a usable verdict.
+
+    `fatal` marks the failures that dividing or retrying cannot help —
+    auth, quota, a model that does not exist. Those abort the whole run at
+    once instead of repeating the same rejection for every page.
+    """
+
+    fatal = False
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        # Per instance, never class-level: a dict on the class is shared by
+        # every exception ever raised, so one failure's evidence would leak
+        # into the next run's.
+        #
+        # {key: content_type} for rows a verdict *named* without ruling on
+        # them. An "unsure" is a refusal to decide, not a refusal to look,
+        # and the name it produced is evidence worth keeping across a later
+        # failure — losing it means paying for the same look again.
+        self.considered = {}
+        # {key: verdict} answered before the failure, carried out through the
+        # recursion so a page's other answers survive one signature nobody
+        # can settle. Same principle as `considered`, one level up.
+        self.verdicts = {}
+
+
+class PlanClassifyFatal(PlanClassifyError):
+    fatal = True
 
 
 def build_schema(candidates):
@@ -39,11 +66,9 @@ def build_schema(candidates):
         "schema": {
             "type": "object",
             "properties": {
-                c["signature"]: {
+                c["key"]: {
                     "type": "object",
-                    "description": (
-                        f'Classification of the "{c["signature"]}" samples'
-                    ),
+                    "description": (f'Classification of the "{c["key"]}" samples'),
                     "properties": {
                         "content_type": {
                             "type": "string",
@@ -70,7 +95,7 @@ def build_schema(candidates):
                 }
                 for c in candidates
             },
-            "required": [c["signature"] for c in candidates],
+            "required": [c["key"] for c in candidates],
             "additionalProperties": False,
         },
     }
@@ -80,7 +105,7 @@ def build_prompt(candidates):
     # No current-verdict labels: the model judges the content cold instead
     # of anchoring on what the plan already decided.
     lines = [
-        "You are preparing a bilingual EPUB. For each HTML tag signature "
+        "You are preparing a bilingual EPUB. For each content signature "
         "below, decide whether it is better to translate its text or keep "
         "it as is.",
         'Answer "translate" for book content a reader wants translated: '
@@ -88,59 +113,101 @@ def build_prompt(candidates):
         'Answer "skip" for text to keep as is: running heads, page or line '
         "numbers, manuscript sigla, cross-reference labels, publisher "
         "boilerplate, decorative markers.",
-        'Answer "unsure" if the samples do not settle it.',
+        'Answer "unsure" only if the samples genuinely do not settle it. '
+        "When they are merely thin, prefer translate: translating something "
+        "unnecessary is cheap, losing content is not.",
+        "If the samples show more than one kind of content, answer "
+        "translate — a signature verdict applies to every occurrence, and "
+        "there is no per-occurrence override.",
+        'A "block:" signature is a block of text of that shape. An '
+        '"inline:" signature is markup *inside* a sentence; skipping it '
+        "leaves its text in place, untranslated, and splits the sentence "
+        "around it — so skip one only when it is genuinely apparatus.",
         "",
     ]
     for i, c in enumerate(candidates, 1):
-        lines.append(f'{i}. "{c["signature"]}" ({c["units"]} occurrence(s)):')
-        for s in c["samples"]:
-            lines.append(f"   Sample: {s}")
+        head = (
+            f'{i}. "{c["key"]}" — {c["units"]} occurrence(s), '
+            f'{c["chars"]} chars ({c.get("pct", 0)}% of the book), '
+            f'mean {c.get("mean_chars", 0)} chars'
+        )
+        lines.append(head)
+        for parent in c.get("parents") or []:
+            lines.append(f'   Appears inside: {parent["key"]} ({parent["units"]})')
+        for condition in c.get("conditional_css") or []:
+            lines.append(f"   Hidden by CSS only under: {condition}")
+        for sample in c["samples"]:
+            lines.append(f"   Sample: {sample}")
     return "\n".join(lines)
 
 
 def lint_verdicts(result, candidates):
-    """Normalize a raw response into ({signature: verdict}, answered).
+    """Normalize a raw response into ({key: (verdict, content_type)}, answered).
 
     No rung can guarantee the schema was applied, so every field is untrusted
-    here rather than at the use site: a missing signature, a non-dict entry,
-    or a verdict outside the enum all become "unsure" — the one verdict that
-    changes nothing.
+    here rather than at the use site: a missing key, a non-dict entry, a
+    verdict outside the enum, or an empty content_type all become "unsure" —
+    the one verdict that changes nothing on its own.
 
-    The second return value is which signatures were *genuinely answered*.
-    Without it a coerced "unsure" is indistinguishable from a deliberate one,
-    and that is how a page of echoed schema (see `unwrap_schema_echo`) passed
-    silently for twelve considered answers. Callers, not the linter, decide
-    what to do about the difference.
+    A legal verdict with no content_type counts as *unanswered*. The field
+    exists to make the model name what it is looking at before ruling on it;
+    a reply that skipped the naming did not do the reasoning the schema asked
+    for, and treating it as considered is how an echoed schema once passed
+    for twelve answers.
+
+    The second return value is which keys were genuinely answered. Without
+    it a coerced "unsure" is indistinguishable from a deliberate one.
     """
     if not isinstance(result, dict):
         raise PlanClassifyError(f"malformed classification response: {result!r}")
     verdicts, answered = {}, set()
     for cand in candidates:
-        signature = cand["signature"]
-        entry = result.get(signature)
-        verdict = entry.get("verdict") if isinstance(entry, dict) else None
-        if verdict in VERDICTS:
-            verdicts[signature] = verdict
-            answered.add(signature)
+        key = cand["key"]
+        entry = result.get(key)
+        if not isinstance(entry, dict):
+            entry = {}
+        verdict = entry.get("verdict")
+        content_type = entry.get("content_type")
+        if not isinstance(content_type, str) or not content_type.strip():
+            content_type = None
+        if verdict in VERDICTS and content_type:
+            verdicts[key] = (verdict, content_type.strip())
+            answered.add(key)
         else:
-            verdicts[signature] = "unsure"
+            verdicts[key] = ("unsure", content_type)
     return verdicts, answered
 
 
-def verdict_actions(verdicts):
-    """Verdicts -> signature actions; only confident changes make one.
+def verdict_decisions(verdicts):
+    """Verdicts -> ledger decisions.
 
-    Under greedy partitioning every candidate is already planned for
-    translation, so only an affirmative "skip" changes anything; "translate"
-    and "unsure" leave the plan alone.
+    Every verdict is recorded, not only the ones that change what gets
+    translated. An affirmative "translate" is the model saying it looked and
+    agreed; schema 3 stored nothing for it, so agreement and silence were
+    the same bytes on disk and a plan could not be audited at all.
+
+    "unsure" stays undecided on purpose: it is the model refusing to answer,
+    and the run stops to let a person or an agent answer instead.
     """
-    return {sig: "llm-skip" for sig, verdict in verdicts.items() if verdict == "skip"}
+    return {
+        key: (verdict, content_type)
+        for key, (verdict, content_type) in verdicts.items()
+        if verdict in ("translate", "skip")
+    }
 
 
-def merge_verdicts(result, candidates):
-    """One raw response -> the actions it justifies."""
-    verdicts, _ = lint_verdicts(result, candidates)
-    return verdict_actions(verdicts)
+def verdict_names(verdicts):
+    """``{key: content_type}`` for every row a verdict *named*.
+
+    Includes the "unsure" ones, which `verdict_decisions` drops because they
+    change nothing about what gets translated. The name is still evidence:
+    it says the model looked, and what it thought it was looking at.
+    """
+    return {
+        key: content_type
+        for key, (_verdict, content_type) in verdicts.items()
+        if content_type
+    }
 
 
 def _pages(candidates, size=PAGE_SIZE):
@@ -185,7 +252,7 @@ class _Budget:
     def charge(self):
         self.requests += 1
         if self.requests > self.cap:
-            raise PlanClassifyError(
+            raise PlanClassifyFatal(
                 f"classification exceeded its request budget "
                 f"({self.cap}); refusing to keep spending"
             )
@@ -209,7 +276,7 @@ def _ask_page(structured, page, model):
     except Exception as e:
         # Auth, quota, transport, a model that does not exist: dividing cannot
         # help and would multiply the failure by the page count.
-        raise PlanClassifyError(f"classification request failed: {e}") from e
+        raise PlanClassifyFatal(f"classification request failed: {e}") from e
     return result, None
 
 
@@ -228,51 +295,103 @@ def _resolve(structured, page, model, budget):
         verdicts, answered = lint_verdicts(result, page)
 
     resolved = {sig: v for sig, v in verdicts.items() if sig in answered}
-    unanswered = [c for c in page if c["signature"] not in answered]
+    unanswered = [c for c in page if c["key"] not in answered]
     if not unanswered:
         return resolved
 
     if len(page) == 1:
         raise PlanClassifyError(
-            f"'{page[0]['signature']}' could not be classified: "
+            f"'{page[0]['key']}' could not be classified: "
             f"{note or 'no legal verdict in the reply'}"
         )
 
     budget.splits += 1
+    failures = []
     for part in _split(page, unanswered):
-        resolved.update(_resolve(structured, part, model, budget))
+        try:
+            resolved.update(_resolve(structured, part, model, budget))
+        except PlanClassifyError as e:
+            # A branch that failed may still have answered some of what it
+            # was asked before it got stuck. Those answers were requested,
+            # paid for and linted; unwinding past them buys them again next
+            # run — and buys nothing at all if the same row fails again.
+            resolved.update(e.verdicts)
+            if e.fatal:
+                e.verdicts = dict(resolved)
+                raise
+            failures.append(str(e))
+    if failures:
+        error = PlanClassifyError("; ".join(failures))
+        error.verdicts = dict(resolved)
+        raise error
     return resolved
 
 
-def classify_plan(plan, translator, overrides=None, model=None):
-    """Ask the translator about every uncertain signature, one page at a time.
+class PlanUnresolvedError(PlanClassifyError):
+    """Classification finished without a verdict for every question.
 
-    Returns ({signature: action}, candidates). Raises PlanClassifyError when
-    some signature cannot be classified at all — the caller owns the policy
-    (an explicitly chosen classifier model blocks, the default degrades with a
-    notice).
+    A subclass of PlanClassifyError: not deciding *is* a classification
+    failure, and callers that only care that classification did not
+    succeed keep working unchanged.
 
-    A plan that comes back is *fully* answered: every "unsure" in it is the
-    model's own verdict, never a coercion artifact. That is the property the
-    original all-or-nothing page rule was reaching for, restored without
-    throwing away eleven good verdicts because the twelfth came back garbled.
+    Carries what *was* obtained so the caller can persist a partial ledger
+    and hand the remainder to a person or an agent, rather than throwing
+    away paid-for answers and silently translating with defaults.
     """
-    candidates = gather_candidates(plan, overrides)
+
+    def __init__(
+        self, message, resolved=None, unresolved=None, rows=None, considered=None
+    ):
+        super().__init__(message)
+        self.resolved = resolved or {}
+        self.unresolved = list(unresolved or [])
+        self.rows = list(rows or [])
+        self.considered = dict(considered or {})
+
+
+def classify_plan(ledger, translator, model=None):
+    """Ask the translator about every undecided row, one page at a time.
+
+    Returns ``({key: (verdict, content_type)}, candidates)``. Every answer is
+    recorded, including affirmative "translate" ones.
+
+    Raises PlanUnresolvedError when some row cannot be decided at all — with
+    the answers already obtained attached, because the caller's job is to
+    save them and stop, not to discard them and guess.
+    """
+    candidates = gather_candidates(ledger)
     if not candidates:
         return {}, []
     structured = _structured_json(translator)
 
     pages = list(_pages(candidates))
     if len(pages) > 1:
-        print(
-            f"classifying {len(candidates)} uncertain signature(s) "
-            f"in {len(pages)} requests"
-        )
+        print(f"classifying {len(candidates)} signature(s) in {len(pages)} requests")
 
     budget = _Budget(len(candidates))
     verdicts = {}
+    failed = []
     for page in pages:
-        verdicts.update(_resolve(structured, page, model, budget))
+        try:
+            verdicts.update(_resolve(structured, page, model, budget))
+        except PlanClassifyError as e:
+            # whatever this page did answer before it got stuck
+            verdicts.update(e.verdicts)
+            failed.append(str(e))
+            if e.fatal:
+                # auth, quota, a model that does not exist: every later page
+                # would buy the same rejection, so stop asking. What earlier
+                # pages answered is still true and still paid for, so it is
+                # reported rather than discarded.
+                if not verdict_decisions(verdicts):
+                    # Nothing actionable — but earlier pages may still have
+                    # *named* what they looked at. Carry those names out so
+                    # the caller can persist them instead of re-buying them.
+                    e.considered = verdict_names(verdicts)
+                    raise
+                break
+            # One page that cannot be answered must not discard the pages
+            # that were.
 
     if budget.splits:
         print(
@@ -280,7 +399,20 @@ def classify_plan(plan, translator, overrides=None, model=None):
             f"pieces: {budget.requests} request(s) for {len(pages)} page(s)"
             f"[/yellow]"
         )
-    return verdict_actions(verdicts), candidates
+
+    decisions = verdict_decisions(verdicts)
+    unresolved = [c["key"] for c in candidates if c["key"] not in decisions]
+    if unresolved:
+        detail = f" ({'; '.join(failed)})" if failed else ""
+        raise PlanUnresolvedError(
+            f"{len(unresolved)} of {len(candidates)} signature(s) were not "
+            f"decided{detail}",
+            resolved=decisions,
+            unresolved=unresolved,
+            rows=candidates,
+            considered=verdict_names(verdicts),
+        )
+    return decisions, candidates
 
 
 def _structured_json(translator):

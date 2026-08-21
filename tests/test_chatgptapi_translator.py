@@ -533,6 +533,33 @@ def test_batch_length_mismatch_is_retried_then_falls_back_one_by_one():
     assert translator._structured_support["test-model"] == "strict"
 
 
+def test_batch_empty_slot_for_nonempty_input_is_retried_then_falls_back():
+    # Count is not alignment: a model that merges two verse lines into one
+    # slot keeps the count by padding another slot with "". The strict path
+    # must treat that pad as the model error it is, not accept the window.
+    parse = Mock(return_value=_parsed_completion(parsed=_batch(["5a+5b merged", ""])))
+    translator = _translator(parse=parse)
+    translator._structured_support["test-model"] = "strict"
+    translator.translate = Mock(side_effect=lambda text, _=True: f"t:{text}")
+
+    result = translator._do_structured_batch_translate(["5a", "5b"])
+
+    assert result == ["t:5a", "t:5b"]
+    assert parse.call_count == 3  # a model error, not a capability answer
+    assert translator._structured_support["test-model"] == "strict"
+
+
+def test_batch_empty_output_for_empty_input_is_accepted():
+    # the complement: only *non-empty* inputs may not come back empty —
+    # an empty slot mirroring an empty input is well-formed output
+    parse = Mock(return_value=_parsed_completion(parsed=_batch(["一", ""])))
+    translator = _translator(parse=parse)
+    translator._structured_support["test-model"] = "strict"
+
+    assert translator._do_structured_batch_translate(["a", "  "]) == ["一", ""]
+    assert parse.call_count == 1
+
+
 def test_batch_success_returns_paragraphs():
     parse = Mock(return_value=_parsed_completion(parsed=_batch(["一", "二"])))
     translator = _translator(parse=parse)

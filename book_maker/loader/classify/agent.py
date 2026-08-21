@@ -13,13 +13,30 @@ and a second interface would be one more thing to keep in sync.
 """
 
 
-def build_agent_prompt(plan_path, book_path, rerun_command):
-    """The paste-able block printed when --plan-classify agent stops.
+def build_agent_prompt(plan_path, book_path, rerun_command, unresolved=None):
+    """The paste-able block printed when a run stops for want of decisions.
 
     Self-contained on purpose: it must work in a session that has never
-    seen this repository and has no skill installed.
+    seen this repository and has no skill installed. `unresolved` scopes the
+    instruction to exactly the rows still open — after a partial model run
+    that is a handful of rows, not the whole book, and saying "decide
+    everything" would invite re-deciding what was already decided.
     """
+    if unresolved:
+        listed = "\n".join(f"      {key}" for key in unresolved[:40])
+        more = (
+            f"\n      ... and {len(unresolved) - 40} more"
+            if len(unresolved) > 40
+            else ""
+        )
+        scope = (
+            f"\n{len(unresolved)} row(s) are still undecided — a classifier "
+            f"could not settle them:\n{listed}{more}\n"
+        )
+    else:
+        scope = ""
     return f"""\
+{scope}\
 ────────────────────────────────────────────────────────────────────────
 Paste the block below into a coding-agent session (Claude Code, Codex, …)
 ────────────────────────────────────────────────────────────────────────
@@ -34,20 +51,28 @@ will refuse to start while any null remains — there is no default to
 fall back on, and answering none of them is not an option.
 
 How to read a signature row:
-  signature   the tag and class the text lives in, e.g. "p.calibre_13"
-  units       how many blocks in the book have this shape
+  key         scope + tag + classes, e.g. "block:p.calibre_13".
+              "block:" is a block of text of that shape. "inline:" is
+              markup inside a sentence — skipping it leaves its text in
+              place, untranslated, and splits the sentence around it, so
+              skip one only when it is genuinely apparatus.
+  units       how many occurrences the book has
   chars       how much text they hold in total (pct = share of the book)
-  mean_chars  average block length — running heads and labels run short
-  samples     up to 5 real excerpts — the evidence to judge from
+  mean_chars  average occurrence length — running heads and labels run short
+  samples     up to 5 real excerpts, spread across the whole book
+  parents     (inline rows) which blocks it appears inside
+  conditional_css  CSS that hides it only on some devices — evidence that
+              it may be device-specific duplicate apparatus, not a verdict
   action      null (decide!), "translate", or "skip"
-  decided_by  present when a model, not you, chose the action
+  decided_by  who decided: "llm", "agent", "user"
+  content_type  what the decider called this text
 
 What to do, for every null row:
 1. Read its samples and name what the text is — prose, verse, dialogue,
    heading, caption, running head, page or line number, manuscript
    sigla, cross-reference label, publisher boilerplate, decorative
    marker. Name first, then rule: deciding before naming invites
-   rationalizing.
+   rationalizing. Put that name in "content_type".
 2. Set "action" to "skip" for text a reader does not want translated:
    running heads, page or line numbers, sigla, cross-reference labels,
    boilerplate, decorative markers.
@@ -55,9 +80,14 @@ What to do, for every null row:
    dialogue, headings, captions. When the samples do not settle it,
    choose "translate" — translating something unnecessary is cheap,
    losing content is not.
-4. Edit only "action" fields. Never touch "book_sha256" or
-   "schema_version": they are what keeps the plan matched to this book.
-5. Want more evidence than the samples give? Read the book's own markup:
+4. If a row's samples show more than one kind of content, choose
+   "translate": the verdict applies to every occurrence of that
+   signature, and there is no per-occurrence override.
+5. Set "decided_by" to "agent" on every row you answer.
+6. Edit only "action", "decided_by" and "content_type". Never touch
+   "key", "book_sha256" or "schema_version": they are what keeps the
+   plan matched to this book.
+7. Want more evidence than the samples give? Read the book's own markup:
    unzip -p "{book_path}" <file-from-the-plan> | grep -n '<class>'
 
 You may also change a non-null row if its samples convince you, but the

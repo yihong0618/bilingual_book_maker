@@ -1,89 +1,22 @@
-"""Which signatures are worth asking about, and with what evidence.
+"""Which rows go to a decider, and in what order.
 
-Shared by every classification entry: the model asks an LLM about these,
-the agent entry writes the same rows into the plan JSON for a human or a
-coding agent to judge. Keeping the selection in one place is what makes
-the two entries comparable — they answer the same question, differently.
+Every undecided row does. There is no shape test standing between a
+signature and the question "should this be translated?" — that test was the
+bug: it kept `pre.screen` (long, varied, therefore "prose") and `p.editor`
+(short, repetitive, therefore "poetry") away from the classifier, and the
+greedy `translate` default answered for both without anyone noticing it had.
+
+A filter we tune is a judgment we own. Cost is not the reason to have one:
+questions scale with a book's *signature count*, not its length, so even a
+500-signature book is ~42 paged requests — noise beside translating it.
 """
 
-from ..plan import SIGNATURE_SAMPLE_CAP, clip_sample
 
-# 5, not a bare minimum: a misjudged signature loses real content, and a
-# few more sample lines per signature are cheap insurance on a single call.
-# Same budget the plan JSON carries, so the two entries show the same
-# evidence.
-SAMPLES_PER_SIGNATURE = SIGNATURE_SAMPLE_CAP
-# At or above this share of the book a signature is its prose spine;
-# whether the spine gets translated is never in question. The boundary is
-# inclusive on purpose: an unasked signature keeps its "translate" default,
-# and translating something unnecessary is cheap where losing content is
-# not.
-UNCERTAIN_MAX_PCT = 10.0
-UNCERTAIN_MEAN_CHARS = 50
-UNCERTAIN_UNIQUE_RATIO = 0.5
-# Headings are structural content, never uncertain: they are short and
-# repetitive by nature (exactly the apparatus shape), heading-shaped
-# apparatus is a print-era artifact, and a wrong "skip" silently loses
-# every chapter title. gpt-4o-mini demoted h2.chapter_title on the first
-# live run of this classifier.
-CERTAIN_TAGS = frozenset(["h1", "h2", "h3", "h4", "h5", "h6"])
+def gather_candidates(ledger):
+    """Every row still holding a question, largest first.
 
-
-def uncertain_candidates(plan, overrides=None):
-    """Planned-for-translation signatures whose shape leaves room for doubt.
-
-    Candidates are small (never the prose spine) and either short-lined or
-    repetitive — the shape of running heads, labels and apparatus. Poetry
-    groups are exempt: verse is short-lined by nature and must translate.
+    Largest first because paging is the only thing that could ever truncate
+    the list, and the rows that matter most should never be the ones a
+    budget cuts. Nothing is dropped here.
     """
-    overrides = overrides or {}
-    total = plan.total_chars or 1
-    stats = {}
-    poetry_sigs = set()
-    for f in plan.files:
-        for u in f.units:
-            # u.poetry, not u.group_id: the exemption is about verse being
-            # verse, not about how units happen to be batched
-            if u.poetry:
-                poetry_sigs.add(u.signature)
-            row = stats.setdefault(u.signature, {"units": 0, "chars": 0, "texts": []})
-            row["units"] += 1
-            row["chars"] += u.chars
-            if len(row["texts"]) < 50:
-                row["texts"].append(u.text)
-
-    out = []
-    for sig, row in stats.items():
-        if sig in overrides or sig in poetry_sigs:
-            continue
-        if sig.split(".", 1)[0] in CERTAIN_TAGS:
-            continue
-        if 100 * row["chars"] / total >= UNCERTAIN_MAX_PCT:
-            continue
-        mean_chars = row["chars"] / row["units"]
-        uniq = list(dict.fromkeys(row["texts"]))
-        unique_ratio = len(uniq) / len(row["texts"])
-        if mean_chars > UNCERTAIN_MEAN_CHARS and unique_ratio > UNCERTAIN_UNIQUE_RATIO:
-            continue
-        step = max(1, len(uniq) // SAMPLES_PER_SIGNATURE)
-        out.append(
-            {
-                "signature": sig,
-                "units": row["units"],
-                "chars": row["chars"],
-                "samples": [
-                    clip_sample(t) for t in uniq[::step][:SAMPLES_PER_SIGNATURE]
-                ],
-            }
-        )
-    return out
-
-
-def gather_candidates(plan, overrides=None):
-    """Every uncertain signature, largest first.
-
-    Nothing is dropped: greedy partitioning made the candidate set the
-    honest question list, and model mode pages through it rather than
-    truncating (a silently dropped signature is a silently unreviewed one).
-    """
-    return sorted(uncertain_candidates(plan, overrides), key=lambda c: -c["chars"])
+    return [ledger.rows[key] for key in ledger.undecided_keys()]

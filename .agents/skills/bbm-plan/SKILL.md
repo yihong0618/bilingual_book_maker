@@ -211,7 +211,12 @@ files — never from live output.
 
 The run probes the endpoint's structured-output support, translates the
 first 8 units of the *real* plan (sequentially — `--test` forces it), and
-writes the resume cache. Verify by unzipping the partial
+writes the resume cache. Units are consumed in **spine order** — before
+running, check which documents the first N units come from. A large nav or
+title page can absorb the whole budget (a 458 KB nav once ate all 20 units
+of a poetry smoke, so the smoke translated zero verse); when that happens,
+point the smoke at a body chapter with `--only_filelist <content doc>`
+instead of raising `--test_num`. Verify by unzipping the partial
 `<book>_bilingual.epub`: right target language? formatting intact
 (translation carries the same tag/class as its original)? Check
 `smoke.log` for error lines. The cache is plan-fingerprint-guarded and
@@ -255,7 +260,7 @@ changed intentionally.
 | styling | `--translation_style "color:#808080;font-style:italic"` | bilingual output should visually separate the translation |
 | scope | `--only_filelist` / `--exclude_filelist` | user wants specific chapters; exact internal names — a typo fails loud at the coverage gate |
 | sampling | `--temperature` | leave the default unless output is erratic; then lower it and re-smoke |
-| smoke size | `--test_num 8` (default here) | raise to ~20 on poetry-heavy books so the smoke spans a full stanza window or two |
+| smoke size | `--test_num 8` (default here) | raise to ~20 on poetry-heavy books so the smoke spans a full stanza window or two — but only after confirming the first N units are body text, not nav/front matter (spine order); otherwise scope the smoke with `--only_filelist` |
 | log noise | `--quiet` (always, on smoke and full run) | bars and per-unit echoes off; reports and errors still print — logs stay readable, context stays clean |
 
 Do **not** pass in plan mode: `--accumulated_num` and

@@ -18,6 +18,7 @@ from book_maker.loader.helper import (
     EPUBBookLoaderHelper,
     backfill_toc_hrefs,
     derive_translation_identity,
+    rebase_ncx_srcs,
     strip_duplicate_ids,
 )
 
@@ -399,3 +400,54 @@ def test_a_section_with_an_href_keeps_it():
     backfill_toc_hrefs(toc)
 
     assert section.href == "intro.xhtml"
+
+
+NCX = (
+    '<?xml version="1.0" encoding="utf-8"?>'
+    '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">'
+    "<navMap>{}</navMap></ncx>"
+).format
+
+
+def _srcs(ncx_bytes):
+    soup = bs(ncx_bytes, "html.parser")
+    return [c["src"] for c in soup.find_all("content")]
+
+
+def test_a_subdirectory_ncx_gets_its_srcs_rebased():
+    """RSC-007: ebooklib writes navpoint srcs relative to the OPF root, but
+    the writer keeps the imported NCX's own location — from xhtml/toc.ncx a
+    root-relative src resolves to xhtml/xhtml/…, a file that does not
+    exist (kusamakura)."""
+    ncx = NCX(
+        '<navPoint id="a"><content src="xhtml/one.xhtml"/></navPoint>'
+        '<navPoint id="b"><content src="xhtml/two.xhtml#frag"/></navPoint>'
+    ).encode()
+
+    out = rebase_ncx_srcs(ncx, "xhtml/toc.ncx")
+
+    assert _srcs(out) == ["one.xhtml", "two.xhtml#frag"]
+
+
+def test_a_root_ncx_passes_through_byte_identical():
+    ncx = NCX('<navPoint id="a"><content src="xhtml/one.xhtml"/></navPoint>').encode()
+
+    assert rebase_ncx_srcs(ncx, "toc.ncx") is ncx
+
+
+def test_srcs_outside_the_ncx_directory_step_out_of_it():
+    ncx = NCX('<navPoint id="a"><content src="text/ch1.xhtml"/></navPoint>').encode()
+
+    assert _srcs(rebase_ncx_srcs(ncx, "nav/toc.ncx")) == ["../text/ch1.xhtml"]
+
+
+def test_absolute_and_empty_srcs_are_left_alone():
+    ncx = NCX(
+        '<navPoint id="a"><content src="https://example.com/x"/></navPoint>'
+        '<navPoint id="b"><content src=""/></navPoint>'
+    ).encode()
+
+    assert _srcs(rebase_ncx_srcs(ncx, "xhtml/toc.ncx")) == [
+        "https://example.com/x",
+        "",
+    ]

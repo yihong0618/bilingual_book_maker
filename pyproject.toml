@@ -54,12 +54,14 @@ source = "scm"
 
 [tool.pytest.ini_options]
 markers = [
+    "corpus: the 45-book ./epub-sample acceptance gate (slow, offline; run with -m corpus)",
     "live_provider: calls a real translation provider (needs keys and network; run with -m live_provider)",
 ]
-# live_provider is about the network, not about scope: the CLI contract
-# tests are integration tests too, and they stay in the default run because
-# they go through an offline stand-in. What deselects here is spending real
-# quota — a bare `pytest` must not, and on a fork's CI run there is neither
-# key nor secret to spend. Asked for by name; the default selection is
-# hermetic.
-addopts = "-m 'not live_provider'"
+# Two different reasons to stay out of a bare `pytest`, both deselected here:
+# the corpus gate is an acceptance run, not a unit-test run — it partitions
+# every sample book and writes real EPUBs — and live_provider spends real
+# quota, which a fork's CI run has neither key nor secret for. The CLI
+# contract tests are integration tests too and do stay in the default run,
+# because they go through an offline stand-in. Both markers are asked for by
+# name; the default selection is hermetic.
+addopts = "-m 'not corpus and not live_provider'"
