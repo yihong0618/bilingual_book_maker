@@ -958,6 +958,12 @@ class ChatGPTAPI(Base):
                     **sampling,
                 )
             )
+            # The handoff turn is billed like any other request — it carries
+            # the whole window and answers with a report. Without this line
+            # the meter understates a session run's cost worst exactly where
+            # it looks best: at a short compact budget, where compaction is
+            # frequent (up to 38% of real cost invisible, 260905 eval).
+            self._note_usage(completion)
             report_text = completion.choices[0].message.content or ""
         except Exception as e:
             # Keep the window. One rate-limited or dropped request is not a

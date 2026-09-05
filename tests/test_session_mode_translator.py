@@ -326,6 +326,37 @@ class TestUsageMeter:
         # structured one and the plain retranslation.
         assert t.usage.requests == 2
 
+    def test_a_compaction_turn_is_metered(self):
+        """The handoff request carries the whole window and is billed for it.
+
+        It used to be the one request no meter saw, which understated a
+        session run's cost worst at short compact budgets — where compaction
+        is most frequent and the run looks cheapest.
+        """
+        t = _translator(context_compact_at=10)
+        handoff = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="Handoff report.", refusal=None)
+                )
+            ],
+            usage=SimpleNamespace(
+                prompt_tokens=1000,
+                completion_tokens=300,
+                prompt_tokens_details=SimpleNamespace(cached_tokens=0),
+            ),
+        )
+        t.openai_client.chat.completions.create = Mock(return_value=handoff)
+        t.session.append("one", "一")
+        t.session.append("two", "二")
+
+        before = (t.usage.prompt, t.usage.completion, t.usage.requests)
+        t._compact_session()
+
+        assert t.usage.prompt == before[0] + 1000
+        assert t.usage.completion == before[1] + 300
+        assert t.usage.requests == before[2] + 1
+
 
 class TestWindowModeUnchanged:
     def test_window_mode_still_sends_two_context_messages(self):
