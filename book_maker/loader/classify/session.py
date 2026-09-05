@@ -59,6 +59,13 @@ FORMAT_WARNING = (
 # stay unanswerable as singles, before each breaker trips.
 FAILURE_RATE = 0.2
 
+# How much evidence each breaker needs before it fires. A rate on its own
+# trips on the first turn — one bad triple out of one is 100% — which is one
+# flaky reply diagnosing an endpoint, and for the second breaker it would
+# abandon a whole book's classification over it.
+MIN_TRIPLES_BEFORE_WARNING = 5
+MIN_UNITS_BEFORE_STOPPING = 15
+
 TRUNK = """\
 You are preparing a bilingual EPUB. I will show you content signatures from \
 it, three at a time. For each one, decide whether it is better to translate \
@@ -238,6 +245,20 @@ def _decisions_for(candidates, verdicts):
     }
 
 
+def _enough_to_stop(units, failed_units, total):
+    """Whether the failure rate has been measured on enough to act on.
+
+    `MIN_UNITS_BEFORE_STOPPING` attempts, normally. A book with fewer
+    signatures than that would never reach the floor at all, so it stops on
+    the other evidence there is: nothing asked has been answerable. Grinding
+    singles through the rest of such a book buys three turns per signature
+    and no verdicts.
+    """
+    if units >= MIN_UNITS_BEFORE_STOPPING:
+        return True
+    return total < MIN_UNITS_BEFORE_STOPPING and failed_units == units
+
+
 def classify_over_session(ledger, translator, model=None, session=None):
     """Ask the translator about every undecided row, three at a time.
 
@@ -285,10 +306,16 @@ def classify_over_session(ledger, translator, model=None, session=None):
         units += len(group)
         decisions.update(_decisions_for(group, verdicts))
 
-        if not warned and failed_triples > FAILURE_RATE * triples:
+        if (
+            not warned
+            and triples >= MIN_TRIPLES_BEFORE_WARNING
+            and failed_triples > FAILURE_RATE * triples
+        ):
             print(FORMAT_WARNING, flush=True)
             warned = True
-        if failed_units > FAILURE_RATE * units:
+        if failed_units > FAILURE_RATE * units and _enough_to_stop(
+            units, failed_units, len(candidates)
+        ):
             stopped = True
             remaining = len(candidates) - units
             print(

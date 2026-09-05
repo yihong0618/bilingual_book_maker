@@ -468,17 +468,45 @@ class TestRestartAtTheBudget:
 # ------------------------------------------------------ 6. circuit breakers
 
 
+def _many(n):
+    return [f"p.s{i:02d}" for i in range(n)]
+
+
+def _singles_answer(text):
+    """Every triple malformed, every single answered."""
+    return "skip" if text.count("occurrence(s)") == 1 else "no idea"
+
+
 class TestCircuitBreakers:
     def test_repeated_format_misses_warn_once(self, capsys):
-        # every triple is malformed, every single answers
-        def reply(text):
-            return "skip" if text.count("occurrence(s)") == 1 else "no idea"
-
-        decisions, candidates, _session = _run(SIX, reply)
+        # 18 signatures = 6 triples, all malformed: the fifth is where the
+        # warning has seen enough to be worth printing
+        decisions, candidates, _session = _run(_many(18), _singles_answer)
         out = capsys.readouterr().out
         assert out.count(FORMAT_WARNING) == 1
-        assert len(decisions) == len(candidates) == 6
+        assert len(decisions) == len(candidates) == 18
         assert {v for v, _ in decisions.values()} == {"skip"}
+
+    def test_one_bad_triple_out_of_one_says_nothing(self, capsys):
+        # 100% of one triple is not evidence about an endpoint, and a run
+        # that warns on its first flaky reply teaches the operator to ignore
+        # the line
+        decisions, _candidates, _session = _run(SIX[:3], _singles_answer)
+        assert FORMAT_WARNING not in capsys.readouterr().out
+        assert {v for v, _ in decisions.values()} == {"skip"}
+
+    def test_the_warning_waits_for_five_triples(self, capsys):
+        from book_maker.loader.classify.session import MIN_TRIPLES_BEFORE_WARNING
+
+        assert MIN_TRIPLES_BEFORE_WARNING == 5
+        # four triples, all falling back to singles: still under the floor
+        _decisions, _candidates, session = _run(_many(12), _singles_answer)
+        assert len([t for t in session.asks if t.count("occurrence(s)") == 3]) == 4
+        assert FORMAT_WARNING not in capsys.readouterr().out
+
+        # the fifth is what earns it
+        _decisions, _candidates, _session = _run(_many(15), _singles_answer)
+        assert FORMAT_WARNING in capsys.readouterr().out
 
     def test_the_format_warning_names_the_way_out(self):
         assert FORMAT_WARNING == (
@@ -487,13 +515,15 @@ class TestCircuitBreakers:
             "classification"
         )
 
-    def test_units_unanswerable_as_singles_stop_the_asking(self, capsys):
-        nine = SIX + ["p.g", "p.h", "p.i"]
-
+    def test_a_small_book_that_fails_wholesale_stops_at_once(self, capsys):
+        # nine signatures: the floor of 15 units can never be reached, so the
+        # evidence is that nothing asked has been answerable. Grinding
+        # singles through the rest buys three turns per signature and no
+        # verdicts.
         def reply(text):
             return "nothing parseable here"
 
-        decisions, candidates, session = _run(nine, reply)
+        decisions, candidates, session = _run(_many(9), reply)
         # the first triple and its three singles; then the breaker trips and
         # nothing more is bought
         assert len(session.asks) == 4
@@ -503,6 +533,42 @@ class TestCircuitBreakers:
         out = capsys.readouterr().out
         assert "classification stops here" in out
         assert "the remaining 6 are translated" in out
+
+    def test_a_small_book_that_only_partly_fails_keeps_asking(self, capsys):
+        # the same nine signatures, but the first triple's first single
+        # answers: not "all of them failed", and 15 units are out of reach,
+        # so nothing stops
+        state = {"singles": 0}
+
+        def reply(text):
+            if text.count("occurrence(s)") == 1:
+                state["singles"] += 1
+                return "skip" if state["singles"] == 1 else "no idea"
+            return "no idea"
+
+        decisions, candidates, session = _run(_many(9), reply)
+        out = capsys.readouterr().out
+        assert "classification stops here" not in out
+        assert len(session.asks) == 3 * (1 + 3)
+        assert len(decisions) == len(candidates) == 9
+
+    def test_a_big_book_waits_for_fifteen_units(self, capsys):
+        from book_maker.loader.classify.session import MIN_UNITS_BEFORE_STOPPING
+
+        assert MIN_UNITS_BEFORE_STOPPING == 15
+
+        def reply(text):
+            return "nothing parseable here"
+
+        # 18 signatures: 15 units is reached at the end of the fifth triple,
+        # which is where the asking stops — four triples' worth of grinding
+        # was bought first, on purpose
+        decisions, candidates, session = _run(_many(18), reply)
+        assert len(session.asks) == 5 * (1 + 3)
+        assert len(decisions) == len(candidates) == 18
+        out = capsys.readouterr().out
+        assert "could not answer 15 of 15 signature(s)" in out
+        assert "the remaining 3 are translated" in out
 
     def test_a_working_endpoint_trips_neither(self, capsys):
         decisions, _candidates, _session = _run(
@@ -516,7 +582,7 @@ class TestCircuitBreakers:
     def test_an_occasional_miss_does_not_stop_anything(self, capsys):
         # one bad triple in six, recovered by singles: under both thresholds
         # by unit count, so the run keeps asking
-        eighteen = [f"p.s{i:02d}" for i in range(18)]
+        eighteen = _many(18)
         state = {"turns": 0}
 
         def reply(text):
@@ -538,7 +604,7 @@ class TestCircuitBreakers:
         def reply(text):
             return "not a verdict"
 
-        decisions, candidates, _session = _run(SIX, reply)
+        decisions, candidates, _session = _run(_many(18), reply)
         assert set(decisions) == {c["key"] for c in candidates}
 
 
