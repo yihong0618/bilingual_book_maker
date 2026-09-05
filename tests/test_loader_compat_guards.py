@@ -1,0 +1,393 @@
+"""Guards that need what only the loader knows.
+
+Three of the audit's rows cannot be decided at the CLI: what a checkpoint
+on disk was written by, what the codex route's context really is, and how
+many requests a `--test` slice becomes. They live here, at the point where
+the answer exists.
+"""
+
+import os
+import pickle
+import subprocess
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+from ebooklib import epub
+
+from book_maker.loader.epub_loader import EPUBBookLoader
+from book_maker.loader.plan import session_token_budget
+from book_maker.session_context import derived_compact_budget
+
+REPO = Path(__file__).resolve().parent.parent
+BOOK = REPO / "test_books" / "animal_farm.epub"
+HERMETIC = Path(__file__).resolve().parent / "hermetic"
+
+
+class Model:
+    TRANSLATION_ERROR_MARKER = "[Translation unavailable]"
+    model_name = "a-model"
+
+    def __init__(self, key, language, **kwargs):
+        self._fatal_error_detected = False
+        self.language = language
+
+    def translate(self, text):
+        return f"<T>{text}</T>"
+
+    def translate_list(self, texts):
+        return [self.translate(str(text)) for text in texts]
+
+
+class OtherModel(Model):
+    model_name = "another-model"
+
+
+class CodexLike(Model):
+    """A route whose context is one thread, asked for or not."""
+
+    SUPPORTS_SESSION_CONTEXT = True
+    SESSION_CONTEXT_ALWAYS_ON = True
+
+    def __init__(self, key, language, **kwargs):
+        super().__init__(key, language, **kwargs)
+        self.context_compact_at = kwargs.get("context_compact_at")
+        self.no_context_compact = kwargs.get("no_context_compact", False)
+
+
+class WindowOnly(Model):
+    """An ordinary route: a session only when one is asked for."""
+
+    def __init__(self, key, language, **kwargs):
+        super().__init__(key, language, **kwargs)
+        self.context_compact_at = kwargs.get("context_compact_at")
+        self.no_context_compact = kwargs.get("no_context_compact", False)
+
+
+def _write_epub(path, paragraphs=("one", "two", "three")):
+    book = epub.EpubBook()
+    book.set_identifier("guards")
+    book.set_title("Guards")
+    book.set_language("en")
+    item = epub.EpubHtml(title="Chapter", file_name="chapter.xhtml", lang="en")
+    body = "".join(f"<p>{text}</p>" for text in paragraphs)
+    item.content = f"<html><body>{body}</body></html>"
+    book.add_item(item)
+    book.toc = (item,)
+    book.spine = [item]
+    epub.write_epub(str(path), book)
+    return path
+
+
+def _loader(source, model=Model, **kwargs):
+    kwargs.setdefault("language", "zh-hans")
+    return EPUBBookLoader(str(source), model, key="", resume=False, **kwargs)
+
+
+def _write_checkpoint(source, model=Model, **kwargs):
+    """A finished-looking checkpoint, written the way a real run writes one."""
+    loader = _loader(source, model, **kwargs)
+    loader._planned_job_ids = ["job-0", "job-1"]
+    loader.p_to_save = ["<T>one</T>"]
+    loader._save_progress()
+    return loader.bin_path
+
+
+# --------------------------------------------------- A5: the run fingerprint
+
+
+class TestResumeRunFingerprint:
+    """A slot's position is bound by its job id; its *contents* were bound by
+    nothing, so `--resume --language es` used to splice two languages into
+    one book and report success."""
+
+    def test_a_different_language_is_refused(self, tmp_path, capsys):
+        source = _write_epub(tmp_path / "book.epub")
+        _write_checkpoint(source, language="english")
+
+        resumed = EPUBBookLoader(
+            str(source), Model, key="", resume=True, language="spanish"
+        )
+        with pytest.raises(SystemExit) as stopped:
+            resumed._check_resume_run_fingerprint()
+
+        assert stopped.value.code == 1
+        out = " ".join(capsys.readouterr().out.split())
+        assert "different language, prompt or model" in out
+        assert "Delete" in out
+
+    def test_the_same_language_resumes(self, tmp_path, capsys):
+        source = _write_epub(tmp_path / "book.epub")
+        _write_checkpoint(source, language="english")
+
+        resumed = EPUBBookLoader(
+            str(source), Model, key="", resume=True, language="english"
+        )
+        resumed._check_resume_run_fingerprint()
+
+        assert "different language" not in capsys.readouterr().out
+
+    def test_a_different_prompt_is_refused(self, tmp_path):
+        source = _write_epub(tmp_path / "book.epub")
+        _write_checkpoint(source, prompt_config={"user": "Translate {text}"})
+
+        resumed = EPUBBookLoader(
+            str(source),
+            Model,
+            key="",
+            resume=True,
+            language="zh-hans",
+            prompt_config={"user": "Render {text} in a stiff register"},
+        )
+        with pytest.raises(SystemExit):
+            resumed._check_resume_run_fingerprint()
+
+    def test_a_different_model_is_refused(self, tmp_path):
+        source = _write_epub(tmp_path / "book.epub")
+        _write_checkpoint(source, model=Model)
+
+        resumed = EPUBBookLoader(
+            str(source), OtherModel, key="", resume=True, language="zh-hans"
+        )
+        with pytest.raises(SystemExit):
+            resumed._check_resume_run_fingerprint()
+
+    def test_a_pre_fingerprint_checkpoint_warns_and_continues(self, tmp_path, capsys):
+        # refusing these would strand every run interrupted before today
+        source = _write_epub(tmp_path / "book.epub")
+        path = _write_checkpoint(source)
+        with open(path, "rb") as handle:
+            payload = pickle.load(handle)
+        payload.pop("run_fingerprint")
+        with open(path, "wb") as handle:
+            pickle.dump(payload, handle)
+
+        resumed = EPUBBookLoader(
+            str(source), Model, key="", resume=True, language="anything-else"
+        )
+        resumed._check_resume_run_fingerprint()
+
+        out = " ".join(capsys.readouterr().out.split())
+        assert "written before runs recorded their language" in out
+
+    def test_a_fresh_run_is_never_asked(self, tmp_path, capsys):
+        source = _write_epub(tmp_path / "book.epub")
+        loader = _loader(source)
+        loader._check_resume_run_fingerprint()
+        assert capsys.readouterr().out == ""
+
+    def test_the_check_runs_before_anything_is_translated(self, tmp_path, capsys):
+        # not after the plan is built and half the book re-derived: the
+        # refusal has to be the first thing the resumed run does
+        source = _write_epub(tmp_path / "book.epub")
+        _write_checkpoint(source, language="english")
+
+        class Explodes(Model):
+            def translate(self, text):
+                raise AssertionError("the resumed run translated something")
+
+            def translate_list(self, texts):
+                raise AssertionError("the resumed run translated something")
+
+        resumed = EPUBBookLoader(
+            str(source), Explodes, key="", resume=True, language="spanish"
+        )
+        with pytest.raises(SystemExit):
+            resumed.make_bilingual_book()
+
+    def test_the_fingerprint_is_only_of_what_changes_the_words(self, tmp_path):
+        # a flag that does not change a translation must not invalidate a
+        # checkpoint: resuming is the whole point of having one
+        source = _write_epub(tmp_path / "book.epub")
+        first = _loader(source)
+        second = _loader(source)
+        second.is_test = True
+        second.test_num = 2
+        second.accumulated_num = 1600
+        assert first._run_fingerprint() == second._run_fingerprint()
+
+
+# ------------------------------------------- B1: codex counts as a session
+
+
+class TestCodexIsASession:
+    """The codex thread IS the history. Without this the flagless codex run
+    left grouping off and paid per paragraph, on a route billed by request."""
+
+    def test_the_codex_route_is_a_session_without_the_flag(self, tmp_path):
+        source = _write_epub(tmp_path / "book.epub")
+        loader = _loader(source, CodexLike, context_mode=None)
+        assert loader._session_run is True
+
+    def test_an_ordinary_route_is_not(self, tmp_path):
+        source = _write_epub(tmp_path / "book.epub")
+        loader = _loader(source, WindowOnly, context_mode=None)
+        assert loader._session_run is False
+
+    def test_both_budgets_are_derived_and_narrated(self, tmp_path, capsys):
+        source = _write_epub(tmp_path / "book.epub")
+        loader = _loader(source, CodexLike, context_mode=None)
+        loader.plan_mode = True
+        loader.translate_tags = "auto"
+
+        budget = loader._plan_token_budget
+        assert budget == session_token_budget(None)
+
+        loader._derive_session_compact_budget()
+
+        assert loader.translate_model.context_compact_at == derived_compact_budget(
+            budget
+        )
+        out = " ".join(capsys.readouterr().out.split())
+        assert f"compacting at ~{derived_compact_budget(budget)}" in out
+        assert f"derived from the {budget}-token request budget" in out
+
+    def test_an_ordinary_route_derives_neither(self, tmp_path, capsys):
+        source = _write_epub(tmp_path / "book.epub")
+        loader = _loader(source, WindowOnly, context_mode=None)
+        loader.plan_mode = True
+        loader.translate_tags = "auto"
+
+        assert loader._plan_token_budget is None
+        loader._derive_session_compact_budget()
+
+        assert loader.translate_model.context_compact_at is None
+        assert capsys.readouterr().out == ""
+
+    def test_an_explicit_budget_still_wins_on_codex(self, tmp_path, capsys):
+        source = _write_epub(tmp_path / "book.epub")
+        loader = _loader(source, CodexLike, context_mode=None, context_compact_at=2500)
+        loader.plan_mode = True
+        loader.translate_tags = "auto"
+
+        loader._derive_session_compact_budget()
+
+        assert loader.translate_model.context_compact_at == 2500
+        assert capsys.readouterr().out == ""
+
+    def test_accumulated_num_one_still_turns_grouping_off(self, tmp_path):
+        # the documented off switch has to keep working on this route too
+        source = _write_epub(tmp_path / "book.epub")
+        loader = _loader(source, CodexLike, context_mode=None)
+        loader.plan_mode = True
+        loader.accumulated_num_given = True
+        assert loader._plan_token_budget == 0
+
+
+# ------------------------------------------- B7: what a --test slice covers
+
+
+class TestTestSliceRequestCount:
+    """`--test_num` counts units. On a grouped run the default `--test` can
+    be one request, which exercises no rollover, compaction or misalignment
+    at all — and says nothing about it."""
+
+    def _plans(self, batch_indexes):
+        return [
+            SimpleNamespace(
+                jobs=[
+                    SimpleNamespace(document_index=0, batch_index=index)
+                    for index in batch_indexes
+                ]
+            )
+        ]
+
+    def test_a_grouped_slice_says_how_few_requests_it_is(self, tmp_path, capsys):
+        source = _write_epub(tmp_path / "book.epub")
+        loader = _loader(source, is_test=True, test_num=8)
+
+        loader._report_test_slice_requests(self._plans([0] * 8), 8)
+
+        out = " ".join(capsys.readouterr().out.split())
+        assert "8 unit(s) in 1 request(s)" in out
+        assert "--test_num counts units, not requests" in out
+
+    def test_an_ungrouped_slice_says_nothing(self, tmp_path, capsys):
+        source = _write_epub(tmp_path / "book.epub")
+        loader = _loader(source, is_test=True, test_num=8)
+
+        loader._report_test_slice_requests(self._plans(range(8)), 8)
+
+        assert capsys.readouterr().out == ""
+
+    def test_a_full_run_says_nothing(self, tmp_path, capsys):
+        source = _write_epub(tmp_path / "book.epub")
+        loader = _loader(source)
+
+        loader._report_test_slice_requests(self._plans([0] * 8), 8)
+
+        assert capsys.readouterr().out == ""
+
+    def test_an_empty_slice_says_nothing(self, tmp_path, capsys):
+        source = _write_epub(tmp_path / "book.epub")
+        loader = _loader(source, is_test=True, test_num=8)
+
+        loader._report_test_slice_requests([], 0)
+
+        assert capsys.readouterr().out == ""
+
+
+# ------------------------------- A3: classification is not truncated by --test
+
+
+def _env():
+    env = dict(os.environ)
+    for name in ("BBM_API_KEY", "OPENAI_API_KEY", "BBM_OPENAI_API_KEY"):
+        env.pop(name, None)
+    env["PYTHONPATH"] = os.pathsep.join(
+        [str(HERMETIC), env.get("PYTHONPATH", "")]
+    ).rstrip(os.pathsep)
+    return env
+
+
+def _cli(*args):
+    return subprocess.run(
+        [sys.executable, "make_book.py", *args],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        env=_env(),
+    )
+
+
+def test_a_test_run_is_told_classification_covers_the_whole_book(tmp_path):
+    # --test truncates the units translated, never the partition: the
+    # classifier is paid for over the whole book by a run asked to be small
+    src = tmp_path / BOOK.name
+    src.write_bytes(BOOK.read_bytes())
+    proc = _cli(
+        "--book_name",
+        str(src),
+        "--api_format",
+        "openai",
+        "--key",
+        "sk-test",
+        "--plan-classify",
+        "model",
+        "--test",
+        "--test_num",
+        "1",
+    )
+    flat = " ".join((proc.stdout + proc.stderr).split())
+    assert proc.returncode == 0, flat
+    assert "plan classification covers the whole book" in flat
+    assert "cached and reused by the full run" in flat
+
+
+def test_a_full_run_is_not_told_that(tmp_path):
+    src = tmp_path / BOOK.name
+    src.write_bytes(BOOK.read_bytes())
+    proc = _cli(
+        "--book_name",
+        str(src),
+        "--api_format",
+        "openai",
+        "--key",
+        "sk-test",
+        "--plan-classify",
+        "model",
+    )
+    flat = " ".join((proc.stdout + proc.stderr).split())
+    assert proc.returncode == 0, flat
+    assert "plan classification covers the whole book" not in flat

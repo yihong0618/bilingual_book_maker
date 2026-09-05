@@ -248,6 +248,13 @@ class Base(ABC):
     # and translating as if it had never been passed.
     SUPPORTS_SESSION_CONTEXT = False
 
+    # Is this format a session whether or not anyone asked for one? True
+    # where the route has no other shape: the codex sidecar's thread IS the
+    # history, so a run on it is billed the way a session run is billed —
+    # by request count against a growing conversation — and the budgets a
+    # session run derives have to be derived there too.
+    SESSION_CONTEXT_ALWAYS_ON = False
+
     # Does this format survive `--parallel-workers` with `--use_context`?
     # Each worker is handed a clone carrying its own chapter context, which
     # a format that keeps no re-sendable window cannot provide.

@@ -408,6 +408,14 @@ class EPUBBookLoader(BaseBookLoader):
         self._compact_budget_derived = False
         self._plan_fingerprint = None
         self._resume_plan_fingerprint = None
+        # What the loaded checkpoint's translations were produced by — see
+        # `_run_fingerprint`. None means a checkpoint written before runs
+        # recorded it, which is warned about rather than refused.
+        self._resume_run_fingerprint = None
+        self._run_fingerprint_checked = False
+        # kept for the fingerprint: the prompt is half of what a slot's
+        # translation is, and the translator does not hand it back
+        self._prompt_config = prompt_config
         self.single_translate = single_translate
         self.block_size = 1  # Default to 1 for better translation quality with delimiter-based batching
         self.sentence_mode = False
@@ -920,6 +928,23 @@ class EPUBBookLoader(BaseBookLoader):
         return tuple(t for t in self.exclude_translate_tags.split(",") if t)
 
     @property
+    def _session_run(self):
+        """Whether this run's context is one growing history.
+
+        `--use_context session` says so outright. The codex route is one
+        without being asked: its thread is the history, and there is no
+        windowed shape to fall back to — so a codex run is billed the way a
+        session run is billed, by request count against a conversation the
+        endpoint re-reads. Both budgets that a session run derives (the
+        grouping budget below, and the compaction budget derived from it)
+        therefore have to be derived here too; without this the flagless
+        codex run left grouping off and paid per paragraph.
+        """
+        if self.context_mode == "session":
+            return True
+        return getattr(self.translate_model, "SESSION_CONTEXT_ALWAYS_ON", False)
+
+    @property
     def _plan_token_budget(self):
         """`--accumulated_num` as plan mode's grouping budget, or None.
 
@@ -927,7 +952,7 @@ class EPUBBookLoader(BaseBookLoader):
         the same way. A typed value wins outright, `1` included: that is the
         way to turn grouping off, and it has to keep working in every mode.
 
-        With the flag untyped, session mode defaults to
+        With the flag untyped, a session run (see `_session_run`) defaults to
         `session_token_budget`, derived from this run's own prompt overhead.
         There the history is re-read at the endpoint's cache rate, so a run's
         bill is roughly its request count, and leaving grouping off is the
@@ -944,7 +969,7 @@ class EPUBBookLoader(BaseBookLoader):
             # rule stands down and every unit is its own request; None here
             # would quietly re-enable that rule and make "off" still group.
             return 0
-        if self.context_mode == "session":
+        if self._session_run:
             # The prompts are user-customisable, so the overhead a request
             # pays before it carries any book is a property of the run, not a
             # constant. A translator that cannot measure it answers None and
@@ -973,7 +998,7 @@ class EPUBBookLoader(BaseBookLoader):
             return
         self._compact_budget_derived = True
         budget = self._plan_token_budget
-        if not budget or self.context_mode != "session":
+        if not budget or not self._session_run:
             return
         model = self.translate_model
         if getattr(model, "no_context_compact", False):
@@ -1042,6 +1067,95 @@ class EPUBBookLoader(BaseBookLoader):
         return bool(
             self.resume and self.p_to_save and self._resume_plan_fingerprint is None
         )
+
+    def _report_test_slice_requests(self, chapter_plans, unit_count):
+        """Say how many requests `--test` will actually make.
+
+        `--test_num` counts units, not requests, and grouping puts many
+        units in one — so the default `--test` on a grouped run can be a
+        single request, which exercises neither group rollover nor session
+        compaction nor batch misalignment. The number is only knowable once
+        the jobs are cut, so it is printed here rather than at the CLI.
+        Silent when nothing is grouped: there the two counts are the same
+        and there is nothing to say.
+        """
+        if not self.is_test or not unit_count:
+            return
+        requests = len(
+            {
+                (job.document_index, job.batch_index)
+                for p in chapter_plans
+                for job in p.jobs
+            }
+        )
+        if requests >= unit_count:
+            return
+        print(
+            f"[bold yellow]Warning:[/bold yellow] --test_num counts units, "
+            f"not requests: this slice is {unit_count} unit(s) in "
+            f"{requests} request(s). A slice this small may never reach a "
+            f"group rollover or a session compaction, which is where a "
+            f"grouped run goes wrong. Raise --test_num to exercise them."
+        )
+
+    def _run_fingerprint(self):
+        """What a checkpoint's translations were written by.
+
+        A slot's *position* is bound by its job id (the source text) and, in
+        plan mode, by the plan fingerprint. Its *content* is bound by
+        nothing at all: the same paragraph translated into Spanish and into
+        Chinese produces the same job id, so `--resume --language es` used
+        to splice two languages into one book and call it finished. The
+        prompt and the model are the same kind of fact — the checkpoint
+        holds translations, and a translation is of a language, under a
+        prompt, by a model.
+
+        Deliberately not the whole flag set: only what changes the words in
+        the slots already written.
+        """
+        model = self.translate_model
+        return hashlib.sha256(
+            json.dumps(
+                {
+                    "language": self.language,
+                    "prompt": self._prompt_config or {},
+                    "model": getattr(model, "model_name", None) or "",
+                },
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+
+    def _check_resume_run_fingerprint(self):
+        """Refuse a checkpoint written by a different language/prompt/model.
+
+        Once, before anything is translated. A checkpoint from before this
+        record existed carries no fingerprint: it is warned about and used,
+        because refusing it would strand every run interrupted until today.
+        """
+        if self._run_fingerprint_checked:
+            return
+        self._run_fingerprint_checked = True
+        if not self.resume or not self.p_to_save:
+            return
+        if self._resume_run_fingerprint is None:
+            print(
+                f"[bold yellow]Warning:[/bold yellow] the resume cache "
+                f"{self.bin_path} was written before runs recorded their "
+                f"language, prompt and model, so none of them can be "
+                f"checked. If this command differs from the one that wrote "
+                f"it, delete the cache instead of resuming."
+            )
+            return
+        if self._resume_run_fingerprint != self._run_fingerprint():
+            print(
+                f"[bold red]The resume cache {self.bin_path} was written by a "
+                f"run with a different language, prompt or model; continuing "
+                f"it would splice two translations into one book. Delete "
+                f"{self.bin_path} to start over, or rerun with the original "
+                f"--language / --prompt / --model.[/bold red]"
+            )
+            raise SystemExit(1)
 
     def _skip_plan_mode(self, reason):
         """Give up the plan and translate the tag selection instead.
@@ -1195,6 +1309,18 @@ class EPUBBookLoader(BaseBookLoader):
         # the source of truth (user edits win, resume fingerprints stay
         # stable). Delete it to reclassify from scratch.
         if self.plan_classify == "model" and ledger.undecided_keys():
+            if self.is_test:
+                # --test truncates the units translated, never the plan: the
+                # partition is of the whole book, so classification is of the
+                # whole book too, and it is paid for in full by a run the
+                # operator asked to be small.
+                print(
+                    f"[bold yellow]Warning:[/bold yellow] plan classification "
+                    f"covers the whole book "
+                    f"({len(ledger.undecided_keys())} signatures), not just "
+                    f"the --test slice; the plan file is cached and reused by "
+                    f"the full run."
+                )
             decisions = self._classify_plan(ledger, plan, plan_path)
             for key, (verdict, content_type) in decisions.items():
                 ledger.decide(key, verdict, "llm", content_type)
@@ -3246,6 +3372,10 @@ class EPUBBookLoader(BaseBookLoader):
                         raise Exception("Batch translation timed out after 5 minutes")
 
     def make_bilingual_book(self):
+        # Before the plan is built and before anything is translated: a
+        # checkpoint written into another language (or under another prompt,
+        # or by another model) is not this run's to continue.
+        self._check_resume_run_fingerprint()
         self.helper = EPUBBookLoaderHelper(
             self.translate_model,
             self.accumulated_num,
@@ -3291,6 +3421,7 @@ class EPUBBookLoader(BaseBookLoader):
 
         # The plan is the single source of truth for progress and execution.
         all_p_length = sum(len(plan.jobs) for plan in chapter_plans)
+        self._report_test_slice_requests(chapter_plans, all_p_length)
 
         # Use leave=False in test mode to prevent duplicate progress bar display
         pbar = tqdm(
@@ -3537,6 +3668,10 @@ class EPUBBookLoader(BaseBookLoader):
             # tag-mode checkpoints, and the fingerprint check that consumes
             # it only runs in plan mode.
             self._resume_plan_fingerprint = state.get("plan_fingerprint")
+            # language/prompt/model (see _run_fingerprint). Absent from
+            # checkpoints written before this was recorded: those warn and
+            # continue rather than being refused.
+            self._resume_run_fingerprint = state.get("run_fingerprint")
         except ValueError:
             raise
         except Exception:
@@ -3629,6 +3764,9 @@ class EPUBBookLoader(BaseBookLoader):
                 "order": self.CHECKPOINT_ORDER,
                 "job_ids": completed_job_ids,
                 "translations": self.p_to_save,
+                # job ids bind a slot to its source text; this binds its
+                # contents to the language, prompt and model that wrote them
+                "run_fingerprint": self._run_fingerprint(),
             }
             if self._plan_mode and self._plan_fingerprint:
                 # job ids bind the slots to the book's text; the plan

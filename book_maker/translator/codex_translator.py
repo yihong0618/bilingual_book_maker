@@ -140,6 +140,11 @@ class Codex(Base):
     # rolls over into a handoff turn like any other session route.
     SUPPORTS_SESSION_CONTEXT = True
 
+    # And it is one whether or not `--use_context session` was passed: there
+    # is no windowed shape to fall back to here. A run on this route is
+    # billed like a session run, so it derives a session run's budgets.
+    SESSION_CONTEXT_ALWAYS_ON = True
+
     # A turn carries no system message of its own; `prompt_sys_msg` is read
     # once, when a thread opens, and the thread outlives any one window.
     BATCH_SYS_MSG_PER_REQUEST = False
