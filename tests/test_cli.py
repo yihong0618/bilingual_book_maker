@@ -236,12 +236,19 @@ def test_classify_model_flag_implies_model_mode(tmp_path):
         "--test_num",
         "1",
     )
-    # google translator has no structured_json, and a classifier that cannot
-    # run must block rather than degrade into translating undecided rows
+    # google translates through one fixed engine with no model to ask, and a
+    # classifier that cannot run must block rather than degrade into
+    # translating undecided rows. Refused at the CLI now (audit row A10):
+    # the run used to parse the whole book and write a plan file nothing had
+    # decided before dying in the classifier.
     assert proc.returncode == 1
-    assert "no structured-output support" in " ".join(proc.stdout.split())
+    flat = " ".join(proc.stdout.split())
+    assert "--plan-classify-model" in flat
+    assert "no model to ask" in flat
     # and it must say what to do instead, not just what failed
-    assert "--plan-classify agent" in " ".join(proc.stdout.split())
+    assert "--plan-classify agent" in flat
+    # nothing was parsed or written on the way to the refusal
+    assert not plan.exists()
 
 
 def test_naming_a_model_for_a_fixed_engine_fails_loud(tmp_path):

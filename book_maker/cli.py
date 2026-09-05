@@ -2,8 +2,10 @@ import argparse
 import json
 import os
 import sys
+from collections import namedtuple
 from os import environ as env
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import urlparse
 
 from rich import print
@@ -470,6 +472,83 @@ def batch_unit_cap(value):
     return units
 
 
+def accumulated_tokens(value):
+    """argparse type for --accumulated_num: a token budget, 1 being "off".
+
+    0 and negatives used to land silently as "grouping off", which is what 1
+    already documents. A number below the off switch is a typo, not a
+    quieter way to say the same thing.
+    """
+    try:
+        budget = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a whole number, got {value!r}")
+    if budget < 1:
+        raise argparse.ArgumentTypeError(
+            f"a token budget of {budget} is not a request; use at least 1 "
+            f"(--accumulated_num 1 is how grouping is turned off)"
+        )
+    return budget
+
+
+def poetry_group(value):
+    """argparse type for --poetry-group-size: lines one request may carry."""
+    try:
+        lines = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a whole number, got {value!r}")
+    if lines < 1:
+        raise argparse.ArgumentTypeError(
+            f"a poetry group of {lines} is not a request; use at least 1 "
+            f"(1 gives every short line its own request)"
+        )
+    return lines
+
+
+# Above this, a plan that passes the coverage gate is the exception rather
+# than the rule: running heads, page numbers and apparatus are exactly what
+# the plan is for skipping, and they are rarely under a tenth of a book.
+COVERAGE_WARN_ABOVE = 0.9
+
+# The two plan-shaping flags default to None on the parser so that "typed"
+# and "left alone" stay distinguishable (the no-op warning needs the
+# difference); these are the values a run gets when they were left alone.
+PLAN_MIN_COVERAGE_DEFAULT = 0.5
+POETRY_GROUP_SIZE_DEFAULT = 8
+
+
+def coverage_fraction(value):
+    """argparse type for --plan-min-coverage: a fraction of the book, 0-1.
+
+    A percentage typed as `50` used to be accepted and then abort every run
+    after classification had been paid for; so did `1.5`, which no plan can
+    ever satisfy. Both ends warn where the value is legal but self-defeating.
+    """
+    try:
+        fraction = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a number, got {value!r}")
+    if not 0 <= fraction <= 1:
+        raise argparse.ArgumentTypeError(
+            f"--plan-min-coverage is a fraction of the book between 0 and 1, "
+            f"got {fraction} (50% is 0.5, not 50)"
+        )
+    if fraction == 0:
+        print(
+            "[yellow]--plan-min-coverage 0: coverage guard disabled; a plan "
+            "that covers almost nothing will be translated without a "
+            "word.[/yellow]"
+        )
+    elif fraction > COVERAGE_WARN_ABOVE:
+        print(
+            f"[yellow]--plan-min-coverage {fraction}: plans rarely cover more "
+            f"than ~90% of a book (running heads, page numbers and apparatus "
+            f"are what a plan skips); this will usually abort after "
+            f"classification is paid for.[/yellow]"
+        )
+    return fraction
+
+
 def resolve_context_mode(options):
     """`(context_flag, context_mode)` from the parsed `--use_context` value.
 
@@ -527,9 +606,21 @@ def resolve_plan_mode(
     if translate_tags_given:
         return "none", "--translate-tags names what to translate"
     if api_format != PLAN_AUTO_FORMAT:
-        # Only the openai wire format has the capability probe. A route
+        # Only the openai wire format is *entered* on a verdict. A route
         # without one used to end here; one that can hold a conversation now
         # gets asked in the way it can answer.
+        if probe is not None and session:
+            # An OpenAI-shaped route at another vendor's address (groq, xai,
+            # litellm, a gateway): it carries the same probe, and
+            # `classify_plan` asks it at run time. Saying "no JSON-schema
+            # verdict" here described the wrong run — the JSON path is used
+            # on these whenever the probe holds. Message only: which mode
+            # this run enters is unchanged.
+            return "session", (
+                f"the {api_format} route's JSON-schema support is probed at "
+                f"run time: the JSON path where the probe holds, a plain "
+                f"session otherwise"
+            )
         if session:
             return "session", (
                 f"the {api_format} route has no JSON-schema verdict, so "
@@ -559,6 +650,594 @@ def resolve_plan_mode(
             f"({verdict or 'no schema support'})"
         )
     return "model", reason
+
+
+def resolve_classify_mode(options):
+    """`(classify mode, still-auto)` from the two --plan-classify flags.
+
+    Pure: it resolves what the command asked for and refuses nothing. The
+    one contradiction the CLI stops on (a classifier model named alongside a
+    mode that classifies nothing) is deliberately left as it was typed, so
+    the refusal that owns that message is the one the run meets.
+    """
+    mode = options.plan_classify
+    plan_auto = mode == "auto"
+    if plan_auto:
+        # tag mode until the endpoint's probe settles it
+        mode = "none"
+    if options.plan_classify_model:
+        # naming a classifier is naming the mode it belongs to
+        plan_auto = False
+        if mode not in ("all", "agent"):
+            mode = "model"
+    return mode, plan_auto
+
+
+def _route_can_session_classify(translate_model):
+    """Whether this route's class can hold a classifier conversation.
+
+    The class, not an instance: the compatibility pass runs before any
+    translator is built. `can_session_classify` asks the same question of
+    the same attribute, so the two answers cannot drift.
+    """
+    from book_maker.translator.base_translator import Base
+
+    factory = getattr(translate_model, "classify_session", None)
+    return factory is not None and factory is not Base.classify_session
+
+
+def plan_mode_expected(facts):
+    """Whether this command will translate a plan rather than a tag selection.
+
+    Decidable from the command alone in every case but one: `auto` on an
+    OpenAI-shaped route is settled by the capability probe, and a probe that
+    *fails* drops back to tag mode. Answering True there is the right guess —
+    a failing probe is a broken run, not a mode.
+    """
+    if facts.book_type != "epub":
+        return False
+    if facts.classify_mode != "none":
+        return True
+    if not facts.plan_auto or facts.translate_tags_given:
+        return False
+    if facts.api_format == PLAN_AUTO_FORMAT:
+        return True
+    return _route_can_session_classify(facts.translate_model)
+
+
+# ---------------------------------------------------------- flag compatibility
+#
+# One table, one pass, run after the endpoint is resolved and before any
+# translator is built or any request is made. A row is
+# `CompatRule(id, level, when, say)`:
+#
+#   id    the audit row it enforces, for the tests to name; never printed
+#   level "stop" (red, exit 1) or "warn" (yellow, the run continues)
+#   when  a predicate over the resolved `RunFacts` — options plus everything
+#         the CLI has already worked out (book type, wire format, translator
+#         class, whether a plan is coming)
+#   say   the operator's sentence, built from the same facts
+#
+# Rows that need state only the loader has (how many signatures a plan asks
+# about, how many requests a --test slice becomes) are not here: they print
+# where that number exists, in the loader.
+#
+# Stops win outright: when any fires, only the stops are printed, because a
+# warning about a run that is not going to happen is noise.
+
+CompatRule = namedtuple("CompatRule", "id level when say")
+
+# Loaders that read the tag-selection flags. Markdown reads the exclusions
+# and nothing else; everything outside epub ignores the styling flags, the
+# worker count and the context switch.
+TAG_AWARE_BOOK_TYPES = ("epub",)
+EXCLUDE_AWARE_BOOK_TYPES = ("epub", "md", "markdown")
+PARALLEL_AWARE_BOOK_TYPES = ("epub", "md", "markdown")
+
+# Engines that detect the source language themselves, so the source half of
+# `--language SRC:TGT` reaches nothing they send.
+SOURCE_BLIND_FORMATS = ("google", "deepl", "deeplfree", "caiyun", "tencent")
+
+# Formats that read `--source_lang` off the options and put it in the request.
+SOURCE_LANG_FORMATS = ("qwen", "customapi")
+
+# The tag exclusion every run gets when the flag is untouched.
+DEFAULT_EXCLUDE_TRANSLATE_TAGS = "sup,code"
+
+# Codex's classifier thread opens with the sidecar's own instructions before
+# it is asked anything (measured 260905: ~16.9k input tokens).
+CODEX_CLASSIFIER_PREAMBLE_TOKENS = "~17k"
+
+
+def _c7_ignored_tag_flags(f):
+    """Tag-selection flags this book type will not read."""
+    flags = []
+    if f.book_type not in TAG_AWARE_BOOK_TYPES:
+        if f.translate_tags_given:
+            flags.append("--translate-tags")
+        if f.options.allow_navigable_strings:
+            flags.append("--allow_navigable_strings")
+    if f.book_type not in EXCLUDE_AWARE_BOOK_TYPES and f.exclude_translate_tags_given:
+        flags.append("--exclude-translate-tags")
+    return flags
+
+
+def _c8_ignored_style_flags(f):
+    return [
+        flag
+        for flag, value in (
+            ("--translation_style", f.options.translation_style),
+            ("--translation_color", f.options.translation_color),
+        )
+        if value
+    ]
+
+
+def _b12_given_compact_flags(f):
+    return [
+        flag
+        for flag, value in (
+            ("--context-compact-at", f.options.context_compact_at),
+            ("--no-context-compact", f.options.no_context_compact),
+        )
+        if value
+    ]
+
+
+COMPAT_RULES = (
+    # ---------------------------------------------------------------- stops
+    CompatRule(
+        "A1",
+        "stop",
+        lambda f: f.book_type == "epub"
+        and (f.options.batch_flag or f.options.batch_use_flag),
+        lambda f: (
+            "--batch / --batch-use are broken on epub: queueing lives on a "
+            "path the epub loader never takes, so the run translates the "
+            "whole book live at full price and then submits an empty batch "
+            "job — and --batch never writes the book at all. Drop the flag, "
+            "or batch a txt/srt book."
+        ),
+    ),
+    CompatRule(
+        "A4",
+        "stop",
+        lambda f: f.book_type == "epub"
+        and f.options.parallel_workers > 1
+        and (f.options.accumulated_num or 0) > 1
+        and f.options.resume,
+        lambda f: (
+            "--parallel-workers with --accumulated_num above 1 records no "
+            "progress at all, so --resume has nothing to continue and an "
+            "interrupted run pays for the whole book again. Drop one of the "
+            "three: --parallel-workers, --accumulated_num or --resume."
+        ),
+    ),
+    CompatRule(
+        "A7",
+        "stop",
+        lambda f: len(f.model_names) > 1 and f.options.context_mode == "session",
+        lambda f: (
+            f"--model_list rotates a different model into every request "
+            f"while --use_context session keeps one growing history. Prompt "
+            f"caching is per model, so every request would re-read the whole "
+            f"history at full price, and one conversation would be written "
+            f"by {len(f.model_names)} different models. Name one model with "
+            f"--model, or drop --use_context session."
+        ),
+    ),
+    CompatRule(
+        "A10",
+        "stop",
+        lambda f: f.book_type == "epub"
+        and f.classify_mode == "model"
+        and f.api_format not in LLM_FORMATS,
+        lambda f: (
+            f"{f.classify_flag} asks an LLM to rule on every plan "
+            f"signature, and the "
+            f"{f.api_format} format translates through one fixed engine with "
+            f"no model to ask. The run would parse the whole book and write "
+            f"a plan file nothing had decided before failing. Use "
+            f"--plan-classify agent to decide the plan yourself, "
+            f"--plan-classify all to translate the whole partition, or "
+            f"translate through an LLM route."
+        ),
+    ),
+    CompatRule(
+        "C9",
+        "stop",
+        lambda f: bool(f.options.retranslate) and f.book_type != "epub",
+        lambda f: (
+            f"--retranslate is implemented by the epub loader only; on a "
+            f"{f.book_type} book it would be accepted and do nothing."
+        ),
+    ),
+    # ---------------------------------------------------------------- warns
+    CompatRule(
+        "A8",
+        "warn",
+        lambda f: f.options.context_mode == "session"
+        and not f.plan_mode
+        and (f.options.accumulated_num or 1) <= 1,
+        lambda f: (
+            "--use_context session outside plan mode leaves grouping off, so "
+            "every paragraph is its own request and each one re-reads the "
+            "whole history. Raise --accumulated_num to put several "
+            "paragraphs in one request; only plan mode derives that budget "
+            "for you."
+        ),
+    ),
+    CompatRule(
+        "A9",
+        "warn",
+        lambda f: f.options.prompt_arg is not None
+        and bool(f.env.get("OPENAI_API_SYS_MSG"))
+        and hasattr(f.translate_model, "_probe_verdict"),
+        lambda f: (
+            "$OPENAI_API_SYS_MSG is exported, and it outranks the system "
+            "message from --prompt for the whole run. Unset it, or drop the "
+            '"system" key from --prompt.'
+        ),
+    ),
+    CompatRule(
+        "A11",
+        "warn",
+        lambda f: f.api_format == "codex" and f.plan_mode,
+        lambda f: (
+            f"the codex route classifies the plan in a thread of its own, "
+            f"and codex sends {CODEX_CLASSIFIER_PREAMBLE_TOKENS} tokens of "
+            f"its own preamble before the first question is asked. "
+            f"--plan-classify none skips that."
+        ),
+    ),
+    CompatRule(
+        "B6",
+        "warn",
+        lambda f: f.plan_auto
+        and f.book_type == "epub"
+        and not f.translate_tags_given
+        and f.api_format in LLM_FORMATS
+        and f.api_format != PLAN_AUTO_FORMAT
+        and not _route_can_session_classify(f.translate_model),
+        lambda f: (
+            f"the {f.api_format} route does not plan automatically: it "
+            f"offers no JSON-schema verdict and holds no classifier "
+            f"conversation, so this run translates the --translate-tags "
+            f"selection. Pass --plan-classify model to plan the whole book "
+            f"here — the same book comes out quite differently with it."
+        ),
+    ),
+    CompatRule(
+        "B8",
+        "warn",
+        lambda f: f.book_type == "epub"
+        and f.options.sentence_mode
+        and (f.options.accumulated_num or 0) > 1,
+        lambda f: (
+            "--sentence_mode is ignored while --accumulated_num is above 1: "
+            "the accumulating path never reaches the sentence one."
+        ),
+    ),
+    CompatRule(
+        "B9",
+        "warn",
+        lambda f: f.book_type == "epub"
+        and f.options.block_size > 0
+        and (f.options.accumulated_num or 0) > 1,
+        lambda f: (
+            "--block_size is ignored while --accumulated_num is above 1: the "
+            "accumulating path never reaches block batching."
+        ),
+    ),
+    CompatRule(
+        "B10",
+        "warn",
+        lambda f: bool(f.options.only_filelist) and bool(f.options.exclude_filelist),
+        lambda f: (
+            "--only_filelist already names every document to translate, so "
+            "--exclude_filelist is ignored when both are given."
+        ),
+    ),
+    CompatRule(
+        "B11",
+        "warn",
+        lambda f: f.options.context_paragraph_limit
+        and f.options.context_mode == "session",
+        lambda f: (
+            "--context_paragraph_limit sizes the re-sent window of bare "
+            "--use_context; session mode keeps one append-only history "
+            "instead and ignores it."
+        ),
+    ),
+    CompatRule(
+        "B12",
+        "warn",
+        lambda f: f.api_format == "codex"
+        and f.book_type not in CONTEXT_AWARE_BOOK_TYPES
+        and bool(_b12_given_compact_flags(f)),
+        lambda f: (
+            f"{' and '.join(_b12_given_compact_flags(f))} reach the "
+            f"translator for epub and markdown books only; on a "
+            f"{f.book_type} book the codex thread keeps its own default "
+            f"budget."
+        ),
+    ),
+    CompatRule(
+        "B13",
+        "warn",
+        lambda f: f.source_language is not None
+        and f.options.source_lang
+        and f.options.source_lang != "auto"
+        and f.options.source_lang.strip().lower() != f.source_language.strip().lower(),
+        lambda f: (
+            f"--source_lang {f.options.source_lang} and the source half of "
+            f"--language ({f.source_language}) name different languages. "
+            f"--source_lang reaches the "
+            f"{' and '.join(SOURCE_LANG_FORMATS)} routes only; the "
+            f"--language half reaches the prompt on every LLM route."
+        ),
+    ),
+    CompatRule(
+        "C1",
+        "warn",
+        lambda f: f.batch_units_given and not f.plan_mode,
+        lambda f: (
+            "--batch_units caps the units one plan request may carry; "
+            "nothing reads it outside plan mode."
+        ),
+    ),
+    CompatRule(
+        "C2",
+        "warn",
+        lambda f: f.book_type != "epub" and f.accumulated_num_given,
+        lambda f: (
+            f"--accumulated_num is read by the epub loader only; a "
+            f"{f.book_type} run groups with --batch_size."
+        ),
+    ),
+    CompatRule(
+        "C3",
+        "warn",
+        lambda f: f.book_type == "epub" and bool(f.options.batch_size),
+        lambda f: (
+            "--batch_size is not read by the epub loader; group with "
+            "--accumulated_num (a token budget) instead."
+        ),
+    ),
+    CompatRule(
+        "C4",
+        "warn",
+        lambda f: f.book_type == "srt" and f.options.prompt_arg is not None,
+        lambda f: (
+            "--prompt is ignored for srt books: the subtitle loader sends a "
+            "prompt of its own, written for timed lines."
+        ),
+    ),
+    CompatRule(
+        "C5",
+        "warn",
+        lambda f: f.options.context_mode == "window"
+        and f.book_type not in CONTEXT_AWARE_BOOK_TYPES,
+        lambda f: (
+            f"--use_context is not forwarded by the {f.book_type} loader; no "
+            f"earlier paragraph reaches the model, and it will be ignored."
+        ),
+    ),
+    CompatRule(
+        "C6",
+        "warn",
+        lambda f: f.options.parallel_workers > 1
+        and f.book_type not in PARALLEL_AWARE_BOOK_TYPES,
+        lambda f: (
+            f"--parallel-workers is used by the epub and markdown loaders "
+            f"only; a {f.book_type} run stays serial."
+        ),
+    ),
+    CompatRule(
+        "C7",
+        "warn",
+        lambda f: bool(_c7_ignored_tag_flags(f)),
+        lambda f: (
+            f"{', '.join(_c7_ignored_tag_flags(f))} select markup inside an "
+            f"epub; a {f.book_type} book has none, and they will be ignored."
+        ),
+    ),
+    CompatRule(
+        "C8",
+        "warn",
+        lambda f: f.book_type != "epub" and bool(_c8_ignored_style_flags(f)),
+        lambda f: (
+            f"{' and '.join(_c8_ignored_style_flags(f))} style the "
+            f"translation inside epub markup; {f.book_type} output carries "
+            f"no styling and will ignore them."
+        ),
+    ),
+    CompatRule(
+        "C10",
+        "warn",
+        lambda f: bool(f.options.retranslate) and f.options.test,
+        lambda f: (
+            "--retranslate ignores --test / --test_num: it retranslates the "
+            "whole range it was given, writes the book and stops."
+        ),
+    ),
+    CompatRule(
+        "C11",
+        "warn",
+        lambda f: f.options.quiet and f.book_type != "epub",
+        lambda f: (
+            f"--quiet is implemented by the epub loader only; a "
+            f"{f.book_type} run prints its progress as usual."
+        ),
+    ),
+    CompatRule(
+        "C12",
+        "warn",
+        lambda f: f.api_format == "codex" and (f.api_base_given or f.key_given),
+        lambda f: (
+            f"{' and '.join(f.codex_ignored_flags)} "
+            f"{'is' if len(f.codex_ignored_flags) == 1 else 'are'} ignored on "
+            f"the codex route: it drives the local codex sidecar, which "
+            f"reaches its own server and authenticates with your stored "
+            f"ChatGPT session."
+        ),
+    ),
+    CompatRule(
+        "C16",
+        "warn",
+        lambda f: f.source_language is not None
+        and f.api_format in SOURCE_BLIND_FORMATS,
+        lambda f: (
+            f"the {f.api_format} engine detects the source language itself, "
+            f"so the source half of --language ({f.source_language}) reaches "
+            f"nothing on this route."
+        ),
+    ),
+    CompatRule(
+        "C18",
+        "warn",
+        lambda f: not f.plan_mode
+        and (f.plan_min_coverage_given or f.poetry_group_size_given),
+        lambda f: (
+            f"{' and '.join(f.plan_only_flags)} "
+            f"{'shapes' if len(f.plan_only_flags) == 1 else 'shape'} a plan; "
+            f"this run translates the --translate-tags selection and will "
+            f"ignore "
+            f"{'it' if len(f.plan_only_flags) == 1 else 'them'}."
+        ),
+    ),
+)
+
+# `--plan-dry-run` returns before an endpoint is resolved (it needs no
+# credentials and builds no translator), so its own rows are checked there,
+# against what the command typed rather than what a run would resolve.
+DRY_RUN_RULES = (
+    CompatRule(
+        "B2",
+        "warn",
+        lambda f: f.translate_tags_given
+        or f.options.plan_classify == "none"
+        or (f.options.api_format or "openai") != PLAN_AUTO_FORMAT,
+        lambda f: (
+            "this preview describes a plan-mode run. --translate-tags, "
+            "--plan-classify none and a route with no JSON-schema verdict "
+            "each turn plan mode off, and the real run then translates the "
+            "--translate-tags selection instead of this plan."
+        ),
+    ),
+    CompatRule(
+        "B3",
+        "warn",
+        lambda f: True,
+        lambda f: (
+            f"this preview groups at --batch_units {f.batch_units} units per "
+            f"request. An endpoint that verifies JSON mode but not a strict "
+            f"schema carries half that, so the real run can make up to about "
+            f"twice these requests."
+        ),
+    ),
+)
+
+
+def normalize_options(options, given=None):
+    """Post-parse normalization, and a record of what the command typed.
+
+    argparse cannot tell a typed default from silence, and several
+    compatibility rows need exactly that difference — so every flag whose
+    real default would hide it parses to None and is filled in here, with
+    "it was typed" recorded alongside. Idempotent, and the only place the
+    two facts are derived, so `main` and the table cannot disagree.
+    """
+    options.context_flag, options.context_mode = resolve_context_mode(options)
+    given = given or SimpleNamespace()
+    given.accumulated_num = options.accumulated_num is not None
+    given.batch_units = options.batch_units is not None
+    given.plan_min_coverage = options.plan_min_coverage is not None
+    given.poetry_group_size = options.poetry_group_size is not None
+    # A named tag selection is an opt-out from the automatic plan; the
+    # parser's None is the only way to tell one from the "p" default.
+    given.translate_tags = options.translate_tags is not None
+    given.exclude_translate_tags = (
+        options.exclude_translate_tags != DEFAULT_EXCLUDE_TRANSLATE_TAGS
+    )
+    # `--api_base` and `--key` are filled in from --provider and the format's
+    # own address later; whether the *command* named them is knowable only here.
+    given.api_base = bool(options.api_base)
+    given.key = bool(options.key)
+    if not given.translate_tags:
+        options.translate_tags = "p"
+    if not given.plan_min_coverage:
+        options.plan_min_coverage = PLAN_MIN_COVERAGE_DEFAULT
+    if not given.poetry_group_size:
+        options.poetry_group_size = POETRY_GROUP_SIZE_DEFAULT
+    return given
+
+
+def run_facts(options, given, **resolved):
+    """Everything the table asks about, in one object.
+
+    `options` as parsed and normalized, `given` from `normalize_options`,
+    and `resolved` for what the CLI has since worked out — the book type,
+    the wire format, the translator class, the classify mode.
+    """
+    facts = SimpleNamespace(
+        options=options,
+        env=env,
+        book_type="",
+        api_format="",
+        translate_model=None,
+        model_names=(),
+        classify_mode="none",
+        plan_auto=False,
+        translate_tags_given=given.translate_tags,
+        exclude_translate_tags_given=given.exclude_translate_tags,
+        accumulated_num_given=given.accumulated_num,
+        batch_units_given=given.batch_units,
+        plan_min_coverage_given=given.plan_min_coverage,
+        poetry_group_size_given=given.poetry_group_size,
+        api_base_given=given.api_base,
+        key_given=given.key,
+        source_language=parse_language_pair(options.language)[0],
+        batch_units=GENERAL_GROUP_MAX_UNITS,
+    )
+    facts.__dict__.update(resolved)
+    facts.plan_mode = plan_mode_expected(facts)
+    facts.classify_flag = (
+        "--plan-classify-model"
+        if options.plan_classify_model
+        else f"--plan-classify {facts.classify_mode}"
+    )
+    facts.codex_ignored_flags = [
+        flag
+        for flag, given in (
+            ("--api_base", facts.api_base_given),
+            ("--key", facts.key_given),
+        )
+        if given
+    ]
+    facts.plan_only_flags = [
+        flag
+        for flag, given in (
+            ("--plan-min-coverage", facts.plan_min_coverage_given),
+            ("--poetry-group-size", facts.poetry_group_size_given),
+        )
+        if given
+    ]
+    return facts
+
+
+def check_compatibility(facts, rules=COMPAT_RULES):
+    """Run the table. Prints; exits 1 if any row stops the run."""
+    tripped = [rule for rule in rules if rule.when(facts)]
+    stops = [rule for rule in tripped if rule.level == "stop"]
+    if stops:
+        # Only the stops: the run is over, and advice about a run that is
+        # not going to happen is noise in front of the reason it isn't.
+        for rule in stops:
+            print(f"[bold red]Error: {rule.say(facts)}[/bold red]")
+        raise SystemExit(1)
+    for rule in tripped:
+        print(f"[bold yellow]Warning:[/bold yellow] {rule.say(facts)}")
 
 
 def build_parser():
@@ -703,16 +1382,18 @@ def build_parser():
     parser.add_argument(
         "--plan-min-coverage",
         dest="plan_min_coverage",
-        type=float,
-        default=0.5,
+        type=coverage_fraction,
+        # None is "not typed"; PLAN_MIN_COVERAGE_DEFAULT is filled in after
+        # parsing, so the no-op warning can tell silence from the default
+        default=None,
         help="in plan mode, abort if the plan covers less than this fraction "
-        "of the book's text (default 0.5)",
+        "of the book's text, between 0 and 1 (default 0.5)",
     )
     parser.add_argument(
         "--poetry-group-size",
         dest="poetry_group_size",
-        type=int,
-        default=8,
+        type=poetry_group,
+        default=None,
         help="plan mode: consecutive short lines share one translation "
         "request, at most this many per request (default 8; ~500 "
         "characters per request either way)",
@@ -758,7 +1439,7 @@ def build_parser():
         "--exclude-translate-tags",
         dest="exclude_translate_tags",
         type=str,
-        default="sup,code",
+        default=DEFAULT_EXCLUDE_TRANSLATE_TAGS,
         help="Exclude content within specified HTML tags from translation. Use comma to separate multiple tags. Default: sup,code. Example: --exclude-translate-tags code,pre",
     )
     parser.add_argument(
@@ -784,7 +1465,7 @@ def build_parser():
     parser.add_argument(
         "--accumulated_num",
         dest="accumulated_num",
-        type=int,
+        type=accumulated_tokens,
         default=None,
         help="""Wait for how many tokens have been accumulated before starting the translation.
 gpt3.5 limits the total_token to 4090.
@@ -927,7 +1608,9 @@ to turn grouping off there.
         "--block_size",
         type=int,
         default=-1,
-        help="merge multiple paragraphs into one block, may increase accuracy and speed up the process, but disturb the original format, must be used with `--single_translate`",
+        help="merge multiple paragraphs into one block, may increase accuracy "
+        "and speed up the process, but disturb the original format. Ignored "
+        "while --accumulated_num is above 1",
     )
     parser.add_argument(
         "--model_list",
@@ -1017,19 +1700,15 @@ def main():
         print(f"[yellow]deprecated:[/yellow] {escape(notice)}")
 
     options = parse_args(legacy.argv)
-    options.context_flag, options.context_mode = resolve_context_mode(options)
     # None is "not typed": --accumulated_num keeps its explicitness (plan
     # mode defaults the budget by context mode, and an explicit 1 must still
     # mean grouping off), and --batch_units falls back to the eval's ceiling.
-    accumulated_num_given = options.accumulated_num is not None
+    given = normalize_options(options)
+    accumulated_num_given = given.accumulated_num
+    translate_tags_given = given.translate_tags
     batch_units = (
         GENERAL_GROUP_MAX_UNITS if options.batch_units is None else options.batch_units
     )
-    # A named tag selection is an opt-out from the automatic plan; the
-    # parser's None is the only way to tell one from the "p" default.
-    translate_tags_given = options.translate_tags is not None
-    if not translate_tags_given:
-        options.translate_tags = "p"
     if options.plan_classify == "most":
         print("[yellow]--plan-classify most is now --plan-classify all[/yellow]")
         options.plan_classify = "all"
@@ -1082,6 +1761,9 @@ def main():
                 options.prompt_arg
                 or os.environ.get("BBM_CHATGPTAPI_USER_MSG_TEMPLATE")
                 or os.environ.get("BBM_CHATGPTAPI_SYS_MSG")
+                # counted by prompt_overhead_tokens like any other system
+                # message, and it outranks --prompt's own
+                or os.environ.get("OPENAI_API_SYS_MSG")
             ):
                 # The real run measures its own prompt; a fat custom one —
                 # flag or environment — can raise the budget past the floor
@@ -1107,6 +1789,13 @@ def main():
         )
         # samples are book text: rich would eat "[Seven] warriors [they were]"
         print(escape(plan.report()))
+        # What this preview cannot know: whether the real run will be in plan
+        # mode at all, and how far the endpoint will be trusted with one
+        # request. Both change the numbers just printed.
+        check_compatibility(
+            run_facts(options, given, book_type="epub", batch_units=batch_units),
+            rules=DRY_RUN_RULES,
+        )
         plan_path = f"{os.path.splitext(options.book_name)[0]}_plan.json"
         if os.path.exists(plan_path):
             print(
@@ -1207,6 +1896,35 @@ def main():
         )
         exit(1)
 
+    book_type = get_book_type(options.book_name)
+    support_type_list = list(BOOK_LOADER_DICT.keys())
+    if book_type not in support_type_list:
+        raise Exception(
+            f"now only support files of these formats: {','.join(support_type_list)}",
+        )
+
+    # Which mode the two --plan-classify flags asked for. Resolved here
+    # because the compatibility table asks about it; the one contradiction
+    # between them is still refused further down, where its message lives.
+    classify_mode, plan_auto = resolve_classify_mode(options)
+
+    # The compatibility table: every combination that would be paid for and
+    # then wasted, degraded or ignored. After the endpoint is resolved (the
+    # answers depend on the route) and before any translator is built.
+    check_compatibility(
+        run_facts(
+            options,
+            given,
+            book_type=book_type,
+            api_format=api_format,
+            translate_model=translate_model,
+            model_names=model_names,
+            classify_mode=classify_mode,
+            plan_auto=plan_auto,
+            batch_units=batch_units,
+        )
+    )
+
     # A codex run's context is the thread, and a thread does not survive the
     # process. The handoff report on disk is written, never read back.
     if api_format == "codex" and options.resume:
@@ -1235,13 +1953,6 @@ def main():
                     f"[bold yellow]Warning:[/bold yellow] {flag} only applies "
                     f"to --use_context session; ignoring it."
                 )
-
-    book_type = get_book_type(options.book_name)
-    support_type_list = list(BOOK_LOADER_DICT.keys())
-    if book_type not in support_type_list:
-        raise Exception(
-            f"now only support files of these formats: {','.join(support_type_list)}",
-        )
 
     book_loader = BOOK_LOADER_DICT.get(book_type)
     assert book_loader is not None, "unsupported loader"
@@ -1389,27 +2100,20 @@ def main():
         e.allow_navigable_strings = True
     # --plan-classify-model names a classifier, which only makes sense in
     # model mode; asking for it alongside a no-classification mode is a
-    # contradiction, not a preference to resolve silently.
-    classify_mode = options.plan_classify
-    # 'auto' is settled last, by the endpoint's probe; tag mode until then
-    plan_auto = classify_mode == "auto"
-    if plan_auto:
-        classify_mode = "none"
-    if options.plan_classify_model:
-        # naming a classifier is naming the mode it belongs to
-        plan_auto = False
-        if classify_mode in ("all", "agent"):
-            reason = (
-                "agent mode makes no API call"
-                if classify_mode == "agent"
-                else "all mode skips classification"
-            )
-            print(
-                f"[bold red]Error:[/bold red] --plan-classify-model cannot be "
-                f"combined with --plan-classify {classify_mode} ({reason})"
-            )
-            exit(1)
-        classify_mode = "model"
+    # contradiction, not a preference to resolve silently. (The modes
+    # themselves are resolved by resolve_classify_mode above, which leaves
+    # this combination as typed so this refusal still owns it.)
+    if options.plan_classify_model and classify_mode in ("all", "agent"):
+        reason = (
+            "agent mode makes no API call"
+            if classify_mode == "agent"
+            else "all mode skips classification"
+        )
+        print(
+            f"[bold red]Error:[/bold red] --plan-classify-model cannot be "
+            f"combined with --plan-classify {classify_mode} ({reason})"
+        )
+        exit(1)
     # Plan mode is epub-only, and 'agent' in particular promises to stop
     # before spending anything; silently translating a txt/md book instead
     # would be the exact opposite of what was asked.
