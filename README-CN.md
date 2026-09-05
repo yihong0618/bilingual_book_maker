@@ -94,7 +94,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   SiliconFlow、OpenRouter）：复制为 `bbm_providers.json`，并修改其中的key，
   例如`--provider gemini` 就是使用其中 Gemini 的api。
 - `--key` 可以写多个 key，英文逗号分隔，轮换使用。
-- `--use_context session` 使用会话模式翻译，并在8k上下文时进行压缩。
+- `--use_context session` 使用会话模式翻译；开启请求合并的运行会自动推导压缩预算（默认参数下约 `3200`，启动时打印），未合并的运行仍在 8k 时压缩。
 - 旧的预设名和 key 参数仍然可用，见 [从旧参数迁移](./docs/migration.md)。
 
 ## 支持的翻译服务
@@ -330,7 +330,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--resume`
 
-  手动中断后，加入命令可以从之前中断的位置继续执行。
+  手动中断后，加入命令可以从之前中断的位置继续执行。EPUB 断点现在记录本次运行的目标语言、提示词和模型；不一致时直接停止，而不是把两次运行拼进同一本书（旧版断点只警告一次并继续）。与 `--parallel-workers` 加大于 1 的 `--accumulated_num` 同时使用会被拒绝——那条路径根本不写断点，无从恢复。
 
   ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --api_format google --resume
@@ -354,7 +354,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
   - `--plan-dry-run`：仅打印按标签签名分组的表格，写出 `<book>_plan.json` 后退出。同时遵守 `--only_filelist` / `--exclude_filelist`。
   - `<book>_plan.json`：翻译计划；想重新分类请先删除该文件。
-  - `--plan-min-coverage`（默认 0.5）：如果计划覆盖的正文比例低于该阈值，计划模式会直接报错退出。
+  - `--plan-min-coverage`（默认 0.5，范围 0–1）：如果计划覆盖的正文比例低于该阈值，计划模式会直接报错退出。`0` 关闭该闸门，高于 `0.9` 的值多半会在分类已付费之后中止——两种情况都会警告。
   - `--poetry-group-size`（默认 8）：连续的短诗行按最多这么多行合成一个诗节一起翻译。
 
   ```shell
@@ -398,7 +398,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
   达到累计token数开始进行翻译。gpt3.5将total_token限制为4090。
   例如，如果您使用`--accumulated_num 1600`，则可能会输出2200个令牌，另外200个令牌用于系统指令（system_message）和用户指令（user_message），1600+2200+200 = 4000，所以token接近极限。你必须选择一个自己合适的值，我们无法在发送之前判断是否达到限制。
-  在 EPUB 计划模式下这是每个请求的 token 预算：连续的段落（不限长度）合并进同一个请求，直到累计 `N` 个 token。配合 `--use_context session` 时默认值由本次运行自身的提示词开销推导——普通提示词下为 `1600`，很长的自定义 `--prompt` 下最高 `2000`（会话模式的开销主要取决于请求数）；传 `1` 可关闭合并。
+  在 EPUB 计划模式下这是每个请求的 token 预算：连续的段落（不限长度）合并进同一个请求，直到累计 `N` 个 token。配合 `--use_context session` 时——codex 路由的线程本身就是会话，无论传不传该 flag，同样适用——默认值由本次运行自身的提示词开销推导：普通提示词下为 `1600`，很长的自定义 `--prompt` 下最高 `2000`（会话模式的开销主要取决于请求数）；传 `1` 可关闭合并。最小值 `1`。
 
 - `--batch_units`:
 
@@ -422,7 +422,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
   - `--context-compact-at`:
 
-    滚动历史可以达到的估算 token 预算。session 模式下历史达到该值时被压缩成交接报告。最小值 `500`。未指定时，开启请求合并的运行会根据请求预算自动推导（默认参数下约 `3200`，启动时打印）；未合并的 session 保持 `8000`。在通过纯会话分类的端点上，它同样约束计划分类器自己的会话（该会话到达预算时直接重开，无交接报告），与是否传 `--use_context` 无关。显式指定的值总是优先。
+    滚动历史可以达到的估算 token 预算。session 模式下历史达到该值时被压缩成交接报告。最小值 `500`。未指定时，开启请求合并的运行——codex 路由无论传不传 `--use_context` 都算——会根据请求预算自动推导（默认参数下约 `3200`，启动时打印）；未合并的 session 保持 `8000`。在通过纯会话分类的端点上，它同样约束计划分类器自己的会话（该会话到达预算时直接重开，无交接报告），与是否传 `--use_context` 无关。显式指定的值总是优先。
 
     我们的实测（2026年9月，整本书运行）发现成本曲线在 `1500`–`4000` 之间平坦，超过后急剧上升——`20000` 比最优值贵 56%。短窗口并不损害名词一致性：交接报告每个窗口都会重申重复出现的术语，唯一观察到的语域漂移反而出现在窗口*最长*的那次运行中。
 
@@ -469,8 +469,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--batch` / `--batch-use`:
 
-  使用 ChatGPT Batch API 的两阶段 EPUB 流程。先用 `--batch` 提交任务，再以
-  `--batch-use` 重跑以等待并使用结果。二者都与计划模式不兼容。
+  使用 ChatGPT Batch API 的两阶段流程。目前在 **EPUB 输入上会被直接拒绝**：其排队路径不可达，这样的运行会以全价实时翻译、然后提交一个空的批任务而不写出书。不实现 Batch API 的路由同样拒绝。
 
 - `--parallel-workers`:
 

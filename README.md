@@ -101,8 +101,9 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   `bbm_providers.json`, set the key in it, and `--provider gemini` uses the
   Gemini API from it.
 - `--key` takes several keys separated by commas and rotates them.
-- `--use_context session` translates in session mode and compacts at an 8k
-  context.
+- `--use_context session` translates in session mode; grouped runs derive
+  their compaction budget (~3200 at the defaults, printed at start),
+  ungrouped ones compact at 8k.
 - The old preset names and key flags still work, see
   [Migrating from the old flags](./docs/migration.md).
 
@@ -358,7 +359,12 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--resume`:
 
-  Use `--resume` option to manually resume the process after an interruption.
+  Use `--resume` option to manually resume the process after an interruption. An EPUB
+  checkpoint records the run's language, prompt and model, and a resume under different
+  ones stops with a message rather than splicing two runs into one book (checkpoints from
+  older versions warn once and continue). Refused together with `--parallel-workers` and
+  `--accumulated_num` above 1 — that path writes no checkpoint, so there would be nothing
+  to resume.
 
   ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --api_format google --resume
@@ -385,7 +391,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   - `--plan-dry-run`: print the per-signature table, write `<book>_plan.json`, and exit. Honors `--only_filelist` / `--exclude_filelist`.
   - `<book>_plan.json`: the translation plan; delete it to classify again.
-  - `--plan-min-coverage` (default 0.5): plan mode aborts if the plan covers less than this fraction of the text.
+  - `--plan-min-coverage` (default 0.5, range 0–1): plan mode aborts if the plan covers less than this fraction of the text. `0` disables the guard and values above `0.9` usually abort after classification is already paid for — both warn.
   - `--poetry-group-size` (default 8): consecutive short lines — verse, lists, tables of short entries — are translated together, up to this many per request, so each line sees its neighbours.
 
   ```shell
@@ -445,7 +451,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   Wait for how many tokens have been accumulated before starting the translation. gpt3.5 limits the total_token to 4090. For example, if you use `--accumulated_num 1600`, maybe openai will output 2200 tokens and maybe 200 tokens for other messages in the system messages user messages, 1600+2200+200=4000, So you are close to reaching the limit. You have to choose your own
   value, there is no way to know if the limit is reached before sending.
-  In EPUB plan mode this is a per-request token budget: consecutive units of any length share one request up to `N` tokens. With `--use_context session` a default is derived from the run's own prompt overhead — `1600` with the stock prompts, up to `2000` under a fat custom `--prompt` (fewer requests is most of a session run's bill); pass `1` to turn grouping off.
+  In EPUB plan mode this is a per-request token budget: consecutive units of any length share one request up to `N` tokens. With `--use_context session` — and always on the codex route, whose thread is a session either way — a default is derived from the run's own prompt overhead — `1600` with the stock prompts, up to `2000` under a fat custom `--prompt` (fewer requests is most of a session run's bill); pass `1` to turn grouping off. Minimum `1`.
 
 - `--batch_units`:
 
@@ -472,7 +478,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   - `--context-compact-at`:
 
-    The estimated-token budget a rolling history may reach. In session mode the history is then compacted into a handoff report. Minimum `500`. When unset, a run with request grouping on derives a budget from its request budget (~3200 at the defaults) and prints it at start; an ungrouped session keeps `8000`. It also bounds the plan classifier's own conversation on endpoints that classify over a plain session (which simply restarts there — no handoff), whether or not `--use_context` was passed. An explicit value always wins.
+    The estimated-token budget a rolling history may reach. In session mode the history is then compacted into a handoff report. Minimum `500`. When unset, a run with request grouping on — the codex route counts as one, `--use_context` or not — derives a budget from its request budget (~3200 at the defaults) and prints it at start; an ungrouped session keeps `8000`. It also bounds the plan classifier's own conversation on endpoints that classify over a plain session (which simply restarts there — no handoff), whether or not `--use_context` was passed. An explicit value always wins.
 
     Our measurement (September 2026, whole-book runs) found the cost curve flat between `1500` and `4000` and steeply rising past it — `20000` cost 56% more than the optimum. Short windows did not hurt name consistency: the handoff report re-states the recurring terms each window, and the only register drift observed was in the *longest*-window run.
 
@@ -529,9 +535,10 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--batch` / `--batch-use`:
 
-  Two-stage EPUB translation through the ChatGPT Batch API. First run with `--batch` to
-  submit the batch, then rerun with `--batch-use` to wait for and consume its results.
-  These flags are incompatible with plan mode.
+  Two-stage translation through the ChatGPT Batch API. Currently **refused on EPUB
+  inputs**: the queue path is unreachable there, so such a run would translate live at
+  full price and then submit an empty batch job instead of writing the book. Also refused
+  on routes that do not implement the Batch API.
 
 - `--quiet`:
 

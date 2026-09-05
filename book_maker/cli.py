@@ -1475,10 +1475,11 @@ So you are close to reaching the limit. You have to choose your own value, there
 In EPUB plan mode this is a per-request token budget: consecutive units of any
 length share one request up to this many tokens (at most --batch_units units per
 request; half that when the endpoint verifies JSON mode but not a strict schema).
-Plan mode with --use_context session derives a default from the run's own
-prompt overhead (1600 with the stock prompts, up to 2000 under a fat custom
---prompt), because a session run's bill is roughly its request count; pass 1
-to turn grouping off there.
+Plan mode with --use_context session — and always on the codex route, whose
+thread is a session whether or not the flag was passed — derives a default
+from the run's own prompt overhead (1600 with the stock prompts, up to 2000
+under a fat custom --prompt), because a session run's bill is roughly its
+request count; pass 1 to turn grouping off there. Minimum 1.
 """,
     )
     parser.add_argument(
@@ -1565,8 +1566,9 @@ to turn grouping off there.
         default=None,
         help="estimated-token budget for a rolling history. In session mode "
         "the history is compacted into a translator handoff report at this "
-        "size; when unset, a grouped session run derives one from its "
-        "request budget (~3200 at the defaults, printed at start; measured "
+        "size; when unset, a grouped session run — the codex route counts "
+        "as one, --use_context or not — derives one from its request budget "
+        "(~3200 at the defaults, printed at start; measured "
         "cost is flat across 1500-4000 and rises past it) and an ungrouped "
         "session keeps 8000. It also bounds the plan classifier's own "
         "conversation on endpoints that classify over a plain session "

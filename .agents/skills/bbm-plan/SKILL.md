@@ -542,7 +542,10 @@ name-then-rule reasoning), what the read-back showed, and hand over
 |---|---|
 | `doesn't apply JSON schema … using delimiter method`, `honors JSON schema shape but not value constraints`, `no strict structured-output support` | **not a failure.** The endpoint does not do strict schema decoding, so translation uses the delimiter method. Expected on the anthropic route and most proxies; note it, do not switch models over it |
 | `refused the … request shape; using a simpler one` | classification's ladder descended a rung. Informational |
-| fingerprint refusal on `--resume` | book file or plan changed since the cache was written; delete the cache only if that was intentional |
+| a `--test` run printing its request count (grouping merges the slice into few requests), or that classification covers the whole book regardless of `--test` | **not a failure.** New compatibility narration; the smoke recipe triggers both by design |
+| `classifying over a plain session` | **not a failure.** The endpoint has no structured output, so plan classification runs over a conversation with verbatim `skip`/`translate` replies |
+| `N misaligned batches this run — … lower --batch_units or --accumulated_num` | the model keeps miscounting large batches; follow the hint on the next run |
+| fingerprint refusal on `--resume` | book file or plan changed since the cache was written; delete the cache only if that was intentional. A checkpoint refusal naming language/prompt/model means the resume flags differ from the original run's — rerun with the original flags, or delete the checkpoint |
 | `undecided signature(s)` on plan load | null actions remain — answer every open question, then rerun |
 | `invalid action` on plan load | typo in a hand-edited `action` — fix the JSON, rerun |
 | coverage-gate error / empty plan | the plan skips nearly everything — re-check the plan |
