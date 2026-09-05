@@ -1808,6 +1808,7 @@ class EPUBBookLoader(BaseBookLoader):
             poetry_group_size=self.poetry_group_size,
             token_budget=self._plan_token_budget,
             max_units=self.batch_units,
+            keep_classes=self._plan_css.keep_classes,
         )
         return fp
 

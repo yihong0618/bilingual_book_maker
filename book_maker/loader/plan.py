@@ -459,16 +459,86 @@ def classify_skip(text):
     return None
 
 
-def _signature(element):
-    """``tag`` or ``tag.class1.class2`` with classes sorted.
+# What an *unescaped* CSS class selector can match: an identifier — letters,
+# digits, `-`, `_`, anything non-ASCII (CJK class names are legal idents),
+# not starting with a digit. A class token outside this grammar (`#`, `.`,
+# `:`, a leading digit) is unreachable by any plain `.foo` selector, so no
+# stylesheet shapes it — it is converter metadata, not a content signature.
+# linear-algebra.epub is the measured case: tex4ht stuffs cross-reference
+# targets into class attributes (`fcla-xml-2.30li6.xhtml#x7-6000__…`), 769 of
+# its 1222 class tokens occur exactly once, and keying on them minted 1182
+# ledger rows / 99 classification requests for one merged question's worth
+# of content. Ident-only keying: 98 signatures, every styleable token kept.
+_CSS_IDENT_RE = re.compile(
+    r"^-{0,2}[A-Za-z_\u0080-\U0010ffff][-A-Za-z0-9_\u0080-\U0010ffff]*$"
+)
+
+# A CSS escape: `\HH…` (1–6 hex digits, one optional trailing whitespace
+# swallowed, per spec) or `\<any char>` literally.
+_CSS_ESCAPE_RE = re.compile(r"\\([0-9a-fA-F]{1,6})[ \t\r\n\f]?|\\(.)", re.S)
+
+# `.` followed by ident chars and/or escapes (a hex escape consumes one
+# trailing whitespace, per spec): a class selector, wherever it
+# appears. Declaration values that happen to start a number with `.`
+# (`margin: .5em`) match too, but carry no backslash and are ignored by the
+# one consumer, which only collects escaped selectors.
+_CSS_CLASS_SELECTOR_RE = re.compile(
+    r"\.((?:\\[0-9a-fA-F]{1,6}[ \t\r\n\f]?|\\.|[-A-Za-z0-9_\u0080-\U0010ffff])+)", re.S
+)
+
+
+def _css_unescape(token):
+    def _sub(m):
+        if m.group(1) is not None:
+            try:
+                return chr(int(m.group(1), 16))
+            except ValueError:  # beyond U+10FFFF
+                return m.group(0)
+        return m.group(2)
+
+    return _CSS_ESCAPE_RE.sub(_sub, token)
+
+
+def escaped_class_tokens(css_text):
+    """Class tokens this stylesheet reaches only through escaped selectors.
+
+    The guard on ident-only keying: a selector like ``.fcla\\.30li6\\#x7``
+    proves the book really styles that non-ident token, so the token keeps
+    its place in signatures even though no plain selector could match it.
+    Unescaped selectors are not collected — their tokens pass the ident
+    test on their own.
+    """
+    css_text = re.sub(r"/\*.*?\*/", " ", css_text, flags=re.S)
+    return {
+        _css_unescape(m.group(1))
+        for m in _CSS_CLASS_SELECTOR_RE.finditer(css_text)
+        if "\\" in m.group(1)
+    }
+
+
+def _kept_classes(element, keep):
+    """The class tokens that count as this element's shape, sorted.
 
     Sorted and complete, because neither the order nor the count of class
     tokens is semantic: ``class="a b"`` and ``class="b a"`` are the same
     element to CSS, and keying on the first token alone made them two
     different questions — and merged genuinely different elements that
     happened to share a first class.
+
+    Filtered to CSS identifiers (plus ``keep``, the stylesheets' escaped
+    exceptions), because a token no selector can reach describes no shape:
+    see _CSS_IDENT_RE. An element whose every token is filtered away is a
+    classless element — same signature, same "not nameable" verdict in
+    _classed_inline_ancestors.
     """
-    classes = sorted(element.get("class") or [])
+    return sorted(
+        c for c in element.get("class") or [] if c in keep or _CSS_IDENT_RE.match(c)
+    )
+
+
+def _signature(element, keep=frozenset()):
+    """``tag`` or ``tag.class1.class2`` over the kept class tokens."""
+    classes = _kept_classes(element, keep)
     if classes:
         return f"{element.name}." + ".".join(classes)
     return element.name
@@ -549,9 +619,9 @@ def _owner_numeral_kinds(runs):
 _ROW_SIGNATURE_SEPARATOR = " #"
 
 
-def _row_signature(element, kind):
+def _row_signature(element, kind, keep=frozenset()):
     """The ledger key's signature: element shape, plus what its text is made of."""
-    signature = _signature(element)
+    signature = _signature(element, keep)
     return f"{signature}{_ROW_SIGNATURE_SEPARATOR}{kind}" if kind else signature
 
 
@@ -1090,13 +1160,16 @@ def file_segment_hazards(fp):
                 yield unit, ["noncontiguous"]
 
 
-def _classed_inline_ancestors(node, owner):
+def _classed_inline_ancestors(node, owner, keep=frozenset()):
     """Inline elements between a text node and its owner that carry a class.
 
     A class is what makes an inline element *nameable* — something a verdict
     can be about, and something the same book uses consistently. Classless
     ``<em>``/``<b>`` are typography, not apparatus, and asking about them
-    would fill the ledger with rows nobody can act on.
+    would fill the ledger with rows nobody can act on. Kept classes only:
+    an element whose every token the ident filter drops is a classless
+    element here too, or the filter would mint the very rows it exists to
+    prevent (`inline:span` for junk-classed spans, none for bare ones).
 
     Every level is listed, not just the outermost: a ``span.line-no`` inside
     a classless ``<a>`` is exactly the apparatus this exists to catch.
@@ -1105,7 +1178,7 @@ def _classed_inline_ancestors(node, owner):
     for ancestor in node.parents:
         if ancestor is owner:
             break
-        if ancestor.get("class"):
+        if _kept_classes(ancestor, keep):
             found.append(ancestor)
     return found
 
@@ -1121,14 +1194,14 @@ def _skip_reason(decision):
     return "llm-excluded" if decided_by == "llm" else "user-excluded"
 
 
-def _inline_override_for(node, owner, overrides):
+def _inline_override_for(node, owner, overrides, keep=frozenset()):
     """The skip reason an inline verdict imposes on this text, or None.
 
     Outermost wins: once an enclosing subtree is skipped, what its inner
     spans would have said no longer applies to text that is already gone.
     """
-    for element in reversed(_classed_inline_ancestors(node, owner)):
-        decision = overrides.get(make_key("inline", _signature(element)))
+    for element in reversed(_classed_inline_ancestors(node, owner, keep)):
+        decision = overrides.get(make_key("inline", _signature(element, keep)))
         if _action_of(decision) == "skip":
             return _skip_reason(decision)
     return None
@@ -1140,6 +1213,7 @@ def partition_soup(
     file_name,
     exclude_tags=DEFAULT_EXCLUDE_TAGS,
     overrides=None,
+    keep_classes=frozenset(),
 ):
     """Partition every text node of a document into segments and skip reasons.
 
@@ -1147,6 +1221,11 @@ def partition_soup(
     tuple ``(action, decided_by)``. Applied last, so ``fp.all_units`` still
     holds everything the document partitions into and the ledger can record
     a decision about text that this run will not translate.
+
+    ``keep_classes`` is the book-global set of non-ident class tokens the
+    stylesheets reach through escaped selectors (BookCss.keep_classes).
+    Book-global on purpose: signatures are keys across every document, so
+    the same element must key the same everywhere.
     """
     fp = FilePlan(file_name=file_name, resolver=resolver)
     body = soup.body or soup
@@ -1162,12 +1241,12 @@ def partition_soup(
     for node, chars, reason, owner in records:
         if reason is not None or not chars:
             continue
-        for element in _classed_inline_ancestors(node, owner):
+        for element in _classed_inline_ancestors(node, owner, keep_classes):
             entry = inline_seen.setdefault(
                 id(element),
                 {
                     "element": element,
-                    "signature": _signature(element),
+                    "signature": _signature(element, keep_classes),
                     "owner": owner,
                     "chars": 0,
                     "parts": [],
@@ -1184,7 +1263,7 @@ def partition_soup(
             # An inline verdict removes the subtree's text before segments
             # are formed: what stays in the document renders between the
             # runs around it, which is exactly what a barrier means.
-            removed_by = _inline_override_for(node, owner, overrides)
+            removed_by = _inline_override_for(node, owner, overrides, keep_classes)
             if removed_by is not None:
                 reason = removed_by
         if reason is not None:
@@ -1243,7 +1322,9 @@ def partition_soup(
             Unit(
                 element=owner,
                 file_name=file_name,
-                signature=_row_signature(owner, numeral_kinds.get(id(owner))),
+                signature=_row_signature(
+                    owner, numeral_kinds.get(id(owner)), keep_classes
+                ),
                 text=text,
                 chars=chars,
                 nodes=seg_nodes,
@@ -1265,7 +1346,9 @@ def partition_soup(
                 "parent_key": make_key(
                     "block",
                     _row_signature(
-                        entry["owner"], numeral_kinds.get(id(entry["owner"]))
+                        entry["owner"],
+                        numeral_kinds.get(id(entry["owner"])),
+                        keep_classes,
                     ),
                 ),
                 # Resolved here, while the element is still in hand: the row
@@ -1498,10 +1581,16 @@ def partition_file(
     next_group_id=0,
     token_budget=None,
     max_units=GENERAL_GROUP_MAX_UNITS,
+    keep_classes=frozenset(),
 ):
     """partition_soup + grouping; the one entry point loaders use."""
     fp = partition_soup(
-        soup, resolver, file_name, exclude_tags=exclude_tags, overrides=overrides
+        soup,
+        resolver,
+        file_name,
+        exclude_tags=exclude_tags,
+        overrides=overrides,
+        keep_classes=keep_classes,
     )
     next_group_id = assign_batches(
         fp.units,
@@ -1844,17 +1933,25 @@ class BookCss:
 
     def __init__(self, book):
         self.by_path = {}
+        # Non-ident class tokens some stylesheet reaches through an escaped
+        # selector (`.fcla\.xml\#x7`): the exceptions the signature filter
+        # honours. Book-global — signatures key rows across documents —
+        # which is also why chapter-local <style> blocks are not scanned:
+        # a per-chapter keep-set would key the same element differently in
+        # different files.
+        keep = set()
         for item in book.get_items():
             name = getattr(item, "file_name", "") or ""
             media = getattr(item, "media_type", "") or ""
             if media == "text/css" or name.lower().endswith(".css"):
                 try:
-                    self.by_path[posixpath.normpath(name)] = parse_css_display(
-                        item.content.decode("utf-8", "ignore")
-                    )
+                    text = item.content.decode("utf-8", "ignore")
+                    self.by_path[posixpath.normpath(name)] = parse_css_display(text)
+                    keep |= escaped_class_tokens(text)
                 except Exception as e:
                     print(f"warning: could not parse stylesheet {name}: {e}")
         self.global_maps = list(self.by_path.values())
+        self.keep_classes = frozenset(keep)
 
     @staticmethod
     def _resolver(maps):
@@ -1938,6 +2035,7 @@ def build_plan(
             next_group_id=next_group_id,
             token_budget=token_budget,
             max_units=batch_units,
+            keep_classes=css_index.keep_classes,
         )
         files.append(fp)
     return TranslationPlan(

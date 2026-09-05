@@ -408,6 +408,117 @@ class TestPartition:
         assert unit_clean_text(el, resolver) == unit.text
 
 
+class TestSignatureClassTokenFilter:
+    """Signatures key on class tokens an unescaped CSS selector could match.
+
+    linear-algebra.epub is the measured case: tex4ht writes cross-reference
+    targets into class attributes (769 of 1222 tokens occur exactly once),
+    and keying on them minted 1182 ledger rows / 99 classification requests.
+    """
+
+    def _partition(self, html, keep_classes=frozenset(), overrides=None):
+        soup = bs(html, "html.parser")
+        return partition_soup(
+            soup,
+            DisplayResolver([]),
+            file_name="x.html",
+            keep_classes=keep_classes,
+            overrides=overrides,
+        )
+
+    def test_non_ident_tokens_are_dropped_from_the_key(self):
+        fp = self._partition(
+            '<body><p class="broken fcla-xml-2.30li6.xhtml#x7-6000 xref">'
+            "Prose sentence here.</p></body>"
+        )
+        assert [u.signature for u in fp.units] == ["p.broken.xref"]
+
+    def test_an_element_of_only_junk_tokens_keys_as_the_bare_tag(self):
+        fp = self._partition(
+            '<body><p class="30li6 a.b#c md:flex">Prose sentence here.</p></body>'
+        )
+        assert [u.signature for u in fp.units] == ["p"]
+
+    def test_non_ascii_class_tokens_are_valid_idents(self):
+        fp = self._partition('<body><p class="縦書き">Prose here.</p></body>')
+        assert [u.signature for u in fp.units] == ["p.縦書き"]
+
+    def test_token_order_still_does_not_matter(self):
+        one = self._partition('<body><p class="a b">Text one.</p></body>')
+        two = self._partition('<body><p class="b a">Text two.</p></body>')
+        assert one.units[0].signature == two.units[0].signature == "p.a.b"
+
+    def test_an_escaped_selector_keeps_its_token(self):
+        fp = self._partition(
+            '<body><p class="file.xhtml#frag">Prose here.</p></body>',
+            keep_classes=frozenset({"file.xhtml#frag"}),
+        )
+        assert [u.signature for u in fp.units] == ["p.file.xhtml#frag"]
+
+    def test_junk_only_inline_is_classless_and_mints_no_row(self):
+        # A span whose every token is filtered must behave exactly like a
+        # bare <span>: no inline row, and the paragraph stays one unit.
+        fp = self._partition(
+            '<body><p>Hello <span class="file.xhtml#frag">world</span>, '
+            "again.</p></body>"
+        )
+        assert fp.inline_rows == []
+        assert [u.text for u in fp.units] == ["Hello world, again."]
+
+    def test_inline_row_keys_on_the_kept_tokens(self):
+        fp = self._partition(
+            '<body><p>See <span class="broken file.xhtml#x xref">Theorem NLT'
+            "</span> for the proof of this statement.</p></body>"
+        )
+        assert [r["signature"] for r in fp.inline_rows] == ["span.broken.xref"]
+
+    def test_inline_skip_override_applies_to_the_filtered_key(self):
+        fp = self._partition(
+            '<body><p>See <span class="broken file.xhtml#x xref">Theorem NLT'
+            "</span> for the proof of this statement.</p></body>",
+            overrides={"inline:span.broken.xref": ("skip", "user")},
+        )
+        assert all("Theorem NLT" not in u.text for u in fp.units)
+
+    def test_numeral_suffix_still_splits_after_the_merge(self):
+        # The safety net: a pure-number member of a merged signature gets its
+        # own `#num` row instead of drowning in the prose one.
+        fp = self._partition(
+            '<body><p class="a file1.xhtml#x">12</p>'
+            '<p class="a file2.xhtml#y">A real prose sentence.</p></body>'
+        )
+        assert sorted(u.signature for u in fp.units) == ["p.a", "p.a #num"]
+
+    def test_escaped_class_tokens_reads_only_escaped_selectors(self):
+        from book_maker.loader.plan import escaped_class_tokens
+
+        css = (
+            r".fcla-xml-2\.30li6\.xhtml\#x7-6000 { color: red } "
+            r".plain-token { margin: .5em } "
+            r".hex\41 x { top: 0 } "
+            r"/* .commented\.out {} */"
+        )
+        assert escaped_class_tokens(css) == {
+            "fcla-xml-2.30li6.xhtml#x7-6000",
+            "hexAx",
+        }
+
+    def test_bookcss_collects_the_keep_set_from_stylesheet_items(self):
+        book = epub.EpubBook()
+        book.set_identifier("t")
+        book.set_title("t")
+        sheet = epub.EpubItem(
+            uid="css",
+            file_name="style/main.css",
+            media_type="text/css",
+            content=rb".weird\.token { display: block } .plain { color: red }",
+        )
+        book.add_item(sheet)
+        from book_maker.loader.plan import BookCss
+
+        assert BookCss(book).keep_classes == frozenset({"weird.token"})
+
+
 class TestPerDocumentCss:
     def _book(self):
         book = epub.EpubBook()
@@ -3295,15 +3406,26 @@ class TestNumericSignatureSuffix:
         assert fp.units[0].signature != "p.b.folio"
 
     def test_the_suffix_cannot_be_spelled_by_a_document(self):
-        # linear-algebra.epub really does carry 1152 class names containing
-        # `#`, so `#num` was a collision; a class token cannot hold whitespace
+        # Two guards, both pinned here. The separator is whitespace, which a
+        # class token cannot hold; and a `#`-bearing token (linear-algebra
+        # carries 1152 of them) never reaches a signature at all now — the
+        # ident filter drops it before the separator could be confused for it.
         fp, _ = self._partition(
             '<body><p class="x#num">Real prose here.</p><p>190</p></body>'
         )
         sigs = {u.text: u.signature for u in fp.units}
-        assert sigs["Real prose here."] == "p.x#num"
+        assert sigs["Real prose here."] == "p"
         assert sigs["190"] != sigs["Real prose here."]
         assert " " in sigs["190"]
+        # the escaped-selector keep-set is the one door back in, and even a
+        # kept `#`-token cannot collide with the suffix (whitespace again)
+        kept = partition_soup(
+            bs('<body><p class="x#num">Real prose here.</p></body>', "html.parser"),
+            DisplayResolver([]),
+            "x.html",
+            keep_classes=frozenset({"x#num"}),
+        )
+        assert kept.units[0].signature == "p.x#num"
 
     def test_fragments_left_by_an_excluded_tag_are_not_folios(self):
         # epub30-spec.epub, verbatim: <code> is an excluded tag. It used to
