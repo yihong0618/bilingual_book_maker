@@ -517,6 +517,24 @@ class TestGroupedSessionDerivesItsCompactBudget:
 
         assert loader.translate_model.context_compact_at is None
 
+    def test_a_plan_fallback_keeps_the_stock_compact_default(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # codex finding 260905: deriving before the plan was committed left
+        # the short window on a translator that auto-fallback then kept —
+        # and a tag-mode run is ungrouped, which is what the stock 8000 was
+        # measured for.
+        loader, _ = _plan_loader(tmp_path, _SessionModel(), context_mode="session")
+        loader.plan_auto = True
+
+        def boom():
+            raise RuntimeError("a gate below the coverage bar")
+
+        monkeypatch.setattr(loader, "_prepare_translation_plan", boom)
+
+        assert loader._enter_plan_mode() is False
+        assert loader.translate_model.context_compact_at is None
+
     def test_prompt_overhead_is_about_a_hundred_tokens(self):
         # the sizing hint session_token_budget reads: the default prompts'
         # own per-request cost, book text excluded. No network.

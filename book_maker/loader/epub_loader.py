@@ -1099,6 +1099,11 @@ class EPUBBookLoader(BaseBookLoader):
             detail = escape(lines[0]) if lines else ""
             self._skip_plan_mode(detail or "the plan could not be built, see above")
             return False
+        # Only once the plan is committed: a plan that fell back to tag mode
+        # runs ungrouped, which is what the stock compact default was
+        # measured for — deriving earlier would leave the short window on a
+        # translator the fallback then keeps.
+        self._derive_session_compact_budget()
         return True
 
     def _prepare_translation_plan(self):
@@ -1139,9 +1144,6 @@ class EPUBBookLoader(BaseBookLoader):
 
         self._plan_css = BookCss(self.origin_book)
         self._plan_overrides = overrides
-        # Before any request goes out, and before the plan report names the
-        # budget the compact window is derived from.
-        self._derive_session_compact_budget()
 
         if is_fixed_layout(self.origin_book):
             print(

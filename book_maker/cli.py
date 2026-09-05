@@ -1046,6 +1046,14 @@ def main():
             # No translator exists on a dry run, so nothing can measure the
             # prompt overhead: None, and the floor stands.
             dry_budget = session_token_budget(None)
+            if options.prompt_arg:
+                # The real run measures its own prompt; a fat custom one can
+                # raise the budget past the floor and group differently.
+                print(
+                    f"note: the preview assumes the stock prompt overhead "
+                    f"(budget {dry_budget}); a large custom --prompt can "
+                    f"raise the real run's budget, up to 2000"
+                )
         else:
             dry_budget = None
         plan = build_plan(
