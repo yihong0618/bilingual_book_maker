@@ -727,9 +727,13 @@ def build_parser():
         default="auto",
         help="coverage-complete plan mode (epub only): partition the whole "
         "book, then decide which tag signatures are worth translating. "
-        "'auto' (default): plan the book as 'model' when it is an epub and "
-        "the endpoint is verified to apply a strict JSON schema, otherwise "
-        "translate the --translate-tags selection; a plan that cannot be "
+        "'auto' (default): plan the book as 'model' when it is an epub — "
+        "over structured output where the endpoint is verified to apply a "
+        "strict JSON schema, and otherwise over a plain conversation "
+        "(exact skip/translate/unsure replies; unsure and anything "
+        "unparseable translate) on any route that can hold one, the codex "
+        "route included. Only a route with no conversation at all falls "
+        "back to the --translate-tags selection; a plan that cannot be "
         "completed falls back to that selection too. "
         "'none': no plan — translate the --translate-tags "
         "selection as usual. "
@@ -878,12 +882,15 @@ to turn grouping off there.
         dest="context_compact_at",
         type=compact_budget,
         default=None,
-        help="session mode only: estimated-token budget for the history "
-        "before it is compacted into a translator handoff report. When "
-        "unset, a grouped session run derives one from its request budget "
-        "(~3200 at the defaults, printed at start; measured cost is flat "
-        "across 1500-4000 and rises past it) and an ungrouped session "
-        "keeps 8000. An explicit value always wins",
+        help="estimated-token budget for a rolling history. In session mode "
+        "the history is compacted into a translator handoff report at this "
+        "size; when unset, a grouped session run derives one from its "
+        "request budget (~3200 at the defaults, printed at start; measured "
+        "cost is flat across 1500-4000 and rises past it) and an ungrouped "
+        "session keeps 8000. It also bounds the plan classifier's own "
+        "conversation on endpoints that classify over a plain session "
+        "(which restarts there, no handoff), --use_context or not. An "
+        "explicit value always wins",
     )
     parser.add_argument(
         "--no-context-compact",

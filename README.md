@@ -33,7 +33,7 @@ if you want to use your Codex quota instead.
 `--provider` is an alternative way to pass credentials, through a JSON config file
 `bbm_providers.json`. 
 
-Epub tags classification is only auto enabled with JSON-schema enabled endpoints, without which only `p` tags are translated. Thus some poetry or verse may be omitted from translation. See plan mode for details.
+Epub tags classification is auto enabled on JSON-schema endpoints, and on any endpoint that can hold a conversation — the codex route and plain reseller proxies included — where the model is asked for exact `skip`/`translate` verdicts instead. Only routes with no conversation at all (the MT engines) fall back to translating `p` tags only, so some poetry or verse may be omitted there. See plan mode for details.
 
 Older flags (`--model gpt4o`,
 `--model gemini`, `--openai_key`, …) still work: see
@@ -376,7 +376,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   The value decides how is translation decision of each tag made:
 
-  - `auto` (default): when the book is an epub and the endpoint applies a JSON schema, ask the LLM what to translate. Otherwise, and when the plan fails, translate only the `--translate-tags` selection.
+  - `auto` (default): when the book is an epub, ask the LLM what to translate. On an endpoint verified to apply a strict JSON schema the question rides structured output; on any other endpoint that can hold a conversation (the codex route, plain proxies) it is asked over a plain session — three signatures at a time, answered with exact `skip,translate,unsure` replies, where `unsure` and anything unparseable count as translate (never skip; the coverage gate polices skips). `--context-compact-at` bounds that classifier session too, whether or not `--use_context` was passed. Only when the route has no conversation at all, and when the plan fails, translate the `--translate-tags` selection instead. Rows decided over a plain session appear in `<book>_plan.json` with an `unnamed (…)` content type naming how the verdict was reached rather than what the content is.
   - `none`: no plan; only the `--translate-tags` selection.
   - `all`: translate the whole partition, no classification.
   - `model`: the translating LLM judges, then translates. `--plan-classify-model X` picks the model that classifies.
@@ -472,7 +472,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   - `--context-compact-at`:
 
-    Session mode only. The estimated-token budget the history may reach before it is compacted into a handoff report. Minimum `500`. When unset, a run with request grouping on derives a budget from its request budget (~3200 at the defaults) and prints it at start; an ungrouped session keeps `8000`. An explicit value always wins.
+    The estimated-token budget a rolling history may reach. In session mode the history is then compacted into a handoff report. Minimum `500`. When unset, a run with request grouping on derives a budget from its request budget (~3200 at the defaults) and prints it at start; an ungrouped session keeps `8000`. It also bounds the plan classifier's own conversation on endpoints that classify over a plain session (which simply restarts there — no handoff), whether or not `--use_context` was passed. An explicit value always wins.
 
     Our measurement (September 2026, whole-book runs) found the cost curve flat between `1500` and `4000` and steeply rising past it — `20000` cost 56% more than the optimum. Short windows did not hurt name consistency: the handoff report re-states the recurring terms each window, and the only register drift observed was in the *longest*-window run.
 

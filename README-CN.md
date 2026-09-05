@@ -29,7 +29,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 
 `--provider` 是另一种传凭据的方式，通过 JSON 配置文件 `bbm_providers.json`。
 
-epub 标签分类仅在支持 JSON Schema 的接口上自动开启；不支持时只翻译 `p` 标签，
+epub 标签分类在支持 JSON Schema 的接口上自动开启，在其他任何能对话的接口（含 codex 路由和普通转售代理）上也会开启，改为让模型直接回答 `skip`/`translate`；只有完全不能对话的路由（机器翻译引擎）才只翻译 `p` 标签，
 因此诗歌等内容可能不会被翻译。详见计划模式。
 
 旧参数（`--model gpt4o`、`--model gemini`、`--openai_key` 等）仍然可用：详见
@@ -345,7 +345,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
   取值决定每个标签的翻译与否如何判断：
 
-  - `auto`（默认）：书籍是 epub、且端点可应用 JSON Schema 时，问LLM该翻哪段。否则，以及计划失败时，仅翻译 `--translate-tags` 选中的标签。
+  - `auto`（默认）：书籍是 epub 时，问 LLM 该翻哪段。端点验证支持严格 JSON Schema 时走结构化输出；其他能对话的端点（codex 路由、普通代理）改走纯会话——每次问三个签名，要求逐字回答 `skip,translate,unsure`，其中 `unsure` 和无法解析的回答一律按 translate 处理（绝不误跳过，跳过侧由覆盖率闸门把关）。`--context-compact-at` 同样约束该分类会话，与 `--use_context` 无关。只有路由完全不能对话时，以及计划失败时，才仅翻译 `--translate-tags` 选中的标签。经纯会话判定的行在 `<book>_plan.json` 中以 `unnamed (…)` 内容类型标注判定方式。
   - `none`：不建计划，仅 `--translate-tags` 选中的标签。
   - `all`：翻译整个分区，不做分类。
   - `model`：使用进行翻译的 LLM 进行判断，然后翻译。可用 `--plan-classify-model X` 指定分类用的模型。
@@ -422,7 +422,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
   - `--context-compact-at`:
 
-    仅 session 模式。历史在被压缩成交接报告前可以达到的估算 token 预算。最小值 `500`。未指定时，开启请求合并的运行会根据请求预算自动推导（默认参数下约 `3200`，启动时打印）；未合并的 session 保持 `8000`。显式指定的值总是优先。
+    滚动历史可以达到的估算 token 预算。session 模式下历史达到该值时被压缩成交接报告。最小值 `500`。未指定时，开启请求合并的运行会根据请求预算自动推导（默认参数下约 `3200`，启动时打印）；未合并的 session 保持 `8000`。在通过纯会话分类的端点上，它同样约束计划分类器自己的会话（该会话到达预算时直接重开，无交接报告），与是否传 `--use_context` 无关。显式指定的值总是优先。
 
     我们的实测（2026年9月，整本书运行）发现成本曲线在 `1500`–`4000` 之间平坦，超过后急剧上升——`20000` 比最优值贵 56%。短窗口并不损害名词一致性：交接报告每个窗口都会重申重复出现的术语，唯一观察到的语域漂移反而出现在窗口*最长*的那次运行中。
 
