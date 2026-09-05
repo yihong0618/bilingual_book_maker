@@ -63,7 +63,6 @@ from .rights import DRM_MESSAGE, check_epub
 from .plan import (
     GENERAL_GROUP_MAX_UNITS,
     PLAN_SCHEMA_VERSION,
-    SESSION_DEFAULT_TOKEN_BUDGET,
     BookCss,
     TranslationPlan,
     UnsafeSingleTranslateError,
@@ -75,7 +74,9 @@ from .plan import (
     load_plan_overrides,
     partition_file,
     planning_settings,
+    session_token_budget,
 )
+from ..session_context import derived_compact_budget
 from .markers import marker_report, reconcile_markers, split_on_markers
 from ..translator.base_translator import BatchMismatch
 from .classify import (
@@ -402,6 +403,8 @@ class EPUBBookLoader(BaseBookLoader):
         self._plan_css = None
         self._plan_overrides = None
         self._plan_partitions = {}  # file_name -> (soup, FilePlan), see _plan_partition
+        # once per run, not once per document — see _derive_session_compact_budget
+        self._compact_budget_derived = False
         self._plan_fingerprint = None
         self._resume_plan_fingerprint = None
         self.single_translate = single_translate
@@ -924,12 +927,13 @@ class EPUBBookLoader(BaseBookLoader):
         way to turn grouping off, and it has to keep working in every mode.
 
         With the flag untyped, session mode defaults to
-        `SESSION_DEFAULT_TOKEN_BUDGET`. There the history is re-read at the
-        endpoint's cache rate, so a run's bill is roughly its request count,
-        and leaving grouping off is the expensive choice. Everywhere else the
-        untyped default stays None — the short-run-only grouping plan mode
-        has always done on its own. Plan mode only: tag mode reads
-        `accumulated_num` directly and never sees this.
+        `session_token_budget`, derived from this run's own prompt overhead.
+        There the history is re-read at the endpoint's cache rate, so a run's
+        bill is roughly its request count, and leaving grouping off is the
+        expensive choice. Everywhere else the untyped default stays None —
+        the short-run-only grouping plan mode has always done on its own.
+        Plan mode only: tag mode reads `accumulated_num` directly and never
+        sees this.
         """
         if self.accumulated_num > 1:
             return self.accumulated_num
@@ -940,8 +944,49 @@ class EPUBBookLoader(BaseBookLoader):
             # would quietly re-enable that rule and make "off" still group.
             return 0
         if self.context_mode == "session":
-            return SESSION_DEFAULT_TOKEN_BUDGET
+            # The prompts are user-customisable, so the overhead a request
+            # pays before it carries any book is a property of the run, not a
+            # constant. A translator that cannot measure it answers None and
+            # the floor stands.
+            fn = getattr(self.translate_model, "prompt_overhead_tokens", None)
+            overhead = fn() if callable(fn) else None
+            return session_token_budget(overhead)
         return None
+
+    def _derive_session_compact_budget(self):
+        """Default `--context-compact-at` from the grouping budget, once.
+
+        The stock 8000 was measured for an *ungrouped* session run, where
+        every paragraph is its own request. Grouping changes the arithmetic:
+        the history grows by about 1.4 tokens per budget token per request,
+        and the compaction turn is billed (see `_compact_session`), so the
+        cost-minimising window is much shorter. `derived_compact_budget`
+        solves for it.
+
+        Only when the user did not say otherwise: an explicit
+        `--context-compact-at` is left alone, `--no-context-compact` is left
+        alone, and an ungrouped run (budget 0 or None) keeps the stock
+        default the 8000 was measured for.
+        """
+        if self._compact_budget_derived:
+            return
+        self._compact_budget_derived = True
+        budget = self._plan_token_budget
+        if not budget or self.context_mode != "session":
+            return
+        model = self.translate_model
+        if getattr(model, "no_context_compact", False):
+            return
+        if not hasattr(model, "context_compact_at"):
+            return
+        if model.context_compact_at is not None:
+            return
+        model.context_compact_at = derived_compact_budget(budget)
+        print(
+            f"session: compacting at ~{model.context_compact_at} estimated "
+            f"tokens (derived from the {budget}-token request budget; "
+            f"--context-compact-at overrides)"
+        )
 
     def _plan_request_cap(self):
         """Units one plan request may carry, given the endpoint's degree.
@@ -1094,6 +1139,9 @@ class EPUBBookLoader(BaseBookLoader):
 
         self._plan_css = BookCss(self.origin_book)
         self._plan_overrides = overrides
+        # Before any request goes out, and before the plan report names the
+        # budget the compact window is derived from.
+        self._derive_session_compact_budget()
 
         if is_fixed_layout(self.origin_book):
             print(

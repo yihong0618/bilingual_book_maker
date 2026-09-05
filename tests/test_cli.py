@@ -1678,11 +1678,13 @@ def test_an_untyped_accumulated_num_reaches_the_parser_as_none():
 def test_a_session_dry_run_previews_the_default_budget(tmp_path):
     # --plan-dry-run must group the way the run will: session mode defaults
     # the token budget, so the preview's plan carries it too
-    from book_maker.loader.plan import SESSION_DEFAULT_TOKEN_BUDGET
+    from book_maker.loader.plan import session_token_budget
 
     proc, plan = _run(tmp_path, "--plan-dry-run", "--use_context", "session")
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert json.loads(plan.read_text())["token_budget"] == SESSION_DEFAULT_TOKEN_BUDGET
+    # a dry run has no translator to measure a prompt overhead against, so
+    # the preview carries the floor
+    assert json.loads(plan.read_text())["token_budget"] == session_token_budget(None)
 
 
 def test_an_explicit_one_keeps_the_session_dry_run_ungrouped(tmp_path):

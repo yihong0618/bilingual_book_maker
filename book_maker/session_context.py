@@ -24,6 +24,7 @@ below for the measured figures.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -51,6 +52,35 @@ _CJK_CHARS_PER_TOKEN = 1.7
 # over three windows, so a report costs about a third of a paragraph and the
 # budget is what decides how often one is paid for.
 DEFAULT_COMPACT_BUDGET = 8000
+
+# Fitted 260905 (gpt-5.6-luna, official endpoint) for the *grouped* session
+# run, where the request count is small enough that the compaction turns are a
+# visible share of the bill rather than a rounding error.
+HANDOFF_PROMPT_TOKENS = 72  # F_h: the compact request's own prompt
+HANDOFF_REPORT_TOKENS = 538  # K: mean handoff report, 139 reports
+OUTPUT_PRICE_RATIO = 4.0  # pi_o: output price / input price
+HISTORY_GROWTH_PER_BUDGET_TOKEN = 1.4  # g/B: history growth per budget token
+# The measured cost-vs-budget curve is a shallow bowl: flat across this range,
+# with a steep wall on the long side. Clamping to it keeps a derived value
+# inside the region the eval actually walked.
+DERIVED_COMPACT_FLOOR = 1500
+DERIVED_COMPACT_CEILING = 4000
+
+
+def derived_compact_budget(request_budget: int) -> int:
+    """Cost-optimal --context-compact-at for a grouped session run.
+
+    C* = sqrt(2*g*(F_h + pi_o*K) / c_h): carried history costs c_h*C/2 per
+    request and rises with C; the compaction rate g/C falls with C; the
+    minimum balances them. Constants fitted 260905 (gpt-5.6-luna, official
+    endpoint); c_h ~= 1.0 folded in. The measured curve is flat across
+    [1500, 4000] and rises steeply past it, hence the clamp.
+    """
+    g = HISTORY_GROWTH_PER_BUDGET_TOKEN * request_budget
+    c_star = math.sqrt(
+        2 * g * (HANDOFF_PROMPT_TOKENS + OUTPUT_PRICE_RATIO * HANDOFF_REPORT_TOKENS)
+    )
+    return int(min(max(c_star, DERIVED_COMPACT_FLOOR), DERIVED_COMPACT_CEILING))
 
 
 def estimate_tokens(text: str) -> int:

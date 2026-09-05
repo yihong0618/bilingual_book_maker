@@ -276,6 +276,24 @@ class _StrictModel(_RecordingModel):
     degree = "strict"
 
 
+def _OverheadModel(tokens):
+    """A strict translator that reports a known per-request prompt overhead."""
+    return type(
+        "_OverheadModel",
+        (_StrictModel,),
+        {"prompt_overhead_tokens": lambda self: tokens},
+    )
+
+
+def _SessionModel(compact_at=None, no_compact=False):
+    """A strict translator carrying the two knobs the derivation reads."""
+    return type(
+        "_SessionModel",
+        (_StrictModel,),
+        {"context_compact_at": compact_at, "no_context_compact": no_compact},
+    )
+
+
 class TestLoaderHonorsAccumulatedNum:
     def test_a_budget_groups_long_paragraphs_and_prints_no_ignore_note(
         self, tmp_path, capsys
@@ -352,15 +370,42 @@ class TestLoaderHonorsAccumulatedNum:
 class TestSessionModeDefaultsTheBudget:
     """`--use_context session` groups by default; every other run does not."""
 
-    def test_session_mode_defaults_the_plan_budget(self, tmp_path):
-        from book_maker.loader.plan import SESSION_DEFAULT_TOKEN_BUDGET
+    def test_session_default_budget_is_the_measured_floor(self, tmp_path):
+        # 1600 is where the 260905 session-cost eval's per-content-token cost
+        # bottomed. A model that cannot measure its prompt overhead (and one
+        # whose overhead is small) both land on the floor.
+        from book_maker.loader.plan import SESSION_BUDGET_FLOOR
 
-        loader, _ = _plan_loader(tmp_path, _StrictModel, context_mode="session")
+        bare, _ = _plan_loader(tmp_path / "bare", _StrictModel, context_mode="session")
+        assert bare._plan_token_budget == SESSION_BUDGET_FLOOR == 1600
 
-        assert loader._plan_token_budget == SESSION_DEFAULT_TOKEN_BUDGET == 800
+        lean, _ = _plan_loader(
+            tmp_path / "lean",
+            _OverheadModel(104),
+            context_mode="session",
+        )
+        # 3 * 104 = 312, well under the floor
+        assert lean._plan_token_budget == 1600
+
         # and tag mode is untouched: the default lives in the plan property,
         # not in the attribute every tag-mode path reads
-        assert loader.accumulated_num == 1
+        assert bare.accumulated_num == 1
+
+    def test_a_fat_prompt_raises_the_session_budget(self, tmp_path):
+        # the prompts are user-customisable and are paid for once per
+        # request, so the budget grows to keep the overhead under ~1/3 of one
+        from book_maker.loader.plan import SESSION_BUDGET_CEILING
+
+        fat, _ = _plan_loader(
+            tmp_path / "fat", _OverheadModel(650), context_mode="session"
+        )
+        assert fat._plan_token_budget == 1950
+
+        huge, _ = _plan_loader(
+            tmp_path / "huge", _OverheadModel(900), context_mode="session"
+        )
+        # 3 * 900 = 2700, above the evaluated-clean content ceiling
+        assert huge._plan_token_budget == SESSION_BUDGET_CEILING == 2000
 
     def test_an_explicit_one_turns_grouping_off_in_session_mode_too(self, tmp_path):
         # `--accumulated_num 1` is the documented way to say "no grouping";
@@ -418,7 +463,68 @@ class TestSessionModeDefaultsTheBudget:
         loader.make_bilingual_book()
 
         out = capsys.readouterr().out
-        assert "800 tokens" in out
+        assert "1600 tokens" in out
+
+
+class TestGroupedSessionDerivesItsCompactBudget:
+    """The stock 8000 was measured ungrouped. Grouping moves the optimum."""
+
+    def test_the_derived_compact_budget_lands_in_the_flat_region(self):
+        from book_maker.session_context import derived_compact_budget
+
+        assert derived_compact_budget(1600) == 3156
+        assert derived_compact_budget(800) == 2231
+        # the measured curve is a shallow bowl, flat over [1500, 4000] and
+        # steep past it, so the solved value is clamped to what was walked
+        assert derived_compact_budget(10) == 1500
+        assert derived_compact_budget(10**6) == 4000
+
+    def test_grouping_derives_the_compact_budget_when_unset(self, tmp_path, capsys):
+        from book_maker.session_context import derived_compact_budget
+
+        loader, _ = _plan_loader(tmp_path, _SessionModel(), context_mode="session")
+        loader.make_bilingual_book()
+
+        assert loader.translate_model.context_compact_at == derived_compact_budget(1600)
+        assert "session: compacting at" in capsys.readouterr().out
+
+    def test_an_explicit_compact_budget_survives_grouping(self, tmp_path):
+        loader, _ = _plan_loader(
+            tmp_path, _SessionModel(compact_at=6000), context_mode="session"
+        )
+        loader.make_bilingual_book()
+
+        assert loader.translate_model.context_compact_at == 6000
+
+    def test_compaction_turned_off_derives_nothing(self, tmp_path):
+        loader, _ = _plan_loader(
+            tmp_path, _SessionModel(no_compact=True), context_mode="session"
+        )
+        loader.make_bilingual_book()
+
+        assert loader.translate_model.context_compact_at is None
+
+    def test_an_ungrouped_session_keeps_the_stock_compact_default(self, tmp_path):
+        # `--accumulated_num 1`: budget 0, one request per unit — which is
+        # what the stock 8000 was measured for
+        loader, _ = _plan_loader(
+            tmp_path,
+            _SessionModel(),
+            context_mode="session",
+            accumulated_num_given=True,
+        )
+        loader.make_bilingual_book()
+
+        assert loader.translate_model.context_compact_at is None
+
+    def test_prompt_overhead_is_about_a_hundred_tokens(self):
+        # the sizing hint session_token_budget reads: the default prompts'
+        # own per-request cost, book text excluded. No network.
+        t = ChatGPTAPI(key="sk-not-used", language="Chinese")
+        overhead = t.prompt_overhead_tokens()
+
+        assert isinstance(overhead, int)
+        assert 60 <= overhead <= 400
 
 
 # ----------------------------------------------- 3. the plan mode gate

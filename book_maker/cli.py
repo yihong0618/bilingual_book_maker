@@ -1032,14 +1032,16 @@ def main():
         # The preview must group the way the run will: an explicit
         # --accumulated_num wins (1 turning grouping off), and an untyped
         # one defaults by context mode exactly as _plan_token_budget does.
-        from book_maker.loader.plan import SESSION_DEFAULT_TOKEN_BUDGET
+        from book_maker.loader.plan import session_token_budget
 
         if accumulated_num_given:
             # 0, not None: an explicit 1 turns every grouping rule off, and
             # None would preview the short-run grouping the run won't do
             dry_budget = options.accumulated_num if options.accumulated_num > 1 else 0
         elif options.context_mode == "session":
-            dry_budget = SESSION_DEFAULT_TOKEN_BUDGET
+            # No translator exists on a dry run, so nothing can measure the
+            # prompt overhead: None, and the floor stands.
+            dry_budget = session_token_budget(None)
         else:
             dry_budget = None
         plan = build_plan(

@@ -1229,6 +1229,39 @@ class ChatGPTAPI(Base):
             lambda text: self.translate(text, False),
         )
 
+    # A short, unremarkable stand-in for a paragraph: the overhead wanted is
+    # everything a request carries *besides* the text, so what the text says
+    # must not matter.
+    _OVERHEAD_PROBE_TEXT = "The quick brown fox jumps over the lazy dog."
+
+    def prompt_overhead_tokens(self):
+        """Tokens one request spends on the prompt rather than on the book.
+
+        Assembled from the real batch messages, because the prompts are
+        user-customisable: a fat `BBM_CHATGPTAPI_USER_MSG_TEMPLATE` is paid
+        for on every request, and the grouping budget has to know about it
+        (see `session_token_budget`). The JSON wrapper counts too — it is
+        per-request overhead like the rest of it.
+
+        A sizing hint, never a gate: anything that goes wrong here answers
+        None and the caller falls back to its floor.
+        """
+        try:
+            from ..utils import num_tokens_from_text
+
+            # `num_tokens_from_text` adds 7 tokens of chat framing per call;
+            # subtract it per message so only the content is counted.
+            def content_tokens(text):
+                return num_tokens_from_text(text) - 7
+
+            messages = self._create_structured_batch_messages(
+                [self._OVERHEAD_PROBE_TEXT]
+            )
+            total = sum(content_tokens(m.get("content") or "") for m in messages)
+            return max(0, total - content_tokens(self._OVERHEAD_PROBE_TEXT))
+        except Exception:
+            return None
+
     def _create_structured_batch_messages(self, text_list, degree="strict"):
         """Create messages for structured batch translation.
 

@@ -1327,9 +1327,40 @@ SUBSTRICT_GROUP_MAX_UNITS = 8
 # The grouping budget plan mode assumes when `--use_context session` is on and
 # `--accumulated_num` was not typed. In session mode the history is re-read at
 # the endpoint's cache rate, so the *request count* is what a run pays for, and
-# leaving grouping off there is the expensive default. Small on purpose: 800
-# tokens is a handful of paragraphs, well inside the unit cap.
-SESSION_DEFAULT_TOKEN_BUDGET = 800
+# leaving grouping off there is the expensive default.
+#
+# The floor is where the measured per-content-token cost bottomed (260905
+# session-cost eval, gpt-5.6-luna, official endpoint): a request's input bill
+# is dominated by the carried history and the fixed prompt, both of which a
+# larger request amortises over more content — 15.5 input-equivalents per
+# content token at 800, 12.3 at 1600.
+SESSION_BUDGET_FLOOR = 1600
+# The ceiling is the evaluated-clean content ceiling for one request (260904
+# degradation eval): past it the eval stops saying the output is intact, and a
+# cost curve is no reason to translate worse.
+SESSION_BUDGET_CEILING = 2000
+
+
+def session_token_budget(prompt_overhead=None):
+    """The session-mode grouping budget, given this run's prompt overhead.
+
+    Prompts are user-customisable, and a fat prompt is paid for once per
+    request whatever the request carries — so the budget has to grow with it
+    or the overhead's share of the bill grows instead. The `3 *` term keeps
+    the fixed overhead under about a third of a request.
+
+    `prompt_overhead` is the run's own measured prompt tokens, or None when
+    nothing could measure them (no translator yet, a route that has no
+    prompt, a measurement that raised). Then the floor rules, which is the
+    right answer for the default prompts: they measure well under the floor's
+    third anyway.
+    """
+    return int(
+        min(
+            max(SESSION_BUDGET_FLOOR, 3 * (prompt_overhead or 0)),
+            SESSION_BUDGET_CEILING,
+        )
+    )
 
 
 def unit_tokens(unit):
