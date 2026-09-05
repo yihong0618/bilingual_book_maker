@@ -73,11 +73,24 @@ def test_a_weaker_but_real_degree_still_plans(verdict, named):
 
 @pytest.mark.parametrize("verdict", [False, "unsupported"])
 def test_no_json_at_all_stays_in_tag_mode(verdict):
+    # …when the route cannot hold a conversation either. That is the whole
+    # of the old behaviour: nothing left to ask with.
     probe = _Probe(verdict)
     mode, reason = resolve_plan_mode("epub", "openai", False, probe)
     assert mode == "none"
     assert probe.calls == 1
     assert "schema" in reason
+
+
+@pytest.mark.parametrize("verdict", [False, "unsupported", "request rejected: 400"])
+def test_no_json_but_a_conversation_plans_over_a_session(verdict):
+    # the endpoint is bare, so there is no JSON verdict to plan on — but it
+    # can be asked in prose, and a plan is what the sweep found matters
+    probe = _Probe(verdict)
+    mode, reason = resolve_plan_mode("epub", "openai", False, probe, session=True)
+    assert mode == "session"
+    assert probe.calls == 1
+    assert "plain session" in reason
 
 
 @pytest.mark.parametrize("api_format", ["anthropic", "google", "deepl", "codex"])
@@ -89,6 +102,17 @@ def test_other_routes_are_never_probed(api_format):
     assert mode == "none"
     assert probe.calls == 0
     assert api_format in reason
+
+
+@pytest.mark.parametrize("api_format", ["codex", "anthropic"])
+def test_a_route_that_can_talk_plans_without_a_probe(api_format):
+    # no verdict is available on these routes and none is asked for; a
+    # conversation is what they can answer, so that is what they are asked
+    probe = _Probe("strict")
+    mode, reason = resolve_plan_mode("epub", api_format, False, probe, session=True)
+    assert mode == "session"
+    assert probe.calls == 0
+    assert api_format in reason and "plain session" in reason
 
 
 @pytest.mark.parametrize("book_type", ["txt", "md", "srt", "pdf"])
@@ -119,6 +143,21 @@ def test_a_route_with_no_probe_at_all_stays_in_tag_mode():
     mode, reason = resolve_plan_mode("epub", "openai", False, None)
     assert mode == "none"
     assert reason
+
+
+def test_a_route_with_no_probe_but_a_session_plans():
+    mode, reason = resolve_plan_mode("epub", "openai", False, None, session=True)
+    assert mode == "session"
+    assert "plain session" in reason
+
+
+def test_a_probe_that_fails_is_not_the_same_as_an_endpoint_found_bare():
+    # a conversation would hit the same trouble the probe hit, so a failed
+    # probe still degrades to tag mode even where a session is available
+    probe = _Probe(error=RuntimeError("connection reset"))
+    mode, reason = resolve_plan_mode("epub", "openai", False, probe, session=True)
+    assert mode == "none"
+    assert "connection reset" in reason
 
 
 # --------------------------------------------------- the fallback, in-loader
@@ -366,13 +405,44 @@ def test_a_bare_command_on_a_json_object_endpoint_plans(tmp_path):
     assert plan.exists()
 
 
-def test_a_bare_command_on_an_unverified_endpoint_uses_tags(tmp_path):
+def test_a_bare_command_on_an_unverified_endpoint_plans_over_a_session(tmp_path):
+    # 260905: this used to print "plan mode: off". An endpoint with no JSON
+    # verdict can still be asked in prose, and turning the plan off there
+    # lost the partition, the grouping and the coverage guard on exactly the
+    # books the 45-book sweep found them mattering on.
+    from book_maker.loader.classify.session import ENGAGE_WARNING
+
     proc, plan = _cli(
         tmp_path, "--test", "--test_num", "1", BBM_FAKE_PROBE="unsupported"
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     out = " ".join(proc.stdout.split())
-    assert "plan mode: off" in out
+    assert "plan mode: on" in out
+    assert "plain session" in out
+    assert " ".join(ENGAGE_WARNING.split()) in out
+    assert "offline classifier session started" in out
+    assert plan.exists()
+
+
+def test_all_mode_never_classifies_however_bare_the_endpoint_is(tmp_path):
+    # --plan-classify all is the deliberate translate-everything decision:
+    # no classification happens on any route, session or not
+    from book_maker.loader.classify.session import ENGAGE_WARNING
+
+    proc, plan = _cli(
+        tmp_path,
+        "--plan-classify",
+        "all",
+        "--test",
+        "--test_num",
+        "1",
+        BBM_FAKE_PROBE="unsupported",
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    out = " ".join(proc.stdout.split())
+    assert " ".join(ENGAGE_WARNING.split()) not in out
+    assert "offline classifier session started" not in out
+    # "all" asks nothing, so it has no questions to persist
     assert not plan.exists()
 
 

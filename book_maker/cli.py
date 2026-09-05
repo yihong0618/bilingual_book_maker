@@ -11,6 +11,7 @@ from rich.markup import escape
 
 from book_maker.loader import BOOK_LOADER_DICT
 from book_maker.legacy_cli import translate_legacy_argv
+from book_maker.loader.classify import can_session_classify
 from book_maker.loader.ledger import PlanLedgerError
 from book_maker.loader.plan import GENERAL_GROUP_MAX_UNITS
 from book_maker.provider_loader import resolve_provider
@@ -501,34 +502,58 @@ PLAN_VERDICT_REASONS = {
     "json": "endpoint verified JSON object mode, no schema applied",
 }
 
+# What is printed when a route with no usable JSON verdict plans anyway,
+# because it can be asked for verdicts in a conversation instead. See
+# `loader/classify/session.py` for what that costs and how it is checked.
+PLAN_SESSION_REASON = "no structured output here; classifying over a plain session"
 
-def resolve_plan_mode(book_type, api_format, translate_tags_given, probe):
+
+def resolve_plan_mode(
+    book_type, api_format, translate_tags_given, probe, session=False
+):
     """What `--plan-classify auto` means for this run: `(mode, reason)`.
 
-    `mode` is "model" (plan the book) or "none" (translate the
+    `mode` is "model" (plan the book on JSON verdicts), "session" (plan it
+    on verdicts read out of a plain conversation) or "none" (translate the
     `--translate-tags` selection); `reason` is the one line the run prints
     about it. `probe` is called — at most once, and only when its answer can
     still change the outcome — for the endpoint's graded schema support; None
-    means this translator has no probe.
+    means this translator has no probe. `session` says whether the route can
+    hold a classifier conversation, which is what makes the difference
+    between "no verdict, so no plan" and "no verdict, so ask another way".
     """
     if book_type != "epub":
         return "none", f"plan mode needs an epub; this is a {book_type} book"
     if translate_tags_given:
         return "none", "--translate-tags names what to translate"
     if api_format != PLAN_AUTO_FORMAT:
+        # Only the openai wire format has the capability probe. A route
+        # without one used to end here; one that can hold a conversation now
+        # gets asked in the way it can answer.
+        if session:
+            return "session", (
+                f"the {api_format} route has no JSON-schema verdict, so "
+                f"{PLAN_SESSION_REASON}"
+            )
         return "none", f"the {api_format} route has no JSON-schema verdict"
     if probe is None:
+        if session:
+            return "session", PLAN_SESSION_REASON
         return "none", "this endpoint offers no JSON-schema verdict"
     try:
         verdict = probe()
     except ModelUnavailable:
         raise  # no model to fall back to; the message names it
     except Exception as e:
-        # tag mode still works; the endpoint's trouble surfaces at the first
-        # translation request
+        # A probe that *failed* is not an endpoint found bare: the trouble is
+        # as likely to be the transport, which a conversation would hit too.
+        # Tag mode still works; the failure surfaces at the first translation
+        # request.
         return "none", f"the JSON-schema probe failed: {redact(e)}"
     reason = PLAN_VERDICT_REASONS.get(verdict)
     if reason is None:
+        if session:
+            return "session", PLAN_SESSION_REASON
         return "none", (
             f"the endpoint produces no JSON the schema ladder can use "
             f"({verdict or 'no schema support'})"
@@ -1521,6 +1546,7 @@ def main():
                 api_format,
                 translate_tags_given,
                 getattr(e.translate_model, "_probe_verdict", None),
+                session=can_session_classify(e.translate_model),
             )
         except Exception as err:
             # a model the endpoint will not serve is refused here; the
@@ -1529,7 +1555,10 @@ def main():
                 raise
             print(f"[bold red]{escape(redact(err))}[/bold red]")
             exit(1)
-        if mode == "model":
+        if mode in ("model", "session"):
+            # Both are the `model` classify mode as the loader knows it: an
+            # LLM rules on the rows. Which channel carries the question is
+            # the endpoint's business, settled again in classify_plan.
             print(f"plan mode: on ({reason})")
             e.plan_mode = True
             e.plan_auto = True

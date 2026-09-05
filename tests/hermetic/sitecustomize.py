@@ -103,6 +103,24 @@ class OfflineTranslator:
         return [self.translate(line) for line in str(text).splitlines()]
 
 
+class _OfflineClassifierSession:
+    """A conversation that answers the plan's turns, offline.
+
+    Every signature is book content, for the reason `structured_json` gives:
+    what these tests need is a plan run that completes.
+    """
+
+    def budget(self):
+        return 8000
+
+    def start(self, trunk):
+        print("offline classifier session started")
+
+    def ask(self, text):
+        units = text.count("occurrence(s)")
+        return ",".join(["translate"] * units)
+
+
 class OfflineLLM(OfflineTranslator):
     """An LLM-shaped endpoint: it has a capability verdict and can be asked
     questions. Only the openai route gets this — `google` and the other MT
@@ -144,6 +162,17 @@ class OfflineLLM(OfflineTranslator):
 
     def supports_structured_json(self):
         return True
+
+    def classify_session(self, model=None):
+        """The classifier conversation the real openai route offers.
+
+        Its presence is the contract: an endpoint with no JSON verdict now
+        plans over a plain session instead of dropping to tag mode, and a
+        stand-in without one would make that untestable offline. It answers
+        the format exactly; what a *bad* reply does is
+        tests/test_session_classify.py's subject.
+        """
+        return _OfflineClassifierSession()
 
     def structured_json(self, prompt, schema, model=None, accept=None):
         # Every signature is book content: what the classifier does with a

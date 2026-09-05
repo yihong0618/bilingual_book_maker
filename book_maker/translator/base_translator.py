@@ -447,6 +447,31 @@ class Base(ABC):
             f"{type(self).__name__} has no arbitrary-prompt channel"
         )
 
+    def classify_session(self, model=None):
+        """A fresh conversation for plan classification, or None.
+
+        The session entry (`loader/classify/session.py`) asks for verdicts
+        over an append-only conversation instead of asking for JSON, which
+        is the only way to classify on a route that produces none. It needs
+        three things a single-turn prompt channel cannot give it: a place to
+        put the instruction trunk once, turns that extend that prefix rather
+        than replacing it, and the budget at which the history is worth
+        starting over.
+
+        A route that has no such conversation answers None and keeps the
+        JSON path. Overriding this method is also what advertises the
+        capability — `can_session_classify` compares the attribute with this
+        one rather than calling it, because opening a session can cost a
+        request and the question is asked before plan mode spends anything.
+
+        The returned object implements:
+
+            start(trunk)  begin a new conversation carrying `trunk`
+            ask(text)     one turn; returns the reply text
+            budget()      estimated tokens a session may carry
+        """
+        return None
+
     def supports_structured_json(self):
         """Whether this translator can be asked a question at all.
 

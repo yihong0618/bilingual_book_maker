@@ -77,6 +77,58 @@ MAX_WAIT_SECONDS = 6 * 60 * 60
 MAX_WAITS_PER_TURN = 3
 
 
+class ClassifierThread:
+    """Plan classification on a thread of its own.
+
+    The thread *is* the append-only history here, so the trunk goes into its
+    base instructions and a turn carries nothing but the next signatures —
+    which is the shape this route wants anyway: a fresh thread costs ~16.9k
+    input tokens of Codex's own preamble, and the classifier asks a book's
+    worth of questions.
+
+    Separate from the translation thread (a question in it would pollute the
+    context the next paragraph inherits) and from the `_question_threads`
+    cache, whose turns are self-contained prompts rather than a conversation
+    with a trunk.
+    """
+
+    def __init__(self, translator, model=None):
+        self.translator = translator
+        self.model = model or translator.model
+        self._trunk = ""
+        self._thread_id = None
+
+    def budget(self):
+        """`--context-compact-at`, else this model's own default — the same
+        window a session-mode translation would work to."""
+        return self.translator._budget()
+
+    def start(self, trunk):
+        """Open a fresh conversation. The thread is created on the first
+        turn, so a session nobody asks anything of costs nothing."""
+        self._trunk = trunk
+        self._thread_id = None
+
+    def _open(self):
+        self._thread_id = self.translator._ensure_server().start_thread(
+            model=self.model,
+            base_instructions=self._trunk,
+        )
+
+    def ask(self, text):
+        if self._thread_id is None:
+            self._open()
+        try:
+            return self.translator._run_turn(self._thread_id, text)
+        except CodexTurnFailed:
+            # The sidecar dropped the thread: the cached id is dead and no
+            # retry on it can work. Opening a new one re-sends the trunk as
+            # its instructions, and a verdict depends on nothing that was
+            # said earlier, so the lost turns cost nothing but themselves.
+            self._open()
+            return self.translator._run_turn(self._thread_id, text)
+
+
 class Codex(Base):
     """A translator backed by the Codex app-server."""
 
@@ -485,6 +537,15 @@ class Codex(Base):
         except CodexTurnFailed:
             self._question_threads.pop(model or self.model, None)
             return self._ask(prompt, model)
+
+    def classify_session(self, model=None):
+        """See `Base.classify_session`. One thread, held open for the plan.
+
+        This route has no schema verdict to offer at all — it reaches a
+        sidecar, not an endpoint the capability probe can grade — so the
+        session entry is how plan mode classifies here.
+        """
+        return ClassifierThread(self, model)
 
     def _ask(self, prompt, model=None):
         """One question on the (possibly newly opened) question thread."""

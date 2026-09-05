@@ -101,6 +101,28 @@ def build_schema(candidates):
     }
 
 
+def describe_candidate(index, c):
+    """The lines that show one signature to a decider.
+
+    Shared with the session entry (`session.py`), which asks the same
+    question over a plain conversation: the evidence a verdict is made on
+    must not depend on which channel carried it, or two runs of the same
+    book would be answering different questions.
+    """
+    lines = [
+        f'{index}. "{c["key"]}" — {c["units"]} occurrence(s), '
+        f'{c["chars"]} chars ({c.get("pct", 0)}% of the book), '
+        f'mean {c.get("mean_chars", 0)} chars'
+    ]
+    for parent in c.get("parents") or []:
+        lines.append(f'   Appears inside: {parent["key"]} ({parent["units"]})')
+    for condition in c.get("conditional_css") or []:
+        lines.append(f"   Hidden by CSS only under: {condition}")
+    for sample in c["samples"]:
+        lines.append(f"   Sample: {sample}")
+    return lines
+
+
 def build_prompt(candidates):
     # No current-verdict labels: the model judges the content cold instead
     # of anchoring on what the plan already decided.
@@ -126,18 +148,7 @@ def build_prompt(candidates):
         "",
     ]
     for i, c in enumerate(candidates, 1):
-        head = (
-            f'{i}. "{c["key"]}" — {c["units"]} occurrence(s), '
-            f'{c["chars"]} chars ({c.get("pct", 0)}% of the book), '
-            f'mean {c.get("mean_chars", 0)} chars'
-        )
-        lines.append(head)
-        for parent in c.get("parents") or []:
-            lines.append(f'   Appears inside: {parent["key"]} ({parent["units"]})')
-        for condition in c.get("conditional_css") or []:
-            lines.append(f"   Hidden by CSS only under: {condition}")
-        for sample in c["samples"]:
-            lines.append(f"   Sample: {sample}")
+        lines.extend(describe_candidate(i, c))
     return "\n".join(lines)
 
 

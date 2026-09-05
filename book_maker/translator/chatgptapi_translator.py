@@ -320,6 +320,47 @@ def _echoed_id(value):
 REQUEST_LIMITS = {"timeout": 300.0, "max_retries": 1}
 
 
+class ClassifierSession:
+    """Plan classification over one append-only message list.
+
+    The same prefix discipline `session_context` keeps for translation, for
+    the same reason: every turn is the previous request plus its reply plus
+    the new signatures, so an endpoint with prompt caching re-reads the
+    trunk at its cache rate instead of buying it again three signatures at
+    a time. Nothing already sent is ever rewritten — the classifier
+    restarts a session rather than editing one.
+
+    Kept apart from `self.session`, which is the *translation* history:
+    `--use_context` decides whether that exists, and this one is planning
+    machinery that runs before the first paragraph either way.
+    """
+
+    def __init__(self, translator, model=None):
+        self.translator = translator
+        self.model = model or translator.model
+        self._messages = []
+
+    def budget(self):
+        """The window the classifier works to: `--context-compact-at`, else
+        the same default a session-mode run would use."""
+        return self.translator._session_budget()
+
+    def start(self, trunk):
+        """Open a fresh conversation. The trunk rides in the system message,
+        where it is the stable head of every later request in this session."""
+        self._messages = [{"role": "system", "content": trunk}]
+
+    def ask(self, text):
+        messages = [*self._messages, {"role": "user", "content": text}]
+        reply = self.translator._classify_turn(messages, self.model)
+        self._messages = [*messages, {"role": "assistant", "content": reply or ""}]
+        return reply
+
+    def messages(self):
+        """What the next request will replay. Callers must not mutate it."""
+        return list(self._messages)
+
+
 class ChatGPTAPI(Base):
     DEFAULT_PROMPT = "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text"
 
@@ -619,6 +660,29 @@ class ChatGPTAPI(Base):
 
     def _chat_completion(self, prompt, model=None):
         return self._completion_text(model or self.model, prompt)
+
+    def classify_session(self, model=None):
+        """See `Base.classify_session`. One conversation, held in messages."""
+        return ClassifierSession(self, model)
+
+    def _classify_turn(self, messages, model):
+        """One turn of a classifier session: the whole history, one reply.
+
+        Not `_completion_text`, which sends a single user message — the
+        point here is that the prefix is re-sent byte for byte. Billed like
+        any other request, so the meter is told about it.
+        """
+        completion = self._request(
+            lambda sampling: self.openai_client.chat.completions.create(
+                model=model,
+                messages=messages,
+                extra_body=self.extra_body if self.extra_body else None,
+                **sampling,
+            ),
+            model=model,
+        )
+        self._note_usage(completion, model)
+        return completion.choices[0].message.content or ""
 
     def set_request_extras(self, extra_body=None, extra_headers=None):
         """See `Base.set_request_extras`.
