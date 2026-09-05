@@ -445,7 +445,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   Wait for how many tokens have been accumulated before starting the translation. gpt3.5 limits the total_token to 4090. For example, if you use `--accumulated_num 1600`, maybe openai will output 2200 tokens and maybe 200 tokens for other messages in the system messages user messages, 1600+2200+200=4000, So you are close to reaching the limit. You have to choose your own
   value, there is no way to know if the limit is reached before sending.
-  In EPUB plan mode this is a per-request token budget: consecutive units of any length share one request up to `N` tokens. With `--use_context session` it defaults to `800` (fewer requests is most of a session run's bill); pass `1` to turn grouping off.
+  In EPUB plan mode this is a per-request token budget: consecutive units of any length share one request up to `N` tokens. With `--use_context session` a default is derived from the run's own prompt overhead — `1600` with the stock prompts, up to `2000` under a fat custom `--prompt` (fewer requests is most of a session run's bill); pass `1` to turn grouping off.
 
 - `--batch_units`:
 
@@ -472,9 +472,9 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   - `--context-compact-at`:
 
-    Session mode only. The estimated-token budget the history may reach before it is compacted into a handoff report. Default `8000`, minimum `500`.
+    Session mode only. The estimated-token budget the history may reach before it is compacted into a handoff report. Minimum `500`. When unset, a run with request grouping on derives a budget from its request budget (~3200 at the defaults) and prints it at start; an ungrouped session keeps `8000`. An explicit value always wins.
 
-    At `8000` a run is estimated at 0.5x to 1.1x what window mode costs, while carrying several times the context; the ratio depends on the cache discount. Our calculation (August 2026) found `--context-compact-at 2500` the cheapest for most model prices (about 0.4x to 0.5x).
+    Our measurement (September 2026, whole-book runs) found the cost curve flat between `1500` and `4000` and steeply rising past it — `20000` cost 56% more than the optimum. Short windows did not hurt name consistency: the handoff report re-states the recurring terms each window, and the only register drift observed was in the *longest*-window run.
 
   - `--no-context-compact`:
 

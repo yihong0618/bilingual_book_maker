@@ -37,20 +37,13 @@ _CJK = re.compile(r"[぀-ヿ㐀-䶿一-鿿豈-﫿가-힯]")
 _LATIN_CHARS_PER_TOKEN = 4.0
 _CJK_CHARS_PER_TOKEN = 1.7
 
-# One budget for every model. The per-model table this replaces optimised for
-# cost, and at current prices that is optimising the wrong thing: a novel's
-# whole context bill is cents either way, while a shorter window means more
-# handoff seams, and a seam is where names and register drift.
-#
-# 8000 costs about 0.53x window mode on a cheap-cache endpoint (0.10x) and
-# about 1.10x on a dearer one (0.233x) — so the worst case is roughly what
-# the mode it replaces already cost, for several times the context. Anyone
-# who wants the cheapest setting can pass --context-compact-at 2500, which
-# measures at ~0.4-0.5x on both tiers.
-#
-# The figures come from measured handoff reports: 333/362/313 tokens of prose
-# over three windows, so a report costs about a third of a paragraph and the
-# budget is what decides how often one is paid for.
+# One budget for every model — but only for the *ungrouped* session run this
+# was measured on (0.53x window mode on a cheap-cache endpoint, 1.10x on a
+# dearer one, for several times the context). A grouped run derives a shorter
+# budget below, and the 260905 whole-book eval retired the old worry that a
+# shorter window trades cost for drift: across 44 handoff seams every
+# recurring name held, because the report re-states the terminology each
+# window — the only register drift observed was in the *longest*-window run.
 DEFAULT_COMPACT_BUDGET = 8000
 
 # Fitted 260905 (gpt-5.6-luna, official endpoint) for the *grouped* session

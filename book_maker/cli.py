@@ -449,8 +449,8 @@ def compact_budget(value):
     if budget < MIN_COMPACT_BUDGET:
         raise argparse.ArgumentTypeError(
             f"a compact budget of {budget} is too small to be useful; use at "
-            f"least {MIN_COMPACT_BUDGET} estimated tokens (2500 is the "
-            f"cheapest setting on most endpoints)"
+            f"least {MIN_COMPACT_BUDGET} estimated tokens (measured cost is "
+            f"flat between 1500 and 4000, and rises past it)"
         )
     return budget
 
@@ -765,8 +765,10 @@ So you are close to reaching the limit. You have to choose your own value, there
 In EPUB plan mode this is a per-request token budget: consecutive units of any
 length share one request up to this many tokens (at most --batch_units units per
 request; half that when the endpoint verifies JSON mode but not a strict schema).
-Plan mode with --use_context session defaults this to 800, because a session
-run's bill is roughly its request count; pass 1 to turn grouping off there.
+Plan mode with --use_context session derives a default from the run's own
+prompt overhead (1600 with the stock prompts, up to 2000 under a fat custom
+--prompt), because a session run's bill is roughly its request count; pass 1
+to turn grouping off there.
 """,
     )
     parser.add_argument(
@@ -852,9 +854,11 @@ run's bill is roughly its request count; pass 1 to turn grouping off there.
         type=compact_budget,
         default=None,
         help="session mode only: estimated-token budget for the history "
-        "before it is compacted into a translator handoff report. Default: "
-        "8000, which costs about what window mode costs for several times "
-        "the context; 2500 is the cheapest setting on most endpoints",
+        "before it is compacted into a translator handoff report. When "
+        "unset, a grouped session run derives one from its request budget "
+        "(~3200 at the defaults, printed at start; measured cost is flat "
+        "across 1500-4000 and rises past it) and an ungrouped session "
+        "keeps 8000. An explicit value always wins",
     )
     parser.add_argument(
         "--no-context-compact",
