@@ -316,6 +316,29 @@ class TestDivideLadder:
         assert fake.single_calls == ["POISON", "a4"]
         assert "a1" not in fake.single_calls
 
+    def test_frequent_recoveries_earn_the_lower_your_caps_hint(self, capsys):
+        """One split is the contract working; three is the operator's cue.
+
+        The hint names the two knobs that shrink a batch and appears only
+        once the run has recovered three times — a single misalignment
+        must not nag."""
+        from book_maker.loader.epub_loader import EPUBBookLoader
+
+        loader = EPUBBookLoader.__new__(EPUBBookLoader)
+        loader.translate_model = _HalvingFake()
+
+        hint = "may fit this model better"
+        loader._translate_texts_aligned(["POISON", "b"])
+        assert hint not in capsys.readouterr().out  # events 1 (then singles)
+
+        loader._translate_texts_aligned(["POISON", "d"])
+        assert hint not in capsys.readouterr().out  # event 2
+
+        loader._translate_texts_aligned(["POISON", "f"])
+        out = capsys.readouterr().out  # event 3: the cue
+        assert "3 misaligned batches this run" in out
+        assert "--batch_units" in out and "--accumulated_num" in out
+
 
 # --------------------------------------------- §9 inline atomic markers
 

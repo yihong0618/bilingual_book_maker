@@ -394,6 +394,7 @@ class EPUBBookLoader(BaseBookLoader):
         # `--batch_units`: units one plan request may carry at the strict
         # degree. Below strict it is halved (see `_plan_request_cap`).
         self.batch_units = GENERAL_GROUP_MAX_UNITS
+        self._misalign_recoveries = 0
         # "none" = no plan mode, the CLI's default. A caller that turns plan
         # mode on must pick all | model | agent (see .classify): there is no
         # mode where nobody decides and the code translates whatever it could
@@ -1995,6 +1996,7 @@ class EPUBBookLoader(BaseBookLoader):
                 f"[yellow]batch of {len(texts)} came back misaligned "
                 f"({e}); splitting[/yellow]"
             )
+            self._note_misalign_recovery()
             return self._divide_and_translate(texts, translator)
         except Exception as e:
             if translator._fatal_error_detected:
@@ -2023,7 +2025,20 @@ class EPUBBookLoader(BaseBookLoader):
             f"[bold red]alignment mismatch: sent {len(texts)} paragraphs, "
             f"received {len(result)} — splitting for realignment[/bold red]"
         )
+        self._note_misalign_recovery()
         return self._divide_and_translate(texts, translator)
+
+    def _note_misalign_recovery(self):
+        """Every split retries; a run that splits often is telling the
+        operator its batches are too big for this model."""
+        count = getattr(self, "_misalign_recoveries", 0) + 1
+        self._misalign_recoveries = count
+        if count >= 3:
+            print(
+                f"[yellow]{count} misaligned batches this run — if this "
+                f"keeps happening, a lower --batch_units or "
+                f"--accumulated_num may fit this model better[/yellow]"
+            )
 
     def _divide_and_translate(self, texts, translator):
         """Halve a chunk that came back misaligned; a chunk of 1 translates alone."""
