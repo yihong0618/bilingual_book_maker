@@ -461,7 +461,8 @@ def classify_skip(text):
 
 # What an *unescaped* CSS class selector can match: an identifier — letters,
 # digits, `-`, `_`, anything non-ASCII (CJK class names are legal idents),
-# not starting with a digit. A class token outside this grammar (`#`, `.`,
+# not starting with a digit — or a `--`-prefixed custom ident, where digits
+# may follow immediately. A class token outside this grammar (`#`, `.`,
 # `:`, a leading digit) is unreachable by any plain `.foo` selector, so no
 # stylesheet shapes it — it is converter metadata, not a content signature.
 # linear-algebra.epub is the measured case: tex4ht stuffs cross-reference
@@ -470,12 +471,12 @@ def classify_skip(text):
 # ledger rows / 99 classification requests for one merged question's worth
 # of content. Ident-only keying: 98 signatures, every styleable token kept.
 _CSS_IDENT_RE = re.compile(
-    r"^-{0,2}[A-Za-z_\u0080-\U0010ffff][-A-Za-z0-9_\u0080-\U0010ffff]*$"
+    r"^(?:--[-A-Za-z0-9_\u0080-\U0010ffff]*|-?[A-Za-z_\u0080-\U0010ffff][-A-Za-z0-9_\u0080-\U0010ffff]*)$"
 )
 
 # A CSS escape: `\HH…` (1–6 hex digits, one optional trailing whitespace
-# swallowed, per spec) or `\<any char>` literally.
-_CSS_ESCAPE_RE = re.compile(r"\\([0-9a-fA-F]{1,6})[ \t\r\n\f]?|\\(.)", re.S)
+# swallowed — CRLF counting as one, per spec) or `\<any char>` literally.
+_CSS_ESCAPE_RE = re.compile(r"\\([0-9a-fA-F]{1,6})(?:\r\n|[ \t\r\n\f])?|\\(.)", re.S)
 
 # `.` followed by ident chars and/or escapes (a hex escape consumes one
 # trailing whitespace, per spec): a class selector, wherever it
@@ -483,7 +484,8 @@ _CSS_ESCAPE_RE = re.compile(r"\\([0-9a-fA-F]{1,6})[ \t\r\n\f]?|\\(.)", re.S)
 # (`margin: .5em`) match too, but carry no backslash and are ignored by the
 # one consumer, which only collects escaped selectors.
 _CSS_CLASS_SELECTOR_RE = re.compile(
-    r"\.((?:\\[0-9a-fA-F]{1,6}[ \t\r\n\f]?|\\.|[-A-Za-z0-9_\u0080-\U0010ffff])+)", re.S
+    r"\.((?:\\[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|\\.|[-A-Za-z0-9_\u0080-\U0010ffff])+)",
+    re.S,
 )
 
 
@@ -509,6 +511,13 @@ def escaped_class_tokens(css_text):
     test on their own.
     """
     css_text = re.sub(r"/\*.*?\*/", " ", css_text, flags=re.S)
+    # Quoted strings go too: `content: ".xref\#123"` is not a selector, and
+    # leaving it in would smuggle its token into the keep-set. (A regex pass,
+    # like all CSS reading here — declaration values outside strings can
+    # still leak a token in, which errs toward keeping, never dropping.)
+    css_text = re.sub(
+        r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'", " ", css_text, flags=re.S
+    )
     return {
         _css_unescape(m.group(1))
         for m in _CSS_CLASS_SELECTOR_RE.finditer(css_text)

@@ -489,6 +489,26 @@ class TestSignatureClassTokenFilter:
         )
         assert sorted(u.signature for u in fp.units) == ["p.a", "p.a #num"]
 
+    def test_custom_ident_prefix_is_a_valid_class(self):
+        # codex review 260905 P2: `--1` / `---note` are legal CSS idents
+        # (digits may follow the `--` prefix immediately) and must key.
+        fp = self._partition('<body><p class="--1 ---note">Prose.</p></body>')
+        assert [u.signature for u in fp.units] == ["p.---note.--1"]
+
+    def test_a_crlf_after_a_hex_escape_is_one_terminator(self):
+        # codex review 260905 P2: CSS counts CRLF as the single whitespace a
+        # hex escape may swallow; consuming only the CR truncated the token.
+        from book_maker.loader.plan import escaped_class_tokens
+
+        assert escaped_class_tokens(".\\31\r\n23 { color: red }") == {"123"}
+
+    def test_quoted_strings_do_not_feed_the_keep_set(self):
+        # codex review 260905 P3: `content: ".xref\#123"` is not a selector.
+        from book_maker.loader.plan import escaped_class_tokens
+
+        css = 'p::before { content: ".xref\\#123" } .real\\.one { top: 0 }'
+        assert escaped_class_tokens(css) == {"real.one"}
+
     def test_escaped_class_tokens_reads_only_escaped_selectors(self):
         from book_maker.loader.plan import escaped_class_tokens
 
