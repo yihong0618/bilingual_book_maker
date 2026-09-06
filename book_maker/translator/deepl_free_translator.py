@@ -2,9 +2,8 @@ import time
 import random
 import re
 
-from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE
-
 from .base_translator import Base, NO_PROMPT_SECTIONS
+from .deepl_translator import deepl_target
 from rich import print
 from PyDeepLX import PyDeepLX
 
@@ -19,7 +18,7 @@ class DeepLFree(Base):
 
     def __init__(self, key, language, **kwargs) -> None:
         super().__init__(key, language)
-        l = language if language in LANGUAGES else TO_LANGUAGE_CODE.get(language)
+        l = deepl_target(language)
         if l not in [
             "bg",
             "zh",

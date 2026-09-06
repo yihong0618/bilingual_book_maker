@@ -235,7 +235,7 @@ states it when auto-detection isn't enough.
 | `xh` | xhosa |
 | `yi` | yiddish |
 | `yo` | yoruba |
-| `zh` | simplified chinese |
+| `zh` | chinese |
 | `zh-cn` | mainland chinese |
 | `zh-hans` | simplified chinese |
 | `zh-hant` | traditional chinese |
@@ -267,8 +267,8 @@ Names that are not the one printed above, accepted for the same tag.
 | `kirghiz` | `ky` |
 | `letzeburgesch` | `lb` |
 | `maldivian` | `dv` |
-| `mandarin` | `zh-hans` |
-| `mandarin chinese` | `zh-hans` |
+| `mandarin` | `zh` |
+| `mandarin chinese` | `zh` |
 | `moldavian` | `ro` |
 | `moldovan` | `ro` |
 | `nyanja` | `ny` |

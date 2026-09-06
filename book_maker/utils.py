@@ -7,7 +7,13 @@ import tiktoken
 LANGUAGES = {
     "en": "english",
     "zh-hans": "simplified chinese",
-    "zh": "simplified chinese",
+    # Whisper's list paired `zh` with "simplified chinese" too, which made
+    # the two tags share one name: the reverse map is last-wins, so the name
+    # resolved to `zh` and a bare `--language zh-hans` stamped `zh`. `zh` is
+    # the macro-language, so it takes the macro-language's name and the
+    # script subtags keep theirs. Every pair in these tables round-trips
+    # (`tests/test_language_tag_and_name.py::TestEveryPairRoundTrips`).
+    "zh": "chinese",
     "zh-hant": "traditional chinese",
     "zh-yue": "cantonese",
     "de": "german",
@@ -263,8 +269,11 @@ TO_LANGUAGE_CODE = {
     # prints back. None of these may repeat a name in LANGUAGES, or it would
     # take that name's code away from the entry that owns it.
     "farsi": "fa",
-    "mandarin": "zh-hans",
-    "mandarin chinese": "zh-hans",
+    # "Mandarin" names a spoken variety and states no script, so it resolves
+    # to the macro-language rather than guessing a script subtag — the same
+    # ruling as `zh` above. Ask for a script with `zh-hans` / `zh-hant`.
+    "mandarin": "zh",
+    "mandarin chinese": "zh",
     "brazilian": "pt-br",
     "bokmal": "nb",
     "oriya": "or",
@@ -344,9 +353,12 @@ def parse_language_spec(value):
     the escape hatch for a language the tables miss, where matching a typed
     name against them would either fail or land on the wrong tag.
 
-    A bare value keeps behaving exactly as it always has: a known tag
-    resolves to its English name, and anything else travels as both the name
-    and (when it reads as a tag) the stamp.
+    A bare value that the tag table knows keeps *itself* as the tag and
+    takes the table's English name for the prose. It is deliberately not
+    round-tripped through that name and back: a name lookup can only return
+    one tag, so any two tags sharing a name family put one of them on the
+    wrong stamp (`zh-hans` stamped `zh` until 260906). Anything else travels
+    as both the name and — when it reads as a tag — the stamp.
 
     Only the first colon separates, so a name may contain one. Raises
     ``ValueError`` when a colon is there with nothing on one side of it —
@@ -364,13 +376,17 @@ def parse_language_spec(value):
         return LanguageSpec(name=name, tag=tag, pinned=True, known=True)
     if not text:
         raise ValueError("--language needs a language")
-    name = LANGUAGES.get(text, text)
-    known = text in LANGUAGES or text.lower() in TO_LANGUAGE_CODE
+    key = text.lower()
+    if key in LANGUAGES:
+        # A typed tag is already the answer; the table is asked only for the
+        # prose. The operator's own casing survives, so `pt-BR` stamps
+        # `pt-BR` rather than being folded to the table's key.
+        return LanguageSpec(name=LANGUAGES[key], tag=text, pinned=False, known=True)
     return LanguageSpec(
-        name=name,
-        tag=language_code(name),
+        name=text,
+        tag=language_code(text),
         pinned=False,
-        known=known,
+        known=key in TO_LANGUAGE_CODE,
     )
 
 

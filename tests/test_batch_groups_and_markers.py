@@ -692,12 +692,14 @@ class TestLanguageSpec:
             True,
         )
 
-    def test_a_bare_tag_resolves_its_name(self):
+    def test_a_bare_tag_resolves_its_name_and_keeps_itself(self):
+        """Retires the `spec.tag == "zh"` pin: a typed tag is no longer
+        round-tripped through its name, and `zh-hans` owns that name now."""
         from book_maker.utils import parse_language_spec
 
         spec = parse_language_spec("zh-hans")
         assert (spec.tag, spec.name, spec.pinned) == (
-            "zh",
+            "zh-hans",
             "simplified chinese",
             False,
         )

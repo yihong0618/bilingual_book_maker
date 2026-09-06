@@ -34,7 +34,12 @@ from book_maker.translator.chatgptapi_translator import (
     single_field_name,
     single_translation_schema,
 )
-from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE, parse_language_spec
+from book_maker.utils import (
+    LANGUAGES,
+    TO_LANGUAGE_CODE,
+    language_code,
+    parse_language_spec,
+)
 
 REPO = Path(__file__).resolve().parent.parent
 HERMETIC = Path(__file__).resolve().parent / "hermetic"
@@ -69,23 +74,46 @@ class TestTheParse:
         with pytest.raises(ValueError):
             parse_language_spec(value)
 
-    def test_a_bare_tag_behaves_exactly_as_before(self):
-        """`LANGUAGES.get(value, value)` is what the CLI did, and the tag is
-        what `language_tag()` made of the result — both reproduced here."""
+    def test_a_bare_tag_keeps_itself_as_the_tag(self):
+        """Retires the pin that read `spec.tag == "zh"` here.
+
+        The parse used to resolve the tag to its English name and match that
+        name back to a tag. A name lookup returns one tag, so with `zh` and
+        `zh-hans` both named "simplified chinese" the trip home landed on
+        `zh` and a default `--language zh-hans` run stamped `zh`. The table
+        no longer shares that name, and the parse no longer takes the trip:
+        a tag the table knows is already the answer.
+        """
         spec = parse_language_spec("zh-hans")
 
         assert spec.name == "simplified chinese"
-        assert spec.tag == "zh"
+        assert spec.tag == "zh-hans"
         assert spec.pinned is False
         assert spec.known is True
 
-    def test_a_bare_name_behaves_exactly_as_before(self):
+    def test_the_operators_own_casing_survives(self):
+        """The table is asked for prose, never for the tag to stamp."""
+        spec = parse_language_spec("pt-BR")
+
+        assert spec.tag == "pt-BR"
+        assert spec.name == "brazilian portuguese"
+        assert spec.known is True
+
+    def test_a_bare_name_resolves_to_its_own_tag(self):
+        """Retires the pin that read `spec.tag == "zh"` here too: the name
+        now belongs to `zh-hans` alone, and `zh` answers to "chinese"."""
         spec = parse_language_spec("Simplified Chinese")
 
         assert spec.name == "Simplified Chinese"
-        assert spec.tag == "zh"
+        assert spec.tag == "zh-hans"
         assert spec.pinned is False
         assert spec.known is True
+
+    def test_the_macro_language_has_a_name_of_its_own(self):
+        """A bare `zh` asks for "chinese", not for a script it never named —
+        so its prose and its structured field say `chinese`."""
+        assert parse_language_spec("zh").name == "chinese"
+        assert parse_language_spec("Chinese").tag == "zh"
 
     def test_free_text_travels_as_the_name_and_stamps_nothing(self):
         spec = parse_language_spec("whatever the model calls it")
@@ -93,6 +121,58 @@ class TestTheParse:
         assert spec.name == "whatever the model calls it"
         assert spec.tag is None
         assert spec.known is False
+
+
+# ------------------------------------------------------- the pairs hold
+
+
+class TestEveryPairRoundTrips:
+    """Each tag owns a name, and that name answers with the same tag.
+
+    The `zh-hans` bug was not one bad row, it was a shape the tables allow:
+    two tags sharing an English name, with the reverse map keeping only the
+    last one. Nothing in the code notices — the name resolves, a tag comes
+    back, and it is the wrong tag. So the property is pinned for the whole
+    table rather than for the row that was found by hand.
+
+    There is no allowlist. A pair that cannot round-trip does not belong in
+    `LANGUAGES`: an entry needing a second spelling puts that spelling in
+    `TO_LANGUAGE_CODE`, which is where aliases live and where being
+    many-to-one is the point.
+    """
+
+    def test_no_two_tags_share_a_name(self):
+        shared = {}
+        for tag, name in LANGUAGES.items():
+            shared.setdefault(name, []).append(tag)
+
+        assert not {n: t for n, t in shared.items() if len(t) > 1}
+
+    def test_every_name_answers_with_its_own_tag(self):
+        wrong = {
+            tag: (name, language_code(name))
+            for tag, name in LANGUAGES.items()
+            if language_code(name) != tag
+        }
+
+        assert not wrong
+
+    def test_no_alias_takes_a_printed_name_away(self):
+        """`TO_LANGUAGE_CODE` is built name-first, then aliases are laid over
+        it: an alias repeating a printed name would silently move that name's
+        tag, which is the same failure one table over."""
+        printed = set(LANGUAGES.values())
+        aliases = {k: v for k, v in TO_LANGUAGE_CODE.items() if k not in printed}
+
+        assert not (set(aliases) & printed)
+
+    def test_the_chinese_pairs_are_the_owner_ruling(self):
+        assert LANGUAGES["zh"] == "chinese"
+        assert LANGUAGES["zh-hans"] == "simplified chinese"
+        assert LANGUAGES["zh-hant"] == "traditional chinese"
+        assert language_code("chinese") == "zh"
+        assert language_code("simplified chinese") == "zh-hans"
+        assert language_code("traditional chinese") == "zh-hant"
 
 
 class TestTheSourceEvidence:
@@ -152,6 +232,65 @@ class TestTheFieldName:
         assert schema["name"] == "zh_hant_paragraphs"
         assert "zh_hant_translation" in array["items"]["properties"]
         assert "Traditional Chinese" in array["description"]
+
+
+# ------------------------------------------------- what an engine is asked
+
+from book_maker.translator.deepl_translator import DeepL, deepl_target  # noqa: E402
+from book_maker.translator.google_translator import Google, google_target  # noqa: E402
+
+
+class TestTheEnginesSpellItTheirOwnWay:
+    """The MT routes put a code in an outbound request, and the vendors do
+    not agree with BCP-47 or with each other: Google wants `zh-CN`, DeepL
+    has one `zh` and no script subtag at all. Renaming `zh` moved what
+    `TO_LANGUAGE_CODE["simplified chinese"]` answers, which is the value
+    both of them read — so each vendor's spelling is made in that vendor's
+    own module, and the shared table stays the tag a book is stamped with.
+
+    These routes are handed `LanguageSpec.name`, never the tag (`cli.py`
+    passes `target.name` to the model), so the name is what is pinned here.
+    """
+
+    def test_google_asks_for_the_script_google_knows(self):
+        assert google_target("simplified chinese") == "zh-CN"
+        assert google_target("traditional chinese") == "zh-TW"
+        assert google_target("chinese") == "zh-CN"
+
+    def test_google_folds_a_regional_variant_it_has_no_code_for(self):
+        assert google_target("british english") == "en"
+        assert google_target("brazilian portuguese") == "pt"
+        assert google_target("norwegian") == "no"
+
+    def test_google_leaves_anything_else_as_the_table_has_it(self):
+        assert google_target("japanese") == "ja"
+        assert google_target("ja") == "ja"
+        assert google_target("Klingon") == "Klingon"
+
+    def test_the_default_language_still_reaches_google_as_a_code(self):
+        """The canary: `zh-hans` is the default, and a `tl=` the endpoint
+        does not know is a book that comes back untranslated."""
+        assert "tl=zh-CN" in Google("", "simplified chinese").api_url
+
+    def test_deepl_gets_the_one_zh_it_supports(self):
+        """DeepL's allowlist is its own target list — `zh-hans` is not on
+        it, so without this mapping the default `--language` would raise."""
+        assert deepl_target("simplified chinese") == "zh"
+        assert DeepL("k", "simplified chinese").language == "zh"
+
+    def test_deepl_keeps_its_own_casing_of_a_regional_code(self):
+        assert deepl_target("brazilian portuguese") == "pt-BR"
+        assert deepl_target("british english") == "en-GB"
+
+    def test_deepl_matches_a_name_whatever_its_case(self):
+        """`--help` advertises Title-cased names; the lookup used to be
+        case-sensitive and answered `None` to every one of them."""
+        assert deepl_target("Japanese") == "ja"
+        assert DeepL("k", "Japanese").language == "ja"
+
+    def test_deepl_still_refuses_a_language_it_does_not_have(self):
+        with pytest.raises(Exception, match="DeepL do not support"):
+            DeepL("k", "Klingon")
 
 
 # ---------------------------------------------------------- the stamp
@@ -242,6 +381,19 @@ class TestTheStamp:
 
         assert 'lang="zh-hant"' in document
         assert "Traditional Chinese" not in document
+
+    def test_the_default_language_stamps_the_tag_it_was_given(self, tmp_path):
+        """`zh-hans` is the default, so this is what most books declare.
+
+        It declared `zh` until 260906: the parse resolved the tag to
+        "simplified chinese" and matched that name back to `zh`, which also
+        carried it. A run asked for the simplified script now says so.
+        """
+        package, document = _translate(tmp_path, "zh-hans")
+
+        declared = re.findall(r"<dc:language>([^<]*)</dc:language>", package)
+        assert declared[0] == "zh-hans"
+        assert 'lang="zh-hans"' in document
 
     def test_a_name_the_tables_do_not_know_stamps_nothing(self, tmp_path):
         """The failure this flag exists to give a way out of: prose no tag
