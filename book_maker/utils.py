@@ -248,6 +248,84 @@ LANGUAGES = {
     "cr": "cree",
     "oj": "ojibwe",
     "pap": "papiamento",
+    # --- appended 260906, with the zh pair above --------------------------
+    # Same rule as the block before it: appended, never interleaved, every
+    # name distinct from every other. Chinese varieties first, because the
+    # `zh` fix above is what brought this block about — a book asked for in
+    # "Chinese" now says so, and the ones that are not Mandarin say that.
+    "lzh": "literary chinese",
+    "wuu": "wu chinese",
+    "nan": "hokkien",
+    "hak": "hakka",
+    "zh-sg": "singapore chinese",
+    # Regional variants of the big European languages, alongside the ones
+    # already listed above (en-gb/en-us, pt-br/pt-pt, es-419/es-mx, fr-ca).
+    "en-au": "australian english",
+    "en-ca": "canadian english",
+    "en-in": "indian english",
+    "de-at": "austrian german",
+    "de-ch": "swiss standard german",
+    "es-es": "european spanish",
+    "es-ar": "argentine spanish",
+    # "flemish" is already an accepted spelling of `nl`, so this row cannot
+    # take that name without moving it.
+    "nl-be": "belgian dutch",
+    # Script subtags, the other half of what the zh fix was about.
+    "sr-latn": "serbian latin",
+    "sr-cyrl": "serbian cyrillic",
+    # Arabic varieties written as books, under their own ISO codes rather
+    # than as regions of `ar`.
+    "arz": "egyptian arabic",
+    "ary": "moroccan arabic",
+    "apc": "levantine arabic",
+    "kab": "kabyle",
+    "tzm": "central atlas tamazight",
+    # Historical and literary languages: what a book translator is actually
+    # asked for that a speech-recognition list never carried.
+    "ang": "old english",
+    "enm": "middle english",
+    "fro": "old french",
+    "goh": "old high german",
+    "non": "old norse",
+    "got": "gothic",
+    "sga": "old irish",
+    "xcl": "classical armenian",
+    "pal": "middle persian",
+    "cop": "coptic",
+    "egy": "ancient egyptian",
+    "akk": "akkadian",
+    "sux": "sumerian",
+    "hit": "hittite",
+    # Regional languages of Europe with their own literatures.
+    "hsb": "upper sorbian",
+    "dsb": "lower sorbian",
+    "csb": "kashubian",
+    "szl": "silesian",
+    "rue": "rusyn",
+    "lij": "ligurian",
+    "vec": "venetian",
+    "nap": "neapolitan",
+    "lmo": "lombard",
+    "pms": "piedmontese",
+    "mwl": "mirandese",
+    "lad": "ladino",
+    "lld": "ladin",
+    # The Americas and the creoles.
+    "nah": "nahuatl",
+    "yua": "yucatec maya",
+    "arn": "mapudungun",
+    "srn": "sranan tongo",
+    "jam": "jamaican patois",
+    # Caucasus and Siberia, beside the ones listed above.
+    "av": "avar",
+    "lez": "lezgian",
+    "kbd": "kabardian",
+    "tyv": "tuvan",
+    # Constructed, beside esperanto and interlingua above.
+    "ie": "interlingue",
+    "io": "ido",
+    "vo": "volapuk",
+    "jbo": "lojban",
 }
 
 # language code lookup by name, with a few language aliases
@@ -293,6 +371,22 @@ TO_LANGUAGE_CODE = {
     "frisian": "fy",
     "maldivian": "dv",
     "divehi": "dv",
+    # --- appended 260906, with the entries above -------------------------
+    "standard chinese": "zh",
+    "putonghua": "zh",
+    "classical chinese": "lzh",
+    "min nan": "nan",
+    "taiwanese hokkien": "nan",
+    "shanghainese": "wuu",
+    "norwegian nynorsk": "nn",
+    "modern standard arabic": "ar",
+    "old church slavonic": "cu",
+    "jamaican creole": "jam",
+    "judeo-spanish": "lad",
+    "swiss high german": "de-ch",
+    "bahasa indonesia": "id",
+    "bahasa melayu": "ms",
+    "pilipino": "fil",
 }
 
 
