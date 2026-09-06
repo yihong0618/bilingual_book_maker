@@ -8,6 +8,7 @@ def test_get_book_type_uses_final_suffix_and_lowercases():
 
 import json
 import os
+import re
 
 import pytest
 import subprocess
@@ -1733,6 +1734,66 @@ def test_a_session_dry_run_previews_the_default_budget(tmp_path):
     # a dry run has no translator to measure a prompt overhead against, so
     # the preview carries the floor
     assert json.loads(plan.read_text())["token_budget"] == session_token_budget(None)
+
+
+def test_a_plain_dry_run_previews_the_derived_budget_and_names_both_routes(tmp_path):
+    # 260906: the derived default is no longer session-only, so a dry run
+    # without --use_context session previews one too. It cannot know the
+    # endpoint's schema verdict — there is no endpoint — so it groups at the
+    # schema-verified derivation and says both numbers out loud.
+    from book_maker.loader.plan import derived_token_budget
+
+    proc, plan = _run(tmp_path, "--plan-dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert json.loads(plan.read_text())["token_budget"] == derived_token_budget(
+        None, "schema"
+    )
+    # rich wraps the line to the terminal width
+    out = " ".join(proc.stdout.split())
+    assert "plan grouping: budget 1600 tokens per request" in out
+    assert "800 below strict decoding" in out
+
+
+def test_a_google_plan_run_derives_and_narrates_the_substrict_budget(tmp_path):
+    # the parity half: --api_format google holds no schema at all, so the
+    # real run takes the sub-strict derivation — and the number it lands on
+    # is one of the two the dry run above printed. Nothing was typed, so the
+    # budget in the run's own batches line is the derived one.
+    from book_maker.loader.plan import derived_token_budget
+
+    proc, _ = _run(tmp_path, "--plan-classify", "all", "--test", "--test_num", "2")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    budget = derived_token_budget(None, "substrict")
+    out = " ".join(proc.stdout.split())
+    assert (
+        f"plan grouping: budget {budget} tokens per request "
+        f"(endpoint below strict decoding" in out
+    )
+    # the partition stays endpoint-independent, so the plan's own line
+    # carries the schema-verified budget; the halving happens per request
+    assert f"/ {derived_token_budget(None, 'schema')} tokens per request)" in out
+    # and it actually grouped: far fewer requests than units
+    units, requests = re.search(
+        r"batches: (\d+) unit\(s\) in (\d+) request\(s\)", out
+    ).groups()
+    assert int(requests) < int(units)
+
+
+def test_a_typed_budget_narrates_nothing(tmp_path):
+    # the operator's own number needs no explaining; the line is only for
+    # the derived default
+    proc, _ = _run(
+        tmp_path,
+        "--plan-classify",
+        "all",
+        "--accumulated_num",
+        "900",
+        "--test",
+        "--test_num",
+        "2",
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "plan grouping: budget" not in " ".join(proc.stdout.split())
 
 
 def test_an_explicit_one_keeps_the_session_dry_run_ungrouped(tmp_path):

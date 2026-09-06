@@ -1440,9 +1440,9 @@ DRY_RUN_RULES = (
         lambda f: True,
         lambda f: (
             f"this preview groups at --max-batch-units {f.batch_units} units per "
-            f"request. An endpoint that verifies JSON mode but not a strict "
-            f"schema carries half that, so the real run can make up to about "
-            f"twice these requests."
+            f"request, and at the schema-verified token budget. An endpoint "
+            f"that verifies JSON mode but not a strict schema carries half of "
+            f"each, so the real run can make more requests than these."
         ),
     ),
 )
@@ -2142,18 +2142,26 @@ def main():
                 "translated text may overflow or misplace.[/bold yellow]"
             )
         # The preview must group the way the run will: an explicit
-        # --accumulated_num wins (1 turning grouping off), and an untyped
-        # one defaults by context mode exactly as _plan_token_budget does.
-        from book_maker.loader.plan import session_token_budget
+        # --accumulated_num wins (1 turning grouping off), and an untyped one
+        # takes the derived default exactly as _plan_token_budget does. Since
+        # 260906 that default applies to every plan run, not only a session
+        # one. `--use_context session` is knowable here and settles the route
+        # on its own; anything else splits on a probe verdict there is no
+        # endpoint to ask for, so the preview groups at the schema-verified
+        # derivation — the larger of the two, so its request count is the
+        # optimistic one — and the notice names both numbers.
+        from book_maker.loader.plan import derived_token_budget, plan_budget_notice
 
+        dry_route = "session" if options.context_mode == "session" else None
         if accumulated_num_given:
             # 0, not None: an explicit 1 turns every grouping rule off, and
             # None would preview the short-run grouping the run won't do
             dry_budget = options.accumulated_num if options.accumulated_num > 1 else 0
-        elif options.context_mode == "session":
+        else:
             # No translator exists on a dry run, so nothing can measure the
             # prompt overhead: None, and the floor stands.
-            dry_budget = session_token_budget(None)
+            dry_budget = derived_token_budget(None, dry_route or "schema")
+            print(plan_budget_notice(None, dry_route))
             if (
                 options.prompt_arg
                 or os.environ.get("BBM_CHATGPTAPI_USER_MSG_TEMPLATE")
@@ -2170,8 +2178,6 @@ def main():
                     f"(budget {dry_budget}); a large custom prompt can "
                     f"raise the real run's budget, up to 2000"
                 )
-        else:
-            dry_budget = None
         plan = build_plan(
             book,
             exclude_tags=tuple(

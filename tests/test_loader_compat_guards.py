@@ -18,7 +18,7 @@ from ebooklib import epub
 
 from book_maker.glossary import Glossary
 from book_maker.loader.epub_loader import EPUBBookLoader
-from book_maker.loader.plan import session_token_budget
+from book_maker.loader.plan import session_token_budget, substrict_token_budget
 from book_maker.session_context import DEFAULT_COMPACT_BUDGET
 
 REPO = Path(__file__).resolve().parent.parent
@@ -472,7 +472,11 @@ class TestCodexIsASession:
         loader.plan_mode = True
         loader.translate_tags = "auto"
 
-        assert loader._plan_token_budget is None
+        # it still derives a grouping budget — every plan run does since
+        # 260906 — and, being no session, carries half of it per request;
+        # it says nothing about a compaction window because it never compacts
+        assert loader._plan_token_budget == session_token_budget(None)
+        assert loader._plan_request_budget() == substrict_token_budget(None)
         loader._narrate_session_compact_budget()
 
         assert loader.translate_model.context_compact_at is None

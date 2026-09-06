@@ -311,12 +311,18 @@ class TestLoaderHonorsAccumulatedNum:
             for call in model.list_calls
         ), model.list_calls
 
-    def test_without_the_flag_only_short_runs_group(self, tmp_path):
+    def test_without_the_flag_the_derived_budget_still_groups(self, tmp_path):
+        # was `only short runs group`, until 260906: the untyped default used
+        # to be no budget at all outside session mode, which meant a request
+        # per paragraph. Now every plan run derives one, so long paragraphs
+        # share a request here as well.
         loader, _ = _plan_loader(tmp_path, _StrictModel)
         loader.make_bilingual_book()
 
-        for call in loader.translate_model.list_calls:
-            assert all(len(text) < 70 for text in call), call
+        assert any(
+            len(call) > 1 and all(len(text) >= 70 for text in call)
+            for call in loader.translate_model.list_calls
+        ), loader.translate_model.list_calls
 
     def test_a_substrict_endpoint_gets_the_tighter_cap(self, tmp_path):
         # amendment 2: both content regressions the eval found were large
@@ -443,10 +449,158 @@ class TestSessionModeDefaultsTheBudget:
         assert loader._plan_token_budget == 1500
 
     @pytest.mark.parametrize("mode", [None, "window"])
-    def test_no_session_no_flag_is_still_no_budget(self, tmp_path, mode):
+    def test_a_schema_route_derives_the_full_budget_without_a_session(
+        self, tmp_path, mode
+    ):
+        # 260906: the untyped default is a derived budget on every plan run,
+        # not only a session one. It used to be None here, and None meant a
+        # request per paragraph — 45,010 of them across the corpus, against
+        # 8,689 at this budget.
+        from book_maker.loader.plan import session_token_budget
+
         loader, _ = _plan_loader(tmp_path, _StrictModel, context_mode=mode)
 
-        assert loader._plan_token_budget is None
+        assert loader._plan_token_budget == session_token_budget(None) == 1600
+        assert loader._partition_route() == "schema"
+        # a strict endpoint sends what the partition grouped, unsplit
+        assert loader._plan_request_budget() is None
+
+    @pytest.mark.parametrize("mode", [None, "window"])
+    def test_a_substrict_route_carries_half_of_it_per_request(self, tmp_path, mode):
+        # the same margin `SUBSTRICT_GROUP_MAX_UNITS` takes off the unit cap,
+        # off the same verdict and in the same place: both content
+        # regressions the 260905 json_object eval found were large batches
+        # below strict decoding. The *partition* stays endpoint-independent —
+        # asking the endpoint is what triggers its probe, and the plan is
+        # built before anything has asked it a question.
+        from book_maker.loader.plan import (
+            SUBSTRICT_BUDGET_FLOOR,
+            session_token_budget,
+            substrict_token_budget,
+        )
+
+        loader, _ = _plan_loader(tmp_path, _RecordingModel, context_mode=mode)
+
+        assert loader._plan_token_budget == session_token_budget(None) == 1600
+        assert loader._plan_request_budget() == substrict_token_budget(None) == 800
+        assert loader._plan_request_budget() == SUBSTRICT_BUDGET_FLOOR
+
+        strict, _ = _plan_loader(tmp_path / "strict", _StrictModel, context_mode=mode)
+        assert loader._plan_request_budget() != strict._plan_request_budget()
+
+    def test_the_substrict_budget_actually_divides_the_requests(self):
+        # the visible half: a group packed to 1600 tokens is sent as two
+        # requests when the endpoint is below strict decoding
+        from book_maker.loader.epub_loader import EPUBBookLoader
+
+        units = _units("".join(_paragraph(120) for _ in range(8)))
+        assign_batches(units, token_budget=1600)
+        assert len({u.group_id for u in units}) == 1
+
+        whole = EPUBBookLoader._plan_batch_indexes(units)
+        halved = EPUBBookLoader._plan_batch_indexes(units, max_tokens=800)
+
+        assert len(set(whole)) == 1
+        assert len(set(halved)) > 1
+        # and no request carries more than the budget, unless one unit does
+        totals = {}
+        for index, unit in zip(halved, units):
+            totals[index] = totals.get(index, 0) + unit.token_count
+        assert all(t <= 800 for t in totals.values()), totals
+
+    def test_a_fat_prompt_raises_both_route_classes_together(self, tmp_path):
+        # the halving rides on top of the overhead derivation, it does not
+        # replace it: 3 * 650 = 1950, and half of that is 975
+        Fat = _OverheadModel(650)
+        FatSub = type(
+            "FatSub", (_RecordingModel,), {"prompt_overhead_tokens": lambda s: 650}
+        )
+
+        strict, _ = _plan_loader(tmp_path / "s", Fat)
+        sub, _ = _plan_loader(tmp_path / "j", FatSub)
+
+        assert strict._plan_token_budget == 1950
+        assert sub._plan_token_budget == 1950
+        assert sub._plan_request_budget() == 975
+
+    def test_an_explicit_one_turns_grouping_off_outside_session_mode_too(
+        self, tmp_path
+    ):
+        # the off switch has to keep working now that every plan run has a
+        # default to override — and the sub-strict split must not re-group
+        # what it turned off
+        for name, model in (("s", _StrictModel), ("j", _RecordingModel)):
+            loader, _ = _plan_loader(tmp_path / name, model, accumulated_num_given=True)
+            assert loader._plan_token_budget == 0
+            assert loader._plan_request_budget() is None
+
+    def test_a_typed_budget_is_never_halved(self, tmp_path):
+        # typed wins outright: the operator asked for this many tokens per
+        # request, on this endpoint
+        loader, _ = _plan_loader(
+            tmp_path, _RecordingModel, accumulated_num_given=True, accumulated_num=1500
+        )
+        assert loader._plan_token_budget == 1500
+        assert loader._plan_request_budget() is None
+
+    def test_a_session_run_is_unchanged_by_the_route_split(self, tmp_path):
+        # pinned: the session budget was measured as a whole on the 260905
+        # eval, and a session run keeps it whatever the endpoint decodes —
+        # including the codex route, which offers no verdict at all
+        from book_maker.loader.plan import session_token_budget
+
+        for name, model in (("s", _StrictModel), ("j", _RecordingModel)):
+            loader, _ = _plan_loader(tmp_path / name, model, context_mode="session")
+            assert loader._plan_token_budget == session_token_budget(None)
+            assert loader._partition_route() == "session"
+            assert loader._plan_request_budget() is None
+
+    def test_the_dry_run_line_names_the_number_every_route_will_land_on(self):
+        # the parity the finish checklist calls out: a preview that promises
+        # a budget the run does not use is worse than no preview. A dry run
+        # has no endpoint to probe, so it names both numbers — and each of
+        # them is what the matching route class actually derives.
+        from book_maker.loader.plan import derived_token_budget, plan_budget_notice
+
+        for overhead in (None, 650):
+            preview = plan_budget_notice(overhead, None)
+            for route in ("session", "schema", "substrict"):
+                budget = derived_token_budget(overhead, route)
+                assert str(budget) in preview, (route, overhead, preview)
+                assert str(budget) in plan_budget_notice(overhead, route)
+
+    def test_the_derived_budget_is_narrated_once_with_its_route(self, tmp_path, capsys):
+        loader, _ = _plan_loader(tmp_path, _RecordingModel)
+
+        budget = loader._plan_request_budget()
+        loader._narrate_plan_budget(budget)
+        loader._narrate_plan_budget(budget)
+
+        out = " ".join(capsys.readouterr().out.split())
+        assert out == (
+            "plan grouping: budget 800 tokens per request (endpoint below "
+            "strict decoding; derived, --accumulated_num overrides)"
+        )
+
+    def test_a_strict_route_narrates_the_full_budget(self, tmp_path, capsys):
+        loader, _ = _plan_loader(tmp_path, _StrictModel)
+
+        loader._narrate_plan_budget(loader._plan_request_budget())
+
+        out = " ".join(capsys.readouterr().out.split())
+        assert out == (
+            "plan grouping: budget 1600 tokens per request (schema-verified "
+            "endpoint; derived, --accumulated_num overrides)"
+        )
+
+    def test_a_typed_budget_narrates_nothing(self, tmp_path, capsys):
+        loader, _ = _plan_loader(
+            tmp_path, _StrictModel, accumulated_num_given=True, accumulated_num=900
+        )
+
+        loader._narrate_plan_budget(loader._plan_request_budget())
+
+        assert capsys.readouterr().out == ""
 
     def test_the_session_default_groups_ordinary_prose(self, tmp_path):
         # the visible half of the contract: without the flag, a session run

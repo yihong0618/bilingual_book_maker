@@ -767,10 +767,11 @@ class TestDryRunPreview:
         assert "each turn plan mode off" in _flat(proc)
 
     def test_the_preview_says_its_request_count_is_a_floor(self, tmp_path):
-        # B3: the run halves the per-request unit cap below strict decoding
+        # B3: below strict decoding the run halves both the per-request unit
+        # cap and the per-request token budget
         proc = _cli("--book_name", str(_book(tmp_path)), "--plan-dry-run")
         assert proc.returncode == 0, proc.stdout + proc.stderr
-        assert "twice these requests" in _flat(proc)
+        assert "more requests than these" in _flat(proc)
 
     def test_a_plain_openai_preview_is_not_told_the_plan_will_be_skipped(
         self, tmp_path

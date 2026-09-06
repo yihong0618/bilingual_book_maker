@@ -73,6 +73,7 @@ from .plan import (
     BookCss,
     TranslationPlan,
     UnsafeSingleTranslateError,
+    derived_token_budget,
     file_segment_hazards,
     file_sha256,
     inline_subtree_root,
@@ -80,8 +81,8 @@ from .plan import (
     is_simple_owner,
     load_plan_overrides,
     partition_file,
+    plan_budget_notice,
     planning_settings,
-    session_token_budget,
 )
 from ..session_context import compact_budget_notice
 from .markers import (
@@ -439,6 +440,8 @@ class EPUBBookLoader(BaseBookLoader):
         self._plan_partitions = {}  # file_name -> (soup, FilePlan), see _plan_partition
         # once per run, not once per document — see _narrate_session_compact_budget
         self._compact_budget_narrated = False
+        # same, for the derived grouping budget — see _narrate_plan_budget
+        self._plan_budget_narrated = False
         self._plan_fingerprint = None
         self._resume_plan_fingerprint = None
         # What the loaded checkpoint's translations were produced by — see
@@ -1109,18 +1112,30 @@ class EPUBBookLoader(BaseBookLoader):
 
     @property
     def _plan_token_budget(self):
-        """`--accumulated_num` as plan mode's grouping budget, or None.
+        """`--accumulated_num` as plan mode's grouping budget.
 
         Same meaning as in tag mode — tokens a request may carry — counted
         the same way. A typed value wins outright, `1` included: that is the
         way to turn grouping off, and it has to keep working in every mode.
 
-        With the flag untyped, a session run (see `_session_run`) defaults to
-        `session_token_budget`, derived from this run's own prompt overhead.
-        There the history is re-read at the endpoint's cache rate, so a run's
-        bill is roughly its request count, and leaving grouping off is the
-        expensive choice. Everywhere else the untyped default stays None —
-        the short-run-only grouping plan mode has always done on its own.
+        With the flag untyped, every plan run derives one (260906). It used
+        to be session runs only, and everywhere else the default was None —
+        which read as "the short-run-only grouping plan mode does on its
+        own" and meant, in practice, a request per paragraph: the corpus
+        sweep counted 45,010 of them over the 45 sample books' 209,021
+        units, where this budget asks for 8,689 on a schema-verified route
+        and 21,065 below strict decoding. Nothing about that bill is
+        specific to session mode; session mode is only where it was noticed,
+        because there the history is re-read at the endpoint's cache rate.
+
+        The value is the schema-verified derivation, always. How far *this
+        endpoint* can be trusted with one request is not a property of the
+        book and is not knowable here — the partition runs before anything
+        has asked the model a question, and `--plan-classify agent` writes a
+        plan and stops without ever asking one. So the margin below strict
+        decoding is taken later, in `_plan_request_budget`, exactly where
+        `_plan_request_cap` takes the matching margin off the unit cap.
+
         Plan mode only: tag mode reads `accumulated_num` directly and never
         sees this.
         """
@@ -1132,15 +1147,99 @@ class EPUBBookLoader(BaseBookLoader):
             # rule stands down and every unit is its own request; None here
             # would quietly re-enable that rule and make "off" still group.
             return 0
-        if self._session_run:
-            # The prompts are user-customisable, so the overhead a request
-            # pays before it carries any book is a property of the run, not a
-            # constant. A translator that cannot measure it answers None and
-            # the floor stands.
-            fn = getattr(self.translate_model, "prompt_overhead_tokens", None)
-            overhead = fn() if callable(fn) else None
-            return session_token_budget(overhead)
-        return None
+        return derived_token_budget(self._prompt_overhead(), self._partition_route())
+
+    def _partition_route(self):
+        """The route class the *partition* groups by: never a probed one.
+
+        A session run is knowable from the flags, and keeps the budget it
+        has shipped with — see the note beside `BUDGET_ROUTES`. Everything
+        else is grouped as if the endpoint verified a schema, because at
+        partition time nothing has asked it.
+        """
+        return "session" if self._session_run else "schema"
+
+    def _plan_request_budget(self):
+        """Tokens one plan request may carry, or None for "as partitioned".
+
+        The token half of `_plan_request_cap`, off the same verdict and with
+        the same margin: everything below strict decoding carries half a
+        request, per the 260905 eval. Answered here rather than in the
+        partition for the reason that method gives — the plan describes the
+        book and must stay the same file whichever endpoint runs it, while
+        how much one request may carry is a fact about the endpoint. Asking
+        is what triggers the probe, so it is asked once, at request time,
+        and never on a run that stops before making one.
+
+        None where there is nothing to take: a typed `--accumulated_num` is
+        the operator's own number and wins outright, and a session run keeps
+        its measured budget whatever the endpoint decodes.
+        """
+        if self.accumulated_num_given or self.accumulated_num > 1:
+            return None
+        if self._session_run or self._plan_schema_verified():
+            return None
+        return derived_token_budget(self._prompt_overhead(), "substrict")
+
+    def _prompt_overhead(self):
+        """This run's measured prompt tokens, or None.
+
+        The prompts are user-customisable, so the overhead a request pays
+        before it carries any book is a property of the run, not a constant.
+        A translator that cannot measure it answers None and the floor
+        stands.
+        """
+        fn = getattr(self.translate_model, "prompt_overhead_tokens", None)
+        return fn() if callable(fn) else None
+
+    def _structured_degree(self):
+        """The endpoint's graded schema support, or None if it has none.
+
+        One accessor, so the two places that split by route class — the
+        request cap and the grouping budget — cannot end up asking different
+        questions. Asking is what triggers the probe; the verdict is cached
+        per model, so the first caller pays and the rest read it.
+        """
+        verdict = getattr(self.translate_model, "_structured_enabled", None)
+        if verdict is None:
+            return None
+        try:
+            return verdict()
+        except Exception:
+            # a probe that cannot answer is not a reason to stop; the real
+            # request behind it reports its own failure
+            return None
+
+    def _plan_schema_verified(self):
+        """Whether this endpoint verifies a strict schema.
+
+        The one bit both margins are taken against. A translator with no
+        verdict to offer (an MT engine, a test double) is not being asked to
+        hold a schema together and counts as unverified.
+        """
+        return self._structured_degree() == "strict"
+
+    def _narrate_plan_budget(self, request_budget):
+        """Say once which grouping budget this plan run derived, and why.
+
+        Only for the derived default: a typed `--accumulated_num` is the
+        operator's own number and needs no explaining, and there is no
+        budget at all outside plan mode. Said where the requests are sized,
+        so a `--plan-classify auto` run that fell back to tag mode never
+        reaches it, and neither does an agent handoff that makes no request
+        at all.
+
+        `request_budget` is `_plan_request_budget`'s answer: None means the
+        run sends what the partition grouped, so the route is the one the
+        partition used.
+        """
+        if self._plan_budget_narrated:
+            return
+        self._plan_budget_narrated = True
+        if self.accumulated_num_given or self.accumulated_num > 1:
+            return
+        route = "substrict" if request_budget is not None else self._partition_route()
+        print(plan_budget_notice(self._prompt_overhead(), route))
 
     def _narrate_session_compact_budget(self):
         """Say once what window this session run compacts at.
@@ -1185,16 +1284,7 @@ class EPUBBookLoader(BaseBookLoader):
         is not being asked to hold a schema together, and takes the tighter
         cap.
         """
-        degree = None
-        verdict = getattr(self.translate_model, "_structured_enabled", None)
-        if verdict is not None:
-            try:
-                degree = verdict()
-            except Exception:
-                # a probe that cannot answer is not a reason to stop; the
-                # real request behind it reports its own failure
-                degree = None
-        if degree == "strict":
+        if self._plan_schema_verified():
             return self.batch_units
         # half, floored, but never zero: a request has to carry something
         return max(1, self.batch_units // 2)
@@ -3073,7 +3163,7 @@ class EPUBBookLoader(BaseBookLoader):
         return [index // self.block_size for index in range(len(source_texts))]
 
     @staticmethod
-    def _plan_batch_indexes(units, max_units=None):
+    def _plan_batch_indexes(units, max_units=None, max_tokens=None):
         """Batch identity for plan units: one request per group.
 
         Grouped units are contiguous by construction, so numbering them in
@@ -3081,12 +3171,14 @@ class EPUBBookLoader(BaseBookLoader):
         _assign_batch_indexes gives tag mode.
 
         `max_units` cuts a group that is larger than this endpoint should be
-        handed at once (see `_plan_request_cap`). The split is here rather
-        than in the partition on purpose: the plan describes the book and
-        must stay the same file whichever endpoint runs it, while how much
-        one request may carry is a fact about the endpoint. Nothing else
-        moves — resume slots are positions in the unit list, which the split
-        does not touch.
+        handed at once (see `_plan_request_cap`), and `max_tokens` cuts one
+        that carries more content than it should (see
+        `_plan_request_budget`). Both splits are here rather than in the
+        partition on purpose: the plan describes the book and must stay the
+        same file whichever endpoint runs it, while how much one request may
+        carry is a fact about the endpoint. Nothing else moves — resume
+        slots are positions in the unit list, which the split does not
+        touch.
         """
         indexes = []
         by_group = {}
@@ -3096,11 +3188,22 @@ class EPUBBookLoader(BaseBookLoader):
                 indexes.append(next_free)
                 next_free += 1
                 continue
-            batch, carried = by_group.get(unit.group_id, (None, 0))
-            if batch is None or (max_units is not None and carried >= max_units):
-                batch, carried = next_free, 0
+            batch, carried, tokens = by_group.get(unit.group_id, (None, 0, 0))
+            # a unit that is over budget on its own still travels alone
+            # rather than not at all — the same rule the partition applies
+            unit_tokens = unit.token_count or 0
+            if (
+                batch is None
+                or (max_units is not None and carried >= max_units)
+                or (
+                    max_tokens is not None
+                    and carried
+                    and tokens + unit_tokens > max_tokens
+                )
+            ):
+                batch, carried, tokens = next_free, 0, 0
                 next_free += 1
-            by_group[unit.group_id] = (batch, carried + 1)
+            by_group[unit.group_id] = (batch, carried + 1, tokens + unit_tokens)
             indexes.append(batch)
         return indexes
 
@@ -3116,6 +3219,12 @@ class EPUBBookLoader(BaseBookLoader):
         # asked once per run, not once per document: the answer is a
         # property of the endpoint, and asking is what triggers its probe
         request_cap = self._plan_request_cap() if self._plan_mode else None
+        request_budget = self._plan_request_budget() if self._plan_mode else None
+        if self._plan_mode:
+            # here rather than beside the plan build: this is the first
+            # moment the endpoint's verdict is in hand, and it is the number
+            # the requests below will actually be sized by
+            self._narrate_plan_budget(request_budget)
 
         for document_index, item in enumerate(document_items):
             should_translate = True
@@ -3152,7 +3261,9 @@ class EPUBBookLoader(BaseBookLoader):
                         nodes.append(unit.element)
                         source_texts.append(unit.text)
                         global_index += 1
-                batch_indexes = self._plan_batch_indexes(units, request_cap)
+                batch_indexes = self._plan_batch_indexes(
+                    units, request_cap, request_budget
+                )
             else:
                 soup = bs(item.content, "html.parser")
                 if should_translate:

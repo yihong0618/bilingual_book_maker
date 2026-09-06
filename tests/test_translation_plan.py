@@ -996,7 +996,13 @@ class TestLoaderPlanMode:
         model = loader.translate_model
         multi = [c for c in model.list_calls if len(c) > 1]
         assert multi, "poetry must be batched, not sent line by line"
-        assert all(2 <= len(c) <= 8 for c in multi)
+        # was `<= 8`, the old short-run group size. Since 260906 every plan
+        # run derives a token budget, so verse packs to the per-request unit
+        # cap instead — halved here, because this fake offers no schema
+        # verdict.
+        from book_maker.loader.plan import SUBSTRICT_GROUP_MAX_UNITS
+
+        assert all(2 <= len(c) <= SUBSTRICT_GROUP_MAX_UNITS for c in multi)
 
     def test_alignment_retry_ladder(self, tmp_path):
         loader, src = _make_loader(tmp_path, MisalignedOnceModel)

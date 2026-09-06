@@ -1449,10 +1449,14 @@ GENERAL_GROUP_MAX_UNITS = 32
 # the book rather than the endpoint that happens to run it.
 SUBSTRICT_GROUP_MAX_UNITS = GENERAL_GROUP_MAX_UNITS // 2
 
-# The grouping budget plan mode assumes when `--use_context session` is on and
-# `--accumulated_num` was not typed. In session mode the history is re-read at
-# the endpoint's cache rate, so the *request count* is what a run pays for, and
-# leaving grouping off there is the expensive default.
+# The grouping budget plan mode assumes when `--accumulated_num` was not
+# typed. Named for the session run it was measured on, and since 260906 the
+# default for *every* plan run: a plan run without one asked one request per
+# paragraph: 45,010 requests for the 209,021 units of the 45-book epub-sample
+# corpus, against 8,689 at this budget on a schema-verified route and 21,065
+# below strict decoding (measured 260906). Session mode is
+# simply where the bill is most obviously wrong — the history is re-read at
+# the endpoint's cache rate there, so the run pays by request count.
 #
 # The floor is where the measured per-content-token cost bottomed (260905
 # session-cost eval, gpt-5.6-luna, official endpoint): a request's input bill
@@ -1464,10 +1468,22 @@ SESSION_BUDGET_FLOOR = 1600
 # degradation eval): past it the eval stops saying the output is intact, and a
 # cost curve is no reason to translate worse.
 SESSION_BUDGET_CEILING = 2000
+# What a request carries when the endpoint is below strict decoding, exactly
+# as `SUBSTRICT_GROUP_MAX_UNITS` halves the unit cap, for exactly the same
+# reason and off the same verdict: both content regressions the 260905
+# json_object eval found were large batches, and a probe verdict cannot tell
+# such an endpoint apart in advance. Derived rather than typed so the halving
+# survives a change to the floor above.
+#
+# Honesty about what is measured here: the *floor* and the *ceiling* are
+# measured, the halving is not. It is the same margin the unit cap already
+# takes, applied to the other half of what makes a request big — a batch is
+# risky by segments x output length, and the unit cap only bounds segments.
+SUBSTRICT_BUDGET_FLOOR = SESSION_BUDGET_FLOOR // 2
 
 
 def session_token_budget(prompt_overhead=None):
-    """The session-mode grouping budget, given this run's prompt overhead.
+    """The plan-mode grouping budget, given this run's prompt overhead.
 
     Prompts are user-customisable, and a fat prompt is paid for once per
     request whatever the request carries — so the budget has to grow with it
@@ -1485,6 +1501,74 @@ def session_token_budget(prompt_overhead=None):
             max(SESSION_BUDGET_FLOOR, 3 * (prompt_overhead or 0)),
             SESSION_BUDGET_CEILING,
         )
+    )
+
+
+def substrict_token_budget(prompt_overhead=None):
+    """The same budget, for an endpoint below strict decoding.
+
+    Half, floored: `SESSION_BUDGET_FLOOR // 2` is what the halving of the
+    floor comes to, and stating it as a floor of its own keeps the clamp
+    readable if the ceiling ever moves. Clamping to the *unhalved* floor
+    would make the two route classes identical for the stock prompt, which
+    is the one case the split exists for.
+    """
+    return max(SUBSTRICT_BUDGET_FLOOR, session_token_budget(prompt_overhead) // 2)
+
+
+# The three route classes an untyped `--accumulated_num` defaults by, and
+# what the run calls each one out loud.
+#
+# "session" is not a fourth derivation, it is the *first* one: the budget
+# `--use_context session` has shipped with since 260905, measured on that
+# eval and left exactly as it was. It sits above the endpoint question on
+# purpose — a session run's bill is its request count whatever the endpoint
+# decodes, the number was evaluated as a whole, and quietly halving it on the
+# codex route (which offers no schema verdict at all) would change a shipped,
+# measured default under cover of a new one.
+BUDGET_ROUTES = {
+    "session": "session run",
+    "schema": "schema-verified endpoint",
+    "substrict": "endpoint below strict decoding",
+}
+
+
+def derived_token_budget(prompt_overhead=None, route="schema"):
+    """The untyped `--accumulated_num` default, by route class.
+
+    One function so the loader and the dry-run preview cannot disagree about
+    which derivation applies where.
+    """
+    if route == "substrict":
+        return substrict_token_budget(prompt_overhead)
+    return session_token_budget(prompt_overhead)
+
+
+def plan_budget_notice(prompt_overhead=None, route=None):
+    """The one line a plan run prints about the budget it derived.
+
+    Shared so the dry-run preview and the run itself cannot drift apart —
+    the same reason `compact_budget_notice` is shared, and it derives from
+    the same overhead rather than being handed a number, so the sentence and
+    the grouping cannot be computed two different ways.
+
+    `route` is a key of `BUDGET_ROUTES`, or None for "no endpoint to ask
+    yet" — the dry run's case, which names both numbers rather than
+    promising one the run may not use.
+    """
+    if route is None:
+        return (
+            f"plan grouping: budget "
+            f"{derived_token_budget(prompt_overhead, 'schema')} tokens per "
+            f"request on a schema-verified endpoint, "
+            f"{derived_token_budget(prompt_overhead, 'substrict')} below "
+            f"strict decoding (derived; --accumulated_num overrides)"
+        )
+    return (
+        f"plan grouping: budget "
+        f"{derived_token_budget(prompt_overhead, route)} tokens per "
+        f"request ({BUDGET_ROUTES[route]}; derived, --accumulated_num "
+        f"overrides)"
     )
 
 
