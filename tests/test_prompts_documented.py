@@ -53,6 +53,14 @@ _GLOSSARY_BLOCK_TAIL = (
 )
 
 
+def _styled():
+    """A translator carrying a fixed `--prompt` style, and nothing else."""
+    route = ChatGPTAPI.__new__(ChatGPTAPI)
+    route.language = "simplified chinese"
+    route.style_note = "<STYLE>"
+    return route
+
+
 def _compact(*sections: str) -> str:
     numbered = [f"{n}. {body}" for n, body in enumerate(sections, start=1)]
     return "\n\n".join([_PREAMBLE, *numbered])
@@ -111,6 +119,13 @@ EXPECTED = {
         ChatGPTAPI.DEFAULT_PROMPT,
         "Please help me to translate,`{text}` to {language}, please return "
         "only translated content not include the origin text",
+    ),
+    # `--prompt`'s style section, as it is appended to the turn. No endpoint
+    # has a slot for it, so this suffix is the whole of how a fixed style
+    # reaches a model — on every route, in these words.
+    "style section suffix": (
+        _styled().style_suffix(),
+        "\n\nStyle to follow: <STYLE>",
     ),
 }
 
