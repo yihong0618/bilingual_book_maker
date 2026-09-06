@@ -487,6 +487,27 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
     Session mode only. Skip the handoff report. The window still rolls over at the budget, but the next one starts empty instead of inheriting a summary. Cheaper, at the cost of continuity across the seam.
 
+- `--glossary` / `--terminology`:
+
+  A file of `term → translation` lines — one per line, `#` starts a note or a
+  comment — that this run must render that way. The two spellings are one
+  flag. Only the terms that occur in a request are sent with it, so a long
+  file costs nothing on the paragraphs it does not touch. A missing file stops
+  the run at parse time. Read by the openai- and codex-shaped routes for EPUB
+  and Markdown books; the other routes say so and ignore it.
+
+  A pinned term makes the translation say what you pinned, so pin only
+  renderings you can stand behind.
+
+  - `--glossary-auto on|off`:
+
+    Whether a session run also keeps the renderings its own handoff reports
+    establish, so recurring names stay unified across a window seam. On by
+    default wherever a session runs (`--use_context session`, and the codex
+    route's one thread); `off` asks the compact turn for a summary only.
+    Learned terms live in this run and in `<book>_handoff.md`, and nowhere
+    else — what a run taught itself is never treated as a pin you chose.
+
 - `--parallel-workers`:
 
   Use `--parallel-workers` to process EPUB chapters or Markdown batches/sections in

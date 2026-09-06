@@ -429,6 +429,16 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
     仅 session 模式。跳过交接报告：历史仍在达到预算时滚动，但下一个窗口从空白开始，不继承摘要。更省钱，代价是接缝处的连续性。
 
+- `--glossary` / `--terminology`:
+
+  一个 `term → translation` 术语文件（每行一条，`#` 之后是注释）。本次运行必须按其中的写法翻译。两个名字是同一个参数。只有出现在该请求文本中的术语才会随请求发出，因此文件再长也不会为无关段落付费。文件不存在时在解析阶段即报错退出。仅 openai 系与 codex 路由、且书籍为 EPUB 或 Markdown 时生效；其他路由会提示并忽略。
+
+  钉住一个术语就等于让译文照此表述，所以只钉你能负责的译法。
+
+  - `--glossary-auto on|off`:
+
+    session 运行是否同时保留交接报告中确立的译名，使跨窗口的重复人名、术语保持一致。凡有 session 的运行（`--use_context session`，以及 codex 路由的单一线程）默认为 on；`off` 则压缩时只要摘要。自动学到的术语只存在于本次运行与 `<book>_handoff.md` 中，不会流向别处——运行自己学到的译名，不会被当作你亲自钉下的术语。
+
 - `--temperature`:
 
   设置 openai / anthropic 格式的采样温度（旧模型）。

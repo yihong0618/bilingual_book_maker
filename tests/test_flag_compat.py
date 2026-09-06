@@ -36,6 +36,9 @@ REPO = Path(__file__).resolve().parent.parent
 BOOK = REPO / "test_books" / "animal_farm.epub"
 TXT_BOOK = REPO / "test_books" / "the_little_prince.txt"
 HERMETIC = Path(__file__).resolve().parent / "hermetic"
+# --glossary is checked for existence by the parser, so a fixture that trips a
+# glossary row has to point at a file that is really there.
+GLOSSARY = Path(__file__).resolve().parent / "fixtures" / "glossary.txt"
 
 KEY_ENV_VARS = (
     "BBM_API_KEY",
@@ -507,6 +510,37 @@ WARN_FIXTURES = [
         ["--plan-min-coverage", "0.6", "--plan-classify", "none"],
         {},
         "this run translates the --translate-tags selection",
+    ),
+    (
+        # C19: the MT engines take a string and give one back, and the other
+        # LLM routes build their request elsewhere; either way the file is
+        # read and then reaches nothing
+        "C19",
+        ["--api_format", "google", "--glossary", str(GLOSSARY)],
+        {"api_format": "google"},
+        "The google route does not",
+    ),
+    (
+        # the alias is the same row, and the warning names the word typed
+        "C19:terminology",
+        ["--api_format", "anthropic", "--terminology", str(GLOSSARY)],
+        {"api_format": "anthropic"},
+        "--terminology is carried by",
+    ),
+    (
+        # C20: the derived glossary comes out of a compact turn, and a
+        # windowed run has none
+        "C20",
+        ["--glossary-auto", "on"],
+        {},
+        "keeps no session to compact",
+    ),
+    (
+        # C21: txt, srt and pdf loaders forward no context at all
+        "C21",
+        ["--glossary", str(GLOSSARY)],
+        {"book_type": "txt"},
+        "forwarded by the epub and markdown loaders only",
     ),
 ]
 

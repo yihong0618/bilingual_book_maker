@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from rich import print
 from rich.markup import escape
 
+from book_maker.glossary import Glossary
 from book_maker.loader import BOOK_LOADER_DICT
 from book_maker.legacy_cli import translate_legacy_argv
 from book_maker.loader.classify import can_session_classify
@@ -466,6 +467,44 @@ def compact_budget(value):
     return budget
 
 
+def glossary_file(value):
+    """argparse type for --glossary / --terminology: a file that is there.
+
+    Checked at parse time, before an endpoint is resolved or a byte of the
+    book is read: a mistyped path is the one glossary failure that costs
+    nothing to catch, and catching it later would mean a whole book
+    translated without the pins the operator asked for.
+    """
+    path = Path(value)
+    if not path.is_file():
+        raise argparse.ArgumentTypeError(
+            f"no glossary file at {value!r}; expected a text file of "
+            f"'term -> translation' lines, one per line"
+        )
+    return value
+
+
+class GlossaryPath(argparse.Action):
+    """Store the path, and remember which of the two spellings was typed.
+
+    `--glossary` and `--terminology` are one flag under two names, so a
+    warning about it has to name the one the operator actually used.
+    """
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, values)
+        namespace.glossary_flag = option_string or "--glossary"
+
+
+def glossary_auto_flag(value):
+    """`--glossary-auto {on,off}` as the tri-state the translator wants.
+
+    None means the operator said nothing, and the run defaults it: on where
+    there is a session to learn from, off where there is not.
+    """
+    return {"on": True, "off": False}.get(value)
+
+
 def batch_unit_cap(value):
     """argparse type for --batch_units: units one plan request may carry."""
     try:
@@ -833,9 +872,15 @@ def _b12_given_compact_flags(f):
         for flag, value in (
             ("--context-compact-at", f.options.context_compact_at),
             ("--no-context-compact", f.options.no_context_compact),
+            ("--glossary-auto", f.options.glossary_auto),
         )
         if value
     ]
+
+
+def _glossary_flag(f):
+    """The spelling the operator typed: `--glossary` or `--terminology`."""
+    return getattr(f.options, "glossary_flag", "--glossary")
 
 
 COMPAT_RULES = (
@@ -1158,6 +1203,42 @@ COMPAT_RULES = (
             f"this run translates the --translate-tags selection and will "
             f"ignore "
             f"{'it' if len(f.plan_only_flags) == 1 else 'them'}."
+        ),
+    ),
+    CompatRule(
+        "C19",
+        "warn",
+        lambda f: bool(f.options.glossary_path)
+        and f.book_type in CONTEXT_AWARE_BOOK_TYPES
+        and not getattr(f.translate_model, "SUPPORTS_GLOSSARY", False),
+        lambda f: (
+            f"{_glossary_flag(f)} is carried by the openai-shaped routes and "
+            f"codex, which state the pins alongside the text they send. The "
+            f"{f.api_format} route does not, so the file will be read and "
+            f"then ignored."
+        ),
+    ),
+    CompatRule(
+        "C20",
+        "warn",
+        lambda f: f.options.glossary_auto == "on" and not session_run_expected(f),
+        lambda f: (
+            "--glossary-auto on learns renderings from the handoff report a "
+            "session writes when it compacts, and this run keeps no session "
+            "to compact. Pass --use_context session to get one; "
+            f"{_glossary_flag(f)} pins terms on this path without needing "
+            "one."
+        ),
+    ),
+    CompatRule(
+        "C21",
+        "warn",
+        lambda f: bool(f.options.glossary_path)
+        and f.book_type not in CONTEXT_AWARE_BOOK_TYPES,
+        lambda f: (
+            f"{_glossary_flag(f)} is forwarded by the epub and markdown "
+            f"loaders only; a {f.book_type} run sends the model no glossary "
+            f"block, and the file will be ignored."
         ),
     ),
 )
@@ -1683,6 +1764,33 @@ request count; pass 1 to turn grouping off there. Minimum 1.
         "empty instead of inheriting a summary",
     )
     parser.add_argument(
+        "--glossary",
+        "--terminology",
+        dest="glossary_path",
+        action=GlossaryPath,
+        type=glossary_file,
+        default=None,
+        help="a file of 'term -> translation' lines (one per line, '#' starts "
+        "a note or a comment) that this run must render that way. "
+        "--terminology is the same flag. Only the terms that occur in a "
+        "request are sent with it, so a long file costs nothing on the "
+        "paragraphs it does not touch. A term pinned here says what the "
+        "translation says, so pin only renderings you can stand behind. Read "
+        "by the openai- and codex-shaped routes for epub and markdown books",
+    )
+    parser.add_argument(
+        "--glossary-auto",
+        dest="glossary_auto",
+        choices=("on", "off"),
+        default=None,
+        help="whether a session run also keeps the renderings its own handoff "
+        "reports establish, so recurring names stay unified across a context "
+        "window seam. On by default wherever a session runs (--use_context "
+        "session, and the codex route's one thread); 'off' asks the compact "
+        "turn for a summary only. Learned terms live in this run and in "
+        "<book>_handoff.md, and nowhere else",
+    )
+    parser.add_argument(
         "--context_paragraph_limit",
         dest="context_paragraph_limit",
         type=int,
@@ -1786,6 +1894,9 @@ request count; pass 1 to turn grouping off there. Minimum 1.
         "(for log files and non-interactive runs; reports and errors still "
         "print). Currently epub only.",
     )
+    # Which spelling of the glossary flag was typed, so a warning can name it.
+    # Set by `GlossaryPath`; this is the value when neither was.
+    parser.set_defaults(glossary_flag="--glossary")
     return parser
 
 
@@ -2042,6 +2153,17 @@ def main():
         endpoint_env_keys + legacy.env_keys,
     )
 
+    # Read before the book is opened: a glossary that will not parse is the
+    # operator's typo, and finding it after the first paid request would mean
+    # translating with pins they did not get.
+    glossary = Glossary()
+    if options.glossary_path:
+        try:
+            glossary = Glossary.from_file(options.glossary_path)
+        except (OSError, ValueError) as err:
+            raise SystemExit(f"Could not read {options.glossary_flag}: {err}")
+        print(f"[green]Glossary: {len(glossary)} pinned terms loaded[/green]")
+
     # Compaction flags act on a session history, or on the codex thread,
     # which is always one. Anywhere else they do nothing, and say so.
     if options.context_mode != "session" and api_format != "codex":
@@ -2075,6 +2197,8 @@ def main():
             context_mode=options.context_mode,
             context_compact_at=options.context_compact_at,
             no_context_compact=options.no_context_compact,
+            glossary=glossary,
+            glossary_auto=glossary_auto_flag(options.glossary_auto),
         )
     elif options.context_mode == "session":
         # txt, srt and pdf never hand context to the model, so a session
