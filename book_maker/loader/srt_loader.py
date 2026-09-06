@@ -247,10 +247,12 @@ class SRTBookLoader(BaseBookLoader):
                 if self.is_test and index > self.test_num:
                     break
 
-            self.save_file(
-                f"{Path(self.srt_name).parent}/{Path(self.srt_name).stem}_bilingual.srt",
-                self.bilingual_result,
+            out_path = (
+                f"{Path(self.srt_name).parent}/"
+                f"{Path(self.srt_name).stem}_bilingual.srt"
             )
+            self.save_file(out_path, self.bilingual_result)
+            self.announce_saved_book(out_path)
 
         except (KeyboardInterrupt, Exception) as e:
             print(e)

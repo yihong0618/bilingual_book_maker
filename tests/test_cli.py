@@ -1885,3 +1885,76 @@ def test_no_code_path_reaches_for_the_deleted_derivation():
     assert not hasattr(session_context, "DERIVED_COMPACT_CEILING")
     assert not hasattr(epub_loader, "derived_compact_budget")
     assert not hasattr(epub_loader.EPUBBookLoader, "_derive_session_compact_budget")
+
+
+# --------------------------------------------------------------------------
+# a finished run says where the book landed
+# --------------------------------------------------------------------------
+
+
+def test_a_finished_epub_run_ends_with_the_absolute_path(tmp_path):
+    proc, _ = _run(tmp_path, "--test", "--test_num", "1")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+    output = tmp_path / "animal_farm_bilingual.epub"
+    assert output.exists()
+    lines = [line for line in proc.stdout.splitlines() if line.strip()]
+    assert lines[-1].strip() == f"Bilingual book saved: {output.resolve()}"
+
+
+def test_the_saved_line_is_printed_exactly_once(tmp_path):
+    proc, _ = _run(tmp_path, "--test", "--test_num", "1")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert proc.stdout.count("Bilingual book saved:") == 1
+
+
+def test_a_long_path_arrives_on_one_line(tmp_path):
+    # rich wraps at the 80 columns it assumes for a pipe; a path broken in
+    # half is exactly what this line exists to prevent, so it is not rich's
+    deep = tmp_path / ("d" * 40) / ("e" * 40)
+    deep.mkdir(parents=True)
+    proc, _ = _run(deep, "--test", "--test_num", "1")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+    output = deep / "animal_farm_bilingual.epub"
+    assert len(str(output)) > 80
+    assert f"Bilingual book saved: {output.resolve()}\n" in proc.stdout
+
+
+def test_a_failed_run_says_nothing_about_a_saved_book(tmp_path):
+    # no book at that path at all: the run cannot get as far as writing one
+    proc = _cli(
+        "--book_name",
+        str(tmp_path / "not_a_book.epub"),
+        "--api_format",
+        "google",
+    )
+    assert proc.returncode != 0
+    assert "Bilingual book saved:" not in proc.stdout
+
+
+def test_a_txt_run_names_the_txt_it_wrote(tmp_path):
+    source = tmp_path / "book.txt"
+    source.write_text("Hello there.\n\nSecond paragraph.\n", encoding="utf-8")
+    proc = _cli("--book_name", str(source), "--api_format", "google")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+    output = tmp_path / "book_bilingual.txt"
+    assert output.exists(), proc.stdout
+    assert f"Bilingual book saved: {output.resolve()}" in proc.stdout
+    assert proc.stdout.count("Bilingual book saved:") == 1
+
+
+def test_a_srt_run_names_the_srt_it_wrote(tmp_path):
+    source = tmp_path / "subs.srt"
+    source.write_text(
+        "1\n00:00:01,000 --> 00:00:02,000\nHello there.\n\n"
+        "2\n00:00:03,000 --> 00:00:04,000\nAnd again.\n",
+        encoding="utf-8",
+    )
+    proc = _cli("--book_name", str(source), "--api_format", "google")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+    output = tmp_path / "subs_bilingual.srt"
+    assert output.exists(), proc.stdout
+    assert f"Bilingual book saved: {output.resolve()}" in proc.stdout

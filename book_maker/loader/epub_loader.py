@@ -3007,6 +3007,9 @@ class EPUBBookLoader(BaseBookLoader):
         self._stamp_disclosure(new_book)
         epub.write_epub(f"{name_fix}", new_book, {})
         self._reobfuscate_written(f"{name_fix}")
+        # --retranslate leaves by `exit(0)` right after this, so this is the
+        # end of that run and the file it produced.
+        self.announce_saved_book(f"{name_fix}")
 
     def has_nest_child(self, element, trans_taglist):
         if isinstance(element, Tag):
@@ -3936,6 +3939,7 @@ class EPUBBookLoader(BaseBookLoader):
                 self._stamp_disclosure(new_book)
                 epub.write_epub(f"{name}_bilingual.epub", new_book, {})
                 self._reobfuscate_written(f"{name}_bilingual.epub")
+                self.announce_saved_book(f"{name}_bilingual.epub")
         except KeyboardInterrupt as e:
             print(e)
             # The accumulated_num guard is tag-mode-shaped: its positional

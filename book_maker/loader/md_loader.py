@@ -227,10 +227,12 @@ class MarkdownBookLoader(BaseBookLoader):
                 translate_missing=True
             )
 
-            self.save_file(
-                f"{Path(self.md_name).parent}/{Path(self.md_name).stem}_bilingual.md",
-                self.bilingual_result,
+            out_path = (
+                f"{Path(self.md_name).parent}/"
+                f"{Path(self.md_name).stem}_bilingual.md"
             )
+            self.save_file(out_path, self.bilingual_result)
+            self.announce_saved_book(out_path)
 
         except KeyboardInterrupt:
             print("Interrupted. Saving progress so you can resume later.")
