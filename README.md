@@ -455,7 +455,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--batch_units`:
 
-  EPUB plan mode only: the most units one grouped request may carry (default `16`). Lower it for a weaker model that merges or drops paragraphs in large batches; an endpoint that verifies JSON mode but not a strict schema automatically carries half this many.
+  EPUB plan mode only: the most units one grouped request may carry (default `32`, half the measured fault-emergence level — our September 2026 measurement put the first content faults at 64 effective units per request, on prose). An endpoint that verifies JSON mode but not a strict schema automatically carries half this many (16), which is where miscounted replies actually live. Lower it if the run keeps printing misalignment recoveries; the token budget (`--accumulated_num`) is what bounds content either way.
 
 - `--use_context`:
 
