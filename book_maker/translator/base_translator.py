@@ -355,6 +355,33 @@ class Base(ABC):
             return sys_content
         return " ".join([(sys_content or "").strip(), note]).strip()
 
+    def resolved_prompt_parts(self):
+        """The prompt this run actually sends, as ``{"user", "system"}``.
+
+        Not what the command typed: a run's prompt is settled from the flag,
+        then the environment (`$OPENAI_API_SYS_MSG` and the
+        `BBM_*_MSG` variables), then the route's own default, and
+        `--language src:tgt` appends its note to the system message on top
+        of that. Two commands that read identically can therefore translate
+        under different instructions, which is exactly what the resume
+        checkpoint's fingerprint has to notice.
+
+        The two attribute spellings are the ones already in use: ChatGPT and
+        Claude keep `prompt_template`/`system_content`, Gemini `prompt`/
+        `prompt_sys_msg` (see `_do_batch_translate_with_fallback`). A route
+        with neither — the fixed MT engines, which take no prompt at all —
+        answers empty strings, which is the honest description of what it
+        sends.
+        """
+        user = getattr(self, "prompt_template", None) or getattr(self, "prompt", None)
+        system = getattr(self, "system_content", None) or getattr(
+            self, "prompt_sys_msg", None
+        )
+        return {
+            "user": user or "",
+            "system": self._augment_system_content(system or "") or "",
+        }
+
     def _marker_preamble(self, request_text):
         """The marker contract as a user-message prefix, or "".
 

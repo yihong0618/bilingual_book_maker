@@ -44,6 +44,24 @@ class OtherModel(Model):
     model_name = "another-model"
 
 
+class ListModel(Model):
+    """A `--model_list` run: several models, one of them current."""
+
+    _model_names = ("first-model", "second-model")
+
+    def __init__(self, key, language, **kwargs):
+        super().__init__(key, language, **kwargs)
+        self.model = self._model_names[0]
+
+    @property
+    def model_name(self):
+        return self.model
+
+
+class OtherListModel(ListModel):
+    _model_names = ("first-model", "third-model")
+
+
 class CodexLike(Model):
     """A route whose context is one thread, asked for or not."""
 
@@ -80,14 +98,14 @@ def _write_epub(path, paragraphs=("one", "two", "three")):
     return path
 
 
-def _loader(source, model=Model, **kwargs):
+def _loader(source, model=Model, key="", **kwargs):
     kwargs.setdefault("language", "zh-hans")
-    return EPUBBookLoader(str(source), model, key="", resume=False, **kwargs)
+    return EPUBBookLoader(str(source), model, key=key, resume=False, **kwargs)
 
 
-def _write_checkpoint(source, model=Model, **kwargs):
+def _write_checkpoint(source, model=Model, key="", **kwargs):
     """A finished-looking checkpoint, written the way a real run writes one."""
-    loader = _loader(source, model, **kwargs)
+    loader = _loader(source, model, key=key, **kwargs)
     loader._planned_job_ids = ["job-0", "job-1"]
     loader.p_to_save = ["<T>one</T>"]
     loader._save_progress()
@@ -206,6 +224,106 @@ class TestResumeRunFingerprint:
         second.test_num = 2
         second.accumulated_num = 1600
         assert first._run_fingerprint() == second._run_fingerprint()
+
+
+class TestTheFingerprintIsOfTheRunAsResolved:
+    """The command is not the run. A prompt settles out of the flag, the
+    environment and the route's default; a `--model_list` run has no single
+    "current" model. Hashing what was typed missed both."""
+
+    def test_a_model_list_is_the_list_not_whichever_model_is_current(self, tmp_path):
+        # rotation means the model in hand at save time is luck; the same
+        # command must not accept or reject its own checkpoint by it
+        source = _write_epub(tmp_path / "book.epub")
+        first = _loader(source, ListModel)
+        second = _loader(source, ListModel)
+        second.translate_model.model = "second-model"
+
+        assert first._run_fingerprint() == second._run_fingerprint()
+
+    def test_a_model_list_run_resumes_whatever_it_rotated_to(self, tmp_path, capsys):
+        source = _write_epub(tmp_path / "book.epub")
+        writer = _loader(source, ListModel)
+        writer.translate_model.model = "second-model"  # rotated by save time
+        writer._planned_job_ids = ["job-0", "job-1"]
+        writer.p_to_save = ["<T>one</T>"]
+        writer._save_progress()
+
+        resumed = EPUBBookLoader(
+            str(source), ListModel, key="", resume=True, language="zh-hans"
+        )
+        resumed._check_resume_run_fingerprint()
+
+        assert "different language" not in capsys.readouterr().out
+
+    def test_a_different_model_list_is_still_refused(self, tmp_path):
+        source = _write_epub(tmp_path / "book.epub")
+        _write_checkpoint(source, ListModel)
+
+        resumed = EPUBBookLoader(
+            str(source), OtherListModel, key="", resume=True, language="zh-hans"
+        )
+        with pytest.raises(SystemExit):
+            resumed._check_resume_run_fingerprint()
+
+    def test_a_changed_env_system_message_is_refused(self, tmp_path, monkeypatch):
+        # $OPENAI_API_SYS_MSG never reaches --prompt, so the old fingerprint
+        # hashed the same bytes for two runs under different instructions
+        from book_maker.translator.chatgptapi_translator import ChatGPTAPI
+
+        source = _write_epub(tmp_path / "book.epub")
+        monkeypatch.setenv("OPENAI_API_SYS_MSG", "Translate in a stiff register.")
+        _write_checkpoint(source, ChatGPTAPI, key="k")
+
+        monkeypatch.setenv("OPENAI_API_SYS_MSG", "Translate breezily.")
+        resumed = EPUBBookLoader(
+            str(source), ChatGPTAPI, key="k", resume=True, language="zh-hans"
+        )
+        with pytest.raises(SystemExit) as stopped:
+            resumed._check_resume_run_fingerprint()
+        assert stopped.value.code == 1
+
+    def test_the_same_env_system_message_resumes(self, tmp_path, monkeypatch, capsys):
+        from book_maker.translator.chatgptapi_translator import ChatGPTAPI
+
+        source = _write_epub(tmp_path / "book.epub")
+        monkeypatch.setenv("OPENAI_API_SYS_MSG", "Translate in a stiff register.")
+        _write_checkpoint(source, ChatGPTAPI, key="k")
+
+        resumed = EPUBBookLoader(
+            str(source), ChatGPTAPI, key="k", resume=True, language="zh-hans"
+        )
+        resumed._check_resume_run_fingerprint()
+
+        assert "different language" not in capsys.readouterr().out
+
+    def test_a_changed_source_language_note_moves_the_fingerprint(self, tmp_path):
+        # --language src:tgt is appended to the system message for the whole
+        # run, so it changes the instructions the slots were written under
+        from book_maker.translator.chatgptapi_translator import ChatGPTAPI
+
+        source = _write_epub(tmp_path / "book.epub")
+        writer = _loader(source, ChatGPTAPI, key="k")
+        writer.translate_model.source_language = "English"
+        before = writer._run_fingerprint()
+
+        other = _loader(source, ChatGPTAPI, key="k")
+        other.translate_model.source_language = "French"
+        assert other._run_fingerprint() != before
+
+    def test_the_snapshot_does_not_move_when_the_endpoint_narrows_a_list(
+        self, tmp_path
+    ):
+        # `_ensure_models_routable` drops models the endpoint refuses, mid
+        # run: the fingerprint is taken once at run start so a checkpoint
+        # written after that still matches the run that wrote it
+        source = _write_epub(tmp_path / "book.epub")
+        loader = _loader(source, ListModel)
+        loader._check_resume_run_fingerprint()
+        before = loader._run_fingerprint()
+
+        loader.translate_model._model_names = ("second-model",)
+        assert loader._run_fingerprint() == before
 
 
 # ------------------------------------------- B1: codex counts as a session

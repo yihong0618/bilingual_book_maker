@@ -419,6 +419,8 @@ class EPUBBookLoader(BaseBookLoader):
         # recorded it, which is warned about rather than refused.
         self._resume_run_fingerprint = None
         self._run_fingerprint_checked = False
+        # Snapshotted at run start (see `_run_fingerprint`), never recomputed.
+        self._run_fingerprint_value = None
         # kept for the fingerprint: the prompt is half of what a slot's
         # translation is, and the translator does not hand it back
         self._prompt_config = prompt_config
@@ -1104,6 +1106,42 @@ class EPUBBookLoader(BaseBookLoader):
             f"grouped run goes wrong. Raise --test_num to exercise them."
         )
 
+    def _resolved_prompt(self):
+        """The prompt the run sends, not the one the command typed.
+
+        `--prompt` is only one of the places a prompt comes from: the
+        environment (`$OPENAI_API_SYS_MSG`, `$BBM_CHATGPTAPI_*_MSG`), the
+        route's own default and the `--language src:tgt` note all settle
+        into it. Hashing the raw `--prompt` config missed every one of
+        them, so exporting a different system message and resuming spliced
+        two sets of instructions into one book without a word.
+
+        A route that cannot answer (a fixed MT engine, a test double built
+        without the base's `__init__`) falls back to the raw config, which
+        is what the fingerprint had before and still binds `--prompt`.
+        """
+        model = self.translate_model
+        try:
+            return model.resolved_prompt_parts()
+        except Exception:
+            return self._prompt_config or {}
+
+    def _configured_models(self):
+        """Every model this command may translate through, in order.
+
+        `--model_list` rotates, so "the model in hand" is whichever request
+        happened to be last: hashing it made the same command's checkpoint
+        accept or reject by luck. The configured list is the fact that does
+        not move. Narrowing is why this is snapshotted once per run rather
+        than read at save time — `_ensure_models_routable` drops models the
+        endpoint refuses, mid-run.
+        """
+        model = self.translate_model
+        names = [n for n in (getattr(model, "_model_names", None) or ()) if n]
+        if names:
+            return names
+        return [getattr(model, "model_name", None) or ""]
+
     def _run_fingerprint(self):
         """What a checkpoint's translations were written by.
 
@@ -1116,21 +1154,30 @@ class EPUBBookLoader(BaseBookLoader):
         holds translations, and a translation is of a language, under a
         prompt, by a model.
 
+        Both are taken as the run *resolved* them, not as the command spelled
+        them: see `_resolved_prompt` and `_configured_models`.
+
         Deliberately not the whole flag set: only what changes the words in
         the slots already written.
+
+        Computed once and remembered. A run's identity must not depend on
+        when it was asked for — the resumed run asks before its first
+        request and the writing run asks after several, and a model list the
+        endpoint narrowed in between would otherwise answer differently.
         """
-        model = self.translate_model
-        return hashlib.sha256(
-            json.dumps(
-                {
-                    "language": self.language,
-                    "prompt": self._prompt_config or {},
-                    "model": getattr(model, "model_name", None) or "",
-                },
-                sort_keys=True,
-                default=str,
-            ).encode("utf-8")
-        ).hexdigest()
+        if self._run_fingerprint_value is None:
+            self._run_fingerprint_value = hashlib.sha256(
+                json.dumps(
+                    {
+                        "language": self.language,
+                        "prompt": self._resolved_prompt(),
+                        "model": self._configured_models(),
+                    },
+                    sort_keys=True,
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+        return self._run_fingerprint_value
 
     def _check_resume_run_fingerprint(self):
         """Refuse a checkpoint written by a different language/prompt/model.
@@ -1142,6 +1189,10 @@ class EPUBBookLoader(BaseBookLoader):
         if self._run_fingerprint_checked:
             return
         self._run_fingerprint_checked = True
+        # Snapshotted here on *every* run, resumed or not: this is the one
+        # moment both kinds of run share, before a request has been made and
+        # so before anything the endpoint says can move the answer.
+        self._run_fingerprint()
         if not self.resume or not self.p_to_save:
             return
         if self._resume_run_fingerprint is None:
