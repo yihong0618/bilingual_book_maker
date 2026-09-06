@@ -359,7 +359,7 @@ class TestTheFingerprintIsOfTheRunAsResolved:
         assert "different language" not in capsys.readouterr().out
 
     def test_a_changed_source_language_note_moves_the_fingerprint(self, tmp_path):
-        # --language src:tgt is appended to the system message for the whole
+        # --source_lang is appended to the system message for the whole
         # run, so it changes the instructions the slots were written under
         from book_maker.translator.chatgptapi_translator import ChatGPTAPI
 

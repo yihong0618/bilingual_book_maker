@@ -28,23 +28,70 @@ from book_maker.translator import (
 from book_maker.redaction import redact
 from book_maker.translator.base_translator import PriceTable
 from book_maker.translator.capabilities import ModelUnavailable
-from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE, parse_language_pair
+from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE, parse_language_spec
 
 
 class LanguageChoices(list):
-    """`--language` values: a target, or `SOURCE:TARGET`.
+    """`--language` values: a language, or `TAG:NAME`.
 
-    A list, so `--help` still prints the languages; only membership is
-    widened. Both halves of a pair are checked, because a typo in the source
-    half would otherwise pass silently into the prompt as a language nobody
-    speaks.
+    A list, so `--help` still prints the languages it knows; membership is
+    open, because the tables cannot hold every language anyone will ask for
+    and refusing what they miss is what `TAG:NAME` exists to undo. A value
+    the tables do not know is not refused — it is narrated once, at the top
+    of the run, by `language_guidance`.
     """
 
     def __contains__(self, value):
-        source, target = parse_language_pair(value)
-        if source is not None and not list.__contains__(self, source):
-            return False
-        return list.__contains__(self, target)
+        return bool((value or "").strip())
+
+
+def language_arg(value):
+    """argparse `type` for `--language`: validates, returns the string.
+
+    Only the shape is checked here, so `options.language` stays the string
+    the rest of the CLI (and the rerun command a plan records) already
+    treats it as. `parse_language_spec` is called again where the value is
+    used; it is pure.
+    """
+    try:
+        parse_language_spec(value)
+    except ValueError as err:
+        raise argparse.ArgumentTypeError(str(err)) from err
+    return value
+
+
+def source_evidence(source_lang):
+    """The source language a run states, or None.
+
+    `--source_lang auto` is the default and states nothing: a note saying
+    "translate from auto" is worse than no note. A code is spelled out, so
+    `--source_lang en` reads "Translate from english" rather than
+    "Translate from en".
+    """
+    text = (source_lang or "").strip()
+    if not text or text.lower() == "auto":
+        return None
+    return LANGUAGES.get(text, text)
+
+
+def language_guidance(spec):
+    """The one line a free-typed, unmatched `--language` earns, or None.
+
+    Said once, before anything is paid for: a name the tables do not know
+    drives the prompt but leaves the run with no tag, so the output markup
+    and `dc:language` are stamped with nothing at all. Both ways out are in
+    the line, because which one is right depends on whether the language has
+    a tag we know.
+    """
+    if spec.pinned or spec.known:
+        return None
+    return (
+        f"[bold yellow]Note:[/bold yellow] --language {escape(spec.name)} "
+        f"matched no known language tag, so nothing is stamped on the "
+        f"output markup. Use the tag (--language zh-hant) or state both "
+        f'(--language "zh-hant:Traditional Chinese"); the tags are '
+        f"listed in docs/languages.md."
+    )
 
 
 # Where each format looks for a key when --key is absent. $BBM_API_KEY is the
@@ -890,8 +937,8 @@ TAG_AWARE_BOOK_TYPES = ("epub",)
 EXCLUDE_AWARE_BOOK_TYPES = ("epub", "md", "markdown")
 PARALLEL_AWARE_BOOK_TYPES = ("epub", "md", "markdown")
 
-# Engines that detect the source language themselves, so the source half of
-# `--language SRC:TGT` reaches nothing they send.
+# Engines that detect the source language themselves, so `--source_lang`
+# reaches nothing they send.
 SOURCE_BLIND_FORMATS = ("google", "deepl", "deeplfree", "caiyun", "tencent")
 
 
@@ -1126,21 +1173,6 @@ COMPAT_RULES = (
         ),
     ),
     CompatRule(
-        "B13",
-        "warn",
-        lambda f: f.source_language is not None
-        and f.options.source_lang
-        and f.options.source_lang != "auto"
-        and f.options.source_lang.strip().lower() != f.source_language.strip().lower(),
-        lambda f: (
-            f"--source_lang {f.options.source_lang} and the source half of "
-            f"--language ({f.source_language}) name different languages. "
-            f"--source_lang reaches the "
-            f"{' and '.join(SOURCE_LANG_FORMATS)} routes only; the "
-            f"--language half reaches the prompt on every LLM route."
-        ),
-    ),
-    CompatRule(
         "C1",
         "warn",
         lambda f: f.batch_units_given and not f.plan_mode,
@@ -1252,8 +1284,8 @@ COMPAT_RULES = (
         and f.api_format in SOURCE_BLIND_FORMATS,
         lambda f: (
             f"the {f.api_format} engine detects the source language itself, "
-            f"so the source half of --language ({f.source_language}) reaches "
-            f"nothing on this route."
+            f"so --source_lang ({f.source_language}) reaches nothing on this "
+            f"route."
         ),
     ),
     CompatRule(
@@ -1496,7 +1528,7 @@ def run_facts(options, given, **resolved):
         poetry_group_size_given=given.poetry_group_size,
         api_base_given=given.api_base,
         key_given=given.key,
-        source_language=parse_language_pair(options.language)[0],
+        source_language=source_evidence(options.source_lang),
         batch_units=GENERAL_GROUP_MAX_UNITS,
     )
     facts.__dict__.update(resolved)
@@ -1602,14 +1634,17 @@ def build_parser():
     )
     parser.add_argument(
         "--language",
-        type=str,
+        type=language_arg,
         choices=LanguageChoices(
             sorted(LANGUAGES.keys()) + sorted([k.title() for k in TO_LANGUAGE_CODE])
         ),
         default="zh-hans",
         metavar="LANGUAGE",
-        help="target language, or SOURCE:TARGET to state the source too "
-        "(e.g. en:zh-hant); available: {%(choices)s}",
+        help="target language: a tag (zh-hant), a name (Traditional "
+        "Chinese), or TAG:NAME to state both when the tables miss the "
+        'language (--language "zh-hant:Traditional Chinese"). The tag is '
+        "stamped on the output and names the structured field; the name is "
+        "what the model is asked for. Available: {%(choices)s}",
     )
     parser.add_argument(
         "--resume",
@@ -1947,7 +1982,10 @@ request count; pass 1 to turn grouping off there. Minimum 1.
         "--source_lang",
         type=str,
         default="auto",
-        help="source language, for endpoints that want it stated (default: auto-detect)",
+        help="source language, stated rather than detected. Named in the "
+        "prompt on every LLM route, sent as a request field on the "
+        f"{' and '.join(SOURCE_LANG_FORMATS)} routes, and recorded by "
+        "--provenance (default: auto-detect, which states nothing)",
     )
     parser.add_argument(
         "--block_size",
@@ -2065,6 +2103,12 @@ def main():
         options.plan_classify = "all"
     for notice in deprecation_notices(options, given):
         print(f"[yellow]deprecated:[/yellow] {escape(notice)}")
+
+    # Said once, here rather than beside the loader, so a --plan-dry-run and
+    # a paid run both get it before anything else happens.
+    guidance = language_guidance(parse_language_spec(options.language))
+    if guidance:
+        print(guidance)
 
     if not options.book_name:
         print("Error: please provide the path of your book using --book_name <path>")
@@ -2324,14 +2368,14 @@ def main():
 
     book_loader = BOOK_LOADER_DICT.get(book_type)
     assert book_loader is not None, "unsupported loader"
-    # `--language en:zh-hant`: the target half drives everything the language
-    # has always driven (prompt, schema field names, the stamp on the output
-    # markup); the source half is evidence for the model and nothing else.
-    source_language, language = parse_language_pair(options.language)
-    # use the readable value for the prompt, on both halves
-    language = LANGUAGES.get(language, language)
-    if source_language:
-        source_language = LANGUAGES.get(source_language, source_language)
+    # `--language zh-hant:Traditional Chinese`: the tag is stamped on the
+    # output and names the structured field, the name is what the model is
+    # asked for. A bare value resolves the way it always has.
+    target = parse_language_spec(options.language)
+    language = target.name
+    # The source is evidence for the model and nothing else; `--source_lang`
+    # is where it is stated, and "auto" states nothing.
+    source_language = source_evidence(options.source_lang)
 
     # None lets each SDK use its own official host.
     model_api_base = options.api_base
@@ -2359,6 +2403,9 @@ def main():
     # beside it — are rows C22 and C23 of COMPAT_RULES, said before the
     # endpoint is resolved with everything else that does not fit together.
     if book_type == "epub":
+        # The tag, not the prose: epub is the only route that stamps one, on
+        # the markup it inserts and on the first dc:language of the output.
+        loader_kwargs["language_tag"] = target.tag
         loader_kwargs["disclose"] = options.disclosure
         loader_kwargs["provenance"] = options.provenance
     elif not options.disclosure:
@@ -2399,11 +2446,19 @@ def main():
         # attribute — without it `--glossary … --provenance` recorded a run
         # with no glossary at all.
         e.glossary_path = options.glossary_path
-    if source_language and getattr(e, "translate_model", None) is not None:
-        # Reaches the prompt/system message and the schema field
-        # descriptions. Never a gate: a book whose source is not what the
-        # flag says still translates, it just says so in one sentence.
-        e.translate_model.source_language = source_language
+    if getattr(e, "translate_model", None) is not None:
+        if source_language:
+            # Reaches the prompt/system message and the schema field
+            # descriptions. Never a gate: a book whose source is not what
+            # the flag says still translates, it just says so in one
+            # sentence.
+            e.translate_model.source_language = source_language
+        if target.pinned:
+            # Only a tag the operator wrote themselves overrides the field
+            # name; a bare --language keeps the name derived from the prose,
+            # which is what every result file already on disk was written
+            # under.
+            e.translate_model.language_field_tag = target.tag
     price_table = getattr(options, "price_table", None)
     if price_table is not None and hasattr(e.translate_model, "usage"):
         # the bar shows what was spent instead of token counts

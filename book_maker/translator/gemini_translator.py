@@ -232,7 +232,7 @@ class Gemini(Base):
             "top_k": generation_config.top_k,
             "max_output_tokens": generation_config.max_output_tokens,
             "safety_settings": safety_settings,
-            # `--language src:tgt` names the source; the note is fixed for a
+            # `--source_lang` names the source; the note is fixed for a
             # run, so it belongs with the run's standing instructions.
             "system_instruction": self._system_instruction(),
         }

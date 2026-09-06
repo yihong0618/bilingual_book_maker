@@ -378,11 +378,17 @@ class Base(ABC):
     extra_body = {}
     extra_headers = {}
 
-    # The source half of `--language src:tgt`, when one was given. Class-level
-    # so every route answers, including the ones a test builds without
+    # What `--source_lang` stated, when it stated anything. Class-level so
+    # every route answers, including the ones a test builds without
     # __init__; None means "the model works it out from the text", which is
-    # what every run did before the pair form existed.
+    # what `--source_lang auto`, the default, asks for.
     source_language = None
+
+    # The tag half of `--language TAG:NAME`, when the operator wrote one.
+    # Only the structured field names read it, and only then: a bare
+    # `--language` leaves it None so the field name keeps being derived from
+    # the prose, exactly as every earlier run derived it.
+    language_field_tag = None
 
     # Said only to requests that carry markers. A model told to preserve
     # tokens in a text that has none is being taught to invent them.
@@ -464,6 +470,19 @@ class Base(ABC):
             return ""
         return f"\n\n{self.STYLE_HEADING} {self.fill_optional(note)}"
 
+    @property
+    def field_language(self):
+        """The string the structured field names are slugged from.
+
+        The pinned tag when `--language TAG:NAME` gave one, the prose
+        otherwise: `zh-hant:Traditional Chinese` yields
+        `zh_hant_translation`, while a bare `zh-hant` keeps producing the
+        `traditional_chinese_translation` every earlier run produced. Only
+        field names read this — the prompt, the descriptions and everything
+        the operator sees stay on `language`.
+        """
+        return self.language_field_tag or self.language
+
     def _source_language_note(self):
         """The sentence that names the source language, or ""."""
         if not self.source_language:
@@ -484,7 +503,7 @@ class Base(ABC):
     def _augment_system_content(self, sys_content):
         """The system message plus what is true for the whole run.
 
-        Only the source-language note, which `--language src:tgt` fixes once
+        Only the source-language note, which `--source_lang` fixes once
         and every request then repeats verbatim. Nothing per-request may go
         here: a system message that changes between requests moves the
         prefix session mode caches, and every later request re-reads the
@@ -503,7 +522,7 @@ class Base(ABC):
         Not what the command typed: a run's prompt is settled from the flag,
         then the environment (`$OPENAI_API_SYS_MSG` and the
         `BBM_*_MSG` variables), then the route's own default, and
-        `--language src:tgt` appends its note to the system message on top
+        `--source_lang` appends its note to the system message on top
         of that. Two commands that read identically can therefore translate
         under different instructions, which is exactly what the resume
         checkpoint's fingerprint has to notice.

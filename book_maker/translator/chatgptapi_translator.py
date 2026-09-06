@@ -108,18 +108,18 @@ def batch_field_name(language):
 # The schema name is sent to the model, which never has to tell the single
 # schema from the batch one -- a request carries exactly one. So name each
 # schema after the field it wraps rather than after our own call sites.
-def single_translation_model(language, source_language=None):
+def single_translation_model(language, source_language=None, field_language=None):
     """Structured single translation output, pinned to `language`."""
     # The cache is keyed positionally, so the default has to be filled in
     # here: `f(lang)` and `f(lang, None)` are two entries otherwise, and two
     # entries mean two distinct classes for one schema — an identity check
     # on `response_format` then fails for no visible reason.
-    return _single_translation_model(language, source_language)
+    return _single_translation_model(language, source_language, field_language)
 
 
 @lru_cache(maxsize=None)
-def _single_translation_model(language, source_language):
-    field = single_field_name(language)
+def _single_translation_model(language, source_language, field_language):
+    field = single_field_name(field_language or language)
     return create_model(
         field,
         __config__=ConfigDict(extra="forbid"),
@@ -133,14 +133,14 @@ def _single_translation_model(language, source_language):
 
 
 @lru_cache(maxsize=None)
-def batch_item_model(language):
+def batch_item_model(language, field_language=None):
     """One reply item: the id that was sent back, and its translation.
 
     Nothing else — no notes, no confidence, no echo of the source. Every
     extra property is a place for the model to spend output tokens, and
     strict mode forbids adding one later without a schema change anyway.
     """
-    field = single_field_name(language)
+    field = single_field_name(field_language or language)
     return create_model(
         f"{field}_item",
         __config__=ConfigDict(extra="forbid"),
@@ -162,7 +162,7 @@ def batch_item_model(language):
     )
 
 
-def batch_translation_model(language, n, source_language=None):
+def batch_translation_model(language, n, source_language=None, field_language=None):
     """Structured batch translation output for `n` paragraphs.
 
     Per-(language, n) because the count is part of what the model is being
@@ -176,18 +176,18 @@ def batch_translation_model(language, n, source_language=None):
     keeps the rest, is silently misaligned under positional reading.
     """
     # positional cache key; see `single_translation_model`
-    return _batch_translation_model(language, n, source_language)
+    return _batch_translation_model(language, n, source_language, field_language)
 
 
 @lru_cache(maxsize=None)
-def _batch_translation_model(language, n, source_language):
-    field = batch_field_name(language)
+def _batch_translation_model(language, n, source_language, field_language):
+    field = batch_field_name(field_language or language)
     return create_model(
         field,
         __config__=ConfigDict(extra="forbid"),
         **{
             field: (
-                list[batch_item_model(language)],
+                list[batch_item_model(language, field_language)],
                 Field(
                     description=_batch_field_description(language, n, source_language)
                 ),
@@ -215,13 +215,13 @@ def _batch_field_description(language, n=None, source_language=None):
 
 
 @lru_cache(maxsize=None)
-def single_translation_schema(language):
+def single_translation_schema(language, field_language=None):
     """Mirror of `single_translation_model` for the Batch API.
 
     Batch JSONL bodies are built by hand and so cannot use the SDK's Pydantic
     support; both sides take their field name from `single_field_name`.
     """
-    field = single_field_name(language)
+    field = single_field_name(field_language or language)
     return {
         "name": field,
         "strict": True,
@@ -240,7 +240,7 @@ def single_translation_schema(language):
 
 
 @lru_cache(maxsize=None)
-def batch_translation_schema(language, n, source_language=None):
+def batch_translation_schema(language, n, source_language=None, field_language=None):
     """Mirror of `batch_translation_model` as a plain JSON Schema dict.
 
     The json_object degree cannot be handed a schema at all — the endpoint
@@ -249,8 +249,8 @@ def batch_translation_schema(language, n, source_language=None):
     description is rendered from, and the source of the one top-level key
     the reply is checked for before anything is read out of it.
     """
-    field = batch_field_name(language)
-    item_field = single_field_name(language)
+    field = batch_field_name(field_language or language)
+    item_field = single_field_name(field_language or language)
     return {
         "name": field,
         "strict": True,
@@ -1005,14 +1005,16 @@ class ChatGPTAPI(Base):
         when the model declined this text.
         """
         messages = self.create_messages(text, self.create_context_messages())
-        field = single_field_name(self.language)
+        field = single_field_name(self.field_language)
 
         try:
             completion = self._request(
                 lambda sampling: self.openai_client.chat.completions.parse(
                     model=self.model,
                     messages=messages,
-                    response_format=single_translation_model(self.language),
+                    response_format=single_translation_model(
+                        self.language, field_language=self.language_field_tag
+                    ),
                     extra_body=self.extra_body if self.extra_body else None,
                     **sampling,
                 )
@@ -1456,8 +1458,8 @@ class ChatGPTAPI(Base):
         # Add structured format instruction. The target language goes last: this
         # is the final thing the model reads before decoding, and a shape-only
         # tail leaves `{language}` buried behind the source JSON blob above.
-        field = batch_field_name(self.language)
-        item_field = single_field_name(self.language)
+        field = batch_field_name(self.field_language)
+        item_field = single_field_name(self.field_language)
         # Pinned terms for this group, on the same rule as a single unit: only
         # the ones that occur in the batch, and first, so the shape and the
         # target language stay the last thing the model reads.
@@ -1479,7 +1481,10 @@ class ChatGPTAPI(Base):
             # before decoding must be what language to write in, and
             # `prompt_with_schema` appends its description after the prompt.
             schema = batch_translation_schema(
-                self.language, plist_len, self.source_language
+                self.language,
+                plist_len,
+                self.source_language,
+                self.language_field_tag,
             )
             content = (
                 f"{prompt_with_schema(content, schema)}\n\n"
@@ -1574,7 +1579,7 @@ class ChatGPTAPI(Base):
         exactly — no duplicate, no stranger, none missing — and no non-empty
         source may come back empty (see `Base._check_batch`).
         """
-        field = single_field_name(self.language)
+        field = single_field_name(self.field_language)
         if len(items) != len(text_list):
             raise BatchMismatch(
                 f"expected {len(text_list)} translations, got {len(items)}"
@@ -1652,7 +1657,10 @@ class ChatGPTAPI(Base):
                     model=self.model,
                     messages=messages,
                     response_format=batch_translation_model(
-                        self.language, plist_len, self.source_language
+                        self.language,
+                        plist_len,
+                        self.source_language,
+                        self.language_field_tag,
                     ),
                     extra_body=self.extra_body if self.extra_body else None,
                     **sampling,
@@ -1673,14 +1681,14 @@ class ChatGPTAPI(Base):
         if message.parsed is None:
             raise StructuredOutputUnsupported("no parsed content in response")
 
-        items = getattr(message.parsed, batch_field_name(self.language))
+        items = getattr(message.parsed, batch_field_name(self.field_language))
         raw_reply = getattr(message, "content", None)
         if not raw_reply:
             # Some gateways return only the parsed object. A history has to
             # hold *something* the next request can extend, and the parsed
             # form is what the endpoint produced.
             raw_reply = json.dumps(
-                {batch_field_name(self.language): [str(i) for i in items]},
+                {batch_field_name(self.field_language): [str(i) for i in items]},
                 ensure_ascii=False,
             )
         return items, messages[-1]["content"], raw_reply
@@ -1732,8 +1740,8 @@ class ChatGPTAPI(Base):
         the answer rather than the answer. A missing key is a mismatch, not
         a fall-through.
         """
-        field = batch_field_name(self.language)
-        item_field = single_field_name(self.language)
+        field = batch_field_name(self.field_language)
+        item_field = single_field_name(self.field_language)
         obj = extract_json_object(raw_reply, (field,))
         if isinstance(obj, dict):
             obj = unwrap_schema_echo(obj)
@@ -1875,7 +1883,7 @@ class ChatGPTAPI(Base):
                     return self._read_batch_choice(
                         result["response"]["body"]["choices"][0],
                         custom_id,
-                        self.language,
+                        self.field_language,
                     )
 
         raise ValueError(f"No result found for custom_id {custom_id}")
@@ -1969,7 +1977,9 @@ class ChatGPTAPI(Base):
         if self._ensure_structured_support(self.batch_model):
             batch_body["response_format"] = {
                 "type": "json_schema",
-                "json_schema": single_translation_schema(self.language),
+                "json_schema": single_translation_schema(
+                    self.language, self.language_field_tag
+                ),
             }
 
         return {

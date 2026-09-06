@@ -490,7 +490,7 @@ class Claude(Base):
                 max_tokens=4096,
                 messages=messages,
                 # The same system message every other request on this route
-                # sends, `--language src:tgt` note included: the compact turn
+                # sends, `--source_lang` note included: the compact turn
                 # used the raw attribute and so ran under different standing
                 # instructions than the window it was condensing.
                 system=self._augment_system_content(self._system_message()),

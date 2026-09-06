@@ -5,6 +5,7 @@ import pytest
 from ebooklib import epub
 
 from book_maker.loader.epub_loader import EPUBBookLoader
+from book_maker.utils import language_code
 
 
 def test_epub_loader_handles_custom_metadata(tmp_path):
@@ -62,6 +63,8 @@ def _written_languages(tmp_path, source, language="zh-hans", single=False):
     loader = EPUBBookLoader.__new__(EPUBBookLoader)
     loader.origin_book = source
     loader.language = language
+    # what __init__ settles, settled the same way; see EPUBBookLoader.__init__
+    loader.language_tag = language_code(language)
     loader.single_translate = single
     rebuilt = loader._make_new_book(source)
 

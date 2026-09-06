@@ -21,7 +21,7 @@ Interfaces pinned here (the implementation writes to these names):
 - ``book_maker.loader.markers``: ``INLINE_MARKER_MAX_CHARS`` (40) and
   ``reconcile_markers(sent, reply) -> str`` (lenient: never raises).
   Units carry ``unit.markers`` — an ordered ``{token: source node}``.
-- ``book_maker.utils.parse_language_pair`` for ``--language src:tgt``.
+- ``book_maker.utils.parse_language_spec`` for ``--language TAG:NAME``.
 """
 
 import re
@@ -678,19 +678,29 @@ class TestReconcileMarkers:
         assert got.count("⟦code1⟧") == 1
 
 
-# ----------------------------------------------- --language pair parsing
+# ------------------------------------------- --language TAG:NAME parsing
 
 
-class TestLanguagePair:
-    def test_pair_splits_on_colon(self):
-        from book_maker.utils import parse_language_pair
+class TestLanguageSpec:
+    def test_a_colon_splits_the_tag_from_the_name(self):
+        from book_maker.utils import parse_language_spec
 
-        assert parse_language_pair("en:zh-hant") == ("en", "zh-hant")
+        spec = parse_language_spec("zh-hant:Traditional Chinese")
+        assert (spec.tag, spec.name, spec.pinned) == (
+            "zh-hant",
+            "Traditional Chinese",
+            True,
+        )
 
-    def test_bare_language_is_target_only(self):
-        from book_maker.utils import parse_language_pair
+    def test_a_bare_tag_resolves_its_name(self):
+        from book_maker.utils import parse_language_spec
 
-        assert parse_language_pair("zh-hans") == (None, "zh-hans")
+        spec = parse_language_spec("zh-hans")
+        assert (spec.tag, spec.name, spec.pinned) == (
+            "zh",
+            "simplified chinese",
+            False,
+        )
 
     def test_target_slug_reaches_the_schema_field(self):
         from book_maker.translator.chatgptapi_translator import (

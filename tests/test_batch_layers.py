@@ -529,7 +529,7 @@ class TestMarkerInstructionPlacement:
         assert t.session.messages()[0]["content"] == sent[0]["messages"][-1]["content"]
 
 
-# ------------------------------ --language src:tgt reaches every route
+# ------------------------------- --source_lang reaches every route
 
 
 class TestSourceLanguageReachesTheRoutes:

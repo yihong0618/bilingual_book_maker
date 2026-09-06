@@ -428,12 +428,6 @@ WARN_FIXTURES = [
         "--context-compact-at reach the translator",
     ),
     (
-        "B13",
-        ["--language", "en:zh-hans", "--source_lang", "french"],
-        {},
-        "name different languages",
-    ),
-    (
         "C1",
         ["--max-batch-units", "4", "--plan-classify", "none"],
         {},
@@ -501,7 +495,7 @@ WARN_FIXTURES = [
     ),
     (
         "C16",
-        ["--api_format", "google", "--language", "en:zh-hans"],
+        ["--api_format", "google", "--source_lang", "english"],
         {"api_format": "google"},
         "detects the source language itself",
     ),

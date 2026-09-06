@@ -28,11 +28,14 @@ from tqdm import tqdm
 from book_maker import provenance as prov
 from book_maker.redaction import redact
 from book_maker.session_context import handoff_path
-from book_maker.utils import num_tokens_from_text, prompt_config_to_kwargs
+from book_maker.utils import (
+    language_code,
+    num_tokens_from_text,
+    prompt_config_to_kwargs,
+)
 
 from .base_loader import BaseBookLoader
 from .helper import (
-    language_tag,
     stamp_translation,
     restamp_language,
     EPUBBookLoaderHelper,
@@ -332,6 +335,7 @@ class EPUBBookLoader(BaseBookLoader):
         parallel_workers=1,
         disclose=True,
         provenance=False,
+        language_tag=None,
     ):
         # Before the translator is built and before a byte of the book is
         # read: a protected book is refused, and there is no flag that opens
@@ -358,8 +362,11 @@ class EPUBBookLoader(BaseBookLoader):
         # the book.
         self._api_base = model_api_base
         self._source_lang = source_lang
-        # what `lang=` may carry for that language, or None when nothing may
-        self.language_tag = language_tag(language)
+        # What `lang=` may carry for that language, or None when nothing may.
+        # `--language TAG:NAME` states the tag itself, and then it is the one
+        # that is stamped: deriving one from prose the tables do not know is
+        # exactly the guess that flag exists to replace.
+        self.language_tag = language_tag or language_code(language)
         self.new_epub = epub.EpubBook()
         self.translate_model = model(
             key,
@@ -398,7 +405,7 @@ class EPUBBookLoader(BaseBookLoader):
             self.accumulated_num,
             self.translation_style,
             self.context_flag,
-            language=self.language,
+            language=self.language_tag,
         )
         self.retranslate = None
         self.exclude_filelist = ""
@@ -717,7 +724,7 @@ class EPUBBookLoader(BaseBookLoader):
         # system takes the first dc:language as the book's own. A single
         # translation is only in that language; a bilingual one keeps the
         # source's languages behind it.
-        tag = language_tag(self.language)
+        tag = self.language_tag
         if tag:
             dc_namespace = epub.NAMESPACES["DC"]
             source_languages = (
@@ -898,8 +905,9 @@ class EPUBBookLoader(BaseBookLoader):
             or getattr(translator, "api_url", None)
             or getattr(self, "_api_base", None)
         )
-        # `--language en:zh` reaches the translator; `--source_lang` reaches
-        # the loader; "auto" is the default and states nothing. Last resort
+        # `--source_lang` reaches both the translator (as the sentence the
+        # prompt carries) and the loader; "auto" is the default and states
+        # nothing. Last resort
         # is what the source book says about itself, which is a fact about
         # the book rather than a guess.
         source_language = getattr(translator, "source_language", None) or (
@@ -1250,7 +1258,7 @@ class EPUBBookLoader(BaseBookLoader):
 
         `--prompt` is only one of the places a prompt comes from: the
         environment (`$OPENAI_API_SYS_MSG`, `$BBM_CHATGPTAPI_*_MSG`), the
-        route's own default and the `--language src:tgt` note all settle
+        route's own default and the `--source_lang` note all settle
         into it. Hashing the raw `--prompt` config missed every one of
         them, so exporting a different system message and resuming spliced
         two sets of instructions into one book without a word.
@@ -3726,7 +3734,7 @@ class EPUBBookLoader(BaseBookLoader):
             self.accumulated_num,
             self.translation_style,
             self.context_flag,
-            language=self.language,
+            language=self.language_tag,
         )
 
         # Check for fatal errors before starting

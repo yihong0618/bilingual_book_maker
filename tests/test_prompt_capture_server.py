@@ -43,9 +43,11 @@ from book_maker.translator.chatgptapi_translator import (
 REPO = Path(__file__).resolve().parent.parent
 BOOK = REPO / "test_books" / "animal_farm.epub"
 
-# What the command says, and what the run makes of it: `--language` takes a
-# code, and the readable name is what reaches the prompt and the schema field
-# names. Both are needed here — one to drive the CLI, one to read the request.
+# What the command says, and what the run makes of it: a bare `--language`
+# takes a tag, and the readable name resolved from it is what reaches the
+# prompt and the schema field names. Both are needed here — one to drive the
+# CLI, one to read the request. `--language TAG:NAME` splits those two apart
+# on purpose, and TestTheLanguageSplit below is where that is read.
 CLI_LANGUAGE = "zh-hans"
 LANGUAGE = "simplified chinese"
 BATCH_FIELD = batch_field_name(LANGUAGE)
@@ -125,6 +127,38 @@ def _user_text(body):
     return ""
 
 
+def _schema_fields(body):
+    """The batch and item field names *this* request asked for.
+
+    Read off the request rather than assumed, because the field name is part
+    of what is under test: `--language zh-hant:Traditional Chinese` asks for
+    `zh_hant_paragraphs`, and a server that always answered
+    `simplified_chinese_paragraphs` would fail the run instead of proving
+    what it sent.
+    """
+    fmt = body.get("response_format") or {}
+    schema = (fmt.get("json_schema") or {}).get("schema") or {}
+    for field, spec in (schema.get("properties") or {}).items():
+        if spec.get("type") == "array":
+            item_props = _item_properties(schema, spec.get("items") or {})
+            item = next((key for key in item_props if key != "id"), ITEM_FIELD)
+            return field, item
+    return BATCH_FIELD, ITEM_FIELD
+
+
+def _item_properties(schema, items):
+    """The item object's properties, through a `$ref` when there is one.
+
+    The SDK builds the batch schema from a nested Pydantic model, so the
+    array's items arrive as a reference into `$defs`; the hand-built
+    json_object schema inlines them. Both shapes reach this server.
+    """
+    if "$ref" in items:
+        name = items["$ref"].rsplit("/", 1)[-1]
+        items = (schema.get("$defs") or {}).get(name) or {}
+    return items.get("properties") or {}
+
+
 def _answer(body, mode="schema"):
     """The reply this request has earned, in the shape it asked for."""
     text = _user_text(body)
@@ -145,11 +179,12 @@ def _answer(body, mode="schema"):
 
     payload = _paragraphs(text)
     if payload is not None:
+        batch_field, item_field = _schema_fields(body)
         rows = [
-            {"id": item["id"], ITEM_FIELD: f"{RENDERED}{item['id']}"}
+            {"id": item["id"], item_field: f"{RENDERED}{item['id']}"}
             for item in payload
         ]
-        return json.dumps({BATCH_FIELD: rows}, ensure_ascii=False)
+        return json.dumps({batch_field: rows}, ensure_ascii=False)
 
     count = _COUNT_RE.search(text)
     if count:
@@ -264,7 +299,7 @@ def _env():
     return env
 
 
-def _run(endpoint, tmp_path, *args, expect_ok=True):
+def _run(endpoint, tmp_path, *args, expect_ok=True, language=CLI_LANGUAGE):
     book = tmp_path / BOOK.name
     book.write_bytes(BOOK.read_bytes())
     proc = subprocess.run(
@@ -280,7 +315,7 @@ def _run(endpoint, tmp_path, *args, expect_ok=True):
             "--model",
             "gpt-4o-mini",
             "--language",
-            CLI_LANGUAGE,
+            language,
             "--test",
             "--test_num",
             "3",
@@ -579,3 +614,84 @@ class TestTheRunAnnouncesWhatItAdopted:
         proc = _run(endpoint, tmp_path, *LEGACY)
         assert "from --prompt" not in proc.stdout
         assert "prompt config" not in proc.stdout
+
+
+# ------------------------------------------------- the tag / name split
+
+
+class TestTheLanguageSplit:
+    """`--language TAG:NAME` sends the two halves to two different places.
+
+    Read off the wire because that is the only place the split can be
+    proved: the name and the tag are one string everywhere upstream of the
+    request, and a run that quietly used one for both would look right in
+    every log it prints.
+    """
+
+    PINNED = "zh-hant:Traditional Chinese"
+
+    def test_the_name_is_what_the_model_is_asked_for(self, endpoint, tmp_path):
+        _run(endpoint, tmp_path, *PLAN, language=self.PINNED)
+        sent = endpoint.user_messages()
+        assert sent, "the run made no translation request"
+        for text in sent:
+            assert "Traditional Chinese" in text
+            # the tag is a stamp, not something to say to a model
+            assert "zh-hant" not in text
+
+    def test_the_tag_is_what_the_structured_field_is_named(self, endpoint, tmp_path):
+        _run(endpoint, tmp_path, *PLAN, language=self.PINNED)
+        schemas = [
+            (body.get("response_format") or {}).get("json_schema") or {}
+            for body in endpoint.translation_requests()
+        ]
+        named = [schema for schema in schemas if schema.get("name")]
+        assert named, "no structured request was sent"
+        for schema in named:
+            assert schema["name"] == batch_field_name("zh-hant")
+            assert schema["name"] == "zh_hant_paragraphs"
+            item_props = _item_properties(
+                schema["schema"],
+                schema["schema"]["properties"]["zh_hant_paragraphs"]["items"],
+            )
+            assert single_field_name("zh-hant") in item_props
+            assert "zh_hant_translation" in item_props
+
+    def test_a_bare_language_keeps_the_field_name_it_always_had(
+        self, endpoint, tmp_path
+    ):
+        """The compatibility half of the split: nothing about a command line
+        that does not use it may move."""
+        _run(endpoint, tmp_path, *PLAN)
+        named = [
+            (body.get("response_format") or {}).get("json_schema") or {}
+            for body in endpoint.translation_requests()
+        ]
+        named = [schema for schema in named if schema.get("name")]
+        assert named, "no structured request was sent"
+        for schema in named:
+            assert schema["name"] == BATCH_FIELD == "simplified_chinese_paragraphs"
+
+
+class TestTheSourceLanguageEvidence:
+    """`--source_lang` is where the source is stated, and it reaches the
+    prompt on this route — not only the routes that put it in a field."""
+
+    def test_the_flag_reaches_the_system_message(self, endpoint, tmp_path):
+        _run(endpoint, tmp_path, *PLAN, "--source_lang", "english")
+        said = endpoint.system_messages()
+        assert said, "the run sent no system message"
+        for text in said:
+            assert "Translate from english" in text
+
+    def test_a_code_is_spelled_out(self, endpoint, tmp_path):
+        _run(endpoint, tmp_path, *PLAN, "--source_lang", "en")
+        said = endpoint.system_messages()
+        assert said
+        for text in said:
+            assert "Translate from english" in text
+
+    def test_auto_states_nothing(self, endpoint, tmp_path):
+        _run(endpoint, tmp_path, *PLAN)
+        for text in endpoint.system_messages():
+            assert "Translate from" not in text

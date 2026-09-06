@@ -25,6 +25,7 @@ from ebooklib import epub
 from book_maker import provenance as prov
 from book_maker.loader.disclosure import COLOPHON_FILE, COLOPHON_ID, TOOL_NAME
 from book_maker.loader.epub_loader import EPUBBookLoader
+from book_maker.utils import language_code
 
 DC_NS = epub.NAMESPACES["DC"]
 
@@ -88,6 +89,9 @@ def _rebuild(
     loader = EPUBBookLoader.__new__(EPUBBookLoader)
     loader.origin_book = source
     loader.language = language
+    # __init__ settles the tag once and everything mechanical reads it from
+    # there; a loader built past __init__ has to settle it the same way.
+    loader.language_tag = language_code(language)
     loader.single_translate = False
     loader.disclose = disclose
     loader.provenance = provenance

@@ -13,6 +13,7 @@ nav:
     - QuickStart: quickstart.md
   - Usage:
     - Model and languages: model_lang.md
+    - Language tags and names: languages.md
     - Command line options: cmd.md
     - Migrating from the old flags: migration.md
     - Translate from different source: book_source.md

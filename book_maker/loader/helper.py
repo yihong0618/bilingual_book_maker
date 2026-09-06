@@ -12,7 +12,7 @@ from ebooklib import epub
 from lxml import etree
 
 from book_maker.translator.base_translator import BatchMismatch
-from book_maker.utils import TO_LANGUAGE_CODE
+from book_maker.utils import language_code
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
@@ -292,30 +292,18 @@ def strip_duplicate_ids(element):
 
 
 LANG_ATTRS = ("xml:lang", "lang")
-# a language tag as `lang=` accepts one: "zh-hans", "ja", "pt-BR"
-LANGUAGE_TAG = re.compile(r"[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*")
 
 
 def language_tag(language):
     """The tag `lang=` may carry for a --language value, or None.
 
     The CLI hands loaders the prompt wording — "simplified chinese" — which
-    is what the model is asked for, not a language tag; written into
-    `xml:lang` it is a value validators reject. A wording the table knows
-    becomes its code; a value it does not know is kept only when it already
-    reads as a tag, and anything else stamps nothing.
+    is what the model is asked for, not a language tag. Kept here under the
+    name every caller already uses; the rule itself lives beside the tables
+    it reads, in `book_maker.utils`, because `--language TAG:NAME` has to
+    answer the same question before any loader exists.
     """
-    if not language or not isinstance(language, str):
-        return None
-    value = language.strip()
-    if not value:
-        return None
-    known = TO_LANGUAGE_CODE.get(value.lower())
-    if known:
-        return known
-    if LANGUAGE_TAG.fullmatch(value):
-        return value
-    return None
+    return language_code(language)
 
 
 def stamp_translation(node, source, language):
@@ -360,7 +348,9 @@ class EPUBBookLoaderHelper:
         self.accumulated_num = accumulated_num
         self.translation_style = translation_style
         self.context_flag = context_flag
-        # the prompt wording comes in; what `lang=` accepts goes on the copy
+        # The loader hands over the tag it settled on; run through the same
+        # rule anyway, so a caller that still passes prompt wording gets what
+        # `lang=` accepts rather than a value a validator rejects.
         self.language = language_tag(language)
 
     def insert_trans(self, p, text, translation_style="", single_translate=False):
