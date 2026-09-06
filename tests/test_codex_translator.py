@@ -618,17 +618,45 @@ class TestClassifierThread:
     """
 
     def test_the_trunk_becomes_the_threads_instructions(self):
+        from book_maker.loader.classify.session import trunk_with_inline_example
+
         t = _codex(["skip,translate,unsure"])
         session = t.classify_session()
         session.start("TRUNK")
         assert t.server.threads == []  # opened on the first turn, not before
         assert session.ask("units 1-3") == "skip,translate,unsure"
-        assert t.server.threads == [{"model": t.model, "base_instructions": "TRUNK"}]
+        assert t.server.threads == [
+            {
+                "model": t.model,
+                "base_instructions": trunk_with_inline_example("TRUNK"),
+            }
+        ]
         # the turn carries the signatures and nothing else: repeating the
         # instructions is the one cost an append-only thread exists to avoid
         assert [turn["text"] for turn in t.server.turns] == ["units 1-3"]
 
+    def test_the_instructions_carry_the_demonstrated_exchange_inline(self):
+        # a thread has no room for a reply nobody made, so the pair the
+        # openai-shaped route seeds as messages degrades to text here — it is
+        # never silently dropped
+        from book_maker.loader.classify.session import (
+            EXAMPLE_REPLY,
+            build_example_turn,
+        )
+
+        t = _codex(["skip,translate,unsure"])
+        session = t.classify_session()
+        session.start("TRUNK")
+        session.ask("units 1-3")
+
+        instructions = t.server.threads[0]["base_instructions"]
+        assert instructions.startswith("TRUNK")
+        assert build_example_turn() in instructions
+        assert EXAMPLE_REPLY in instructions
+
     def test_a_restart_opens_a_new_thread_carrying_the_trunk(self):
+        from book_maker.loader.classify.session import trunk_with_inline_example
+
         t = _codex(["skip", "translate"])
         session = t.classify_session()
         session.start("TRUNK")
@@ -636,8 +664,8 @@ class TestClassifierThread:
         session.start("TRUNK")  # what crossing the budget does
         session.ask("units 4-6")
         assert [th["base_instructions"] for th in t.server.threads] == [
-            "TRUNK",
-            "TRUNK",
+            trunk_with_inline_example("TRUNK"),
+            trunk_with_inline_example("TRUNK"),
         ]
         assert len({turn["thread"] for turn in t.server.turns}) == 2
 

@@ -22,15 +22,19 @@ from book_maker.loader.classify import (
 from book_maker.loader.classify.model import PlanClassifyFatal
 from book_maker.loader.classify.session import (
     ENGAGE_WARNING,
+    EXAMPLE_REPLY,
     FORMAT_WARNING,
     NAMED_BY_SESSION,
     NAMED_UNANSWERED,
     NAMED_UNSURE,
+    TRUNK,
     UNITS_PER_TURN,
+    build_example_turn,
     build_trunk,
     classify_over_session,
     parse_verdicts,
     render_turn,
+    trunk_with_inline_example,
 )
 from book_maker.loader.ledger import Ledger
 from book_maker.session_context import DEFAULT_COMPACT_BUDGET
@@ -377,6 +381,9 @@ class TestAppendOnly:
         first, second = translator.requests
         assert first == [
             {"role": "system", "content": "TRUNK"},
+            # the one demonstrated exchange the session opens on
+            {"role": "user", "content": build_example_turn()},
+            {"role": "assistant", "content": EXAMPLE_REPLY},
             {"role": "user", "content": "units 1-3"},
         ]
         # byte-identical prefix: this is the cache contract, so it is
@@ -428,6 +435,118 @@ class TestAppendOnly:
             "samples": ["a sample"],
         }
         assert render_turn([candidate]) in build_prompt([candidate])
+
+
+# ------------------------------------------- 4b. the demonstrated exchange
+
+
+def _openai_session(replies, compact_at=8000):
+    """A real `ClassifierSession` over a recording endpoint."""
+    from book_maker.translator.chatgptapi_translator import ClassifierSession
+
+    translator = RecordingTranslator(replies)
+    translator.context_compact_at = compact_at
+    return translator, ClassifierSession(translator, model="rec")
+
+
+class TestTheDemonstratedTurn:
+    """The conversation opens on one exchange that has already gone right.
+
+    A weak endpoint answers the *first* turn in prose about as often as it
+    answers it in the format, and the first turn is also the one the format
+    breaker starts counting on. So the first real turn is never the first
+    turn of the conversation: it rides behind a synthetic pair, sent once
+    per session like the trunk it follows.
+    """
+
+    def test_the_first_real_turn_rides_behind_the_example(self):
+        translator, session = _openai_session(["skip,skip,skip"])
+        _decisions, candidates = classify_over_session(
+            _ledger_with(SIX[:3]), SessionOnly(session), session=session
+        )
+
+        messages = translator.requests[0]
+        assert [m["role"] for m in messages] == ["system", "user", "assistant", "user"]
+        assert messages[0] == {"role": "system", "content": build_trunk()}
+        assert messages[1] == {"role": "user", "content": build_example_turn()}
+        assert messages[2] == {"role": "assistant", "content": EXAMPLE_REPLY}
+        assert messages[3] == {"role": "user", "content": render_turn(candidates)}
+
+    def test_the_example_reply_is_never_a_verdict(self):
+        # the assistant turn is text this side wrote; only what the endpoint
+        # said is parsed, so a session that answers "skip,skip,skip" decides
+        # three skips and nothing leaks out of "translate,skip,unsure"
+        translator, session = _openai_session(["skip,skip,skip"])
+        decisions, candidates = classify_over_session(
+            _ledger_with(SIX[:3]), SessionOnly(session), session=session
+        )
+        assert len(decisions) == len(candidates) == 3
+        assert {v for v, _ in decisions.values()} == {"skip"}
+        assert all(name == NAMED_BY_SESSION for _, name in decisions.values())
+        # one request: nothing was re-asked, so the triple parsed on its own
+        assert len(translator.requests) == 1
+
+    def test_a_restart_reseeds_the_example(self):
+        # a budget no turn can stay under: every turn opens a fresh session,
+        # and a fresh session with no demonstration is a fresh first turn
+        translator, session = _openai_session(
+            ["skip,skip,skip", "skip,skip,skip"], compact_at=1
+        )
+        classify_over_session(_ledger_with(SIX), SessionOnly(session), session=session)
+
+        assert len(translator.requests) == 2
+        for request in translator.requests:
+            assert request[0]["content"] == build_trunk()
+            assert request[1] == {"role": "user", "content": build_example_turn()}
+            assert request[2] == {"role": "assistant", "content": EXAMPLE_REPLY}
+        # the second conversation carries nothing from the first: trunk,
+        # the pair, and its own turn
+        assert len(translator.requests[1]) == 4
+
+    def test_the_codex_trunk_carries_the_example_inline(self):
+        # a thread's turns are the model's own, so the pair degrades to text
+        # in the instructions rather than being dropped
+        inline = trunk_with_inline_example()
+        assert inline.startswith(build_trunk())
+        assert build_example_turn() in inline
+        assert "translate,skip,unsure" in inline
+        assert inline.endswith("You reply exactly:\ntranslate,skip,unsure")
+
+        # and the shared trunk is untouched: one source of truth, two shapes
+        assert build_example_turn() not in TRUNK
+        assert "Example. Given:" not in TRUNK
+
+    def test_the_example_is_static(self):
+        # the prefix a caching endpoint pays for once cannot vary per session
+        assert build_example_turn() == build_example_turn()
+        assert trunk_with_inline_example() == trunk_with_inline_example()
+
+    def test_the_example_is_a_turn_in_the_shape_a_real_turn_has(self):
+        text = build_example_turn()
+        assert text.startswith("1. ")
+        assert text.count("occurrence(s)") == UNITS_PER_TURN
+        # rendered through render_turn, so it cannot drift from a real turn
+        from book_maker.loader.classify.session import EXAMPLE_CANDIDATES
+
+        assert text == render_turn(EXAMPLE_CANDIDATES)
+
+    def test_the_example_demonstrates_all_three_tokens_and_parses(self):
+        assert parse_verdicts(EXAMPLE_REPLY, UNITS_PER_TURN) == [
+            "translate",
+            "skip",
+            "unsure",
+        ]
+
+    def test_the_example_signatures_are_visibly_synthetic(self):
+        # a human reading a transcript must see a demonstration, not wonder
+        # which chapter of their book these came from
+        from book_maker.loader.classify.session import EXAMPLE_CANDIDATES
+
+        assert [c["key"] for c in EXAMPLE_CANDIDATES] == [
+            "block:p.example-body",
+            "block:span.example-folio",
+            "inline:abbr.example-ref",
+        ]
 
 
 # ------------------------------------------------- 5. restart at the budget

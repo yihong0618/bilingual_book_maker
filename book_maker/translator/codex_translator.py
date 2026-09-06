@@ -113,8 +113,17 @@ class ClassifierThread:
 
     def start(self, trunk):
         """Open a fresh conversation. The thread is created on the first
-        turn, so a session nobody asks anything of costs nothing."""
-        self._trunk = trunk
+        turn, so a session nobody asks anything of costs nothing.
+
+        The demonstration the openai-shaped route seeds as a real message
+        pair is folded into the instructions here instead: a thread's turns
+        are the model's own, and there is no way to hand it a reply nobody
+        made. It degrades to text rather than being dropped — the same rule
+        the prompt sectioning follows when a route has no system channel.
+        """
+        from ..loader.classify.session import trunk_with_inline_example
+
+        self._trunk = trunk_with_inline_example(trunk)
         self._thread_id = None
 
     def _open(self):

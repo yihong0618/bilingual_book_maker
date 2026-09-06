@@ -357,8 +357,30 @@ class ClassifierSession:
 
     def start(self, trunk):
         """Open a fresh conversation. The trunk rides in the system message,
-        where it is the stable head of every later request in this session."""
-        self._messages = [{"role": "system", "content": trunk}]
+        where it is the stable head of every later request in this session.
+
+        Behind it, one demonstrated exchange: the example turn as a user
+        message and the reply it should have got as an assistant one. The
+        first *real* turn is then never the first turn of the conversation,
+        which is what a weak endpoint needs to answer it in the format rather
+        than in prose about it. The seeded reply is text this side wrote; it
+        is never read back as a verdict, because `ask` returns only what the
+        endpoint says.
+
+        Every restart re-seeds it: the classifier restarts rather than
+        compacts, and a fresh session with no demonstration is a fresh
+        first-turn problem.
+        """
+        # Imported here, not at module scope: the loader package imports this
+        # one back, and the classifier text is wanted only once a session
+        # actually opens.
+        from ..loader.classify.session import EXAMPLE_REPLY, build_example_turn
+
+        self._messages = [
+            {"role": "system", "content": trunk},
+            {"role": "user", "content": build_example_turn()},
+            {"role": "assistant", "content": EXAMPLE_REPLY},
+        ]
 
     def ask(self, text):
         messages = [*self._messages, {"role": "user", "content": text}]

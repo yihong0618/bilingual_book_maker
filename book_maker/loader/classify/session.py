@@ -114,6 +114,107 @@ def render_turn(candidates):
     return "\n".join(lines)
 
 
+# ------------------------------------------------------- the demonstration
+#
+# The trunk describes the reply format; a weak endpoint still answers the
+# first turn in prose about half the time, and the first turn is the one the
+# format breaker measures. So the conversation opens on a turn that has
+# already been answered correctly — one shown exchange, in exactly the shape
+# a real turn has, before the first real one is asked.
+#
+# It is deliberately one pair and no more. The session is append-only and its
+# whole economy is a prefix a caching endpoint pays for once, so every line
+# added here is bought again on every restart; one demonstration is what buys
+# first-turn compliance, and a second buys nothing.
+
+# Three synthetic signatures, one per verdict, so all three tokens are shown.
+# The keys are book furniture that no real book emits: `.example-*` classes,
+# so a human reading a transcript sees a demonstration rather than wondering
+# which chapter these came from. Nothing ever parses this pair — it is static
+# text on both routes.
+EXAMPLE_CANDIDATES = (
+    {
+        # a clear translate: the book's own prose, most of its text
+        "key": "block:p.example-body",
+        "units": 214,
+        "chars": 96300,
+        "pct": 62.4,
+        "mean_chars": 450,
+        "samples": [
+            "The lamp was still burning when she came back down the stairs.",
+            "He had said nothing all evening, and there was nothing left to say.",
+        ],
+    },
+    {
+        # a clear skip: page numbers, many occurrences and almost no text
+        "key": "block:span.example-folio",
+        "units": 96,
+        "chars": 288,
+        "pct": 0.2,
+        "mean_chars": 3,
+        "samples": ["142", "143", "144"],
+    },
+    {
+        # genuinely unsettled: one cryptic sample of an inline label that
+        # some languages translate and some keep. Thin *and* ambiguous — the
+        # trunk says merely-thin prefers translate, so the example must not
+        # teach "thin means unsure".
+        "key": "inline:abbr.example-ref",
+        "units": 4,
+        "chars": 24,
+        "pct": 0.0,
+        "mean_chars": 6,
+        "samples": ["Fig. A"],
+    },
+)
+
+# The reply that pair is answered with: all three tokens, the exact form the
+# trunk asks for and nothing else.
+EXAMPLE_REPLY = "translate,skip,unsure"
+
+
+def build_example_turn():
+    """The user half of the demonstration, rendered like any other turn.
+
+    Through `render_turn`, not written out by hand, so the example cannot
+    drift from the shape a real turn has — a demonstration of a format the
+    turns no longer use would teach the endpoint the wrong thing.
+    """
+    return render_turn(EXAMPLE_CANDIDATES)
+
+
+def example_tokens():
+    """What the demonstration costs, counted wherever the trunk is.
+
+    Both routes send it — one as a message pair, one folded into the trunk
+    text — so the estimate that decides when to restart has to see it, or
+    every session runs that much past its budget.
+    """
+    return estimate_tokens(build_example_turn()) + estimate_tokens(EXAMPLE_REPLY)
+
+
+def trunk_with_inline_example(trunk=None):
+    """The trunk with the demonstration folded in as prose.
+
+    For a route whose conversation has no room for a fabricated assistant
+    turn: the codex thread carries the trunk as its base instructions and its
+    turns are all genuinely the model's own, so there is nowhere to put a
+    reply nobody made. Same rule as the prompt-sectioning fallback — a
+    channel the route lacks degrades to text, it never silently drops.
+
+    `TRUNK` itself stays exactly what it was: the openai-shaped route gets
+    the demonstration as real messages, and one shared trunk means the two
+    routes cannot drift apart.
+    """
+    return (
+        f"{build_trunk() if trunk is None else trunk}"
+        "\n\nExample. Given:\n"
+        f"{build_example_turn()}\n"
+        "You reply exactly:\n"
+        f"{EXAMPLE_REPLY}"
+    )
+
+
 def parse_verdicts(reply, count):
     """`count` verdicts from a reply, or None when it does not parse.
 
@@ -193,7 +294,8 @@ def session_classify_engaged(translator, model=None):
 class _Conversation:
     """The classifier's session, restarted rather than compacted.
 
-    The trunk is sent with the first turn of each session and never again.
+    The trunk — and, behind it, the one demonstrated exchange — is sent with
+    the first turn of each session and never again.
     When the estimated history reaches the compact budget the next turn
     opens a fresh session carrying the trunk — no handoff report is asked
     for, because a verdict depends on the signatures in front of it and on
@@ -211,7 +313,9 @@ class _Conversation:
     def ask(self, text):
         if not self._open:
             self.session.start(self.trunk)
-            self.tokens = estimate_tokens(self.trunk)
+            # The demonstration rides in every session the trunk does, on
+            # both routes, so it is counted with it.
+            self.tokens = estimate_tokens(self.trunk) + example_tokens()
             self.sessions += 1
             self._open = True
         reply = self.session.ask(text)
