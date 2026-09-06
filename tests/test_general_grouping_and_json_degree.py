@@ -780,7 +780,7 @@ class TestJsonDegreeBatchTranslate:
         # the target language stays the last thing the model reads
         assert content.rstrip().endswith(f"{LANGUAGE}.")
 
-    def test_unparseable_json_is_a_batch_mismatch_for_the_loader(self):
+    def test_unparsable_json_is_a_batch_mismatch_for_the_loader(self):
         create = Mock(return_value=_completion("I am afraid I cannot do that."))
         translator = self._translator_at_json(create)
         translator.translate = Mock(side_effect=lambda t, _=True: f"t:{t}")
@@ -1013,7 +1013,7 @@ class TestClassifierAtTheJsonDegree:
 
     def test_an_object_that_answers_nothing_descends_instead_of_passing(self):
         # amendment 1: the fail-open. An unescaped quote leaves the outer
-        # object unparseable and the scan finds an inner fragment; without a
+        # object unparsable and the scan finds an inner fragment; without a
         # key check that fragment came back as the answer.
         schema = {
             "name": "classify",

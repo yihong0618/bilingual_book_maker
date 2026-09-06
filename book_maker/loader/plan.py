@@ -1138,7 +1138,7 @@ def is_simple_owner(element, resolver):
     contains a nested paragraph duplicates that paragraph's text into the
     copy and drops the translation somewhere after the whole wrapper —
     which is how ``<div>Before <p>x</p> After.</div>`` came out with its
-    two halves reordered. <body> and <html> are never clonable at all: a
+    two halves reordered. <body> and <html> are never cloneable at all: a
     document with two <body> elements is not a document.
     """
     if element.name in ("body", "html"):

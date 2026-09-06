@@ -1748,7 +1748,7 @@ def build_parser():
         "over structured output where the endpoint is verified to apply a "
         "strict JSON schema, and otherwise over a plain conversation "
         "(exact skip/translate/unsure replies; unsure and anything "
-        "unparseable translate) on any route that can hold one, the codex "
+        "unparsable translate) on any route that can hold one, the codex "
         "route included. Only a route with no conversation at all falls "
         "back to the --translate-tags selection; a plan that cannot be "
         "completed falls back to that selection too. "

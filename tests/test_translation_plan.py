@@ -719,8 +719,8 @@ class TestGilgameshPlan:
         for fp in plan.files:
             by_el = {id(u.element): u for u in fp.units}
             for u in fp.units:
-                for anc in u.element.parents:
-                    outer = by_el.get(id(anc))
+                for ancestor in u.element.parents:
+                    outer = by_el.get(id(ancestor))
                     if outer is not None and len(u.text) > 8:
                         assert u.text not in outer.text
 

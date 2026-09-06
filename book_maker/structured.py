@@ -44,7 +44,7 @@ def extract_json_object(text, required_keys=None):
 
     `required_keys` names the top-level keys an *answer* carries, and
     without it this function fails open. Measured 260905, off-OpenAI: one
-    unescaped quote leaves the outer object unparseable, the scan moves to
+    unescaped quote leaves the outer object unparsable, the scan moves to
     the next `{`, and an inner fragment — the first item of the answer
     array — comes back looking like the whole answer. With the keys given,
     an object that shares none of them (directly, or under the schema

@@ -381,7 +381,7 @@ def classify_over_session(ledger, translator, model=None, session=None):
     """Ask the translator about every undecided row, three at a time.
 
     Returns ``({key: (verdict, content_type)}, candidates)`` like the JSON
-    entry. Every row comes back decided: `unsure`, an unparseable reply and
+    entry. Every row comes back decided: `unsure`, an unparsable reply and
     a tripped breaker all resolve to `translate`, so this entry never leaves
     the run with questions it cannot answer — the coverage guard polices the
     skip side, which is the side that loses content.
