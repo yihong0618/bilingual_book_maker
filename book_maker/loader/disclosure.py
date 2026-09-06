@@ -483,15 +483,14 @@ def build_colophon(
     to read five lines, not parse a layout.
     """
     when = when or date.today()
+    # Model, date, the note — nothing more. The tool credit, the source
+    # identifier and the languages are all in the machine record; a reader
+    # flicking to the last page gets the three facts that concern *them*.
     lines = [
-        ("Translated by", TOOL_NAME),
         ("Model", model),
         ("Date", when.isoformat()),
+        (NOTE_LABEL, UNREVIEWED),
     ]
-    if source_identifier:
-        lines.append(("Source identifier", source_identifier))
-    lines.append(("Target language", language))
-    lines.append((NOTE_LABEL, UNREVIEWED))
 
     rows = "\n".join(
         f"    <p>{escape(label)}: {escape(str(value))}</p>" for label, value in lines
