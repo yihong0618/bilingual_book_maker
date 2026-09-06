@@ -19,7 +19,7 @@ from ebooklib import epub
 from book_maker.glossary import Glossary
 from book_maker.loader.epub_loader import EPUBBookLoader
 from book_maker.loader.plan import session_token_budget
-from book_maker.session_context import derived_compact_budget
+from book_maker.session_context import DEFAULT_COMPACT_BUDGET
 
 REPO = Path(__file__).resolve().parent.parent
 BOOK = REPO / "test_books" / "animal_farm.epub"
@@ -429,45 +429,80 @@ class TestCodexIsASession:
         loader = _loader(source, WindowOnly, context_mode=None)
         assert loader._session_run is False
 
-    def test_both_budgets_are_derived_and_narrated(self, tmp_path, capsys):
+    def test_the_grouping_budget_is_derived_on_the_codex_route(self, tmp_path):
         source = _write_epub(tmp_path / "book.epub")
         loader = _loader(source, CodexLike, context_mode=None)
         loader.plan_mode = True
         loader.translate_tags = "auto"
 
-        budget = loader._plan_token_budget
-        assert budget == session_token_budget(None)
+        assert loader._plan_token_budget == session_token_budget(None)
 
-        loader._derive_session_compact_budget()
+    def test_the_compact_budget_is_the_pinned_default_and_is_narrated(
+        self, tmp_path, capsys
+    ):
+        # nothing is derived any more: the codex route narrates the same
+        # pinned number every other session run gets
+        source = _write_epub(tmp_path / "book.epub")
+        loader = _loader(source, CodexLike, context_mode=None)
+        loader.plan_mode = True
+        loader.translate_tags = "auto"
 
-        assert loader.translate_model.context_compact_at == derived_compact_budget(
-            budget
-        )
+        loader._narrate_session_compact_budget()
+
+        # untouched — the translator falls back to the default itself
+        assert loader.translate_model.context_compact_at is None
         out = " ".join(capsys.readouterr().out.split())
-        assert f"compacting at ~{derived_compact_budget(budget)}" in out
-        assert f"derived from the {budget}-token request budget" in out
+        assert (
+            out == f"session: compacting at {DEFAULT_COMPACT_BUDGET} estimated "
+            f"tokens (the default; --context-compact-at overrides)"
+        )
 
-    def test_an_ordinary_route_derives_neither(self, tmp_path, capsys):
+    def test_it_is_said_once_per_run(self, tmp_path, capsys):
+        source = _write_epub(tmp_path / "book.epub")
+        loader = _loader(source, CodexLike, context_mode=None)
+
+        loader._narrate_session_compact_budget()
+        loader._narrate_session_compact_budget()
+
+        assert capsys.readouterr().out.count("session: compacting at") == 1
+
+    def test_an_ordinary_route_narrates_nothing(self, tmp_path, capsys):
         source = _write_epub(tmp_path / "book.epub")
         loader = _loader(source, WindowOnly, context_mode=None)
         loader.plan_mode = True
         loader.translate_tags = "auto"
 
         assert loader._plan_token_budget is None
-        loader._derive_session_compact_budget()
+        loader._narrate_session_compact_budget()
 
         assert loader.translate_model.context_compact_at is None
         assert capsys.readouterr().out == ""
 
-    def test_an_explicit_budget_still_wins_on_codex(self, tmp_path, capsys):
+    def test_an_explicit_budget_wins_and_is_narrated_as_the_flag(
+        self, tmp_path, capsys
+    ):
         source = _write_epub(tmp_path / "book.epub")
-        loader = _loader(source, CodexLike, context_mode=None, context_compact_at=2500)
+        loader = _loader(source, CodexLike, context_mode=None, context_compact_at=2000)
         loader.plan_mode = True
         loader.translate_tags = "auto"
 
-        loader._derive_session_compact_budget()
+        loader._narrate_session_compact_budget()
 
-        assert loader.translate_model.context_compact_at == 2500
+        assert loader.translate_model.context_compact_at == 2000
+        out = " ".join(capsys.readouterr().out.split())
+        assert (
+            out == "session: compacting at 2000 estimated tokens "
+            "(--context-compact-at)"
+        )
+
+    def test_no_context_compact_narrates_nothing(self, tmp_path, capsys):
+        # the run never compacts, so there is no window to announce
+        source = _write_epub(tmp_path / "book.epub")
+        loader = _loader(source, CodexLike, context_mode=None)
+        loader.translate_model.no_context_compact = True
+
+        loader._narrate_session_compact_budget()
+
         assert capsys.readouterr().out == ""
 
     def test_accumulated_num_one_still_turns_grouping_off(self, tmp_path):

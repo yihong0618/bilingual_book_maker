@@ -467,27 +467,32 @@ class TestSessionModeDefaultsTheBudget:
         assert "1600 tokens" in out
 
 
-class TestGroupedSessionDerivesItsCompactBudget:
-    """The stock 8000 was measured ungrouped. Grouping moves the optimum."""
+class TestTheCompactBudgetIsPinned:
+    """One number for every session run, grouped or not. Owner ruling: a
+    per-run optimum is a moving target for a difference under 30%, and a
+    budget an operator can predict beats one they have to work out."""
 
-    def test_the_derived_compact_budget_lands_in_the_flat_region(self):
-        from book_maker.session_context import derived_compact_budget
-
-        assert derived_compact_budget(1600) == 3156
-        assert derived_compact_budget(800) == 2231
-        # the measured curve is a shallow bowl, flat over [1500, 4000] and
-        # steep past it, so the solved value is clamped to what was walked
-        assert derived_compact_budget(10) == 1500
-        assert derived_compact_budget(10**6) == 4000
-
-    def test_grouping_derives_the_compact_budget_when_unset(self, tmp_path, capsys):
-        from book_maker.session_context import derived_compact_budget
+    def test_a_grouped_run_narrates_the_pinned_default_and_derives_nothing(
+        self, tmp_path, capsys
+    ):
+        from book_maker.session_context import DEFAULT_COMPACT_BUDGET
 
         loader, _ = _plan_loader(tmp_path, _SessionModel(), context_mode="session")
         loader.make_bilingual_book()
 
-        assert loader.translate_model.context_compact_at == derived_compact_budget(1600)
-        assert "session: compacting at" in capsys.readouterr().out
+        # left None: the translator falls back to the default itself
+        assert loader.translate_model.context_compact_at is None
+        out = " ".join(capsys.readouterr().out.split())
+        assert (
+            f"session: compacting at {DEFAULT_COMPACT_BUDGET} estimated tokens "
+            f"(the default; --context-compact-at overrides)" in out
+        )
+
+    def test_the_line_is_printed_once(self, tmp_path, capsys):
+        loader, _ = _plan_loader(tmp_path, _SessionModel(), context_mode="session")
+        loader.make_bilingual_book()
+
+        assert capsys.readouterr().out.count("session: compacting at") == 1
 
     def test_an_explicit_compact_budget_survives_grouping(self, tmp_path):
         loader, _ = _plan_loader(
@@ -497,17 +502,20 @@ class TestGroupedSessionDerivesItsCompactBudget:
 
         assert loader.translate_model.context_compact_at == 6000
 
-    def test_compaction_turned_off_derives_nothing(self, tmp_path):
+    def test_compaction_turned_off_says_nothing(self, tmp_path, capsys):
         loader, _ = _plan_loader(
             tmp_path, _SessionModel(no_compact=True), context_mode="session"
         )
         loader.make_bilingual_book()
 
         assert loader.translate_model.context_compact_at is None
+        assert "session: compacting at" not in capsys.readouterr().out
 
-    def test_an_ungrouped_session_keeps_the_stock_compact_default(self, tmp_path):
-        # `--accumulated_num 1`: budget 0, one request per unit — which is
-        # what the stock 8000 was measured for
+    def test_an_ungrouped_session_gets_the_same_number(self, tmp_path, capsys):
+        # `--accumulated_num 1`: budget 0, one request per unit. It used to
+        # be the only shape the 8000 applied to; now every session run has it.
+        from book_maker.session_context import DEFAULT_COMPACT_BUDGET
+
         loader, _ = _plan_loader(
             tmp_path,
             _SessionModel(),
@@ -517,14 +525,16 @@ class TestGroupedSessionDerivesItsCompactBudget:
         loader.make_bilingual_book()
 
         assert loader.translate_model.context_compact_at is None
+        out = " ".join(capsys.readouterr().out.split())
+        assert f"compacting at {DEFAULT_COMPACT_BUDGET} estimated tokens" in out
 
-    def test_a_plan_fallback_keeps_the_stock_compact_default(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        # codex finding 260905: deriving before the plan was committed left
-        # the short window on a translator that auto-fallback then kept —
-        # and a tag-mode run is ungrouped, which is what the stock 8000 was
-        # measured for.
+    def test_a_plan_fallback_gets_the_same_number(self, tmp_path, monkeypatch, capsys):
+        # The 260905 codex finding — a budget derived before the plan was
+        # committed leaked onto the fallback's ungrouped translator — cannot
+        # recur, because nothing is derived and nothing is written to the
+        # translator at all. The narration is owed either way.
+        from book_maker.session_context import DEFAULT_COMPACT_BUDGET
+
         loader, _ = _plan_loader(tmp_path, _SessionModel(), context_mode="session")
         loader.plan_auto = True
 
@@ -533,8 +543,11 @@ class TestGroupedSessionDerivesItsCompactBudget:
 
         monkeypatch.setattr(loader, "_prepare_translation_plan", boom)
 
+        loader._narrate_session_compact_budget()
         assert loader._enter_plan_mode() is False
         assert loader.translate_model.context_compact_at is None
+        out = " ".join(capsys.readouterr().out.split())
+        assert f"compacting at {DEFAULT_COMPACT_BUDGET} estimated tokens" in out
 
     def test_prompt_overhead_is_about_a_hundred_tokens(self):
         # the sizing hint session_token_budget reads: the default prompts'

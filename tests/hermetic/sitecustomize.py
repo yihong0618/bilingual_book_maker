@@ -67,6 +67,12 @@ class OfflineTranslator:
     def __init__(self, *args, **kwargs):
         self._fatal_error_detected = False
         self.is_test = False
+        # A fully context-capable route carries the session knobs, and the
+        # loader reads them back off the translator to decide what to
+        # narrate. A stand-in without them would make the compaction budget
+        # untestable through the CLI.
+        self.context_compact_at = kwargs.get("context_compact_at")
+        self.no_context_compact = kwargs.get("no_context_compact", False)
         # As Base.__init__ does: the key is a secret from the moment the
         # translator holds it, and every sink the CLI prints goes through
         # redact(); a stand-in that skipped this would let a CLI test pass

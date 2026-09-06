@@ -18,6 +18,7 @@ from book_maker.loader.classify import can_session_classify
 from book_maker.loader.ledger import PlanLedgerError
 from book_maker.loader.plan import GENERAL_GROUP_MAX_UNITS
 from book_maker.provider_loader import resolve_provider
+from book_maker.session_context import DEFAULT_COMPACT_BUDGET, compact_budget_notice
 from book_maker.translator import (
     FORMAT_DEFAULT_BASES,
     FORMAT_DICT,
@@ -510,8 +511,8 @@ def compact_budget(value):
     if budget < MIN_COMPACT_BUDGET:
         raise argparse.ArgumentTypeError(
             f"a compact budget of {budget} is too small to be useful; use at "
-            f"least {MIN_COMPACT_BUDGET} estimated tokens (measured cost is "
-            f"flat between 1500 and 4000, and rises past it)"
+            f"least {MIN_COMPACT_BUDGET} estimated tokens (a window that "
+            f"short is a handoff report and little else)"
         )
     return budget
 
@@ -1881,16 +1882,14 @@ request count; pass 1 to turn grouping off there. Minimum 1.
         dest="context_compact_at",
         type=compact_budget,
         default=None,
-        help="estimated-token budget for a rolling history. In session mode "
-        "the history is compacted into a translator handoff report at this "
-        "size; when unset, a grouped session run — the codex route counts "
-        "as one, --use_context or not — derives one from its request budget "
-        "(~3200 at the defaults, printed at start; measured "
-        "cost is flat across 1500-4000 and rises past it) and an ungrouped "
-        "session keeps 8000. It also bounds the plan classifier's own "
-        "conversation on endpoints that classify over a plain session "
-        "(which restarts there, no handoff), --use_context or not. An "
-        "explicit value always wins",
+        help=f"estimated-token budget for a rolling history. In session mode "
+        f"the history is compacted into a translator handoff report at this "
+        f"size; when unset every session run — grouped or not, the codex "
+        f"route included, --use_context or not — uses "
+        f"{DEFAULT_COMPACT_BUDGET}, printed at start. It also bounds the "
+        f"plan classifier's own conversation on endpoints that classify over "
+        f"a plain session (which restarts there, no handoff). An explicit "
+        f"value always wins; minimum 500",
     )
     parser.add_argument(
         "--no-context-compact",
@@ -2143,6 +2142,10 @@ def main():
         )
         # samples are book text: rich would eat "[Seven] warriors [they were]"
         print(escape(plan.report()))
+        # Parity with the run: same sentence, same source, so the preview
+        # cannot promise a window the run does not use.
+        if options.context_mode == "session" and not options.no_context_compact:
+            print(compact_budget_notice(options.context_compact_at))
         # What this preview cannot know: whether the real run will be in plan
         # mode at all, and how far the endpoint will be trusted with one
         # request. Both change the numbers just printed.

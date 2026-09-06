@@ -81,7 +81,7 @@ from .plan import (
     planning_settings,
     session_token_budget,
 )
-from ..session_context import derived_compact_budget
+from ..session_context import compact_budget_notice
 from .markers import (
     MARKER_OPEN,
     find_markers,
@@ -431,8 +431,8 @@ class EPUBBookLoader(BaseBookLoader):
         self._plan_css = None
         self._plan_overrides = None
         self._plan_partitions = {}  # file_name -> (soup, FilePlan), see _plan_partition
-        # once per run, not once per document — see _derive_session_compact_budget
-        self._compact_budget_derived = False
+        # once per run, not once per document — see _narrate_session_compact_budget
+        self._compact_budget_narrated = False
         self._plan_fingerprint = None
         self._resume_plan_fingerprint = None
         # What the loaded checkpoint's translations were produced by — see
@@ -1083,10 +1083,10 @@ class EPUBBookLoader(BaseBookLoader):
         without being asked: its thread is the history, and there is no
         windowed shape to fall back to — so a codex run is billed the way a
         session run is billed, by request count against a conversation the
-        endpoint re-reads. Both budgets that a session run derives (the
-        grouping budget below, and the compaction budget derived from it)
-        therefore have to be derived here too; without this the flagless
-        codex run left grouping off and paid per paragraph.
+        endpoint re-reads. The grouping budget below therefore has to be
+        derived here too; without this the flagless codex run left grouping
+        off and paid per paragraph. (The compaction budget is not derived at
+        all any more — it is pinned, see `_narrate_session_compact_budget`.)
         """
         if self.context_mode == "session":
             return True
@@ -1127,45 +1127,35 @@ class EPUBBookLoader(BaseBookLoader):
             return session_token_budget(overhead)
         return None
 
-    def _derive_session_compact_budget(self):
-        """Default `--context-compact-at` from the grouping budget, once.
+    def _narrate_session_compact_budget(self):
+        """Say once what window this session run compacts at.
 
-        The stock 8000 was measured for an *ungrouped* session run, where
-        every paragraph is its own request. Grouping changes the arithmetic:
-        the history grows by about 1.4 tokens per budget token per request,
-        and the compaction turn is billed (see `_compact_session`), so the
-        cost-minimising window is much shorter. `derived_compact_budget`
-        solves for it.
+        Nothing is decided here: the budget is pinned at
+        `DEFAULT_COMPACT_BUDGET` for every session run — grouped or not,
+        codex included — and the translator already falls back to it when
+        `--context-compact-at` is unset. This only tells the operator which
+        number is in force, because the compaction seams in the output are
+        otherwise the first place they would find out.
 
-        Only when the user did not say otherwise: an explicit
-        `--context-compact-at` is left alone, `--no-context-compact` is left
-        alone, and an ungrouped run (budget 0 or None) keeps the stock
-        default the 8000 was measured for.
+        Silent where there is nothing to say: a run that is not a session,
+        and `--no-context-compact`, which never compacts at all.
         """
-        if self._compact_budget_derived:
+        if self._compact_budget_narrated:
             return
-        self._compact_budget_derived = True
-        budget = self._plan_token_budget
-        if not budget or not self._session_run:
+        self._compact_budget_narrated = True
+        if not self._session_run:
             return
         model = self.translate_model
         if getattr(model, "no_context_compact", False):
             return
         if not hasattr(model, "context_compact_at"):
             return
-        if model.context_compact_at is not None:
-            return
-        model.context_compact_at = derived_compact_budget(budget)
-        print(
-            f"session: compacting at ~{model.context_compact_at} estimated "
-            f"tokens (derived from the {budget}-token request budget; "
-            f"--context-compact-at overrides)"
-        )
+        print(compact_budget_notice(model.context_compact_at))
 
     def _plan_request_cap(self):
         """Units one plan request may carry, given the endpoint's degree.
 
-        The partition caps a general group at `--batch_units` because that
+        The partition caps a general group at `--max-batch-units` because that
         is a property of the book; how far an *endpoint* can be
         trusted with one is not, and is not knowable when the partition is
         built (only `--plan-classify auto` probes before the loader runs; an
@@ -1435,11 +1425,6 @@ class EPUBBookLoader(BaseBookLoader):
             detail = escape(lines[0]) if lines else ""
             self._skip_plan_mode(detail or "the plan could not be built, see above")
             return False
-        # Only once the plan is committed: a plan that fell back to tag mode
-        # runs ungrouped, which is what the stock compact default was
-        # measured for — deriving earlier would leave the short window on a
-        # translator the fallback then keeps.
-        self._derive_session_compact_budget()
         return True
 
     def _prepare_translation_plan(self):
@@ -3738,6 +3723,11 @@ class EPUBBookLoader(BaseBookLoader):
                 "[bold red]Fatal translation error detected. Aborting book creation.[/bold red]"
             )
             return
+
+        # Before plan mode, not behind it: the budget is pinned for grouped
+        # and ungrouped session runs alike, so a run that never enters plan
+        # mode (or falls back out of it) is owed the same line.
+        self._narrate_session_compact_budget()
 
         if self._plan_mode:
             self._enter_plan_mode()

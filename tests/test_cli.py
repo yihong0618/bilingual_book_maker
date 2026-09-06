@@ -1750,6 +1750,7 @@ def test_an_explicit_one_keeps_the_session_dry_run_ungrouped(tmp_path):
     # assign_batches level: a 0 budget groups nothing at all)
     assert json.loads(plan.read_text())["token_budget"] == 0
 
+
 # --------------------------------------------------------------------------
 # --poetry-group-size: deprecated, still honoured
 # --------------------------------------------------------------------------
@@ -1777,3 +1778,110 @@ def test_an_untyped_poetry_group_size_says_nothing(tmp_path):
     assert "--poetry-group-size" not in proc.stdout
     # and the default is unchanged
     assert json.loads(plan.read_text())["poetry_group_size"] == 8
+
+
+# --------------------------------------------------------------------------
+# the compaction budget is pinned, and the preview says the same thing
+# --------------------------------------------------------------------------
+
+
+def _compact_line(text):
+    """The compaction sentence, however rich wrapped it.
+
+    `rich.print` wraps at the 80 columns it assumes for a pipe, so the
+    sentence can arrive split across lines. What is being pinned is the
+    wording, not the wrapping.
+    """
+    import re
+
+    flat = " ".join(text.split())
+    found = re.search(r"session: compacting at [^)]*\)", flat)
+    return found.group(0) if found else None
+
+
+def test_the_session_dry_run_previews_the_pinned_budget(tmp_path):
+    from book_maker.session_context import DEFAULT_COMPACT_BUDGET
+
+    proc, _ = _run(tmp_path, "--plan-dry-run", "--use_context", "session")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _compact_line(proc.stdout) == (
+        f"session: compacting at {DEFAULT_COMPACT_BUDGET} estimated tokens "
+        f"(the default; --context-compact-at overrides)"
+    )
+
+
+def test_the_session_dry_run_previews_an_explicit_budget(tmp_path):
+    proc, _ = _run(
+        tmp_path,
+        "--plan-dry-run",
+        "--use_context",
+        "session",
+        "--context-compact-at",
+        "2000",
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _compact_line(proc.stdout) == (
+        "session: compacting at 2000 estimated tokens (--context-compact-at)"
+    )
+
+
+def test_a_windowed_dry_run_previews_no_compaction_at_all(tmp_path):
+    proc, _ = _run(tmp_path, "--plan-dry-run", "--use_context")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _compact_line(proc.stdout) is None
+
+
+def test_the_preview_and_the_run_print_the_same_line(tmp_path):
+    # the preview's whole job is to say what the run will do; these two
+    # lines come from one function so they cannot drift
+    from book_maker.session_context import DEFAULT_COMPACT_BUDGET
+
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    preview, _ = _run(tmp_path / "a", "--plan-dry-run", "--use_context", "session")
+    real, _ = _run(
+        tmp_path / "b",
+        "--use_context",
+        "session",
+        "--test",
+        "--test_num",
+        "1",
+    )
+    assert preview.returncode == 0, preview.stdout + preview.stderr
+    assert real.returncode == 0, real.stdout + real.stderr
+    assert _compact_line(preview.stdout) == _compact_line(real.stdout)
+    assert str(DEFAULT_COMPACT_BUDGET) in _compact_line(real.stdout)
+
+
+def test_the_run_narrates_an_explicit_budget_as_the_flag(tmp_path):
+    proc, _ = _run(
+        tmp_path,
+        "--use_context",
+        "session",
+        "--context-compact-at",
+        "2000",
+        "--test",
+        "--test_num",
+        "1",
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _compact_line(proc.stdout) == (
+        "session: compacting at 2000 estimated tokens (--context-compact-at)"
+    )
+
+
+def test_a_run_with_no_session_narrates_no_compaction(tmp_path):
+    proc, _ = _run(tmp_path, "--test", "--test_num", "1")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _compact_line(proc.stdout) is None
+
+
+def test_no_code_path_reaches_for_the_deleted_derivation():
+    import book_maker.session_context as session_context
+    from book_maker.loader import epub_loader
+
+    assert not hasattr(session_context, "derived_compact_budget")
+    assert not hasattr(session_context, "DERIVED_COMPACT_FLOOR")
+    assert not hasattr(session_context, "DERIVED_COMPACT_CEILING")
+    assert not hasattr(epub_loader, "derived_compact_budget")
+    assert not hasattr(epub_loader.EPUBBookLoader, "_derive_session_compact_budget")
