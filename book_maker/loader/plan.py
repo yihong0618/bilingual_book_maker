@@ -57,7 +57,12 @@ from ebooklib import ITEM_DOCUMENT
 
 from ..utils import num_tokens_from_text
 from .helper import is_pure_url
-from .markers import INLINE_MARKER_MAX_CHARS, Ordinals
+from .markers import (
+    INLINE_MARKER_MAX_CHARS,
+    INLINE_MARKER_WORDLESS_MAX_CHARS,
+    Ordinals,
+    is_wordless,
+)
 from .ledger import (
     # re-exported: the plan file's schema version is this module's API too —
     # callers ask .plan about the plan, not about its storage layer
@@ -793,13 +798,24 @@ def _marker_candidate(element, owned_ids, owner, resolver):
     barrier it has today — a nested block or a ``<br>`` genuinely separates
     the text around it, and a long excluded listing appended at the end of a
     translation (what a dropped marker costs) would be worse than the split.
+
+    "Short enough" is measured against prose. Content with no word in it —
+    a URL, a spaced-out formula — is one atom however long it renders, so it
+    is measured against the far looser wordless cap instead (see
+    ``markers.is_wordless``). Capping those on rendered length is what cut 36
+    sentences in half across the corpus.
     """
     if any(
         id(n) in owned_ids for n in element.descendants if type(n) in TEXT_NODE_TYPES
     ):
         return False
     rendered = _visible_text(element)
-    if len(rendered) >= INLINE_MARKER_MAX_CHARS:
+    cap = (
+        INLINE_MARKER_WORDLESS_MAX_CHARS
+        if is_wordless(rendered)
+        else INLINE_MARKER_MAX_CHARS
+    )
+    if len(rendered) >= cap:
         return False
     if element.name in RENDERED_VOID_TAGS:
         return True

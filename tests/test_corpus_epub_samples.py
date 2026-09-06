@@ -255,6 +255,127 @@ class TestCorpusPartition:
         assert AUDIT_PATH.exists()
 
 
+# ------------------------------------------- the inline-marker length cap
+
+# A run of text that ends a sentence. Anything else, at a unit boundary
+# inside one owner, is a sentence the partition cut in half.
+_SENTENCE_END = re.compile(r"[.!?。！？:;…][\"'”’)\]]*$")
+
+
+def _cap_rejected_owners(book_path):
+    """Owners holding a protected inline the *length cap alone* barred.
+
+    Instrumentation rather than inference: whether an element would have
+    been a marker but for its length is a question only `_marker_candidate`
+    can answer, and asking it twice — once as it stands, once with both caps
+    lifted — is what isolates the cap from every other reason to refuse.
+    """
+    from book_maker.loader import plan as planmod
+
+    original = planmod._marker_candidate
+    current = {"file": None}
+    found = {}
+
+    def instrumented(element, owned_ids, owner, resolver):
+        verdict = original(element, owned_ids, owner, resolver)
+        if verdict:
+            return verdict
+        caps = (
+            planmod.INLINE_MARKER_MAX_CHARS,
+            planmod.INLINE_MARKER_WORDLESS_MAX_CHARS,
+        )
+        planmod.INLINE_MARKER_MAX_CHARS = 10**9
+        planmod.INLINE_MARKER_WORDLESS_MAX_CHARS = 10**9
+        try:
+            lifted = original(element, owned_ids, owner, resolver)
+        finally:
+            (
+                planmod.INLINE_MARKER_MAX_CHARS,
+                planmod.INLINE_MARKER_WORDLESS_MAX_CHARS,
+            ) = caps
+        if lifted:
+            found.setdefault(current["file"], set()).add(id(owner))
+        return verdict
+
+    original_partition = planmod.partition_file
+
+    def instrumented_partition(soup, resolver, file_name, **kwargs):
+        current["file"] = file_name
+        return original_partition(soup, resolver, file_name, **kwargs)
+
+    planmod._marker_candidate = instrumented
+    planmod.partition_file = instrumented_partition
+    try:
+        plan = build_plan(epub.read_epub(str(book_path)))
+    finally:
+        planmod._marker_candidate = original
+        planmod.partition_file = original_partition
+    return plan, found
+
+
+def _skipped_barrier_midsentence_cuts(book_path):
+    """Sentences this book's marker length cap cut in half.
+
+    One per boundary between consecutive runs of a single owner where the
+    earlier run does not end a sentence and the owner holds an inline the
+    cap alone refused. That is the whole defect: the barrier existed only
+    because a formula or a URL rendered past a cap written for prose.
+    """
+    plan, capped = _cap_rejected_owners(book_path)
+    cuts = []
+    for fp in plan.files:
+        owners = capped.get(fp.file_name)
+        if not owners:
+            continue
+        by_owner = {}
+        for unit in fp.all_units:
+            by_owner.setdefault(id(unit.element), []).append(unit)
+        for owner_id, runs in by_owner.items():
+            if owner_id not in owners or len(runs) < 2:
+                continue
+            runs.sort(key=lambda u: u.run_index)
+            for first, second in zip(runs, runs[1:]):
+                if not _SENTENCE_END.search(first.text.strip()):
+                    cuts.append(
+                        f"{fp.file_name}: ...{first.text[-40:]!r} || "
+                        f"{second.text[:40]!r}..."
+                    )
+    return cuts
+
+
+class TestInlineMarkerLengthCap:
+    """The 260906 fix: the cap is measured against prose, not characters.
+
+    Before it, `INLINE_MARKER_MAX_CHARS = 40` applied to *rendered* length
+    was the sole cause of every skipped-barrier mid-sentence cut in the
+    corpus — 36 of them, 33 in linear-algebra.epub (MathML-adjacent formulas
+    rendering as spaced-out single characters, ~43 chars) and 3 in
+    epub30-spec.epub (a single sentence shattered into four units by <code>
+    URLs, three of the fragments 5-12 characters long).
+    """
+
+    def test_no_book_has_a_cap_cut_sentence(self):
+        _require_corpus()
+        offenders = []
+        for path in BOOKS:
+            for cut in _skipped_barrier_midsentence_cuts(path):
+                offenders.append(f"{path.name} {cut}")
+        assert not offenders, (
+            f"{len(offenders)} sentence(s) cut by the inline-marker length "
+            f"cap:\n" + "\n".join(offenders[:20])
+        )
+
+    @pytest.mark.parametrize("book_name", ["linear-algebra.epub", "epub30-spec.epub"])
+    def test_the_two_measured_books_are_pinned_at_zero(self, book_name):
+        """The corpus-wide assert above would also pass on a corpus that
+        lost these books; these two are named because they are the ones the
+        fix was calibrated against."""
+        path = CORPUS / book_name
+        if not path.exists():
+            pytest.skip("corpus not present")
+        assert _skipped_barrier_midsentence_cuts(path) == []
+
+
 def _all_strings(fp):
     """Document-order text nodes of the file the plan was built from."""
     seen = []

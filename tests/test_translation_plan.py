@@ -1721,9 +1721,15 @@ class TestEpubHardening:
     def test_bilingual_run_split_by_a_retained_skip_stays_paired(self, tmp_path):
         """The other way an owner holds several runs: something retained
         renders between them. An excluded <code> too long to be atomic is
-        still a run barrier, so the two halves keep their own translations."""
+        still a run barrier, so the two halves keep their own translations.
+
+        Word-bearing on purpose: since 260906 the length cap only applies to
+        content that reads as prose, and the command line this fixture used
+        to hold (`ls --color=always --literal /a/very/long/path`) is one
+        glued atom by that rule and now rides in the sentence as a marker.
+        """
         loader, _ = _make_loader(tmp_path, FakeModel)
-        listing = "ls --color=always --literal /a/very/long/path/name/indeed"
+        listing = "for entry in listing: print(entry.name, entry.size)"
         soup = bs(
             f"<body><p>before <code>{listing}</code> after</p></body>", "html.parser"
         )

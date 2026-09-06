@@ -287,6 +287,21 @@ class TestMarkerWriteBack:
         assert [c.get("id") for c in codes] == ["k", None]
         assert "⟦" not in soup.get_text()
 
+    def test_a_long_wordless_url_round_trips_verbatim(self):
+        # the epub30-spec case: past the prose cap, but one atom, so it
+        # rides in the sentence as a marker and comes back character-exact
+        url = "http://www.w3.org/TR/SVG11/feature#AnimationEventsAttribute"
+        soup, fp = _fp(f"<p>The string <code>{url}</code> is what applies.</p>")
+        assert len(fp.units) == 1
+        unit = fp.units[0]
+        token = next(iter(unit.markers))
+        loader = _loader()
+
+        loader._insert_plan_translation(unit, f"字符串 {token} 适用。")
+
+        assert [c.get_text() for c in soup.find_all("code")] == [url, url]
+        assert "⟦" not in soup.get_text()
+
     def test_a_dropped_marker_still_gets_its_node(self):
         soup, fp = _fp("<p>Press <code>Ctrl+C</code> to stop it now.</p>")
         unit = fp.units[0]

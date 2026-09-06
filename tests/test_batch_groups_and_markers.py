@@ -620,11 +620,89 @@ class TestInlineMarkers:
     def test_long_excluded_inline_keeps_the_barrier(self):
         from book_maker.loader.markers import INLINE_MARKER_MAX_CHARS
 
+        # one unbroken alphabetic run is a word by the wordless rule, so the
+        # prose cap applies here — see the wordless cases below for what does
+        # not read as prose
         long_code = "x" * (INLINE_MARKER_MAX_CHARS + 10)
         fp = _partition(f"<p>Before the listing <code>{long_code}</code> after it.</p>")
         texts = [u.text for u in fp.units]
         assert len(fp.units) == 2
         assert not MARKER_RE.findall(" ".join(texts))
+
+    def test_a_long_wordless_code_url_is_a_marker_not_a_barrier(self):
+        # epub30-spec.epub: <code> URLs of 41-59 characters shattered one
+        # sentence into four units, three of them 5-12 characters long
+        url = "http://www.w3.org/TR/SVG11/feature#AnimationEventsAttribute"
+        assert len(url) > 40
+        fp = _partition(
+            f"<p>The string <code>{url}</code> minus the animation "
+            f"features is what applies here.</p>"
+        )
+        assert len(fp.units) == 1
+        unit = fp.units[0]
+        tokens = MARKER_RE.findall(unit.text)
+        assert len(tokens) == 1 and tokens[0].startswith("⟦code")
+        assert unit.text.startswith("The string ")
+        assert unit.text.endswith("is what applies here.")
+        # the URL never reaches the model, and comes back verbatim
+        assert url not in unit.text
+        assert unit.markers[tokens[0]].get_text() == url
+
+    def test_a_spaced_formula_inline_is_a_marker(self):
+        # linear-algebra.epub: MathML-adjacent formulas render as spaced-out
+        # single characters, which the 40-char cap read as "too long"
+        formula = "0 . 2 1 ( 9 6 0 ) + 2 4 6 3 = 2 6 6 4 . 6 0"
+        assert len(formula) > 40
+        fp = _partition(
+            f"<p>The resulting daily profit is "
+            f'<span class="math">{formula}</span> and that is a '
+            f"pleasant surprise.</p>",
+            exclude_tags=("span",),
+        )
+        assert len(fp.units) == 1
+        unit = fp.units[0]
+        tokens = MARKER_RE.findall(unit.text)
+        assert len(tokens) == 1 and tokens[0].startswith("⟦span")
+        assert unit.text.startswith("The resulting daily profit is ")
+        assert unit.text.endswith("and that is a pleasant surprise.")
+        assert unit.markers[tokens[0]].get_text() == formula
+
+    def test_a_short_function_name_does_not_make_a_formula_prose(self):
+        # "det" and "dim" are borrowed by mathematics; a three-letter rule
+        # would have left these two linear-algebra formulas as barriers
+        formula = "d ( det A ) ≤ m d ( A , 1 ) + m d ( A , 2 ) + … + m d ( A , n )"
+        assert len(formula) > 40
+        fp = _partition(
+            f'<p>We know that <span class="math">{formula}</span> holds.</p>',
+            exclude_tags=("span",),
+        )
+        assert len(fp.units) == 1
+        assert len(MARKER_RE.findall(fp.units[0].text)) == 1
+
+    def test_a_long_prose_inline_still_bars(self):
+        prose = "minus the determinant of the leading submatrix"
+        assert len(prose) > 40
+        fp = _partition(f"<p>The value is <code>{prose}</code> in every case here.</p>")
+        assert len(fp.units) == 2
+        assert not MARKER_RE.findall(" ".join(u.text for u in fp.units))
+
+    def test_a_wordless_inline_past_the_wordless_cap_still_bars(self):
+        from book_maker.loader.markers import INLINE_MARKER_WORDLESS_MAX_CHARS
+
+        blob = "0 " * INLINE_MARKER_WORDLESS_MAX_CHARS
+        fp = _partition(f"<p>The value is <code>{blob}</code> in every case.</p>")
+        assert len(fp.units) == 2
+        assert not MARKER_RE.findall(" ".join(u.text for u in fp.units))
+
+    def test_cjk_is_words_even_without_spaces(self):
+        # CJK prose has no whitespace, so one 40-character token of it is a
+        # sentence rather than an atom: the prose cap must still apply
+        from book_maker.loader.markers import is_wordless
+
+        assert not is_wordless("这是一段没有空格的中文句子，它当然是散文。")
+        assert is_wordless("http://www.w3.org/TR/SVG11/feature#Animation")
+        assert is_wordless("( − 1 . 0 4 ) ( 8 2 5 ) + 3 6 6 3 = 2 8 0 5")
+        assert not is_wordless("minus the determinant")
 
     def test_br_is_still_a_barrier_not_a_marker(self):
         fp = _partition("<p>first line<br/>second line</p>")

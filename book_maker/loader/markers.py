@@ -39,6 +39,59 @@ import re
 # would move a paragraph of text to the end of the translation.
 INLINE_MARKER_MAX_CHARS = 40
 
+# The same cap, for content that renders no prose (see `is_wordless`). The
+# rationale above is about *reading*: a paragraph of words appended at the end
+# of a translation is a wrecked page, so a long word-bearing inline keeps its
+# barrier. A formula or a URL is not read that way — it is one atom, whatever
+# its length — and measuring it in rendered characters is measuring the wrong
+# thing. The 260906 corpus sweep found this cap was the sole cause of all 36
+# skipped-barrier mid-sentence cuts in the 45-book epub3-samples corpus: 33 in
+# linear-algebra.epub, where MathML-adjacent formulas render as spaced-out
+# single characters ("0 . 2 1 ( 9 6 0 ) + 2 4 6 3 = 2 6 6 4 . 6 0", 43 chars),
+# and 3 in epub30-spec.epub, where <code> URLs of 41-59 characters shattered
+# one sentence into four units, three of them 5-12 characters long.
+#
+# 400 is a guess, not a measurement: the longest wordless inline in the corpus
+# is 195 characters, and this leaves generous room above it while still
+# bounding the pathological case (an inline data: URI of a few kilobytes).
+INLINE_MARKER_WORDLESS_MAX_CHARS = 400
+
+# Characters that keep a token together: what a URL, a filesystem path, an
+# email address or an identifier is glued out of. A run of letters touching
+# one of these on either side is a *piece* of an atom, not a word — which is
+# how "feature" inside
+# `http://www.w3.org/TR/SVG11/feature#AnimationEventsAttribute` is told apart
+# from "feature" in a sentence.
+_TOKEN_GLUE = r"[0-9A-Za-z_./:#?=&%~@+\-]"
+
+# A word: four or more letters with no glue on either side. `[^\W\d_]` is
+# alphabetic in the Unicode sense, so a run of CJK counts — CJK prose has no
+# spaces to delimit it, and one 40-character run of it is a sentence, not an
+# atom (its punctuation, `，` and `。`, is not glue, so the run still ends).
+#
+# Four rather than three because mathematics borrows short function names:
+# "det", "dim", "sin", "log" sit inside formulas that are otherwise nothing
+# but digits and operators, and two such formulas in linear-algebra.epub
+# would have kept their barriers under a three-character rule.
+#
+# Two things the rule deliberately cannot tell apart, neither seen in the
+# 45-book corpus: prose built only from words of three letters or fewer, and
+# a single 40-character word that a sentence period follows (the period is
+# glue, because `www.w3.org` needs it to be).
+_PROSE_WORD_RE = re.compile(rf"(?<!{_TOKEN_GLUE})[^\W\d_]{{4,}}(?!{_TOKEN_GLUE})")
+
+
+def is_wordless(text):
+    """Does this rendered text carry no prose word at all?
+
+    True for a URL, a spaced-out formula, a stretch of digits and operators;
+    False for anything with a word in it. Only the marker cap consults it —
+    it decides which of the two caps above applies, never whether something
+    is protected content in the first place.
+    """
+    return _PROSE_WORD_RE.search(text or "") is None
+
+
 MARKER_OPEN = "⟦"
 MARKER_CLOSE = "⟧"
 
