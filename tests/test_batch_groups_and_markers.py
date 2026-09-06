@@ -357,9 +357,12 @@ class _MarkerBatchFake:
     TRANSLATION_ERROR_MARKER = None
     _fatal_error_detected = False
 
-    def __init__(self, shift_at=None, drop_markers=False):
+    def __init__(self, shift_at=None, drop_markers=False, duplicate_into=None):
         self.shift_at = shift_at
         self.drop_markers = drop_markers
+        # (owner slot, other slot): the owner keeps its token and a copy of
+        # it is sprayed into the other slot as well.
+        self.duplicate_into = duplicate_into
         self.batch_calls = []
         self.single_calls = []
 
@@ -374,6 +377,11 @@ class _MarkerBatchFake:
         if self.shift_at is not None and len(texts) == self.shift_at:
             # one slot late: every reply lands on the following unit
             return ["T[the slot before]"] + straight[:-1]
+        if self.duplicate_into is not None and len(texts) > max(self.duplicate_into):
+            owner, other = self.duplicate_into
+            tokens = MARKER_ANY_RE.findall(straight[owner])
+            if tokens:
+                straight[other] = f"{straight[other]} {tokens[0]}"
         return straight
 
     def translate(self, text):
@@ -506,6 +514,60 @@ class TestShiftedReplyIsCaughtByItsMarkers:
         loader._insert_plan_translation(units[1], result[1])
         assert [c.get_text() for c in soup.find_all("code")] == ["Ctrl+C", "Ctrl+C"]
         assert "⟦" not in soup.get_text()
+
+    def test_a_duplicated_marker_is_not_a_shift(self):
+        """The owner kept its token; a copy landed next door as well.
+
+        Nothing is misaligned — every slot still answers its own unit — and
+        `reconcile_markers` drops the copy as invented. Sending the batch to
+        the halving ladder for it would repay a request that was correct.
+        """
+        soup, units = _three_units()
+        texts = [u.text for u in units]
+        loader = _marker_loader()
+        # unit 2 owns the only marker; slot 1 gets a copy of it
+        fake = _MarkerBatchFake(duplicate_into=(1, 0))
+        loader.translate_model = fake
+
+        result = loader._translate_texts_aligned(texts, fake, units)
+
+        assert fake.batch_calls == [texts]  # one request, no ladder
+        assert fake.single_calls == []
+        token = next(iter(units[1].markers))
+        assert token in result[0] and token in result[1]
+
+        for unit, t_text in zip(units, result):
+            loader._insert_plan_translation(unit, t_text)
+
+        # the stray copy is reconciled away, the owner's is restored
+        assert "⟦" not in soup.get_text()
+        assert [c.get_text() for c in soup.find_all("code")] == ["Ctrl+C", "Ctrl+C"]
+
+    def test_a_marker_less_unit_still_has_an_invented_token_scrubbed(self):
+        # the write path used to skip reconciliation entirely for a unit
+        # owning no markers, so a stray token reached reader-visible prose
+        soup, units = _three_units()
+        loader = _marker_loader()
+        loader.translate_model = SimpleNamespace(TRANSLATION_ERROR_MARKER=None)
+        token = next(iter(units[1].markers))
+
+        loader._insert_plan_translation(units[0], f"T[alpha] {token}")
+
+        assert "⟦" not in soup.get_text()
+
+    def test_a_duplicated_marker_does_not_mask_a_real_shift(self):
+        # the owner's slot losing its token is still the whole test: the
+        # shifted reply keeps splitting
+        _soup_, units = _three_units()
+        texts = [u.text for u in units]
+        loader = _marker_loader()
+        fake = _MarkerBatchFake(shift_at=3)
+        loader.translate_model = fake
+
+        assert (
+            loader._marker_slot_mismatch(texts, fake.translate_list(texts), units)
+            is not None
+        )
 
     def test_without_units_the_check_cannot_and_does_not_fire(self):
         # tag mode passes no units; the reply is accepted exactly as before

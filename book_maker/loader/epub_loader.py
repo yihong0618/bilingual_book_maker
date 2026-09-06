@@ -1791,7 +1791,7 @@ class EPUBBookLoader(BaseBookLoader):
             and t_text == self.translate_model.TRANSLATION_ERROR_MARKER
         ):
             return
-        if unit.markers:
+        if unit.markers or MARKER_OPEN in t_text:
             # Lenient by decision: a lost marker is reconciled and reported,
             # never a failed unit and never a retry. Marker placement is not
             # worth re-paying a request for.
@@ -1799,6 +1799,15 @@ class EPUBBookLoader(BaseBookLoader):
             # `unit.markers` is passed as the issued set on purpose: a token
             # the *source* prints verbatim looks the same and belongs to the
             # book, so it must survive reconciliation untouched.
+            #
+            # A unit that owns *no* markers is reconciled too, whenever its
+            # translation carries a marker-shaped token anyway. That is the
+            # neighbour a model sprayed a copy into: the token stands for a
+            # node this unit does not have, so it is invented here and would
+            # otherwise be written into reader-visible prose (the batch is
+            # not shifted, so `_marker_slot_mismatch` deliberately lets it
+            # through — see there). The empty issued list keeps the book's
+            # own verbatim tokens literal, as always.
             issued = list(unit.markers)
             note = marker_report(
                 f"{unit.file_name}#{unit.ordinal}", unit.text, t_text, issued
@@ -2200,6 +2209,14 @@ class EPUBBookLoader(BaseBookLoader):
         avoidance is per unit, so a token issued to one unit can be literal
         text in another. Anything already present in the source that slot was
         sent is therefore left alone, whoever else it was issued to.
+
+        And a token in the wrong slot is only evidence of a shift when its
+        *owner's* slot has lost it. A reply that keeps `⟦code2⟧` where it
+        belongs and also sprays a copy into the neighbour is not shifted —
+        every unit still faces its own translation — and `reconcile_markers`
+        drops that copy as invented before anything is written. Charging the
+        whole batch through the halving ladder for it repays a request that
+        was already correct.
         """
         if not units or len(units) != len(texts) or len(result) != len(texts):
             return None
@@ -2207,6 +2224,13 @@ class EPUBBookLoader(BaseBookLoader):
         issued = set().union(*owned)
         if not issued:
             return None
+        # Every slot a token was issued to: collision avoidance is per unit,
+        # so one token can have more than one owner, and any owner that kept
+        # it is enough to say the reply is not shifted.
+        owners = {}
+        for index, own in enumerate(owned):
+            for token in own:
+                owners.setdefault(token, []).append(index)
         for index, reply in enumerate(result):
             if not reply or MARKER_OPEN not in reply:
                 continue
@@ -2215,10 +2239,14 @@ class EPUBBookLoader(BaseBookLoader):
                     token in issued
                     and token not in owned[index]
                     and token not in texts[index]
+                    and not any(
+                        token in (result[owner] or "") for owner in owners[token]
+                    )
                 ):
                     return (
                         f"{token} came back in slot {index + 1} of "
-                        f"{len(result)}, which does not own it"
+                        f"{len(result)}, which does not own it, and is gone "
+                        f"from the slot that does"
                     )
         return None
 
