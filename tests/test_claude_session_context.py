@@ -691,6 +691,19 @@ class TestOuterFenceStripping:
     def test_a_fenced_reply_is_unwrapped(self):
         assert _strip_outer_fence("```\n动物庄园\n```") == "动物庄园"
 
+    def test_a_fenced_source_keeps_its_fenced_reply(self):
+        # codex review 260905: a passage that IS one code block translates
+        # to one code block — that reply is faithful, not a mirrored
+        # delimiter, and unwrapping it would strip real markup.
+        src = "```python\nprint('hello')\n```"
+        reply = "```python\nprint('你好')\n```"
+        assert _strip_outer_fence(reply, source=src) == reply
+
+    def test_an_unfenced_source_still_unwraps(self):
+        assert (
+            _strip_outer_fence("```\n动物庄园\n```", source="Animal Farm") == "动物庄园"
+        )
+
     def test_an_inline_wrap_is_unwrapped(self):
         # what the live run actually produced
         assert (

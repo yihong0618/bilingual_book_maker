@@ -347,6 +347,20 @@ class TestLearningFromTheHandoff:
         t.get_translation("a" * 200)
         assert "<renderings>" not in path.read_text(encoding="utf-8")
 
+    def test_an_empty_block_does_not_erase_what_was_learned(self, tmp_path):
+        """codex review 260905 (P2): an empty block means "no additions",
+        not "forget everything" — a later report that learns nothing new
+        must still hand the established vocabulary to the next window."""
+        path = tmp_path / "h.md"
+        empty = "Nothing new this window.\n\n<renderings>\n</renderings>\n"
+        t = _session(["译文", HANDOFF_WITH_TERMS, "译文", empty], handoff_path=path)
+        t.get_translation("a" * 200)
+        t.get_translation("b" * 200)
+        text = path.read_text(encoding="utf-8")
+        # both reports carry the vocabulary: the one that learned it, and
+        # the empty one that inherited it
+        assert text.count("Boxer → 拳击手") == 2
+
     def test_a_pin_is_never_overwritten_by_what_was_learned(self, tmp_path):
         pinned = Glossary.parse("Boxer → 鲍克瑟\n")
         t = _session(

@@ -1327,6 +1327,18 @@ COMPAT_RULES = (
             "Drop one of the two."
         ),
     ),
+    CompatRule(
+        "C24",
+        "warn",
+        lambda f: f.options.glossary_auto == "on"
+        and session_run_expected(f)
+        and not getattr(f.translate_model, "SUPPORTS_GLOSSARY", False),
+        lambda f: (
+            f"--glossary-auto on learns renderings from the compact turn's "
+            f"handoff report, and the {f.api_format} route never asks its "
+            f"report for one; the setting is accepted and learns nothing."
+        ),
+    ),
 )
 
 
@@ -2381,6 +2393,12 @@ def main():
         parallel_workers=options.parallel_workers,
         **loader_kwargs,
     )
+    if options.glossary_path:
+        # The provenance record embeds the operator's file (never a derived
+        # glossary), and the loader only knows about it through this
+        # attribute — without it `--glossary … --provenance` recorded a run
+        # with no glossary at all.
+        e.glossary_path = options.glossary_path
     if source_language and getattr(e, "translate_model", None) is not None:
         # Reaches the prompt/system message and the schema field
         # descriptions. Never a gate: a book whose source is not what the

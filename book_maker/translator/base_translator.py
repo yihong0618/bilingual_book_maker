@@ -342,11 +342,15 @@ class Base(ABC):
             )
         elif source == "missing":
             print(
-                "[yellow]ℹ the handoff report established no renderings; "
-                "this window carries no learned terms[/yellow]"
+                "[yellow]ℹ the handoff report established no new "
+                "renderings; this window adds no learned terms[/yellow]"
             )
         if not learned:
-            return ""
+            # Nothing new this window. The vocabulary earlier windows
+            # established still holds — an empty block means "no additions",
+            # so the merged glossary keeps riding the seed instead of
+            # vanishing from it.
+            return self.glossary.to_lines() if self.glossary else ""
         # This window's reading wins over earlier ones: the model has seen
         # more of the book than it had last time. Then the operator's pins are
         # laid over the top, so a term they chose never drifts, while

@@ -848,9 +848,18 @@ class EPUBBookLoader(BaseBookLoader):
         """
         if getattr(self, "provenance", False):
             return True
+        # Not only an explicit `--use_context session`: the codex route
+        # keeps a session without being asked, and its runs earn the record
+        # the same way. (`getattr` throughout — the stamp must survive a
+        # loader a test built bare, the same as every fact above.)
         return (
             bool(getattr(self, "plan_mode", False))
             or getattr(self, "context_mode", None) == "session"
+            or getattr(
+                getattr(self, "translate_model", None),
+                "SESSION_CONTEXT_ALWAYS_ON",
+                False,
+            )
         )
 
     def _declared_source_language(self):

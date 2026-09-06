@@ -350,6 +350,43 @@ def test_a_token_shaped_value_goes_even_where_no_flag_explains_it(monkeypatch):
     assert prov.MASK in args
 
 
+def test_a_key_nested_inside_a_recordable_value_is_masked(monkeypatch):
+    """codex review 260905 (P1): a credential *inside* a valid argument — an
+    `--extra_body` field, a URL's userinfo — starts with no token prefix and
+    announces no flag, so both earlier nets walked straight past it."""
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "make_book.py",
+            "--extra_body",
+            '{"api_key": "sk-secondary-secret99"}',
+            "--api_base",
+            "https://user:hunter2secret@gateway.example/v1",
+        ],
+    )
+
+    args = _metas(_rebuild(_source(), provenance=True))[prov.ARGS_META]
+
+    assert "sk-secondary-secret99" not in args
+    assert "hunter2secret" not in args
+    # the shape still reads: the field name and the host are the record
+    assert "api_key" in args
+    assert "gateway.example/v1" in args
+
+
+def test_a_bearer_value_nested_in_a_field_is_masked(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["make_book.py", "--extra_body", '{"auth": "Bearer abc123def456"}'],
+    )
+
+    args = _metas(_rebuild(_source(), provenance=True))[prov.ARGS_META]
+
+    assert "abc123def456" not in args
+
+
 def test_a_model_id_is_not_mistaken_for_a_token(monkeypatch):
     """Opaque and long is not the test — a model id is both, and masking it
     would empty the record at the moment it matters."""
@@ -408,6 +445,17 @@ def test_who_gets_the_machine_record(kwargs, recorded):
     metas = _metas(_rebuild(_source(), **kwargs))
 
     assert bool(metas) is recorded
+
+
+def test_an_implicit_session_route_gets_the_record_too():
+    """codex review 260905 (P2): the codex route keeps a session without
+    `--use_context session` ever being typed; its runs earn the record the
+    same way an explicit session run does."""
+
+    class AlwaysSession(StubModel):
+        SESSION_CONTEXT_ALWAYS_ON = True
+
+    assert _metas(_rebuild(_source(), model=AlwaysSession))
 
 
 def test_a_record_that_fails_halfway_leaves_nothing_behind(tmp_path, monkeypatch):
@@ -1008,6 +1056,24 @@ def test_the_flag_records_the_run_in_a_real_translation(tmp_path):
     assert "--provenance" in opf
     # a route with no endpoint of its own records none
     assert 'name="bbm:endpoint"' not in opf
+
+
+def test_the_cli_forwards_the_glossary_into_the_record(tmp_path):
+    """codex review 260905 (P2): the unit tests hand `glossary_path` to the
+    loader directly; only a real CLI run proves the flag actually reaches
+    it. Without the wiring, `--glossary … --provenance` recorded a run with
+    no glossary at all."""
+    terms = tmp_path / "terms.txt"
+    terms.write_text("Manor Farm → 庄园农场\n", encoding="utf-8")
+    proc, output = _cli(tmp_path, "--provenance", "--glossary", str(terms))
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    opf = _opf_of(output)
+    assert prov.GLOSSARY_SHA_META in opf
+    with zipfile.ZipFile(output) as z:
+        embedded = [n for n in z.namelist() if prov.GLOSSARY_STEM in n]
+        assert embedded
+        assert "Manor Farm" in z.read(embedded[0]).decode("utf-8")
 
 
 def test_a_plain_legacy_run_records_nothing(tmp_path):

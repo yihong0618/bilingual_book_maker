@@ -178,7 +178,7 @@ def test_the_colophon_reads_like_a_log(tmp_path):
     about a file should not arrive dressed as a chapter."""
     page = _colophon_of(_rebuild(_source())).content.decode("utf-8")
 
-    assert "<h1>Disclaimer</h1>" in page
+    assert "<h1>Translation Credits</h1>" in page
     assert page.count("<h1") == 1
     assert "<p>Model: x/y</p>" in page
     assert f"<p>Date: {date.today().isoformat()}</p>" in page
@@ -298,10 +298,15 @@ def _service(cls, model=None):
     return lambda: translator
 
 
-def test_an_engine_route_is_a_machine_translation(tmp_path):
+def test_an_engine_route_is_a_machine_translation(tmp_path, monkeypatch):
     """Google, DeepL and the other fixed services are machine translation;
     the label says so, and the service is what is named."""
-    from book_maker.translator import Google
+    from book_maker.translator import FORMAT_DICT, Google
+
+    # The label is looked up by registry identity, and the hermetic harness
+    # (when tests/hermetic is on PYTHONPATH) swaps the google entry for an
+    # offline stand-in; the real class must be registered to be named.
+    monkeypatch.setitem(FORMAT_DICT, "google", Google)
 
     opf = _written_opf(tmp_path, _rebuild(_source(), model=_service(Google)))
 

@@ -319,6 +319,18 @@ class TestTheDocumentedPlaceholders:
 
 
 class TestEveryRouteDeclaresItsSlots:
+    @pytest.fixture(autouse=True)
+    def _real_registry(self, monkeypatch):
+        # The hermetic harness (tests/hermetic, when it is on PYTHONPATH)
+        # swaps two FORMAT_DICT entries for offline stand-ins. These tests
+        # are about the real routes' declarations, so put the real classes
+        # back for their duration.
+        from book_maker.translator.chatgptapi_translator import ChatGPTAPI
+        from book_maker.translator.google_translator import Google
+
+        monkeypatch.setitem(FORMAT_DICT, "openai", ChatGPTAPI)
+        monkeypatch.setitem(FORMAT_DICT, "google", Google)
+
     def test_every_registered_route_declares_all_three_sections(self):
         for name, route in sorted(FORMAT_DICT.items()):
             slots = route.PROMPT_SECTION_SLOTS

@@ -556,6 +556,14 @@ WARN_FIXTURES = [
         {},
         "--provenance records nothing",
     ),
+    (
+        # C24: a session exists, but the route's handoff is never asked for
+        # a renderings block — auto-learning has nothing to read
+        "C24",
+        ["--glossary-auto", "on", "--use_context", "session"],
+        {"api_format": "anthropic"},
+        "never asks its report",
+    ),
 ]
 
 

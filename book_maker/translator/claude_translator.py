@@ -112,7 +112,7 @@ _OUTER_FENCE = re.compile(
 )
 
 
-def _strip_outer_fence(text):
+def _strip_outer_fence(text, source=None):
     """Unwrap a translation the model handed back inside a code fence.
 
     This route's DEFAULT_PROMPT delimits the source with triple backticks
@@ -132,8 +132,13 @@ def _strip_outer_fence(text):
     * a fence run inside the body means the reply is a document with code
       blocks in it rather than a wrapped translation, so it is left alone;
     * a wrap around nothing is left alone too, rather than manufacturing an
-      empty translation out of a garbage reply.
+      empty translation out of a garbage reply;
+    * and when the *source* passage is itself one fenced block, a fenced
+      reply is a faithful translation of it, not a mirrored delimiter — it
+      keeps its fence.
     """
+    if source is not None and _OUTER_FENCE.match(source):
+        return text
     match = _OUTER_FENCE.match(text or "")
     if not match:
         return text
@@ -643,7 +648,7 @@ class Claude(Base):
         # text, or a reply split across two text blocks ("```" + "译文```")
         # keeps its wrapper. Everything downstream — the batch splitter, the
         # session history, the book — then sees the same unwrapped string.
-        t_text = _strip_outer_fence(_reply_text(r))
+        t_text = _strip_outer_fence(_reply_text(r), source=text)
 
         if self.context_flag:
             self.save_context(text, t_text)

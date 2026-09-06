@@ -27,6 +27,7 @@ Three rules shape every field here.
 """
 
 import json
+import re
 import shlex
 import subprocess
 import sys
@@ -267,6 +268,30 @@ def looks_like_token(arg):
     return any(arg.startswith(prefix) for prefix in TOKEN_PREFIXES)
 
 
+# Secrets hiding *inside* an otherwise recordable value, where neither net
+# above looks: a field in `--extra_body '{"api_key": "sk-…"}'`, credentials
+# written into a URL (`https://user:secret@host/v1`), an Authorization value
+# in `--extra_headers`. The whole argument is worth keeping — the field
+# names and the host are the record — so only the credential substring is
+# masked.
+_EMBEDDED_TOKEN = re.compile(
+    "(?:"
+    + "|".join(
+        re.escape(prefix) for prefix in TOKEN_PREFIXES if prefix.lower() != "bearer "
+    )
+    + r")[A-Za-z0-9_\-.]{4,}"
+)
+_BEARER_VALUE = re.compile(r"(?i)\bbearer[ \t]+[A-Za-z0-9._\-]{4,}")
+_URL_USERINFO = re.compile(r"(?<=://)[^/@\s]{1,128}@")
+
+
+def mask_embedded_secrets(text):
+    """`text` with credential-shaped substrings replaced by the mask."""
+    text = _URL_USERINFO.sub(f"{MASK}@", text)
+    text = _BEARER_VALUE.sub(MASK, text)
+    return _EMBEDDED_TOKEN.sub(MASK, text)
+
+
 def sanitize_args(argv=None):
     """The run's command line, with everything that must not travel removed.
 
@@ -307,6 +332,7 @@ def sanitize_args(argv=None):
     # A key flag as the very last entry leaves `pending` set and nothing to
     # mask: argparse would have refused such a command, and the flag itself
     # is already recorded.
+    parts = [mask_embedded_secrets(part) for part in parts]
     return redact(" ".join(shlex.quote(part) for part in parts))
 
 

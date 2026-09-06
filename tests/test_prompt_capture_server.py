@@ -250,6 +250,17 @@ def _env():
     env = dict(os.environ)
     for name in KEY_ENV_VARS:
         env.pop(name, None)
+    # The suite may run with tests/hermetic on PYTHONPATH (the offline
+    # harness). These tests are the opposite bargain — a real subprocess
+    # against a real local endpoint — and the harness riding into the
+    # subprocess replaces the openai route with an offline stand-in that
+    # swallows the very requests this server exists to capture.
+    kept = [
+        p
+        for p in env.get("PYTHONPATH", "").split(os.pathsep)
+        if p and Path(p).name != "hermetic"
+    ]
+    env["PYTHONPATH"] = os.pathsep.join(kept)
     return env
 
 
