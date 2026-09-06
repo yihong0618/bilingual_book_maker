@@ -14,10 +14,12 @@ one heading, then `Title: content` a line at a time — rather than as prose:
 a page of facts about a file should not arrive dressed as a chapter.
 
 Beside it, on a plan or session run or when `--provenance` asks, goes the
-machine half: the `bbm:` metas and the book-producer credit that say which
-build, which model, which endpoint host and which command produced the file,
-and `bbm_provenance.json` saying it a second time as a manifest item, because
-a conversion rewrites the package document and keeps the files. That record is
+machine half: `bbm_provenance.json` as a manifest item, saying which build,
+which model, which endpoint host and which command produced the file, plus
+the book-producer credit and three `bbm:` metas — the tool marker, the model
+and the date — that say the shortest version of it in the package document.
+The file is the record and the metas are a marker beside it, because a
+conversion rewrites the package document and keeps the files. That record is
 `book_maker.provenance`'s to compose and this module's to put in the package,
 under the same rules everything else here follows.
 
@@ -266,32 +268,38 @@ def tool_contributor_ids(book):
 
 
 def prior_glossary_shas(book):
-    """The checksums a previous run's glossary metas vouch for.
+    """The checksums a previous run's record vouches for.
 
     The embedded glossary is the one thing this tool writes that carries no
     marker of its own — it is the user's file, byte for byte, and putting
-    anything inside it would make it not that. So ownership is decided by
-    the record instead: an item is a previous run's glossary only if a
-    `bbm:glossary-sha256` meta in the same package names its exact bytes.
-    That is a stronger test than the id or the file name would have been,
-    and it leaves a book carrying a `bbm_glossary.txt` of its own alone.
+    anything inside it would make it not that. So ownership is decided from
+    outside: an item is a previous run's glossary only if something in the
+    same package that *is* recognisably ours names its exact bytes. That is
+    a stronger test than the id or the file name would have been, and it
+    leaves a book carrying a `bbm_glossary.txt` of its own alone.
+
+    Two places are asked, because two shapes of book arrive here. This
+    build's record names the checksum inside `bbm_provenance.json`, which is
+    where the whole fact set now lives; a book stamped by an older build
+    names it in a `bbm:glossary-sha256` meta instead. Both are read, so a
+    rerun drops the previous glossary either way.
     """
-    return _vouched_shas(book, prov.GLOSSARY_SHA_META)
-
-
-def prior_provenance_shas(book):
-    """The checksums a previous run's `bbm:provenance-sha256` metas vouch for."""
-    return _vouched_shas(book, prov.PROVENANCE_SHA_META)
-
-
-def _vouched_shas(book, meta_name):
-    return {
+    shas = {
         str((others or {}).get("content") or "").strip()
         for _, name, _, others in _iter_metadata(book)
         if name == "meta"
-        and (others or {}).get("name") == meta_name
+        and (others or {}).get("name") == prov.LEGACY_GLOSSARY_SHA_META
         and (others or {}).get("content")
     }
+    shas.discard("")
+    for item in book.get_items():
+        record = _our_record(item)
+        if record is None:
+            continue
+        vouched = str(record.get(prov.GLOSSARY_SHA_KEY) or "").strip()
+        if vouched:
+            shas.add(vouched)
+    return shas
 
 
 def _item_bytes(item):
@@ -313,28 +321,38 @@ def is_prior_glossary(item, shas):
     return content is not None and sha256(content).hexdigest() in shas
 
 
-def is_prior_provenance(item, shas):
+def is_prior_provenance(item):
     """Whether a manifest item is the record a previous run wrote.
 
-    Two ways, and either is enough. The checksum is the glossary's test,
-    kept for consistency; the marker inside the file is the colophon's, and
-    it is the one that still works when the metas are gone — which is the
-    whole reason the file exists. A book shipping a `bbm_provenance.json`
-    of its own answers to neither and is left alone.
+    The marker inside the file, and nothing else. It is the colophon's test,
+    it is the one that still works when a conversion has thrown the metas
+    away — which is the whole reason the file exists — and it recognises a
+    record written by any build of this tool, old meta shape or new. A book
+    shipping a `bbm_provenance.json` of its own does not answer to it and is
+    left alone.
+    """
+    return _our_record(item) is not None
+
+
+def _our_record(item):
+    """`item` parsed as one of our records, or None if it is not one.
+
+    Every manifest item is offered here, so the cheap rejections come
+    first: a record is JSON, and JSON that is one of ours is an object.
     """
     content = _item_bytes(item)
-    if content is None:
-        return False
-    if shas and sha256(content).hexdigest() in shas:
-        return True
+    if content is None or content.lstrip()[:1] != b"{":
+        return None
     try:
         record = json.loads(content.decode("utf-8"))
     except (UnicodeDecodeError, ValueError):
-        return False
-    return (
+        return None
+    if (
         isinstance(record, dict)
         and record.get(prov.RECORD_MARK_KEY) == prov.RECORD_MARK
-    )
+    ):
+        return record
+    return None
 
 
 def is_prior_disclosure(name, value, others, owned_ids):
@@ -601,18 +619,18 @@ def stamp_disclosure(
     if provenance is not None:
         producer_id = allocate_contributor_id(book, base=prov.PRODUCER_ID, ids=ids)
         ids.add(producer_id)
-        # Both settled here, so the commit half only appends: `metas()`
+        # Both settled here, so the commit half only appends: `record()`
         # hashes the glossary and `producer()` reads the build, and neither
         # belongs between the credit and the note.
-        provenance_metas = provenance.metas()
+        provenance_metas = provenance.metas(when)
         producer_credit = provenance.producer()
-        # The file is built from the very list the metas are written from, so
-        # the two forms cannot drift; its own checksum is then appended as a
-        # meta, which is why it could not have been in the file.
-        record_bytes = provenance.record(provenance_metas)
-        provenance_metas = provenance_metas + [
-            (prov.PROVENANCE_SHA_META, sha256(record_bytes).hexdigest())
-        ]
+        # The same `when` the colophon's Date line is about to be built from,
+        # so the visible page and the machine record cannot name two days.
+        # The metas are not a copy of the file — three of them against the
+        # file's full fact set — so nothing vouches for the file from
+        # outside any more; it says whose it is from the inside, which is
+        # the only claim that survives a conversion anyway.
+        record_bytes = provenance.record(when)
         record_id, record_file = allocate_provenance_names(book, ids=ids, files=files)
         ids.add(record_id)
         files.add(record_file)

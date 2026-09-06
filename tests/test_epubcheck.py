@@ -409,7 +409,7 @@ def test_the_machine_record_validates(epubcheck, provenance_book):
         names = archive.namelist()
         opf_name = next(n for n in names if n.endswith(".opf"))
         opf = archive.read(opf_name).decode("utf-8")
-    assert '<meta name="bbm:commit"' in opf
+    assert '<meta name="bbm:bilingual_book_maker"' in opf
     assert "EPUB/bbm_glossary.txt" in names
     assert "EPUB/bbm_provenance.json" in names
     # in the manifest, never in the spine

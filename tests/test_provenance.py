@@ -1,10 +1,15 @@
 """The file says which run made it, to a machine.
 
 The disclosure tests cover what a *reader* is told. This covers the other
-half: the package document's `bbm:` metas, the book-producer credit and the
-embedded user glossary — the record someone runs a script over six months
-later when they need to know which build, which model and which command
-produced a directory full of epubs.
+half: `bbm_provenance.json`, the three `bbm:` metas beside it, the
+book-producer credit and the embedded user glossary — the record someone
+runs a script over six months later when they need to know which build,
+which model and which command produced a directory full of epubs.
+
+The two forms are deliberately different shapes and the tests keep them
+apart: the file carries the whole fact set, the metas carry a marker, the
+model and the date. Asserting a fact of the record therefore means reading
+the record.
 
 Two things are load-bearing throughout and are asserted rather than assumed:
 nothing secret reaches the zip, and nothing a previous run wrote survives
@@ -16,6 +21,7 @@ import os
 import subprocess
 import sys
 import zipfile
+from datetime import date
 from hashlib import sha256
 from pathlib import Path
 
@@ -134,6 +140,21 @@ def _metas(book):
     return found
 
 
+def _record_of(book):
+    """The parsed `bbm_provenance.json` the stamp wrote, or None.
+
+    Where every fact but the marker, the model and the date now lives, so
+    this — not `_metas` — is what a test asking "what did the run record"
+    reads.
+    """
+    item = book.get_item_with_id(prov.PROVENANCE_ID)
+    return None if item is None else json.loads(item.content.decode("utf-8"))
+
+
+def _recorded_args(book):
+    return _record_of(book)["args"]
+
+
 def _translate_file(path, model=StubModel, glossary_path=None, **kwargs):
     loader = EPUBBookLoader(
         str(path), model, key="", resume=False, language="zh-hans", **kwargs
@@ -150,29 +171,62 @@ def _translate_file(path, model=StubModel, glossary_path=None, **kwargs):
 # ------------------------------------------------------ what gets recorded
 
 
-def test_the_package_says_which_build_model_and_host_made_it(tmp_path, monkeypatch):
+def test_the_record_says_which_build_model_and_host_made_it(tmp_path, monkeypatch):
     monkeypatch.setattr(prov, "tool_commit", lambda: "deadbee")
 
-    book = _rebuild(_source(), provenance=True)
-    metas = _metas(book)
+    record = _record_of(_rebuild(_source(), provenance=True))
 
-    assert metas[prov.COMMIT_META] == "deadbee"
-    assert metas[prov.MODEL_META] == "x/y"
+    assert record["commit"] == "deadbee"
+    assert record["model"] == "x/y"
     # host only: no scheme, no path, no port, no credentials
-    assert metas[prov.ENDPOINT_META] == "api.openai.com"
-    assert metas[prov.TARGET_LANG_META] == "zh-hans"
-    assert metas[prov.SOURCE_LANG_META] == "en"
-    assert metas[prov.ROUTE_META] == "StubModel"
+    assert record["endpoint"] == "api.openai.com"
+    assert record["target-lang"] == "zh-hans"
+    assert record["source-lang"] == "en"
+    assert record["route"] == "StubModel"
+
+
+def test_the_package_carries_three_metas_and_no_more(tmp_path, monkeypatch):
+    """A `bbm:` meta is stripped by any editor that touches the package
+    document, so a meta per fact would be an audit trail that evaporates on
+    contact. Three: the tool and its build, the model, the date. Everything
+    else is in the file, which a conversion copies across."""
+    monkeypatch.setattr(prov, "tool_commit", lambda: "deadbee")
+
+    metas = _metas(_rebuild(_source(), provenance=True))
+
+    assert metas == {
+        prov.MARKER_META: "deadbee",
+        prov.MODEL_META: "x/y",
+        prov.DATE_META: date.today().isoformat(),
+    }
+
+
+def test_no_other_bbm_name_reaches_a_fresh_books_package_document(
+    tmp_path, monkeypatch
+):
+    """Swept over the written OPF rather than over the in-memory book: the
+    assertion is about what leaves the machine, and a name that only the
+    writer adds would pass a book-level check."""
+    monkeypatch.setattr(prov, "tool_commit", lambda: "deadbee")
+
+    opf = _opf_of(_written(tmp_path, _rebuild(_source(), provenance=True)))
+
+    assert opf.count('name="bbm:') == 3
+    assert '<meta name="bbm:bilingual_book_maker" content="deadbee"/>' in opf
+    assert '<meta name="bbm:model" content="x/y"/>' in opf
+    assert f'<meta name="bbm:date" content="{date.today().isoformat()}"/>' in opf
 
 
 def test_the_record_reaches_the_written_file(tmp_path, monkeypatch):
     monkeypatch.setattr(prov, "tool_commit", lambda: "deadbee")
 
-    opf = _opf_of(_written(tmp_path, _rebuild(_source(), provenance=True)))
+    output = _written(tmp_path, _rebuild(_source(), provenance=True))
 
-    assert '<meta name="bbm:commit" content="deadbee"/>' in opf
-    assert '<meta name="bbm:model" content="x/y"/>' in opf
-    assert '<meta name="bbm:endpoint" content="api.openai.com"/>' in opf
+    with zipfile.ZipFile(output) as archive:
+        record = json.loads(archive.read(f"EPUB/{prov.PROVENANCE_FILE}"))
+    assert record["commit"] == "deadbee"
+    assert record["model"] == "x/y"
+    assert record["endpoint"] == "api.openai.com"
 
 
 def test_the_producer_credit_names_the_build(tmp_path, monkeypatch):
@@ -196,12 +250,37 @@ def test_a_build_that_cannot_be_named_still_credits_the_tool(monkeypatch):
     book = _rebuild(_source(), provenance=True)
     credits = [value for value, _ in book.get_metadata("DC", "contributor")]
 
-    assert _metas(book)[prov.COMMIT_META] == prov.UNKNOWN
+    # the marker is always written, build or no build
+    assert _metas(book)[prov.MARKER_META] == prov.UNKNOWN
+    assert _record_of(book)["commit"] == prov.UNKNOWN
     # the bare name, not "bilingual_book_maker unknown"
     assert credits.count(TOOL_NAME) == 2
 
 
-def test_the_endpoint_meta_is_omitted_when_the_route_has_no_endpoint():
+def test_the_marker_is_written_even_when_nothing_else_is_known(tmp_path, monkeypatch):
+    """The marker is the one meta that is never conditional: it is what makes
+    the package recognisably this tool's at a glance, and a run that cannot
+    name its build says `unknown` rather than saying nothing. (A route with
+    no model id of its own still fills `bbm:model` — `model_id` falls back to
+    the service name — so the modelless case is reached here directly.)"""
+    monkeypatch.setattr(prov, "tool_commit", lambda: "deadbee")
+
+    assert dict(prov.Provenance(commit="deadbee").metas()) == {
+        prov.MARKER_META: "deadbee"
+    }
+    assert dict(prov.Provenance().metas()) == {prov.MARKER_META: prov.UNKNOWN}
+
+    # and the modelless route, end to end, names its service there
+    class Modelless(StubModel):
+        model = None
+        api_base = None
+
+    metas = _metas(_rebuild(_source(), model=Modelless, provenance=True))
+    assert metas[prov.MARKER_META] == "deadbee"
+    assert metas[prov.MODEL_META] == "Modelless"
+
+
+def test_the_endpoint_is_omitted_when_the_route_has_no_endpoint():
     """Google Translate takes no key, no model and no base. Recording an
     empty endpoint would look like an answer; recording none is the answer."""
 
@@ -209,19 +288,19 @@ def test_the_endpoint_meta_is_omitted_when_the_route_has_no_endpoint():
         model = None
         api_base = None
 
-    metas = _metas(_rebuild(_source(), model=Modelless, provenance=True))
+    record = _record_of(_rebuild(_source(), model=Modelless, provenance=True))
 
-    assert prov.ENDPOINT_META not in metas
+    assert "endpoint" not in record
     # what did answer is still on the record
-    assert metas[prov.ROUTE_META] == "Modelless"
-    assert metas[prov.COMMIT_META]
+    assert record["route"] == "Modelless"
+    assert record["commit"]
 
 
 def test_the_flag_supplies_the_host_when_the_translator_does_not():
     class NoBase(StubModel):
         api_base = None
 
-    metas = _metas(
+    record = _record_of(
         _rebuild(
             _source(),
             model=NoBase,
@@ -230,7 +309,7 @@ def test_the_flag_supplies_the_host_when_the_translator_does_not():
         )
     )
 
-    assert metas[prov.ENDPOINT_META] == "127.0.0.1"
+    assert record["endpoint"] == "127.0.0.1"
 
 
 @pytest.mark.parametrize(
@@ -255,29 +334,31 @@ def test_only_the_host_survives_the_endpoint(given, expected):
 
 
 def test_the_flagged_source_language_wins_over_the_books_own():
-    metas = _metas(_rebuild(_source(language="fr"), provenance=True, source_lang="de"))
+    record = _record_of(
+        _rebuild(_source(language="fr"), provenance=True, source_lang="de")
+    )
 
-    assert metas[prov.SOURCE_LANG_META] == "de"
+    assert record["source-lang"] == "de"
 
 
 def test_auto_is_not_a_source_language():
     """`--source_lang auto` is the default and states nothing; the book's own
     declaration is a fact and stands in for it."""
-    metas = _metas(
+    record = _record_of(
         _rebuild(_source(language="fr"), provenance=True, source_lang="auto")
     )
 
-    assert metas[prov.SOURCE_LANG_META] == "fr"
+    assert record["source-lang"] == "fr"
 
 
-def test_a_book_that_declares_no_language_gets_no_source_meta():
+def test_a_book_that_declares_no_language_gets_no_source_key():
     source = _source()
     source.metadata[DC_NS].pop("language", None)
 
-    metas = _metas(_rebuild(source, provenance=True))
+    record = _record_of(_rebuild(source, provenance=True))
 
-    assert prov.SOURCE_LANG_META not in metas
-    assert metas[prov.TARGET_LANG_META] == "zh-hans"
+    assert "source-lang" not in record
+    assert record["target-lang"] == "zh-hans"
 
 
 def test_the_translation_carries_both_languages():
@@ -302,7 +383,7 @@ def test_the_command_is_recorded_in_the_shape_it_was_run(monkeypatch):
         ["make_book.py", "--book_name", "b.epub", "--test", "--accumulated_num", "12"],
     )
 
-    args = _metas(_rebuild(_source(), provenance=True))[prov.ARGS_META]
+    args = _recorded_args(_rebuild(_source(), provenance=True))
 
     assert "--book_name b.epub" in args
     assert "--test" in args
@@ -341,14 +422,15 @@ def test_no_member_of_the_zip_carries_the_key_or_the_prompt(
             body = archive.read(member)
             assert SECRET_KEY.encode() not in body, member
             assert SECRET_PROMPT.encode() not in body, member
-    # what is left in their place, XML-escaped inside the attribute
-    assert "&lt;redacted&gt;" in _opf_of(output)
+        record = json.loads(archive.read(f"EPUB/{prov.PROVENANCE_FILE}"))
+    # what is left in their place, in the record that carries the command
+    assert prov.MASK in record["args"]
 
 
 def test_a_token_shaped_value_goes_even_where_no_flag_explains_it(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["make_book.py", "--extra_body", "sk-loose12345"])
 
-    args = _metas(_rebuild(_source(), provenance=True))[prov.ARGS_META]
+    args = _recorded_args(_rebuild(_source(), provenance=True))
 
     assert "sk-loose" not in args
     assert prov.MASK in args
@@ -370,7 +452,7 @@ def test_a_key_nested_inside_a_recordable_value_is_masked(monkeypatch):
         ],
     )
 
-    args = _metas(_rebuild(_source(), provenance=True))[prov.ARGS_META]
+    args = _recorded_args(_rebuild(_source(), provenance=True))
 
     assert "sk-secondary-secret99" not in args
     assert "hunter2secret" not in args
@@ -390,7 +472,7 @@ def test_a_secret_named_field_is_masked_whatever_its_value_looks_like(
         ["make_book.py", "--extra_body", '{"api_key": "secondary-secret"}'],
     )
 
-    args = _metas(_rebuild(_source(), provenance=True))[prov.ARGS_META]
+    args = _recorded_args(_rebuild(_source(), provenance=True))
 
     assert "secondary-secret" not in args
     assert "api_key" in args
@@ -411,7 +493,7 @@ def test_a_quote_inside_a_secret_value_does_not_leak_its_tail(monkeypatch):
         ],
     )
 
-    args = _metas(_rebuild(_source(), provenance=True))[prov.ARGS_META]
+    args = _recorded_args(_rebuild(_source(), provenance=True))
 
     assert "secondary-secret" not in args
     assert "api_key" in args
@@ -425,7 +507,7 @@ def test_an_escaped_quote_inside_a_secret_value_does_not_leak(monkeypatch):
         ["make_book.py", "--extra_body", '{"token": "a\\"b-secondary-secret"}'],
     )
 
-    args = _metas(_rebuild(_source(), provenance=True))[prov.ARGS_META]
+    args = _recorded_args(_rebuild(_source(), provenance=True))
 
     assert "secondary-secret" not in args
 
@@ -437,7 +519,7 @@ def test_a_joined_flag_with_a_json_value_is_walked_too(monkeypatch):
         ["make_book.py", '--extra_body={"password": "pre\'fix-secret"}'],
     )
 
-    args = _metas(_rebuild(_source(), provenance=True))[prov.ARGS_META]
+    args = _recorded_args(_rebuild(_source(), provenance=True))
 
     assert "fix-secret" not in args
     assert "--extra_body" in args
@@ -449,7 +531,7 @@ def test_a_token_prefix_inside_a_word_is_not_a_token(monkeypatch):
     corrupting exactly the nonsecret shape the record exists to keep."""
     monkeypatch.setattr(sys, "argv", ["make_book.py", "--book_name", "desk-notes.epub"])
 
-    args = _metas(_rebuild(_source(), provenance=True))[prov.ARGS_META]
+    args = _recorded_args(_rebuild(_source(), provenance=True))
 
     assert "desk-notes.epub" in args
     assert prov.MASK not in args
@@ -462,7 +544,7 @@ def test_a_bearer_value_nested_in_a_field_is_masked(monkeypatch):
         ["make_book.py", "--extra_body", '{"auth": "Bearer abc123def456"}'],
     )
 
-    args = _metas(_rebuild(_source(), provenance=True))[prov.ARGS_META]
+    args = _recorded_args(_rebuild(_source(), provenance=True))
 
     assert "abc123def456" not in args
 
@@ -474,7 +556,7 @@ def test_a_model_id_is_not_mistaken_for_a_token(monkeypatch):
         sys, "argv", ["make_book.py", "--model", "claude-haiku-4-5-20251001"]
     )
 
-    args = _metas(_rebuild(_source(), provenance=True))[prov.ARGS_META]
+    args = _recorded_args(_rebuild(_source(), provenance=True))
 
     assert "claude-haiku-4-5-20251001" in args
 
@@ -489,7 +571,7 @@ def test_a_registered_key_is_masked_wherever_it_appears(monkeypatch):
     )
     redaction.remember("ABCDEFGHIJ")
     try:
-        args = _metas(_rebuild(_source(), provenance=True))[prov.ARGS_META]
+        args = _recorded_args(_rebuild(_source(), provenance=True))
     finally:
         redaction.forget_all()
 
@@ -628,7 +710,11 @@ def test_a_user_glossary_travels_verbatim_with_its_checksum(tmp_path):
     assert item.content == GLOSSARY
     assert item.file_name == prov.GLOSSARY_FILE
     assert item.media_type == prov.GLOSSARY_MEDIA_TYPE
-    assert _metas(book)[prov.GLOSSARY_SHA_META] == sha256(GLOSSARY).hexdigest()
+    # vouched for in the record, which is what a rerun reads back to know
+    # the file is a previous run's and not the book's own
+    assert _record_of(book)[prov.GLOSSARY_SHA_KEY] == sha256(GLOSSARY).hexdigest()
+    # never as a meta: the metas are the marker, not the record
+    assert prov.LEGACY_GLOSSARY_SHA_META not in _metas(book)
 
 
 def test_the_glossary_is_in_the_manifest_and_not_in_the_spine(tmp_path):
@@ -642,11 +728,11 @@ def test_the_glossary_is_in_the_manifest_and_not_in_the_spine(tmp_path):
     assert f'idref="{prov.GLOSSARY_ID}"' not in opf
 
 
-def test_no_glossary_means_no_item_and_no_meta():
+def test_no_glossary_means_no_item_and_no_checksum():
     book = _rebuild(_source(), provenance=True)
 
     assert book.get_item_with_id(prov.GLOSSARY_ID) is None
-    assert prov.GLOSSARY_SHA_META not in _metas(book)
+    assert prov.GLOSSARY_SHA_KEY not in _record_of(book)
 
 
 def test_a_derived_glossary_is_not_recorded(tmp_path):
@@ -673,7 +759,7 @@ def test_a_derived_glossary_is_not_recorded(tmp_path):
     book = loader._make_new_book(loader.origin_book)
     loader._stamp_disclosure(book)
 
-    assert prov.GLOSSARY_SHA_META not in _metas(book)
+    assert prov.GLOSSARY_SHA_KEY not in _record_of(book)
     assert book.get_item_with_id(prov.GLOSSARY_ID) is None
     assert "獾穴" not in _opf_of(_written(tmp_path, book))
 
@@ -684,9 +770,10 @@ def test_an_unreadable_glossary_costs_a_warning_not_the_book(tmp_path, capsys):
     )
 
     assert book.get_item_with_id(prov.GLOSSARY_ID) is None
-    assert prov.GLOSSARY_SHA_META not in _metas(book)
+    assert prov.GLOSSARY_SHA_KEY not in _record_of(book)
     assert "glossary could not be read" in " ".join(capsys.readouterr().out.split())
     # the rest of the record is written all the same
+    assert _record_of(book)["model"] == "x/y"
     assert _metas(book)[prov.MODEL_META] == "x/y"
 
 
@@ -719,42 +806,57 @@ def test_the_glossary_name_is_allocated_against_the_book(tmp_path):
 # ------------------------------------------------------- the record file
 
 
-def _record_of(book):
-    """The parsed `bbm_provenance.json` the stamp wrote, or None."""
-    item = book.get_item_with_id(prov.PROVENANCE_ID)
-    return None if item is None else json.loads(item.content.decode("utf-8"))
+def test_the_record_file_carries_the_whole_fact_set(tmp_path, monkeypatch):
+    """The two forms were once a literal mirror — every key a meta with the
+    `bbm:` prefix dropped — and this test said so. That contract is retired:
+    the metas are a three-entry marker and the file is the record, because a
+    meta set is stripped by the first editor to open the package and a
+    manifest item is not. So the file is asserted whole, on its own terms,
+    and the three facts it shares with the metas are checked for agreement
+    rather than for identity."""
+    monkeypatch.setattr(prov, "tool_commit", lambda: "deadbee")
+    monkeypatch.setattr(sys, "argv", ["make_book.py", "--book_name", "b.epub"])
+    terms = tmp_path / "terms.txt"
+    terms.write_bytes(GLOSSARY)
 
-
-def test_the_record_file_says_exactly_what_the_metas_say():
-    """The point of the file is to outlive the metas, so it has to be the
-    same facts — a mirror with the `bbm:` prefix dropped, not a summary that
-    can quietly say something else."""
-    book = _rebuild(_source(), provenance=True)
+    book = _rebuild(
+        _source(language="en"),
+        provenance=True,
+        glossary_path=str(terms),
+    )
+    record = _record_of(book)
     metas = _metas(book)
 
-    record = _record_of(book)
-
-    assert record[prov.RECORD_MARK_KEY] == prov.RECORD_MARK
-    mirrored = {k: v for k, v in record.items() if k != prov.RECORD_MARK_KEY}
-    assert mirrored == {
-        name[len(prov.PREFIX) :]: content
-        for name, content in metas.items()
-        # the one meta that names the file cannot be inside it
-        if name != prov.PROVENANCE_SHA_META
+    assert record == {
+        prov.RECORD_MARK_KEY: prov.RECORD_MARK,
+        "commit": "deadbee",
+        "model": "x/y",
+        "date": date.today().isoformat(),
+        "endpoint": "api.openai.com",
+        "route": "StubModel",
+        "args": "make_book.py --book_name b.epub",
+        "source-lang": "en",
+        "target-lang": "zh-hans",
+        prov.GLOSSARY_SHA_KEY: sha256(GLOSSARY).hexdigest(),
     }
-    assert record["commit"] and record["model"] == "x/y"
-    assert record["endpoint"] == "api.openai.com"
+    # what the marker half says, it says the same way
+    assert metas[prov.MARKER_META] == record["commit"]
+    assert metas[prov.MODEL_META] == record["model"]
+    assert metas[prov.DATE_META] == record["date"]
 
 
-def test_the_metas_vouch_for_the_record_file():
-    """Ownership works the way the glossary's does: a checksum in the package
-    naming the exact bytes."""
+def test_the_record_file_vouches_for_itself():
+    """Nothing in the package names its checksum any more. It does not need
+    one: a `bbm:provenance-sha256` meta could only guarantee the bytes while
+    the metas survived, and the mark inside the file says whose it is after
+    they have not."""
     book = _rebuild(_source(), provenance=True)
 
     item = book.get_item_with_id(prov.PROVENANCE_ID)
     assert item.media_type == prov.PROVENANCE_MEDIA_TYPE
     assert item.file_name == prov.PROVENANCE_FILE
-    assert _metas(book)[prov.PROVENANCE_SHA_META] == sha256(item.content).hexdigest()
+    assert _record_of(book)[prov.RECORD_MARK_KEY] == prov.RECORD_MARK
+    assert not [name for name in _metas(book) if "sha256" in name]
 
 
 def test_the_record_file_is_in_the_manifest_and_not_in_the_spine(tmp_path):
@@ -773,7 +875,7 @@ def test_a_run_that_records_nothing_writes_no_record_file():
     book = _rebuild(_source())
 
     assert book.get_item_with_id(prov.PROVENANCE_ID) is None
-    assert prov.PROVENANCE_SHA_META not in _metas(book)
+    assert not _metas(book)
 
 
 def test_an_absent_fact_is_left_out_of_the_file_rather_than_written_empty():
@@ -787,14 +889,14 @@ def test_an_absent_fact_is_left_out_of_the_file_rather_than_written_empty():
     record = _record_of(book)
     assert "endpoint" not in record
     assert None not in record.values() and "" not in record.values()
-    # and the metas agree, key for key
-    assert prov.ENDPOINT_META not in _metas(book)
+    # the model was known, so the marker half still names it
+    assert _metas(book)[prov.MODEL_META] == record["model"]
 
 
 def test_the_record_file_carries_the_glossary_checksum(tmp_path):
     book = _with_glossary(tmp_path)
 
-    assert _record_of(book)["glossary-sha256"] == sha256(GLOSSARY).hexdigest()
+    assert _record_of(book)[prov.GLOSSARY_SHA_KEY] == sha256(GLOSSARY).hexdigest()
 
 
 def test_the_record_file_name_is_allocated_against_the_book(tmp_path):
@@ -822,9 +924,9 @@ def test_the_record_file_name_is_allocated_against_the_book(tmp_path):
 
 
 def test_a_books_own_provenance_file_is_never_taken_for_ours(tmp_path):
-    """Neither the checksum nor the marker inside answers for a stranger's
-    file, so a book shipping its own `bbm_provenance.json` keeps it through a
-    translation — even one that writes no record of its own."""
+    """The marker inside is the whole ownership test, and a stranger's file
+    does not carry it, so a book shipping its own `bbm_provenance.json` keeps
+    it through a translation — even one that writes no record of its own."""
     source = _source()
     source.add_item(
         epub.EpubItem(
@@ -845,10 +947,9 @@ def test_a_books_own_provenance_file_is_never_taken_for_ours(tmp_path):
 
 def test_the_record_is_still_ours_after_a_conversion_drops_the_metas(tmp_path):
     """The case the file exists for. A converter rewrites the package
-    document — every `bbm:` meta with it — and copies the files across. The
-    checksum that vouched for the record is gone, so the marker inside it is
-    the only thing left saying whose it is; a rerun must still replace it
-    rather than shipping two."""
+    document — every `bbm:` meta with it — and copies the files across, so
+    the marker inside the record is the only thing left saying whose it is;
+    a rerun must still replace it rather than shipping two."""
     source = _source()
     stale = prov.Provenance(commit="aaaaaaa", model="old/model").record()
     source.add_item(
@@ -916,23 +1017,137 @@ def test_a_second_run_leaves_none_of_the_first_runs_record(tmp_path, monkeypatch
     with zipfile.ZipFile(twice) as archive:
         members = archive.namelist()
 
-    assert opf.count('name="bbm:commit"') == 1
+    with zipfile.ZipFile(twice) as archive:
+        record = json.loads(archive.read(f"EPUB/{prov.PROVENANCE_FILE}"))
+
+    # the marker half: one of each, this run's answers only
+    assert opf.count(f'name="{prov.MARKER_META}"') == 1
+    assert opf.count(f'name="{prov.MODEL_META}"') == 1
     assert "bbbbbbb" in opf and "aaaaaaa" not in opf
     assert "vendor/b" in opf and "x/y" not in opf
-    assert "other.example.org" in opf and "api.openai.com" not in opf
-    assert "--second-run" in opf and "--first-run" not in opf
     assert opf.count(f'id="{prov.PRODUCER_ID}"') == 1
+    # the record half, where the rest of the facts live now
+    assert record["commit"] == "bbbbbbb" and record["model"] == "vendor/b"
+    assert record["endpoint"] == "other.example.org"
+    assert "--second-run" in record["args"] and "--first-run" not in record["args"]
+    assert "api.openai.com" not in json.dumps(record)
     # the first run's glossary is gone, item and checksum both
     assert not [m for m in members if "bbm_glossary" in m]
-    assert "bbm:glossary-sha256" not in opf
+    assert prov.GLOSSARY_SHA_KEY not in record
     # and the record file is replaced, not accumulated
     assert [m for m in members if prov.PROVENANCE_STEM in m] == [
         f"EPUB/{prov.PROVENANCE_FILE}"
     ]
-    with zipfile.ZipFile(twice) as archive:
+
+
+# The metas an older build wrote, one per fact. A book stamped by such a
+# build is out in the world and a rerun has to clear the whole shape, not
+# only the three names this build writes.
+OLD_SHAPE_METAS = {
+    "bbm:commit": "aaaaaaa",
+    "bbm:model": "old/model",
+    "bbm:endpoint": "old.example.org",
+    "bbm:route": "OldRoute",
+    "bbm:args": "make_book.py --first-run",
+    "bbm:source-lang": "en",
+    "bbm:target-lang": "ja",
+    "bbm:glossary-sha256": sha256(GLOSSARY).hexdigest(),
+    "bbm:provenance-sha256": "0" * 64,
+}
+
+
+def _old_shape_book(tmp_path):
+    """A book on disk carrying the meta-per-fact shape, its glossary and its
+    record — what a build before this one left behind."""
+    source = _source()
+    for name, content in OLD_SHAPE_METAS.items():
+        source.add_metadata("OPF", "meta", None, {"name": name, "content": content})
+    source.add_item(
+        epub.EpubItem(
+            uid=prov.GLOSSARY_ID,
+            file_name=prov.GLOSSARY_FILE,
+            media_type=prov.GLOSSARY_MEDIA_TYPE,
+            content=GLOSSARY,
+        )
+    )
+    source.add_item(
+        epub.EpubItem(
+            uid=prov.PROVENANCE_ID,
+            file_name=prov.PROVENANCE_FILE,
+            media_type=prov.PROVENANCE_MEDIA_TYPE,
+            content=json.dumps(
+                {
+                    prov.RECORD_MARK_KEY: prov.RECORD_MARK,
+                    **{
+                        name[len(prov.PREFIX) :]: content
+                        for name, content in OLD_SHAPE_METAS.items()
+                        if name != "bbm:provenance-sha256"
+                    },
+                }
+            ).encode("utf-8"),
+        )
+    )
+    path = tmp_path / "old.epub"
+    epub.write_epub(str(path), source)
+    return path
+
+
+def test_a_rerun_clears_every_meta_an_older_build_wrote(tmp_path, monkeypatch):
+    """The shape changed; the ownership rule did not. A rerun over a book
+    stamped by a build that wrote a meta per fact must leave none of them —
+    the removal is by the `bbm:` prefix, not by the list this build happens
+    to write — and must end with one record, this run's."""
+    monkeypatch.setattr(prov, "tool_commit", lambda: "bbbbbbb")
+    monkeypatch.setattr(sys, "argv", ["make_book.py", "--second-run"])
+
+    output = _translate_file(_old_shape_book(tmp_path), model=ModelB, provenance=True)
+
+    opf = _opf_of(output)
+    for name in OLD_SHAPE_METAS:
+        if name != prov.MODEL_META:
+            assert f'name="{name}"' not in opf, name
+    assert opf.count('name="bbm:') == 3
+    assert f'<meta name="{prov.MARKER_META}" content="bbbbbbb"/>' in opf
+    assert f'<meta name="{prov.MODEL_META}" content="vendor/b"/>' in opf
+    assert f'name="{prov.DATE_META}"' in opf
+    assert "old/model" not in opf and "aaaaaaa" not in opf
+
+    with zipfile.ZipFile(output) as archive:
+        members = archive.namelist()
         record = json.loads(archive.read(f"EPUB/{prov.PROVENANCE_FILE}"))
+    # one record, replaced rather than accumulated, and the old glossary the
+    # legacy meta vouched for went with it
+    assert [m for m in members if prov.PROVENANCE_STEM in m] == [
+        f"EPUB/{prov.PROVENANCE_FILE}"
+    ]
+    assert not [m for m in members if prov.GLOSSARY_STEM in m]
     assert record["commit"] == "bbbbbbb" and record["model"] == "vendor/b"
-    assert "glossary-sha256" not in record
+    assert "old/model" not in json.dumps(record)
+
+
+def test_the_legacy_glossary_meta_still_vouches_for_a_glossary(tmp_path):
+    """The one meta an older build wrote that is still *read*: the embedded
+    glossary carries no marker of its own, so on a book stamped before the
+    record carried the checksum, `bbm:glossary-sha256` is the only thing
+    saying the file was ours to drop."""
+    from book_maker.loader.disclosure import prior_glossary_shas
+
+    source = _source()
+    source.add_metadata(
+        "OPF",
+        "meta",
+        None,
+        {
+            "name": prov.LEGACY_GLOSSARY_SHA_META,
+            "content": sha256(GLOSSARY).hexdigest(),
+        },
+    )
+    path = tmp_path / "legacy.epub"
+    epub.write_epub(str(path), source)
+
+    assert prior_glossary_shas(epub.read_epub(str(path))) == {
+        sha256(GLOSSARY).hexdigest()
+    }
 
 
 def test_a_rerun_without_the_record_strips_the_previous_one(tmp_path, monkeypatch):
@@ -993,6 +1208,43 @@ def test_the_machine_record_stays_out_of_the_readers_page(tmp_path, monkeypatch)
 
     assert "--book_name" not in page
     assert "api.openai.com" not in page
+
+
+def test_the_page_the_meta_and_the_record_name_one_day(tmp_path):
+    """One clock. The date is settled once, in `stamp_disclosure`, and handed
+    to the colophon and to both provenance forms — so a run that straddles
+    midnight cannot print one day to the reader and record another. Injected
+    here the way the code takes it, rather than patched: `when` is already
+    the seam."""
+    frozen = date(2026, 9, 6)
+    book = _rebuild(_source(), disclose=False)
+
+    from book_maker.loader import disclosure
+
+    disclosure.stamp_disclosure(
+        book,
+        "x/y",
+        "zh-hans",
+        when=frozen,
+        provenance=prov.Provenance(commit="deadbee", model="x/y"),
+    )
+
+    assert f"<p>Date: {frozen.isoformat()}</p>" in _colophon_text(book)
+    assert _metas(book)[prov.DATE_META] == frozen.isoformat()
+    assert _record_of(book)["date"] == frozen.isoformat()
+
+
+def test_a_run_with_no_date_records_none(tmp_path):
+    """The omission rule reaches the date too: `metas()` and `record()` never
+    reach for a clock of their own, so a caller that hands them nothing gets
+    nothing rather than today."""
+    bare = prov.Provenance(commit="deadbee", model="x/y")
+
+    assert dict(bare.metas()) == {
+        prov.MARKER_META: "deadbee",
+        prov.MODEL_META: "x/y",
+    }
+    assert "date" not in json.loads(bare.record())
 
 
 # ---------------------------------------------------------- the build helper
@@ -1131,11 +1383,15 @@ def test_the_flag_records_the_run_in_a_real_translation(tmp_path):
 
     assert proc.returncode == 0, proc.stdout + proc.stderr
     opf = _opf_of(output)
-    assert '<meta name="bbm:commit"' in opf
-    assert '<meta name="bbm:route" content="google"/>' in opf
-    assert "--provenance" in opf
+    assert f'<meta name="{prov.MARKER_META}"' in opf
+    # the marker half and nothing else: the run's facts are in the file
+    assert opf.count('name="bbm:') == 3
+    with zipfile.ZipFile(output) as archive:
+        record = json.loads(archive.read(f"EPUB/{prov.PROVENANCE_FILE}"))
+    assert record["route"] == "google"
+    assert "--provenance" in record["args"]
     # a route with no endpoint of its own records none
-    assert 'name="bbm:endpoint"' not in opf
+    assert "endpoint" not in record
 
 
 def test_the_cli_forwards_the_glossary_into_the_record(tmp_path):
@@ -1148,12 +1404,13 @@ def test_the_cli_forwards_the_glossary_into_the_record(tmp_path):
     proc, output = _cli(tmp_path, "--provenance", "--glossary", str(terms))
 
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    opf = _opf_of(output)
-    assert prov.GLOSSARY_SHA_META in opf
     with zipfile.ZipFile(output) as z:
+        record = json.loads(z.read(f"EPUB/{prov.PROVENANCE_FILE}"))
         embedded = [n for n in z.namelist() if prov.GLOSSARY_STEM in n]
         assert embedded
-        assert "Manor Farm" in z.read(embedded[0]).decode("utf-8")
+        body = z.read(embedded[0])
+    assert "Manor Farm" in body.decode("utf-8")
+    assert record[prov.GLOSSARY_SHA_KEY] == sha256(body).hexdigest()
 
 
 def test_a_plain_legacy_run_records_nothing(tmp_path):
@@ -1171,7 +1428,7 @@ def test_a_session_run_records_it_without_being_asked(tmp_path):
     proc, output = _cli(tmp_path, "--use_context", "session")
 
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert '<meta name="bbm:commit"' in _opf_of(output)
+    assert f'<meta name="{prov.MARKER_META}"' in _opf_of(output)
 
 
 def test_the_switch_that_silences_the_note_silences_the_record_too(tmp_path):

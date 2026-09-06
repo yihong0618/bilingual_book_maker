@@ -61,7 +61,6 @@ from .disclosure import (
     is_prior_provenance,
     model_id,
     prior_glossary_shas,
-    prior_provenance_shas,
     stamp_disclosure,
     tool_contributor_ids,
     translation_label,
@@ -596,12 +595,12 @@ class EPUBBookLoader(BaseBookLoader):
         # would claim both models and carry two colophons.
         try:
             prior_ids = tool_contributor_ids(book)
-            # Which embedded glossary and which record — if any — a previous
-            # run vouched for. Captured here, before the copy loop strips the
-            # metas that say so, because the item loops that drop the files
-            # run afterwards.
+            # Which embedded glossary — if any — a previous run vouched for.
+            # Captured here, before the copy loop strips the metas an older
+            # build said it in, because the item loops that drop the files
+            # run afterwards. The record needs no such capture: it says whose
+            # it is from the inside.
             self._prior_glossary_shas = prior_glossary_shas(book)
-            self._prior_provenance_shas = prior_provenance_shas(book)
         except Exception as e:
             # Reads the same metadata the loop below does, and fails the same
             # way on the same malformed entry — but before the loop, where
@@ -617,7 +616,6 @@ class EPUBBookLoader(BaseBookLoader):
             )
             prior_ids = set()
             self._prior_glossary_shas = set()
-            self._prior_provenance_shas = set()
         # Entries the copy could not carry, reported once at the end rather
         # than once each: a book with a systematically odd metadata block
         # would otherwise bury its own translation under warnings.
@@ -828,7 +826,7 @@ class EPUBBookLoader(BaseBookLoader):
 
     def _is_prior_record(self, item):
         """Whether this item is the machine record a previous run wrote."""
-        return is_prior_provenance(item, getattr(self, "_prior_provenance_shas", set()))
+        return is_prior_provenance(item)
 
     def _is_prior_evidence(self, item):
         """Whether this item is either file a previous run left about itself.
@@ -872,10 +870,10 @@ class EPUBBookLoader(BaseBookLoader):
     def _declared_source_language(self):
         """What the source book says its own language is, or None.
 
-        The last resort for `bbm:source-lang`, and the only one that is not
-        a statement by the user. A book that declares nothing gets no meta:
-        recording "auto" would say the run detected a language, which is a
-        claim about a detection that never happened.
+        The last resort for the record's `source-lang`, and the only one
+        that is not a statement by the user. A book that declares nothing
+        gets no key at all: recording "auto" would say the run detected a
+        language, which is a claim about a detection that never happened.
         """
         try:
             declared = self.origin_book.get_metadata("DC", "language")

@@ -3,10 +3,23 @@
 The disclosure module says, to a reader, that the book is a machine
 translation. This says the same thing to a machine, and says more of it:
 which build of the tool ran, which model, against which host, with which
-command. A reader never sees any of it — it is `<meta>` in the package
-document — and that is the point: the person who has to answer "where did
-this file come from, six months later" is not reading the closing note,
-they are running a script over a directory of epubs.
+command. A reader never sees any of it, and that is the point: the person
+who has to answer "where did this file come from, six months later" is not
+reading the closing note, they are running a script over a directory of
+epubs.
+
+It is written twice, in two deliberately different shapes.
+
+- **`bbm_provenance.json` is the record.** It carries the full fact set,
+  and it is the copy that survives: a manifest item is copied across a
+  conversion, and it says whose it is from the inside (`generator`), so it
+  is still identifiable when everything around it has been rewritten.
+- **The `bbm:` metas are a marker, not a copy of the record.** Any editor
+  strips them in a keystroke, so a rich meta set buys nothing that the
+  record does not already buy. Three of them: the tool and its build, the
+  model, and the date — what a person peering into the OPF wants to see,
+  and no more. The two forms are *not* mirrors, and nothing should be
+  written that assumes they are.
 
 Three rules shape every field here.
 
@@ -46,15 +59,22 @@ from book_maker.redaction import redact
 # are stripped on sight (see `disclosure.is_prior_disclosure`).
 PREFIX = "bbm:"
 
-COMMIT_META = "bbm:commit"
+# The three, and only three, metas a run writes. The first is the marker —
+# the name says the tool, the content says which build of it — and it is
+# always written, because it is what makes the package recognisably ours
+# at a glance. The other two are the facts a casual inspector is actually
+# looking for. Everything else the run knows is in `bbm_provenance.json`.
+MARKER_META = "bbm:bilingual_book_maker"
 MODEL_META = "bbm:model"
-ENDPOINT_META = "bbm:endpoint"
-ROUTE_META = "bbm:route"
-ARGS_META = "bbm:args"
-SOURCE_LANG_META = "bbm:source-lang"
-TARGET_LANG_META = "bbm:target-lang"
-GLOSSARY_SHA_META = "bbm:glossary-sha256"
-PROVENANCE_SHA_META = "bbm:provenance-sha256"
+DATE_META = "bbm:date"
+
+# Older builds wrote a meta per fact. None of them is written any more, and
+# a rerun strips every `bbm:` name whatever it is (see
+# `disclosure.is_prior_disclosure`), so only the one that a previous run's
+# *evidence* hangs off is still named here: the glossary carries no marker
+# of its own, so a book stamped by such a build vouches for its embedded
+# glossary in this meta and nowhere else.
+LEGACY_GLOSSARY_SHA_META = "bbm:glossary-sha256"
 
 # The glossary lands in the manifest, not the spine: it is evidence about the
 # translation, not a page of the book.
@@ -63,23 +83,26 @@ GLOSSARY_STEM = "bbm_glossary"
 GLOSSARY_FILE = f"{GLOSSARY_STEM}.txt"
 GLOSSARY_MEDIA_TYPE = "text/plain"
 
-# The same facts as the metas, in a file. The metas are the readable form and
-# the file is the durable one: a Calibre conversion rewrites the package
-# document and drops every `bbm:` meta with it, while a manifest item it does
-# not understand is copied across. Neither is the original — they are written
-# together from one `Provenance`, so they cannot disagree.
+# The whole fact set, in a file — the durable half: a Calibre conversion
+# rewrites the package document and drops every `bbm:` meta with it, while a
+# manifest item it does not understand is copied across. The metas are a
+# marker beside it, not a second copy of it; both are built from one
+# `Provenance` and one clock, so the facts they do share cannot disagree.
 PROVENANCE_ID = "bbm-provenance"
 PROVENANCE_STEM = "bbm_provenance"
 PROVENANCE_FILE = f"{PROVENANCE_STEM}.json"
 PROVENANCE_MEDIA_TYPE = "application/json"
 
-# What makes the file ours. The glossary is the user's, so it can only be
-# vouched for from outside (a `bbm:glossary-sha256` naming its bytes); this
-# one we write, so it also says so itself — which is the ownership rule the
-# colophon has always used, and the only one that still holds after a
-# conversion has thrown the metas away.
+# What makes the file ours, from the inside — the ownership rule the colophon
+# has always used, and the only one that still holds after a conversion has
+# thrown the metas away. It is also what vouches for the embedded glossary,
+# which is the user's file byte for byte and can carry no marker: the record
+# names its checksum, and the record says whose it is.
 RECORD_MARK_KEY = "generator"
 RECORD_MARK = "bilingual_book_maker provenance record"
+
+# The record's key for that checksum, read back by the rerun path.
+GLOSSARY_SHA_KEY = "glossary-sha256"
 
 # MARC relator "bkp" — book producer. The `trl` contributor says what did the
 # translating; this one says what built the file, and carries the build.
@@ -410,6 +433,20 @@ def sanitize_args(argv=None):
 # ------------------------------------------------------------- the facts
 
 
+def _iso_date(when):
+    """`when` as `YYYY-MM-DD`, or None when the run has no date to give.
+
+    Never `date.today()`: the date this records is the one the closing page
+    prints, handed in by the caller that already settled it. A second clock
+    here would be a second answer, and a book written a second either side
+    of midnight would say two different days about one run.
+    """
+    if when is None:
+        return None
+    isoformat = getattr(when, "isoformat", None)
+    return isoformat() if callable(isoformat) else str(when)
+
+
 @dataclass(frozen=True)
 class Provenance:
     """Everything the package document will say about the run that made it.
@@ -438,44 +475,59 @@ class Provenance:
             return None
         return sha256(self.glossary_bytes).hexdigest()
 
-    def metas(self):
-        """`(name, content)` for every meta this run has something to say in.
+    def metas(self, when=None):
+        """`(name, content)` for the three metas a run writes.
 
-        A fact with no value is left out rather than written empty: an absent
-        `bbm:endpoint` says "this route has no endpoint", and
-        `bbm:endpoint=""` says nothing at all while looking like it does.
+        Deliberately not the record. A `bbm:` meta is stripped by any editor
+        that touches the package document, so a full set of them would be an
+        audit trail that evaporates on first contact — the audit trail is
+        `record()`, which travels as a file. These three are the marker
+        (always written, `unknown` build and all) and the two facts someone
+        opening the OPF by hand is looking for.
+
+        `when` is the run's date, the same `datetime.date` the closing page
+        prints, so the two cannot name different days. Not knowing it leaves
+        the meta out, under the omission rule the record follows: an absent
+        fact says nothing, and an empty one says nothing while looking like
+        it says something.
         """
         candidates = (
-            (COMMIT_META, self.commit),
+            (MARKER_META, self.commit or UNKNOWN),
             (MODEL_META, self.model),
-            (ENDPOINT_META, self.endpoint),
-            (ROUTE_META, self.route),
-            (ARGS_META, self.args),
-            (SOURCE_LANG_META, self.source_language),
-            (TARGET_LANG_META, self.target_language),
-            (GLOSSARY_SHA_META, self.glossary_sha256),
+            (DATE_META, _iso_date(when)),
         )
         return [(name, str(value)) for name, value in candidates if value]
 
-    def record(self, metas=None):
-        """The same facts as `metas()`, as the bytes of `bbm_provenance.json`.
+    def record(self, when=None):
+        """The whole fact set, as the bytes of `bbm_provenance.json`.
 
-        Keys are the meta names with the `bbm:` prefix dropped, so the two
-        forms are a literal mirror of each other and a test can say so in one
-        line; the same omission rule applies, so a key present in the file is
-        a fact this run actually had. `metas` may be passed in to guarantee
-        both forms are built from one list rather than two calls.
+        This is the durable half and the complete one. It used to be built
+        from `metas()`, key for key, and its docstring promised the two were
+        a literal mirror; that promise is retired — the metas are now a
+        three-entry marker and the file is the record, so they are composed
+        separately and only the facts they both name (the build, the model,
+        the date) are shared, from one `Provenance` and one `when`.
 
-        The one key that is not a meta is `generator`, which is what makes the
-        file recognisable as ours after a conversion has dropped the metas.
-        `bbm:provenance-sha256` is the one meta that is not a key: it names
-        these bytes, so it cannot be inside them.
+        The omission rule is unchanged: a key present in the file is a fact
+        this run actually had. `generator` is the one key that is not a fact
+        about the run — it is what makes the file recognisable as ours after
+        a conversion has dropped the metas.
         """
+        facts = (
+            ("commit", self.commit),
+            ("model", self.model),
+            ("date", _iso_date(when)),
+            ("endpoint", self.endpoint),
+            ("route", self.route),
+            ("args", self.args),
+            ("source-lang", self.source_language),
+            ("target-lang", self.target_language),
+            (GLOSSARY_SHA_KEY, self.glossary_sha256),
+        )
         body = {RECORD_MARK_KEY: RECORD_MARK}
-        for name, content in self.metas() if metas is None else metas:
-            if name == PROVENANCE_SHA_META:
-                continue
-            body[name[len(PREFIX) :]] = content
+        for key, value in facts:
+            if value:
+                body[key] = str(value)
         return json.dumps(body, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
 
     def producer(self):
