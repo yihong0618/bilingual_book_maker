@@ -430,11 +430,15 @@ def parse_prompt_arg(prompt_arg, announce=True):
     else:
         raise FileNotFoundError(f"{prompt_arg} not found")
 
-    # if prompt is None or any(c not in prompt["user"] for c in ["{text}", "{language}"]):
-    if prompt is None or any(c not in prompt["user"] for c in ["{text}"]):
-        raise ValueError("prompt must contain `{text}`")
+    # Shape first, then contents. The `{text}` check used to run first and
+    # subscript `prompt["user"]` before anything had established there was a
+    # `user` key, so `--prompt '{"system": "be terse"}'` — a plausible typo,
+    # the section being the only one someone might think stands alone — died
+    # on a KeyError traceback instead of the sentence written for it below.
+    if prompt is None or not isinstance(prompt, dict):
+        raise ValueError("prompt must be an object carrying a `user` key")
 
-    if "user" not in prompt:
+    if not prompt.get("user"):
         raise ValueError("prompt must contain the key of `user`")
 
     if (prompt.keys() - {"user", "system", "style"}) != set():
@@ -442,9 +446,54 @@ def parse_prompt_arg(prompt_arg, announce=True):
             "prompt can only contain the keys of `user`, `system` and `style`"
         )
 
+    # if any(c not in prompt["user"] for c in ["{text}", "{language}"]):
+    if "{text}" not in prompt["user"]:
+        raise ValueError("prompt must contain `{text}`")
+
     if announce:
         print("prompt config:", prompt)
     return prompt
+
+
+# The order sections are named in, so two runs describe the same prompt the
+# same way.
+PROMPT_SECTIONS = ("user", "system", "style")
+
+
+def prompt_adoption_line(prompt_config, translate_model, api_format):
+    """One line saying which `--prompt` sections this run adopted, and where.
+
+    Returned rather than printed so it can be tested without a run, and None
+    when there is nothing to say — a run that passed no `--prompt` must print
+    nothing new, which the noise guard pins.
+
+    The "where" is the point. A section with no native slot on this route is
+    not dropped: it is appended to whatever the route does send (the user
+    message on the API routes, the thread instructions on codex), and a run
+    that is quietly translating under a style the endpoint never saw is
+    exactly what this line exists to make impossible. A route that builds no
+    prompt at all can carry none of it, and says so.
+    """
+    adopted = [s for s in PROMPT_SECTIONS if (prompt_config or {}).get(s)]
+    if not adopted:
+        return None
+    slots = getattr(translate_model, "PROMPT_SECTION_SLOTS", {})
+    target = getattr(translate_model, "PROMPT_APPEND_TARGET", "the user message")
+    appended = [s for s in adopted if slots.get(s, "native") == "appended"]
+    ignored = [s for s in adopted if slots.get(s, "native") == "none"]
+
+    notes = []
+    if appended:
+        notes.append(f"{' and '.join(appended)} appended to {target} on this route")
+    if ignored:
+        notes.append(
+            f"{' and '.join(ignored)} ignored — the {api_format} route "
+            f"builds no prompt to carry it"
+        )
+    line = f"prompt: {'+'.join(adopted)} from --prompt"
+    if notes:
+        line += f" ({'; '.join(notes)})"
+    return line
 
 
 # Below this a window cannot hold even one paragraph with its translation, so
@@ -2217,6 +2266,14 @@ def main():
             f"{book_type} books; only epub output carries the translation note."
         )
 
+    # Parsed once, here, so the run can say what it adopted before it spends
+    # anything. (`parse_prompt_arg` prints its own "prompt config:" echo on
+    # this call; the compat pass reads the same flag with announce=False.)
+    prompt_config = parse_prompt_arg(options.prompt_arg)
+    adoption = prompt_adoption_line(prompt_config, translate_model, api_format)
+    if adoption:
+        print(adoption)
+
     e = book_loader(
         options.book_name,
         translate_model,
@@ -2226,7 +2283,7 @@ def main():
         model_api_base=model_api_base,
         is_test=options.test,
         test_num=options.test_num,
-        prompt_config=parse_prompt_arg(options.prompt_arg),
+        prompt_config=prompt_config,
         single_translate=options.single_translate,
         context_flag=options.context_flag,
         context_paragraph_limit=options.context_paragraph_limit,
