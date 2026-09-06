@@ -1340,9 +1340,9 @@ COMPAT_RULES = (
     CompatRule(
         "C22",
         "warn",
-        lambda f: f.options.provenance and f.book_type != "epub",
+        lambda f: f.options.translation_metadata and f.book_type != "epub",
         lambda f: (
-            f"--provenance records the run in the package document, and only "
+            f"--translation-metadata records the run in the package document, and only "
             f"an epub has one; on a {f.book_type} book it is accepted and "
             f"records nothing."
         ),
@@ -1350,12 +1350,12 @@ COMPAT_RULES = (
     CompatRule(
         "C23",
         "warn",
-        lambda f: f.options.provenance
+        lambda f: f.options.translation_metadata
         and f.book_type == "epub"
         and not f.options.disclosure,
         lambda f: (
             "--no_disclosure silences everything the file says about the run, "
-            "the machine record included, so --provenance records nothing. "
+            "the machine record included, so --translation-metadata records nothing. "
             "Drop one of the two."
         ),
     ),
@@ -1894,10 +1894,10 @@ off. Minimum 1.
         help="do not mark the epub as a machine translation (translator credit, description line and the closing translation note); the model id is recorded verbatim",
     )
     parser.add_argument(
-        "--provenance",
-        dest="provenance",
+        "--translation-metadata",
+        dest="translation_metadata",
         action="store_true",
-        help="record how the file was made, invisibly — the full record (build, model, endpoint host, sanitized command line, languages, date) is a bbm_provenance.json in the book, with three bbm: metas beside it as a marker; never the key or the --prompt text. Plan-mode and session runs record it by themselves; this is the tag-mode opt-in. --no_disclosure silences it too",
+        help="record how the file was made, invisibly — the full record (build, model, endpoint host, sanitized command line, languages, date) is a bbm_translation_metadata.json in the book, with three bbm: metas beside it as a marker; never the key or the --prompt text. Plan-mode and session runs record it by themselves; this is the tag-mode opt-in. --no_disclosure silences it too",
     )
     parser.add_argument(
         "--use_context",
@@ -1987,7 +1987,7 @@ off. Minimum 1.
         help="source language, stated rather than detected. Named in the "
         "prompt on every LLM route, sent as a request field on the "
         f"{' and '.join(SOURCE_LANG_FORMATS)} routes, and recorded by "
-        "--provenance (default: auto-detect, which states nothing)",
+        "--translation-metadata (default: auto-detect, which states nothing)",
     )
     parser.add_argument(
         "--block_size",
@@ -2406,7 +2406,7 @@ def main():
         )
     if book_type == "pdf":
         loader_kwargs["pdf_layout"] = options.pdf_layout
-    # `--provenance` has no warning of its own here: the two ways it can be
+    # `--translation-metadata` has no warning of its own here: the two ways it can be
     # asked for and do nothing — a non-epub book, and `--no_disclosure`
     # beside it — are rows C22 and C23 of COMPAT_RULES, said before the
     # endpoint is resolved with everything else that does not fit together.
@@ -2415,7 +2415,7 @@ def main():
         # the markup it inserts and on the first dc:language of the output.
         loader_kwargs["language_tag"] = target.tag
         loader_kwargs["disclose"] = options.disclosure
-        loader_kwargs["provenance"] = options.provenance
+        loader_kwargs["translation_metadata"] = options.translation_metadata
     elif not options.disclosure:
         print(
             "[bold yellow]Warning:[/bold yellow] --no_disclosure is ignored for "
@@ -2449,9 +2449,9 @@ def main():
         **loader_kwargs,
     )
     if options.glossary_path:
-        # The provenance record embeds the operator's file (never a derived
+        # The translation metadata record embeds the operator's file (never a derived
         # glossary), and the loader only knows about it through this
-        # attribute — without it `--glossary … --provenance` recorded a run
+        # attribute — without it `--glossary … --translation-metadata` recorded a run
         # with no glossary at all.
         e.glossary_path = options.glossary_path
     if getattr(e, "translate_model", None) is not None:

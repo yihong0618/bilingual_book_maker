@@ -3,7 +3,7 @@
 `--language` takes any row of this table either way: the tag
 (`--language zh-hant`) or the name (`--language "traditional chinese"`,
 case-insensitive). The tag is the mechanical half — stamped on the
-inserted markup and `dc:language`, recorded in the provenance record,
+inserted markup and `dc:language`, recorded in the translation metadata record,
 and it names the structured-output reply field (`zh_hant_translation`).
 The name is the prose half: what the model is actually asked for.
 

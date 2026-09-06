@@ -283,7 +283,7 @@ class HandoffReport:
     # The renderings this run has established so far, pins included, rendered
     # canonically. Written to the handoff file and replayed in the seed so the
     # next window keeps the same names — and so an operator can read back what
-    # the run taught itself. It never reaches the book: the provenance stamp
+    # the run taught itself. It never reaches the book: the translation metadata stamp
     # records the `--glossary` file the operator wrote, nothing derived.
     glossary_lines: str = ""
     # A style the user fixed via --prompt's `style` field. It is not asked of

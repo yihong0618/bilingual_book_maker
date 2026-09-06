@@ -452,7 +452,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--no_disclosure`:
 
-  epub 输出默认标注为 AI 翻译。附带该参数则不标注，并同时关闭翻译信息元数据（`--provenance`）。
+  epub 输出默认标注为 AI 翻译。附带该参数则不标注，并同时关闭翻译信息元数据（`--translation-metadata`）。
 
 - `--translation_style`:
 

@@ -310,7 +310,7 @@ class Base(ABC):
     # without __init__. `pinned` is the operator's file, `learned` what this
     # run's compact turns established, `glossary` the two merged with the pins
     # on top. Nothing ever merges back into `pinned`: it stays exactly the
-    # file, which is what lets the run record its provenance without ever
+    # file, which is what lets the run record its translation metadata without ever
     # naming a derived term.
     glossary = None
     pinned = None

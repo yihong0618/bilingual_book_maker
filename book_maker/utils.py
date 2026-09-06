@@ -422,7 +422,7 @@ class LanguageSpec:
 
     `tag` drives everything mechanical — the structured field name, the
     `lang`/`xml:lang` stamp on the markup the loader writes, the first
-    `dc:language` of the output, the provenance record. `name` drives every
+    `dc:language` of the output, the translation metadata record. `name` drives every
     piece of prose: `{language}` in the prompt template, the schema field
     descriptions, what the run prints.
 

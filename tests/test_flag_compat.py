@@ -539,16 +539,16 @@ WARN_FIXTURES = [
     (
         # C22: only an epub has a package document to record the run in
         "C22",
-        ["--provenance"],
+        ["--translation-metadata"],
         {"book_type": "txt"},
         "only an epub has one",
     ),
     (
         # C23: --no_disclosure silences the machine record too
         "C23",
-        ["--provenance", "--no_disclosure"],
+        ["--translation-metadata", "--no_disclosure"],
         {},
-        "--provenance records nothing",
+        "--translation-metadata records nothing",
     ),
     (
         # C24: a session exists, but the route's handoff is never asked for

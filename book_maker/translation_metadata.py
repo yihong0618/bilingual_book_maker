@@ -10,7 +10,7 @@ epubs.
 
 It is written twice, in two deliberately different shapes.
 
-- **`bbm_provenance.json` is the record.** It carries the full fact set,
+- **`bbm_translation_metadata.json` is the record.** It carries the full fact set,
   and it is the copy that survives: a manifest item is copied across a
   conversion, and it says whose it is from the inside (`generator`), so it
   is still identifiable when everything around it has been rewritten.
@@ -52,7 +52,7 @@ from urllib.parse import urlsplit
 
 from book_maker.redaction import redact
 
-# Every provenance meta is `<meta name="bbm:…" content="…"/>` — the EPUB 2
+# Every translation metadata meta is `<meta name="bbm:…" content="…"/>` — the EPUB 2
 # form, because it is the one every reading system, every library tool and
 # every `unzip -p … | grep` already understands. The prefix is what makes an
 # entry ours, and it is the whole ownership test: a previous run's entries
@@ -63,7 +63,7 @@ PREFIX = "bbm:"
 # the name says the tool, the content says which build of it — and it is
 # always written, because it is what makes the package recognisably ours
 # at a glance. The other two are the facts a casual inspector is actually
-# looking for. Everything else the run knows is in `bbm_provenance.json`.
+# looking for. Everything else the run knows is in `bbm_translation_metadata.json`.
 MARKER_META = "bbm:bilingual_book_maker"
 MODEL_META = "bbm:model"
 DATE_META = "bbm:date"
@@ -87,11 +87,11 @@ GLOSSARY_MEDIA_TYPE = "text/plain"
 # rewrites the package document and drops every `bbm:` meta with it, while a
 # manifest item it does not understand is copied across. The metas are a
 # marker beside it, not a second copy of it; both are built from one
-# `Provenance` and one clock, so the facts they do share cannot disagree.
-PROVENANCE_ID = "bbm-provenance"
-PROVENANCE_STEM = "bbm_provenance"
-PROVENANCE_FILE = f"{PROVENANCE_STEM}.json"
-PROVENANCE_MEDIA_TYPE = "application/json"
+# `TranslationMetadata` and one clock, so the facts they do share cannot disagree.
+TRANSLATION_METADATA_ID = "bbm-translation-metadata"
+TRANSLATION_METADATA_STEM = "bbm_translation_metadata"
+TRANSLATION_METADATA_FILE = f"{TRANSLATION_METADATA_STEM}.json"
+TRANSLATION_METADATA_MEDIA_TYPE = "application/json"
 
 # What makes the file ours, from the inside — the ownership rule the colophon
 # has always used, and the only one that still holds after a conversion has
@@ -99,7 +99,7 @@ PROVENANCE_MEDIA_TYPE = "application/json"
 # which is the user's file byte for byte and can carry no marker: the record
 # names its checksum, and the record says whose it is.
 RECORD_MARK_KEY = "generator"
-RECORD_MARK = "bilingual_book_maker provenance record"
+RECORD_MARK = "bilingual_book_maker translation metadata record"
 
 # The record's key for that checksum, read back by the rerun path.
 GLOSSARY_SHA_KEY = "glossary-sha256"
@@ -221,7 +221,7 @@ def endpoint_host(api_base):
 
 # Long options whose *value* is a credential. Mirrors
 # `epub_loader.KEY_FLAG_ENV`, which exists for the same reason on the printed
-# rerun line; `test_provenance.py` fails if the two drift apart. `--prompt` is
+# rerun line; `test_translation_metadata.py` fails if the two drift apart. `--prompt` is
 # here for a different reason: it is not a secret, it is the instruction the
 # translation was given, and it can be a paragraph of text or a path into
 # someone's home directory. Neither belongs in a file that gets sent around.
@@ -448,7 +448,7 @@ def _iso_date(when):
 
 
 @dataclass(frozen=True)
-class Provenance:
+class TranslationMetadata:
     """Everything the package document will say about the run that made it.
 
     Built once, just before the book is written, and then only appended to a
@@ -499,14 +499,14 @@ class Provenance:
         return [(name, str(value)) for name, value in candidates if value]
 
     def record(self, when=None):
-        """The whole fact set, as the bytes of `bbm_provenance.json`.
+        """The whole fact set, as the bytes of `bbm_translation_metadata.json`.
 
         This is the durable half and the complete one. It used to be built
         from `metas()`, key for key, and its docstring promised the two were
         a literal mirror; that promise is retired — the metas are now a
         three-entry marker and the file is the record, so they are composed
         separately and only the facts they both name (the build, the model,
-        the date) are shared, from one `Provenance` and one `when`.
+        the date) are shared, from one `TranslationMetadata` and one `when`.
 
         The omission rule is unchanged: a key present in the file is a fact
         this run actually had. `generator` is the one key that is not a fact

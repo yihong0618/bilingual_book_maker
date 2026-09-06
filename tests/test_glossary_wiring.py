@@ -10,7 +10,7 @@ Three things are pinned here, and each has a way of failing quietly.
    pin without a word.
 3. The derived (session-learned) glossary is a runtime thing. It rides in
    requests and in `<book>_handoff.md`, it never touches the operator's own
-   file, and `options.glossary_path` — what the provenance stamp records —
+   file, and `options.glossary_path` — what the translation metadata stamp records —
    stays exactly what was typed.
 """
 

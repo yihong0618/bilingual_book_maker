@@ -198,7 +198,7 @@ Languages below.)
 It takes a tag (`zh-hant`), a name (`"Traditional Chinese"`), or both at
 once — `--language "zh-hant:Traditional Chinese"` — for a language the
 built-in tables miss. The tag half is mechanical: stamped on the inserted
-markup and `dc:language`, recorded in provenance, and it names the
+markup and `dc:language`, recorded in translation metadata, and it names the
 structured-output field. The name half is what the model is asked for in
 the prompt. A bare tag or name resolves through the tables as before; a
 value matching no tag still runs, prints one `Note:` at startup, and

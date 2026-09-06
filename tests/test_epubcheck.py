@@ -385,7 +385,7 @@ def test_copied_rights_metadata_validates(epubcheck, rights_book):
 
 
 @pytest.fixture
-def provenance_book(tmp_path):
+def translation_metadata_book(tmp_path):
     """A book carrying the machine record, glossary and all.
 
     Three things here are new shapes in the package and none is exercised
@@ -393,28 +393,28 @@ def provenance_book(tmp_path):
     package, and a `text/plain` and an `application/json` resource in the
     manifest that no content document references.
     """
-    path = tmp_path / "provenance.epub"
+    path = tmp_path / "translation_metadata.epub"
     epub.write_epub(
         str(path), _base_book("urn:uuid:55555555-5555-4555-8555-555555555555")
     )
     glossary = tmp_path / "terms.txt"
     glossary.write_text("sett: badger set\n", encoding="utf-8")
-    return _translate(path, glossary_path=str(glossary), provenance=True)
+    return _translate(path, glossary_path=str(glossary), translation_metadata=True)
 
 
-def test_the_machine_record_validates(epubcheck, provenance_book):
-    _assert_valid(epubcheck, provenance_book, "the provenance book")
+def test_the_machine_record_validates(epubcheck, translation_metadata_book):
+    _assert_valid(epubcheck, translation_metadata_book, "the translation metadata book")
 
-    with zipfile.ZipFile(provenance_book) as archive:
+    with zipfile.ZipFile(translation_metadata_book) as archive:
         names = archive.namelist()
         opf_name = next(n for n in names if n.endswith(".opf"))
         opf = archive.read(opf_name).decode("utf-8")
     assert '<meta name="bbm:bilingual_book_maker"' in opf
     assert "EPUB/bbm_glossary.txt" in names
-    assert "EPUB/bbm_provenance.json" in names
+    assert "EPUB/bbm_translation_metadata.json" in names
     # in the manifest, never in the spine
     assert 'idref="bbm-glossary"' not in opf
-    assert 'idref="bbm-provenance"' not in opf
+    assert 'idref="bbm-translation-metadata"' not in opf
 
 
 @pytest.mark.parametrize("fixture", ["tdm_book", "font_book", "rights_book"])

@@ -25,7 +25,7 @@ from rich import print
 from rich.markup import escape
 from tqdm import tqdm
 
-from book_maker import provenance as prov
+from book_maker import translation_metadata as tmeta
 from book_maker.redaction import redact
 from book_maker.session_context import handoff_path
 from book_maker.utils import (
@@ -58,7 +58,7 @@ from .disclosure import (
     is_our_colophon,
     is_prior_disclosure,
     is_prior_glossary,
-    is_prior_provenance,
+    is_prior_translation_metadata,
     model_id,
     prior_glossary_shas,
     stamp_disclosure,
@@ -334,7 +334,7 @@ class EPUBBookLoader(BaseBookLoader):
         source_lang="auto",
         parallel_workers=1,
         disclose=True,
-        provenance=False,
+        translation_metadata=False,
         language_tag=None,
     ):
         # Before the translator is built and before a byte of the book is
@@ -351,11 +351,11 @@ class EPUBBookLoader(BaseBookLoader):
         # calibre's record of its own file is not covered by this: that is
         # a false statement about the file, not a disclosure.
         self.disclose = disclose
-        # --provenance: the machine record (build, model, endpoint host, the
+        # --translation-metadata: the machine record (build, model, endpoint host, the
         # sanitized command) in the package document. Only the opt-in half —
         # a plan or session run writes it whether or not this was passed. See
-        # `_wants_provenance`.
-        self.provenance = provenance
+        # `_wants_translation_metadata`.
+        self.translation_metadata = translation_metadata
         # Kept for that record: which host the run talked to, and which
         # source language it was told about. Neither is stored anywhere else
         # on the loader, and both are facts about the run rather than about
@@ -829,7 +829,7 @@ class EPUBBookLoader(BaseBookLoader):
 
     def _is_prior_record(self, item):
         """Whether this item is the machine record a previous run wrote."""
-        return is_prior_provenance(item)
+        return is_prior_translation_metadata(item)
 
     def _is_prior_evidence(self, item):
         """Whether this item is either file a previous run left about itself.
@@ -840,7 +840,7 @@ class EPUBBookLoader(BaseBookLoader):
         """
         return self._is_prior_glossary(item) or self._is_prior_record(item)
 
-    def _wants_provenance(self):
+    def _wants_translation_metadata(self):
         """Whether this run writes the machine record into the package.
 
         A plan or session run writes it by default. Both are the deliberate,
@@ -849,12 +849,12 @@ class EPUBBookLoader(BaseBookLoader):
         answers ("which build, which model, which endpoint, which command")
         are exactly the ones that come up about such a run days later.
 
-        The legacy tag-mode path does not, unless `--provenance` says so: it
+        The legacy tag-mode path does not, unless `--translation-metadata` says so: it
         is the quick pass, the record is the same size as the book's real
         metadata, and turning it on for every casual run would be deciding
         for the user that their command line belongs in the file.
         """
-        if getattr(self, "provenance", False):
+        if getattr(self, "translation_metadata", False):
             return True
         # Not only an explicit `--use_context session`: the codex route
         # keeps a session without being asked, and its runs earn the record
@@ -888,14 +888,14 @@ class EPUBBookLoader(BaseBookLoader):
                 return str(value)
         return None
 
-    def _run_provenance(self):
+    def _run_translation_metadata(self):
         """This run's facts, or None when nothing is to be recorded.
 
         Total by construction: every field falls back to "not known" rather
         than raising, because the stamp's failure mode is losing the whole
         disclosure, and a missing endpoint host is not worth that.
         """
-        if not self._wants_provenance():
+        if not self._wants_translation_metadata():
             return None
         translator = getattr(self, "translate_model", None)
         # The translator's own base is preferred over the flag: it is the
@@ -925,16 +925,16 @@ class EPUBBookLoader(BaseBookLoader):
         glossary_path = getattr(self, "glossary_path", None) or getattr(
             translator, "glossary_path", None
         )
-        return prov.Provenance(
-            commit=prov.tool_commit(),
+        return tmeta.TranslationMetadata(
+            commit=tmeta.tool_commit(),
             model=model_id(translator),
-            endpoint=prov.endpoint_host(api_base),
+            endpoint=tmeta.endpoint_host(api_base),
             route=service_name(translator) if translator is not None else None,
-            args=prov.sanitize_args(),
+            args=tmeta.sanitize_args(),
             source_language=source_language,
             target_language=getattr(self, "_disclosure_language", None)
             or self.language,
-            glossary_bytes=prov.read_glossary(glossary_path),
+            glossary_bytes=tmeta.read_glossary(glossary_path),
         )
 
     def _stamp_disclosure(self, new_book):
@@ -953,7 +953,7 @@ class EPUBBookLoader(BaseBookLoader):
                 getattr(self, "_disclosure_language", None) or self.language,
                 source_identifier=getattr(self, "_disclosure_source", None),
                 label=translation_label(getattr(self, "translate_model", None)),
-                provenance=self._run_provenance(),
+                translation_metadata=self._run_translation_metadata(),
             )
         except Exception as e:
             # A book that took hours and real money to translate is not

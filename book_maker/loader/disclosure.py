@@ -13,14 +13,14 @@ because metadata is not something a reader sees. It is written as a log —
 one heading, then `Title: content` a line at a time — rather than as prose:
 a page of facts about a file should not arrive dressed as a chapter.
 
-Beside it, on a plan or session run or when `--provenance` asks, goes the
-machine half: `bbm_provenance.json` as a manifest item, saying which build,
+Beside it, on a plan or session run or when `--translation-metadata` asks, goes the
+machine half: `bbm_translation_metadata.json` as a manifest item, saying which build,
 which model, which endpoint host and which command produced the file, plus
 the book-producer credit and three `bbm:` metas — the tool marker, the model
 and the date — that say the shortest version of it in the package document.
 The file is the record and the metas are a marker beside it, because a
 conversion rewrites the package document and keeps the files. That record is
-`book_maker.provenance`'s to compose and this module's to put in the package,
+`book_maker.translation_metadata`'s to compose and this module's to put in the package,
 under the same rules everything else here follows.
 
 Two rules keep this from colliding with the book it is stamping:
@@ -47,7 +47,7 @@ from html import escape
 
 from ebooklib import epub
 
-from book_maker import provenance as prov
+from book_maker import translation_metadata as tmeta
 
 TOOL_NAME = "bilingual_book_maker"
 
@@ -60,7 +60,7 @@ MARC_SCHEME = "marc:relators"
 # the machine record is written, it produced the file (`bkp`). Listed
 # together because ownership is decided once: an entry carrying this tool's
 # name refined by either role is a previous run's stamp, to be rewritten.
-CONTRIBUTOR_ROLES = (CONTRIBUTOR_ROLE, prov.PRODUCER_ROLE)
+CONTRIBUTOR_ROLES = (CONTRIBUTOR_ROLE, tmeta.PRODUCER_ROLE)
 
 # The description this tool writes: a label, then the model and the year in
 # parentheses, then a fixed tail. The label says what did the work — a
@@ -279,7 +279,7 @@ def prior_glossary_shas(book):
     leaves a book carrying a `bbm_glossary.txt` of its own alone.
 
     Two places are asked, because two shapes of book arrive here. This
-    build's record names the checksum inside `bbm_provenance.json`, which is
+    build's record names the checksum inside `bbm_translation_metadata.json`, which is
     where the whole fact set now lives; a book stamped by an older build
     names it in a `bbm:glossary-sha256` meta instead. Both are read, so a
     rerun drops the previous glossary either way.
@@ -288,7 +288,7 @@ def prior_glossary_shas(book):
         str((others or {}).get("content") or "").strip()
         for _, name, _, others in _iter_metadata(book)
         if name == "meta"
-        and (others or {}).get("name") == prov.LEGACY_GLOSSARY_SHA_META
+        and (others or {}).get("name") == tmeta.LEGACY_GLOSSARY_SHA_META
         and (others or {}).get("content")
     }
     shas.discard("")
@@ -296,7 +296,7 @@ def prior_glossary_shas(book):
         record = _our_record(item)
         if record is None:
             continue
-        vouched = str(record.get(prov.GLOSSARY_SHA_KEY) or "").strip()
+        vouched = str(record.get(tmeta.GLOSSARY_SHA_KEY) or "").strip()
         if vouched:
             shas.add(vouched)
     return shas
@@ -321,14 +321,14 @@ def is_prior_glossary(item, shas):
     return content is not None and sha256(content).hexdigest() in shas
 
 
-def is_prior_provenance(item):
+def is_prior_translation_metadata(item):
     """Whether a manifest item is the record a previous run wrote.
 
     The marker inside the file, and nothing else. It is the colophon's test,
     it is the one that still works when a conversion has thrown the metas
     away — which is the whole reason the file exists — and it recognises a
     record written by any build of this tool, old meta shape or new. A book
-    shipping a `bbm_provenance.json` of its own does not answer to it and is
+    shipping a `bbm_translation_metadata.json` of its own does not answer to it and is
     left alone.
     """
     return _our_record(item) is not None
@@ -349,7 +349,7 @@ def _our_record(item):
         return None
     if (
         isinstance(record, dict)
-        and record.get(prov.RECORD_MARK_KEY) == prov.RECORD_MARK
+        and record.get(tmeta.RECORD_MARK_KEY) == tmeta.RECORD_MARK
     ):
         return record
     return None
@@ -375,7 +375,7 @@ def is_prior_disclosure(name, value, others, owned_ids):
         and attributes.get("refines", "").lstrip("#") in owned_ids
     ):
         return True
-    if name == "meta" and str(attributes.get("name") or "").startswith(prov.PREFIX):
+    if name == "meta" and str(attributes.get("name") or "").startswith(tmeta.PREFIX):
         # The machine record. The whole `bbm:` prefix is this tool's, so the
         # test is the prefix and nothing else: a run by another model, from
         # another build, against another endpoint must not leave the previous
@@ -476,13 +476,18 @@ def allocate_colophon_names(book, ids=None, files=None):
 
 def allocate_glossary_names(book, ids=None, files=None):
     return allocate_names(
-        book, prov.GLOSSARY_STEM, ".txt", prov.GLOSSARY_ID, ids, files
+        book, tmeta.GLOSSARY_STEM, ".txt", tmeta.GLOSSARY_ID, ids, files
     )
 
 
-def allocate_provenance_names(book, ids=None, files=None):
+def allocate_translation_metadata_names(book, ids=None, files=None):
     return allocate_names(
-        book, prov.PROVENANCE_STEM, ".json", prov.PROVENANCE_ID, ids, files
+        book,
+        tmeta.TRANSLATION_METADATA_STEM,
+        ".json",
+        tmeta.TRANSLATION_METADATA_ID,
+        ids,
+        files,
     )
 
 
@@ -551,7 +556,7 @@ def stamp_disclosure(
     source_identifier=None,
     when=None,
     label=AI_LABEL,
-    provenance=None,
+    translation_metadata=None,
 ):
     """Add the credit, the description, the colophon and the machine record, once.
 
@@ -568,7 +573,7 @@ def stamp_disclosure(
     outcome that would make that worse than useless: a credit naming a
     translator with no note behind it says less than saying nothing.
 
-    `provenance`, when given, is a `book_maker.provenance.Provenance`: the
+    `translation_metadata`, when given, is a `book_maker.translation_metadata.TranslationMetadata`: the
     invisible half of the same statement, written under the same all-or-
     nothing rule. It rides with the disclosure rather than having a switch of
     its own — `--no_disclosure` says the file must not claim to be a machine
@@ -615,40 +620,42 @@ def stamp_disclosure(
 
     producer_id = glossary_item = record_item = None
     producer_credit = None
-    provenance_metas = ()
-    if provenance is not None:
-        producer_id = allocate_contributor_id(book, base=prov.PRODUCER_ID, ids=ids)
+    translation_metadata_metas = ()
+    if translation_metadata is not None:
+        producer_id = allocate_contributor_id(book, base=tmeta.PRODUCER_ID, ids=ids)
         ids.add(producer_id)
         # Both settled here, so the commit half only appends: `record()`
         # hashes the glossary and `producer()` reads the build, and neither
         # belongs between the credit and the note.
-        provenance_metas = provenance.metas(when)
-        producer_credit = provenance.producer()
+        translation_metadata_metas = translation_metadata.metas(when)
+        producer_credit = translation_metadata.producer()
         # The same `when` the colophon's Date line is about to be built from,
         # so the visible page and the machine record cannot name two days.
         # The metas are not a copy of the file — three of them against the
         # file's full fact set — so nothing vouches for the file from
         # outside any more; it says whose it is from the inside, which is
         # the only claim that survives a conversion anyway.
-        record_bytes = provenance.record(when)
-        record_id, record_file = allocate_provenance_names(book, ids=ids, files=files)
+        record_bytes = translation_metadata.record(when)
+        record_id, record_file = allocate_translation_metadata_names(
+            book, ids=ids, files=files
+        )
         ids.add(record_id)
         files.add(record_file)
         record_item = epub.EpubItem(
             uid=record_id,
             file_name=record_file,
-            media_type=prov.PROVENANCE_MEDIA_TYPE,
+            media_type=tmeta.TRANSLATION_METADATA_MEDIA_TYPE,
             content=record_bytes,
         )
-        if provenance.glossary_bytes is not None:
+        if translation_metadata.glossary_bytes is not None:
             glossary_id, glossary_file = allocate_glossary_names(
                 book, ids=ids, files=files
             )
             glossary_item = epub.EpubItem(
                 uid=glossary_id,
                 file_name=glossary_file,
-                media_type=prov.GLOSSARY_MEDIA_TYPE,
-                content=provenance.glossary_bytes,
+                media_type=tmeta.GLOSSARY_MEDIA_TYPE,
+                content=translation_metadata.glossary_bytes,
             )
 
     description = f"{label} ({model}, {when.year}{DESCRIPTION_TAIL}"
@@ -679,8 +686,8 @@ def stamp_disclosure(
         },
     )
     book.add_metadata("DC", "description", description)
-    if provenance is not None:
-        for meta_name, content in provenance_metas:
+    if translation_metadata is not None:
+        for meta_name, content in translation_metadata_metas:
             book.add_metadata(
                 "OPF", "meta", None, {"name": meta_name, "content": content}
             )
@@ -688,7 +695,7 @@ def stamp_disclosure(
         book.add_metadata(
             None,
             "meta",
-            prov.PRODUCER_ROLE,
+            tmeta.PRODUCER_ROLE,
             {
                 "refines": f"#{producer_id}",
                 "property": "role",

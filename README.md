@@ -515,7 +515,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--no_disclosure`:
 
-  An epub output is marked as an AI translation by default; this flag leaves the marking out. It also turns off the translation-info metadata (`--provenance`).
+  An epub output is marked as an AI translation by default; this flag leaves the marking out. It also turns off the translation-info metadata (`--translation-metadata`).
 
 - `--translation_style`:
 
