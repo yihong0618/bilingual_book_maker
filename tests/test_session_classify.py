@@ -479,6 +479,48 @@ class TestRestartAtTheBudget:
         translator.context_compact_at = 3000
         assert translator.classify_session().budget() == 3000
 
+    def test_a_named_classify_model_sizes_the_window_by_its_own_model(
+        self, monkeypatch
+    ):
+        # --plan-classify-model holds the classifier's conversation with a
+        # model of its own, so the window it rolls over against is that
+        # model's, not the one the book is translated by
+        import book_maker.translator.chatgptapi_translator as chatgpt
+
+        windows = {"translates-the-book": 8000, "rules-on-the-plan": 1234}
+        monkeypatch.setattr(chatgpt, "compact_budget_for", windows.__getitem__)
+
+        translator = _bare_openai(context_compact_at=None)
+        translator.model = "translates-the-book"
+        session = translator.classify_session(model="rules-on-the-plan")
+
+        assert session.budget() == 1234
+
+    def test_the_codex_thread_sizes_the_window_by_its_own_model_too(self, monkeypatch):
+        import book_maker.translator.codex_translator as codex_module
+        from book_maker.translator.codex_translator import Codex
+
+        windows = {"translates-the-book": 8000, "rules-on-the-plan": 1234}
+        monkeypatch.setattr(codex_module, "compact_budget_for", windows.__getitem__)
+
+        translator = Codex.__new__(Codex)
+        translator.model = "translates-the-book"
+        translator.context_compact_at = None
+        session = translator.classify_session(model="rules-on-the-plan")
+
+        assert session.budget() == 1234
+
+    def test_an_explicit_budget_still_outranks_the_classify_model(self, monkeypatch):
+        # --context-compact-at is the operator saying the number; a named
+        # classifier does not overrule it
+        import book_maker.translator.chatgptapi_translator as chatgpt
+
+        monkeypatch.setattr(chatgpt, "compact_budget_for", lambda model: 1234)
+        translator = _bare_openai(context_compact_at=2500)
+        translator.model = "translates-the-book"
+
+        assert translator.classify_session(model="rules-on-the-plan").budget() == 2500
+
 
 # ------------------------------------------------------ 6. circuit breakers
 

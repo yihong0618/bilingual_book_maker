@@ -99,9 +99,15 @@ class ClassifierThread:
         self._thread_id = None
 
     def budget(self):
-        """`--context-compact-at`, else this model's own default — the same
-        window a session-mode translation would work to."""
-        return self.translator._budget()
+        """`--context-compact-at`, else this thread's *own* model's default.
+
+        Its own, not the translation thread's: `--plan-classify-model` puts
+        a different model on this thread, and the window it rolls over
+        against is that model's.
+        """
+        if self.translator.context_compact_at is None:
+            return compact_budget_for(self.model)
+        return self.translator.context_compact_at
 
     def start(self, trunk):
         """Open a fresh conversation. The thread is created on the first

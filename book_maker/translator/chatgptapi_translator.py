@@ -342,8 +342,16 @@ class ClassifierSession:
 
     def budget(self):
         """The window the classifier works to: `--context-compact-at`, else
-        the same default a session-mode run would use."""
-        return self.translator._session_budget()
+        this session's *own* model's default.
+
+        `--plan-classify-model` is exactly the case where those differ: the
+        classifier's conversation is held with that model and rolls over
+        against that model's window, so deriving the budget from whatever
+        the translation runs on described a different session.
+        """
+        if self.translator.context_compact_at is None:
+            return compact_budget_for(self.model)
+        return self.translator.context_compact_at
 
     def start(self, trunk):
         """Open a fresh conversation. The trunk rides in the system message,
