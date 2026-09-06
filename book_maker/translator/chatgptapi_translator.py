@@ -60,11 +60,13 @@ from ..structured import (
     unwrap_schema_echo,
 )
 from ..config import config
+from ..glossary import Glossary
 from ..session_context import (
     HandoffReport,
     SessionHistory,
     compact_budget_for,
     handoff_prompt,
+    strip_handoff_glossary,
 )
 
 CHATGPT_CONFIG = config["translator"]["chatgptapi"]
@@ -386,11 +388,22 @@ class ChatGPTAPI(Base):
     SUPPORTS_PARALLEL_CONTEXT = True
     SUPPORTS_BATCH_API = True
     SUPPORTS_REQUEST_EXTRAS = True
+    SUPPORTS_GLOSSARY = True
     # Session-mode state, declared here so the window-mode path is well
     # defined on any instance — including the subclasses and test fixtures
     # that build one without running __init__. `session is None` means window
     # mode everywhere in this class.
     session = None
+    # `pinned` is the operator's --glossary file, `learned` what this run's
+    # compacts established, `glossary` the two combined. None here rather than
+    # an empty Glossary so an instance built without __init__ still answers
+    # "no glossary" without constructing one.
+    glossary = None
+    pinned = None
+    learned = None
+    # Tri-state, from `--glossary-auto {on,off}`: None is "unsaid", and
+    # `glossary_auto_on` below turns that into the default for this run.
+    glossary_auto = None
     handoff_path = None
     context_compact_at = None
     no_context_compact = False
@@ -426,6 +439,8 @@ class ChatGPTAPI(Base):
         context_mode="window",
         context_compact_at=None,
         no_context_compact=False,
+        glossary=None,
+        glossary_auto=None,
         style_note=None,
         handoff_path=None,
         extra_body=None,
@@ -468,6 +483,15 @@ class ChatGPTAPI(Base):
         )
         self.context_compact_at = context_compact_at
         self.no_context_compact = no_context_compact
+        # `pinned` is the operator's --glossary file and never changes.
+        # `learned` accumulates what compacts establish. `glossary` is the two
+        # combined, pins on top, and is what gets injected per unit. Keeping
+        # `pinned` separate is what lets anything downstream record the pinned
+        # file alone: nothing merges back into it.
+        self.pinned = glossary or Glossary()
+        self.learned = Glossary()
+        self.glossary = self.pinned
+        self.glossary_auto = glossary_auto
         self.style_note = style_note
         self.handoff_path = Path(handoff_path) if handoff_path else None
         self._compact_failures = 0
@@ -748,16 +772,38 @@ class ChatGPTAPI(Base):
         """
         return self.session is None
 
+    @property
+    def glossary_auto_on(self):
+        """Whether this run learns renderings from its own handoff reports.
+
+        The derived glossary is a by-product of session compaction, so it can
+        only exist where a session does. The default is therefore "on wherever
+        a session runs": `--glossary-auto off` is the way to decline it, and
+        `--glossary-auto on` cannot conjure one on the windowed path, where
+        there is no compact turn to learn from (the CLI says so).
+        """
+        if self.session is None:
+            return False
+        return self.glossary_auto is not False
+
     def _user_content(self, text):
         """The user message for one unit.
 
-        Deterministic for a given text, which is what lets session mode store
-        exactly what it sent without threading the string around — the marker
-        preamble included, since it is a function of the text too.
+        Deterministic for a given (text, glossary), which is what lets session
+        mode store exactly what it sent without threading the string around —
+        the marker preamble included, since it is a function of the text too.
+
+        Pinned terms belong to *this* unit, so they go in the fresh tail
+        message rather than the system prompt: a block that varies per unit
+        sitting in a fixed position would invalidate the cached prefix on
+        every request. Once this message is frozen into the history it stops
+        varying, so it is stable there.
         """
-        return self._marker_preamble(text) + self.prompt_template.format(
+        content = self._marker_preamble(text) + self.prompt_template.format(
             text=text, language=self.language, crlf="\n"
         )
+        block = self.glossary.prompt_block(text) if self.glossary else ""
+        return f"{block}\n\n{content}" if block else content
 
     def create_messages(self, text, intermediate_messages=None):
         content = self._user_content(text)
@@ -1016,7 +1062,9 @@ class ChatGPTAPI(Base):
         being condensed into what replaces it.
         """
         budget = self._session_budget()
-        prompt = handoff_prompt(with_style=not self.style_note)
+        prompt = handoff_prompt(
+            with_glossary=self.glossary_auto_on, with_style=not self.style_note
+        )
         messages = [
             *self.session.messages(),
             {"role": "user", "content": prompt},
@@ -1067,12 +1115,21 @@ class ChatGPTAPI(Base):
             return
         self._compact_failures = 0
 
+        glossary_lines = self._learn_from_handoff(report_text)
+
         report = HandoffReport(
             window=self.session.windows,
             # A style the user fixed is handed on verbatim, so it cannot be
             # eroded window by window by a model re-describing it.
             style_note=self.style_note,
-            summary=report_text.strip(),
+            # The renderings block is parsed into `glossary_lines`, so it is
+            # stripped from the prose rather than stored and re-seeded twice.
+            summary=(
+                strip_handoff_glossary(report_text)
+                if self.glossary_auto_on
+                else report_text.strip()
+            ),
+            glossary_lines=glossary_lines,
         )
         self._show_handoff(report)
         if self.handoff_path:
@@ -1363,7 +1420,11 @@ class ChatGPTAPI(Base):
         # tail leaves `{language}` buried behind the source JSON blob above.
         field = batch_field_name(self.language)
         item_field = single_field_name(self.language)
-        content = (
+        # Pinned terms for this group, on the same rule as a single unit: only
+        # the ones that occur in the batch, and first, so the shape and the
+        # target language stay the last thing the model reads.
+        glossary_block = self.glossary.prompt_block(texts_json) if self.glossary else ""
+        content = (f"{glossary_block}\n\n" if glossary_block else "") + (
             f"{self._marker_preamble(texts_json)}{user_prompt}\n\n"
             f"Return a JSON object whose '{field}' array contains EXACTLY "
             f"{plist_len} objects, one per input paragraph. Each object has "

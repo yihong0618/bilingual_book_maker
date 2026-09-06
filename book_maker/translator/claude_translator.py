@@ -456,7 +456,12 @@ class Claude(Base):
             *self.session.messages(),
             {
                 "role": "user",
-                "content": handoff_prompt(with_style=not self.style_note),
+                # This route carries no glossary of its own (SUPPORTS_GLOSSARY
+                # is False on it), so the compact turn is never asked for a
+                # renderings block nobody would read.
+                "content": handoff_prompt(
+                    with_glossary=False, with_style=not self.style_note
+                ),
             },
         ]
         try:

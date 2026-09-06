@@ -31,11 +31,13 @@ from ..codex_client import (
     CodexQuotaExhausted,
     CodexTurnFailed,
 )
+from ..glossary import Glossary
 from ..session_context import (
     HandoffReport,
     compact_budget_for,
     estimate_tokens,
     handoff_prompt,
+    strip_handoff_glossary,
 )
 from .base_translator import Base
 
@@ -151,6 +153,10 @@ class Codex(Base):
     # billed like a session run, so it derives a session run's budgets.
     SESSION_CONTEXT_ALWAYS_ON = True
 
+    # A turn carries whatever we put in it, so a pinned block rides with the
+    # unit here exactly as it does on the API path.
+    SUPPORTS_GLOSSARY = True
+
     # A turn carries no system message of its own; `prompt_sys_msg` is read
     # once, when a thread opens, and the thread outlives any one window.
     BATCH_SYS_MSG_PER_REQUEST = False
@@ -167,6 +173,8 @@ class Codex(Base):
         binary="codex",
         context_compact_at=None,
         no_context_compact=False,
+        glossary=None,
+        glossary_auto=None,
         style_note=None,
         handoff_path=None,
         prompt_template=None,
@@ -182,6 +190,13 @@ class Codex(Base):
         self.model_list = None
         self.context_compact_at = context_compact_at
         self.no_context_compact = no_context_compact
+        # `pinned` is the operator's --glossary file and never changes.
+        # `learned` accumulates what compacts establish. `glossary` is the two
+        # combined, pins on top, and is what rides with each unit.
+        self.pinned = glossary or Glossary()
+        self.learned = Glossary()
+        self.glossary = self.pinned
+        self.glossary_auto = glossary_auto
         self.handoff_path = Path(handoff_path) if handoff_path else None
         self.prompt_sys_msg = prompt_sys_msg
         self.prompt_template = prompt_template
@@ -370,6 +385,15 @@ class Codex(Base):
             )
         return self._thread_id
 
+    @property
+    def glossary_auto_on(self):
+        """Whether this run learns renderings from its own handoff reports.
+
+        The thread is always the history here, so there is always a compact
+        turn to learn from: this route is on unless `--glossary-auto off`.
+        """
+        return self.glossary_auto is not False
+
     def _budget(self):
         """How many estimated tokens a thread may carry before it rolls over."""
         if self.context_compact_at is None:
@@ -386,7 +410,10 @@ class Codex(Base):
         try:
             report_text = self._run_turn(
                 self._thread_id,
-                handoff_prompt(with_style=not self.style_note),
+                handoff_prompt(
+                    with_glossary=self.glossary_auto_on,
+                    with_style=not self.style_note,
+                ),
             )
         except CodexTurnFailed as e:
             print(
@@ -395,10 +422,20 @@ class Codex(Base):
             )
             report_text = ""
 
+        glossary_lines = self._learn_from_handoff(report_text)
+
         report = HandoffReport(
             window=self._window,
             style_note=self.style_note,
-            summary=report_text.strip(),
+            # Same as the API path: the renderings block is parsed into
+            # `glossary_lines`, so keeping it in the prose too would write
+            # every term twice.
+            summary=(
+                strip_handoff_glossary(report_text)
+                if self.glossary_auto_on
+                else report_text.strip()
+            ),
+            glossary_lines=glossary_lines,
         )
         if report_text:
             self._show_handoff(report)
@@ -470,7 +507,12 @@ class Codex(Base):
         with self._turn_lock:
             thread_id = self._ensure_thread()
 
+            # Pinned terms belong to this unit, so they ride with it rather
+            # than with the thread instructions, which every later turn would
+            # re-read.
+            block = self.glossary.prompt_block(text) if self.glossary else ""
             payload = self._unit_text(text)
+            payload = f"{block}\n\n{payload}" if block else payload
 
             translated = self._run_turn(thread_id, payload)
             self._report_quota()
