@@ -24,7 +24,13 @@ import pytest
 
 from book_maker.cli import build_parser, glossary_auto_flag, parse_args
 from book_maker.glossary import Glossary
-from book_maker.session_context import handoff_prompt
+from book_maker.session_context import (
+    HandoffReport,
+    handoff_prompt,
+    parse_handoff_glossary,
+    strip_handoff_glossary,
+)
+from book_maker.translator import chatgptapi_translator, codex_translator
 from book_maker.translator.chatgptapi_translator import ChatGPTAPI
 from book_maker.translator.codex_translator import Codex
 
@@ -373,6 +379,130 @@ class TestLearningFromTheHandoff:
         # and the operator's own set is left exactly as it was read
         assert t.pinned == pinned
         assert t.pinned.lookup("Clover") is None
+
+
+HANDOFF_WITHOUT_TAGS = (
+    "They walked to the farm.\n\n"
+    "### Established renderings\n\n"
+    "Boxer → 拳击手\n"
+    "Clover → 三叶草\n\n"
+    "### Next window\n\n"
+    "The rebellion starts in chapter two.\n"
+)
+
+HANDOFF_WITHOUT_RENDERINGS = (
+    "They walked to the farm.\n\n"
+    "### Next window\n\n"
+    "The rebellion starts in chapter two."
+)
+
+
+def _assembled(report_text, learned_lines):
+    """The handoff a window writes: stripped prose plus the canonical block.
+
+    The two halves `_compact_window` puts together, so a term that survives
+    the strip and is re-rendered too is visible as a count of two.
+    """
+    return HandoffReport(
+        window=1,
+        summary=strip_handoff_glossary(report_text),
+        glossary_lines=learned_lines,
+    )
+
+
+class TestTheStripperRemovesExactlyWhatWasParsed:
+    """A term the parse recovered is re-rendered canonically, so it has to
+    leave the prose — once, and only if it was really recovered."""
+
+    def test_a_tagged_block_leaves_the_prose_once(self):
+        parsed = parse_handoff_glossary(HANDOFF_WITH_TERMS)
+        assert parsed.source == "tagged"
+        report = _assembled(HANDOFF_WITH_TERMS, parsed.glossary.to_lines())
+        assert report.render().count("Boxer → 拳击手") == 1
+        assert report.render().count("Clover → 三叶草") == 1
+        assert report.seed_text().count("Boxer → 拳击手") == 1
+        assert "<renderings>" not in report.render()
+        assert "They walked to the farm." in report.summary
+
+    def test_a_tagged_block_takes_its_own_heading_and_leaves_the_others(self):
+        text = (
+            "## Summary\n\nThey walked to the farm.\n\n"
+            "### Established renderings\n\n"
+            "<renderings>\nBoxer → 拳击手\n</renderings>\n"
+        )
+        summary = strip_handoff_glossary(text)
+        assert "### Established renderings" not in summary
+        assert "## Summary" in summary
+
+    def test_loose_lines_leave_the_prose_once(self):
+        # the fallback recovers these, and nothing used to remove them: the
+        # terms landed twice in the file and twice in the next window's seed
+        parsed = parse_handoff_glossary(HANDOFF_WITHOUT_TAGS)
+        assert parsed.source == "scanned"
+        report = _assembled(HANDOFF_WITHOUT_TAGS, parsed.glossary.to_lines())
+        assert report.render().count("Boxer → 拳击手") == 1
+        assert report.render().count("Clover → 三叶草") == 1
+        assert report.seed_text().count("Boxer → 拳击手") == 1
+        assert report.seed_text().count("Clover → 三叶草") == 1
+        # the report's own last section is not a glossary heading and stays
+        assert "### Next window" in report.summary
+        assert "The rebellion starts in chapter two." in report.summary
+
+    @pytest.mark.parametrize(
+        "report",
+        (
+            HANDOFF_WITHOUT_RENDERINGS,
+            # ends on a heading of its own: the stripper deleted the last
+            # heading by position, whether or not a block had been there
+            "They walked to the farm.\n\n### Open questions",
+            # named like a glossary heading, but nothing was established
+            "## Terms\n\nNothing new to keep unified this window.",
+        ),
+    )
+    def test_a_report_that_established_nothing_is_left_alone(self, report):
+        assert parse_handoff_glossary(report).source == "missing"
+        assert strip_handoff_glossary(report) == report
+
+    def test_an_empty_block_does_not_take_the_loose_lines_with_it(self):
+        # an empty block sends the parse to the loose lines, so those are
+        # what was recovered and those are what has to go
+        text = (
+            "They walked to the farm.\n\n"
+            "<renderings>\n</renderings>\n\n"
+            "Boxer → 拳击手\n\n"
+            "### Next window\n\nOn to chapter two."
+        )
+        parsed = parse_handoff_glossary(text)
+        assert parsed.source == "scanned"
+        report = _assembled(text, parsed.glossary.to_lines())
+        assert report.render().count("Boxer → 拳击手") == 1
+        assert "### Next window" in report.summary
+
+    def test_the_whole_file_carries_each_term_once(self, tmp_path):
+        path = tmp_path / "h.md"
+        t = _session(["译文", HANDOFF_WITHOUT_TAGS], handoff_path=path)
+        t.get_translation("a" * 200)
+        text = path.read_text(encoding="utf-8")
+        assert text.count("Boxer → 拳击手") == 1
+        assert text.count("Clover → 三叶草") == 1
+
+    def test_the_next_window_is_seeded_with_each_term_once(self, tmp_path):
+        t = _session(
+            ["译文", HANDOFF_WITHOUT_TAGS, "译文"], handoff_path=tmp_path / "h.md"
+        )
+        t.get_translation("a" * 200)
+        # a unit that names no pinned term, so the only copies are the seed's
+        t.get_translation("the windmill stood")
+        request = "\n".join(
+            m["content"] for m in t.sent[-1]["messages"] if m.get("content")
+        )
+        assert request.count("Boxer → 拳击手") == 1
+
+    def test_the_codex_path_shares_the_stripper(self):
+        # codex_translator._compact_window assembles the same two halves; it
+        # is fixed by importing the same function, not by a copy of it
+        assert codex_translator.strip_handoff_glossary is strip_handoff_glossary
+        assert chatgptapi_translator.strip_handoff_glossary is strip_handoff_glossary
 
 
 class TestOffSuppressesTheDerivedGlossary:

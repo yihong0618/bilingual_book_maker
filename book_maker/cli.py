@@ -1374,6 +1374,35 @@ COMPAT_RULES = (
 )
 
 
+def preview_endpoint(options):
+    """`(api format, translator class)` the real run would resolve.
+
+    `--plan-dry-run` returns before `resolve_endpoint` is reached, so the
+    preview has to ask for the derivation rather than wait for it. It is
+    `resolve_endpoint` itself that is asked — the same host-then-model
+    inference, the same `--provider` fill-in — run against a copy of the
+    options so the preview neither rewrites the run's flags nor is credited
+    with the model name a provider entry supplies.
+
+    Reading `--api_format` alone, as this used to, called every command that
+    left the flag out an OpenAI one: `--model claude-sonnet-4-6` previewed
+    the schema route, which is the one route that run never takes.
+
+    A command whose route cannot be resolved at all keeps the preview's
+    default. The refusal belongs to the run that resolves an endpoint, and a
+    dry run resolves none — it spends nothing and is not the place to learn
+    that two model flags were named.
+    """
+    try:
+        model_names, api_format, _keys = resolve_endpoint(
+            argparse.Namespace(**vars(options))
+        )
+    except SystemExit:
+        return PLAN_AUTO_FORMAT, FORMAT_DICT.get(PLAN_AUTO_FORMAT)
+    route = ROUTE_DICT.get(model_names[0]) if len(model_names) == 1 else None
+    return api_format, route or FORMAT_DICT.get(api_format)
+
+
 def dry_run_plan_divergence(facts):
     """How the real run's plan will differ from this preview, or None.
 
@@ -1388,9 +1417,13 @@ def dry_run_plan_divergence(facts):
     non-OpenAI route was called "plan mode off", which stopped being true
     for the chat-capable ones when the session classifier landed. The codex
     route plans on every run.
+
+    The route itself is `facts.api_format`, which on a dry run is
+    `preview_endpoint`'s answer rather than the raw `--api_format`: the
+    branch below is only as right as the format it is asked about.
     """
-    api_format = facts.options.api_format or PLAN_AUTO_FORMAT
-    translator = FORMAT_DICT.get(api_format)
+    api_format = facts.api_format or PLAN_AUTO_FORMAT
+    translator = facts.translate_model or FORMAT_DICT.get(api_format)
     can_talk = translator is not None and _route_can_session_classify(translator)
     if (
         facts.translate_tags_given
@@ -2201,8 +2234,16 @@ def main():
         # What this preview cannot know: whether the real run will be in plan
         # mode at all, and how far the endpoint will be trusted with one
         # request. Both change the numbers just printed.
+        dry_format, dry_model = preview_endpoint(options)
         check_compatibility(
-            run_facts(options, given, book_type="epub", batch_units=batch_units),
+            run_facts(
+                options,
+                given,
+                book_type="epub",
+                api_format=dry_format,
+                translate_model=dry_model,
+                batch_units=batch_units,
+            ),
             rules=DRY_RUN_RULES,
         )
         plan_path = f"{os.path.splitext(options.book_name)[0]}_plan.json"

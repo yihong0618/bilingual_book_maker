@@ -209,21 +209,32 @@ class HandoffGlossary(NamedTuple):
     source: str  # "tagged" | "scanned" | "missing"
 
 
+def _line_entries(raw, strict):
+    """The entries one line yields, or None if it is not an entry line.
+
+    One line, one verdict — so the stripper can ask exactly the question the
+    parse asked and remove precisely the lines the parse read.
+    """
+    line = raw.strip().lstrip("-*•").strip()
+    if not line or line.startswith("#") or line.startswith("<"):
+        return None
+    if not strict:
+        # Outside the tags, only accept things shaped like an entry.
+        head = re.split(r"→|->", line)[0].strip()
+        if len(head) > _MAX_TERM_LEN or line.endswith(_SENTENCE_END):
+            return None
+    try:
+        return Glossary.parse(line).entries or None
+    except ValueError:
+        return None  # model output; one bad line must not lose the rest
+
+
 def _entries_from_lines(lines, strict):
     entries = []
     for raw in lines:
-        line = raw.strip().lstrip("-*•").strip()
-        if not line or line.startswith("#") or line.startswith("<"):
-            continue
-        if not strict:
-            # Outside the tags, only accept things shaped like an entry.
-            head = re.split(r"→|->", line)[0].strip()
-            if len(head) > _MAX_TERM_LEN or line.endswith(_SENTENCE_END):
-                continue
-        try:
-            entries.extend(Glossary.parse(line).entries)
-        except ValueError:
-            continue  # model output; one bad line must not lose the rest
+        found = _line_entries(raw, strict)
+        if found:
+            entries.extend(found)
     return entries
 
 
@@ -249,29 +260,76 @@ def parse_handoff_glossary(text: str) -> HandoffGlossary:
     return HandoffGlossary(Glossary(), "missing")
 
 
-# A markdown heading that introduced the renderings block and is left dangling
-# once the block is removed ("## 3. Glossary", "### Established renderings").
-_EMPTY_GLOSSARY_HEADING = re.compile(
-    r"^#{1,6}\s*\d*\.?\s*(glossary|established renderings|terms)\s*$",
-    re.IGNORECASE | re.MULTILINE,
-)
+# Any markdown heading. The model writes the renderings heading in the target
+# language, so it can only be recognised by where it sits, never by its words.
+_HEADING = re.compile(r"^\s{0,3}#{1,6}(\s|$)")
+
+
+def _drop_introducing_heading(before: str) -> str:
+    """`before` without a heading left dangling at its end.
+
+    `before` is the prose that ran up to a block being removed, so a heading
+    sitting at the end of it — blank lines aside — is that block's own
+    heading and goes with it. A heading anywhere else is the report's.
+    """
+    lines = before.split("\n")
+    end = len(lines)
+    while end and not lines[end - 1].strip():
+        end -= 1
+    if end and _HEADING.match(lines[end - 1]):
+        del lines[end - 1]
+    return "\n".join(lines)
+
+
+def _drop_loose_entry_lines(text: str) -> str:
+    """`text` without the loose lines the fallback parse read as entries."""
+    lines = text.split("\n")
+    dropped = {i for i, raw in enumerate(lines) if _line_entries(raw, strict=False)}
+    for i in sorted(dropped):
+        if i - 1 in dropped:
+            continue  # same run; its heading was already considered
+        above = i - 1
+        while above >= 0 and not lines[above].strip():
+            above -= 1
+        if above >= 0 and _HEADING.match(lines[above]):
+            dropped.add(above)
+    return "\n".join(line for i, line in enumerate(lines) if i not in dropped)
 
 
 def strip_handoff_glossary(text: str) -> str:
-    """The report's prose, with the renderings block removed.
+    """The report's prose, without the renderings the parse recovered.
 
-    The block is parsed into real entries and re-rendered canonically, so
-    leaving it in the prose would write every term twice into
-    `<book>_handoff.md` and send it twice in the next window's seed.
+    Those entries are re-rendered canonically into the report, so any copy
+    left in the prose is written twice into `<book>_handoff.md` and sent
+    twice in the next window's seed. Whatever the parse recovered therefore
+    has to come out here: the tagged block when the model emitted one, and
+    the loose lines the parse fell back to when it did not — the fallback
+    used to be stripped by neither, so a report without tags duplicated
+    every term it established.
+
+    A report that established nothing is returned as written. Deleting its
+    last heading anyway — which this did, on the guess that a heading in
+    that position introduced the block — took a genuine section title off a
+    report that never had a renderings block at all.
     """
     if not text:
         return text
-    without = _RENDERINGS.sub("", text)
-    without = _EMPTY_GLOSSARY_HEADING.sub("", without)
-    without = re.sub(r"\n{3,}", "\n\n", without).strip()
-    # A heading now left at the very end introduced the block just removed.
-    # Matched by position, since the model writes it in the target language.
-    return re.sub(r"\n#{1,6}[^\n]*$", "", without).strip()
+    blocks = list(_RENDERINGS.finditer(text))
+    # An empty or unparseable block still sends the parse to the loose lines,
+    # so "there were tags" is not the same question as "which lines were read".
+    scanned = parse_handoff_glossary(text).source == "scanned"
+    if not blocks and not scanned:
+        return text.strip()
+
+    parts, cursor = [], 0
+    for block in blocks:
+        parts.append(_drop_introducing_heading(text[cursor : block.start()]))
+        cursor = block.end()
+    parts.append(text[cursor:])
+    without = "".join(parts)
+    if scanned:
+        without = _drop_loose_entry_lines(without)
+    return re.sub(r"\n{3,}", "\n\n", without).strip()
 
 
 @dataclass

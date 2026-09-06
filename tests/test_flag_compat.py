@@ -23,9 +23,11 @@ from book_maker.cli import (
     build_parser,
     check_compatibility,
     coverage_fraction,
+    infer_api_format,
     normalize_options,
     parse_args,
     poetry_group,
+    preview_endpoint,
     resolve_classify_mode,
     resolve_plan_mode,
     run_facts,
@@ -814,6 +816,91 @@ class TestDryRunPreview:
         )
         assert proc.returncode == 0, proc.stdout + proc.stderr
         assert "each turn plan mode off" in _flat(proc)
+
+    def test_a_dry_run_infers_the_route_the_way_the_real_run_will(self, tmp_path):
+        # The forecast used to read --api_format alone, and the real run's
+        # inference happens after --plan-dry-run has already returned: a
+        # command that names its route by model id previewed the openai
+        # schema route, which is the one route it never takes.
+        proc = _cli(
+            "--book_name",
+            str(_book(tmp_path)),
+            "--plan-dry-run",
+            "--model",
+            "codex",
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        out = _flat(proc)
+        assert "each turn plan mode off" not in out
+        assert "the codex route has no JSON-schema verdict" in out
+        assert "over a plain session" in out
+
+    def test_an_inferred_anthropic_route_is_forecast_as_anthropic(self, tmp_path):
+        # a claude-* id with no --api_base is what infer_api_format calls
+        # anthropic, and anthropic is a route plan mode is off on
+        options = parse_args(["--book_name", "b.epub", "--model", "claude-sonnet-4-6"])
+        assert preview_endpoint(options)[0] == infer_api_format("", "claude-sonnet-4-6")
+        assert preview_endpoint(options)[0] == "anthropic"
+
+        # the host is the stronger signal, and it is read here too
+        by_host = parse_args(
+            ["--book_name", "b.epub", "--api_base", "https://api.anthropic.com"]
+        )
+        assert preview_endpoint(by_host)[0] == infer_api_format(
+            "https://api.anthropic.com", ""
+        )
+
+        proc = _cli(
+            "--book_name",
+            str(_book(tmp_path)),
+            "--plan-dry-run",
+            "--model",
+            "claude-sonnet-4-6",
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert "each turn plan mode off" in _flat(proc)
+
+    def test_an_explicit_api_format_still_outranks_the_model_id(self, tmp_path):
+        # a claude id at an OpenAI-shaped gateway: the flag is the answer
+        options = parse_args(
+            [
+                "--book_name",
+                "b.epub",
+                "--api_format",
+                "openai",
+                "--model",
+                "claude-sonnet-4-6",
+            ]
+        )
+        assert preview_endpoint(options)[0] == "openai"
+
+        proc = _cli(
+            "--book_name",
+            str(_book(tmp_path)),
+            "--plan-dry-run",
+            "--api_format",
+            "openai",
+            "--model",
+            "claude-sonnet-4-6",
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert "each turn plan mode off" not in _flat(proc)
+
+    def test_the_preview_derivation_does_not_rewrite_the_run_s_options(self):
+        # it runs resolve_endpoint, which fills in --api_base and may take a
+        # model from a provider entry; the preview must not keep any of that
+        options = parse_args(["--book_name", "b.epub", "--model", "claude-sonnet-4-6"])
+        before = vars(options).copy()
+        preview_endpoint(options)
+        assert vars(options) == before
+
+    def test_an_unresolvable_route_leaves_the_preview_its_default(self):
+        # naming a model twice is the run's refusal to make; a dry run
+        # resolves no endpoint and must not start reporting one
+        options = parse_args(
+            ["--book_name", "b.epub", "--model", "a", "--model_list", "b,c"]
+        )
+        assert preview_endpoint(options)[0] == "openai"
 
     def test_the_dry_run_forecast_mirrors_resolve_plan_mode(self):
         # the parity rule: what the preview says and what the run derives are
