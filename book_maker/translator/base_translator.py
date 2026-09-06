@@ -23,6 +23,12 @@ from ..structured import (
 # Special delimiter for batch translation - UUID-based token unlikely to appear in any text
 BATCH_DELIMITER = "\n\n@@\n\n"
 
+# `PROMPT_SECTION_SLOTS` for a route that builds no prompt at all: the fixed
+# MT engines, the translation-only models, and the custom endpoint, which are
+# handed text and nothing else. `--prompt` has nowhere to go on these, and the
+# CLI says so at run start rather than accepting the flag in silence.
+NO_PROMPT_SECTIONS = {"user": "none", "system": "none", "style": "none"}
+
 
 class BatchMismatch(Exception):
     """A batch reply cannot be aligned with the texts that were sent.
@@ -383,6 +389,77 @@ class Base(ABC):
         "never change its spelling, and never invent one."
     )
 
+    # Where each `--prompt` section lands on this route:
+    #   "native"   — the request has a slot of its own for it
+    #   "appended" — no slot, so the text rides in what the route does send
+    #                (`PROMPT_APPEND_TARGET` names where)
+    #   "none"     — the route builds no prompt at all, so nothing carries it
+    # The CLI reads this to say at run start what became of each section, and
+    # the routes read it for nothing: each one appends what it has to append
+    # at the single place it assembles a user turn. Keeping the two in step is
+    # what `tests/test_prompt_sections.py` is for.
+    #
+    # The default describes an LLM route with a system slot. No endpoint has a
+    # *style* slot, so style is "appended" everywhere; the routes differ only
+    # in what it is appended to.
+    PROMPT_SECTION_SLOTS = {
+        "user": "native",
+        "system": "native",
+        "style": "appended",
+    }
+    PROMPT_APPEND_TARGET = "the user message"
+
+    # One wording for the style section wherever it is appended, so a run does
+    # not describe its style two ways depending on the route.
+    STYLE_HEADING = "Style to follow:"
+
+    def fill_optional(self, template):
+        """A template with this run's values in it, or the template as typed.
+
+        For the sections that have no required placeholder — `system` and
+        `style`. `{language}` and `{crlf}` are filled where they appear;
+        anything else in braces is the operator's own text (a JSON example, a
+        regex, a `{` they meant literally) and is sent as written rather than
+        killing a run mid-book over a formatting detail nobody documented.
+
+        The `user` template is deliberately not filled through here: it must
+        carry `{text}`, the CLI refuses one that does not, and a silent
+        pass-through would send an unfilled placeholder to the model.
+        """
+        if not template:
+            return ""
+        try:
+            return template.format(language=self.language, crlf="\n")
+        except (KeyError, IndexError, ValueError):
+            return template
+
+    def _system_message(self):
+        """The system message this route sends, before the run-wide note.
+
+        The two attribute spellings are the ones already in use — ChatGPT
+        keeps an `$OPENAI_API_SYS_MSG` value in `system_content` and the
+        `--prompt` one in `prompt_sys_msg`; Claude, Gemini and codex keep only
+        the latter. A route with neither answers "", which is the honest
+        description of what it sends.
+        """
+        system = getattr(self, "system_content", None) or getattr(
+            self, "prompt_sys_msg", None
+        )
+        return self.fill_optional(system)
+
+    def style_suffix(self):
+        """The style section as a suffix for the turn, or "".
+
+        Appended rather than slotted because no endpoint has a place for it:
+        the style is a standing instruction about *how* to translate, and the
+        only channel every route has for that is the text it is already
+        sending. Fixed for a run, so it never destabilises a cached prefix.
+        """
+        note = (getattr(self, "style_note", None) or "").strip()
+        if not note:
+            return ""
+        return f"\n\n{self.STYLE_HEADING} {self.fill_optional(note)}"
+
     def _source_language_note(self):
         """The sentence that names the source language, or ""."""
         if not self.source_language:
@@ -435,12 +512,9 @@ class Base(ABC):
         sends.
         """
         user = getattr(self, "prompt_template", None) or getattr(self, "prompt", None)
-        system = getattr(self, "system_content", None) or getattr(
-            self, "prompt_sys_msg", None
-        )
         return {
             "user": user or "",
-            "system": self._augment_system_content(system or "") or "",
+            "system": self._augment_system_content(self._system_message()) or "",
             # A fixed --prompt style rides in every request (and replaces
             # the handoff's observed style), so a style-only change writes
             # a different book and must move the fingerprint with it.
@@ -851,10 +925,6 @@ class Base(ABC):
             text_list, prompt_template, system_content, default_prompt
         )
 
-        # Store original values
-        original_prompt = prompt_template
-        original_sys_msg = system_content
-
         # Detect which attribute names this translator uses
         # ChatGPT uses prompt_template/system_content, Gemini uses prompt/prompt_sys_msg
         prompt_attr = (
@@ -863,6 +933,16 @@ class Base(ABC):
         sys_msg_attr = (
             "system_content" if hasattr(self, "system_content") else "prompt_sys_msg"
         )
+
+        # Store original values — read off the instance, not off the arguments.
+        # The two are the same wherever a caller hands its own attribute
+        # straight in, and differ where it hands the *effective* value it
+        # assembled (the openai route's system message is `system_content` or
+        # `prompt_sys_msg`, and only the assembled form carries a `--prompt`
+        # system message onto this rung). Restoring the argument there would
+        # write the assembled string back over the attribute it came from.
+        original_prompt = getattr(self, prompt_attr, prompt_template)
+        original_sys_msg = getattr(self, sys_msg_attr, system_content)
 
         # --use_context must see one pair per paragraph. translate() saves
         # whatever it was handed, so letting it run on the joined batch would
