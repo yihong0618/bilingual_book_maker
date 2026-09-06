@@ -1815,8 +1815,10 @@ schema).
 Untyped, every plan run derives a default from the run's own prompt overhead:
 1600 with the stock prompts, up to 2000 under a fat custom --prompt, and half
 that (floor 800) per request on an endpoint without a strict-schema verdict —
-the same margin that halves the unit cap there. The run narrates the number
-and the route class it chose; pass 1 to turn grouping off. Minimum 1.
+the same margin that halves the unit cap there. Session runs (codex included)
+keep the un-halved value: 1600-2000 is their measured default. The run
+narrates the number and the route class it chose; pass 1 to turn grouping
+off. Minimum 1.
 """,
     )
     parser.add_argument(

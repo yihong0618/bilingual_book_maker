@@ -694,6 +694,23 @@ class TestInlineMarkers:
         assert len(fp.units) == 2
         assert not MARKER_RE.findall(" ".join(u.text for u in fp.units))
 
+    def test_combining_mark_scripts_are_words(self):
+        """Devanagari prose read as wordless before marks were erased.
+
+        Vowel signs and viramas are combining marks, not letters, so the
+        raw scan saw runs of one or two letters in every Hindi word — a
+        54-character sentence took the wordless cap (codex review 260906).
+        """
+        from book_maker.loader.markers import is_wordless
+
+        assert not is_wordless("यह साहित्य की कहानियाँ हैं और इनका अनुवाद पढ़ना चाहिए।")
+        # A zero-width non-joiner inside a word must not split it either.
+        assert not is_wordless("किताब‌खाना पढ़ने की जगह है")
+        # Arabic prose carries harakat the same way.
+        assert not is_wordless("هذه قصة طويلة عن الكتب والمكتبات القديمة")
+        # Erasing marks must not turn a real atom into prose.
+        assert is_wordless("http://www.w3.org/TR/xml/#sec-references")
+
     def test_cjk_is_words_even_without_spaces(self):
         # CJK prose has no whitespace, so one 40-character token of it is a
         # sentence rather than an atom: the prose cap must still apply

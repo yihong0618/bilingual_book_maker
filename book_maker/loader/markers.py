@@ -32,6 +32,7 @@ alone. Paired markers (``⟦em4⟧…⟦/em4⟧``) are out of scope for this pas
 """
 
 import re
+import unicodedata
 
 # Rendered characters a protected inline node may hold and still become a
 # marker. Above it the node keeps today's barrier: a long excluded listing is
@@ -81,6 +82,23 @@ _TOKEN_GLUE = r"[0-9A-Za-z_./:#?=&%~@+\-]"
 _PROSE_WORD_RE = re.compile(rf"(?<!{_TOKEN_GLUE})[^\W\d_]{{4,}}(?!{_TOKEN_GLUE})")
 
 
+def _erase_marks(text):
+    """Erase combining marks and zero-width joiners before the word scan.
+
+    Vowel signs, viramas and harakat are part of the word they decorate,
+    but `[^\\W\\d_]` reads them as non-letters, so scanned raw a Devanagari
+    word like "साहित्य" is runs of one or two letters and whole Hindi
+    sentences looked wordless — 54 characters of prose taking the 400-char
+    cap (codex review 260906). Erasing the marks re-joins each word's base
+    letters; the glue characters are ASCII and unaffected.
+    """
+    return "".join(
+        c
+        for c in text
+        if c not in "\u200c\u200d" and unicodedata.category(c) not in ("Mn", "Mc")
+    )
+
+
 def is_wordless(text):
     """Does this rendered text carry no prose word at all?
 
@@ -89,7 +107,7 @@ def is_wordless(text):
     it decides which of the two caps above applies, never whether something
     is protected content in the first place.
     """
-    return _PROSE_WORD_RE.search(text or "") is None
+    return _PROSE_WORD_RE.search(_erase_marks(text or "")) is None
 
 
 MARKER_OPEN = "⟦"
