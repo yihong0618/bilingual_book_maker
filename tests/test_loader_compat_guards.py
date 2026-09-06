@@ -16,6 +16,7 @@ from types import SimpleNamespace
 import pytest
 from ebooklib import epub
 
+from book_maker.glossary import Glossary
 from book_maker.loader.epub_loader import EPUBBookLoader
 from book_maker.loader.plan import session_token_budget
 from book_maker.session_context import derived_compact_budget
@@ -74,6 +75,18 @@ class CodexLike(Model):
         super().__init__(key, language, **kwargs)
         self.context_compact_at = kwargs.get("context_compact_at")
         self.no_context_compact = kwargs.get("no_context_compact", False)
+
+
+class GlossaryModel(Model):
+    """A route that keeps the pinned/learned split the real ones keep."""
+
+    SUPPORTS_GLOSSARY = True
+
+    def __init__(self, key, language, **kwargs):
+        super().__init__(key, language, **kwargs)
+        self.pinned = kwargs.get("glossary") or Glossary()
+        self.learned = Glossary()
+        self.glossary = self.pinned
 
 
 class WindowOnly(Model):
@@ -172,6 +185,52 @@ class TestResumeRunFingerprint:
         )
         with pytest.raises(SystemExit):
             resumed._check_resume_run_fingerprint()
+
+    def test_a_different_glossary_is_refused(self, tmp_path):
+        # a pin is a substitution the run must make, so resuming under
+        # another one splices two vocabularies into one book
+        source = _write_epub(tmp_path / "book.epub")
+        _write_checkpoint(
+            source, model=GlossaryModel, glossary=Glossary.parse("Winston → 温斯顿\n")
+        )
+
+        resumed = EPUBBookLoader(
+            str(source),
+            GlossaryModel,
+            key="",
+            resume=True,
+            language="zh-hans",
+            glossary=Glossary.parse("Winston → 溫斯頓\n"),
+        )
+        with pytest.raises(SystemExit):
+            resumed._check_resume_run_fingerprint()
+
+    def test_the_same_glossary_resumes(self, tmp_path, capsys):
+        source = _write_epub(tmp_path / "book.epub")
+        pins = "Winston → 温斯顿\n"
+        _write_checkpoint(source, model=GlossaryModel, glossary=Glossary.parse(pins))
+
+        resumed = EPUBBookLoader(
+            str(source),
+            GlossaryModel,
+            key="",
+            resume=True,
+            language="zh-hans",
+            glossary=Glossary.parse(pins),
+        )
+        resumed._check_resume_run_fingerprint()
+        assert "different language" not in capsys.readouterr().out
+
+    def test_what_the_run_learned_does_not_move_the_fingerprint(self, tmp_path):
+        # the derived half changes every window by design; folding it in
+        # would make every resume look like a different run
+        source = _write_epub(tmp_path / "book.epub")
+        loader = _loader(source, model=GlossaryModel)
+        before = loader._run_fingerprint()
+        loader._run_fingerprint_value = None
+        loader.translate_model.learned = Glossary.parse("Boxer → 拳击手\n")
+        loader.translate_model.glossary = loader.translate_model.learned
+        assert loader._run_fingerprint() == before
 
     def test_a_pre_fingerprint_checkpoint_warns_and_continues(self, tmp_path, capsys):
         # refusing these would strand every run interrupted before today

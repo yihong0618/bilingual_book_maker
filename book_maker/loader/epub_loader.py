@@ -320,6 +320,8 @@ class EPUBBookLoader(BaseBookLoader):
         context_mode="window",
         context_compact_at=None,
         no_context_compact=False,
+        glossary=None,
+        glossary_auto=None,
         temperature=1.0,
         source_lang="auto",
         parallel_workers=1,
@@ -351,6 +353,8 @@ class EPUBBookLoader(BaseBookLoader):
             context_mode=context_mode,
             context_compact_at=context_compact_at,
             no_context_compact=no_context_compact,
+            glossary=glossary,
+            glossary_auto=glossary_auto,
             handoff_path=handoff_path(epub_name),
             temperature=temperature,
             source_lang=source_lang,
@@ -1153,6 +1157,16 @@ class EPUBBookLoader(BaseBookLoader):
             return names
         return [getattr(model, "model_name", None) or ""]
 
+    def _pinned_glossary_lines(self):
+        """The `--glossary` file this run pins, as canonical lines.
+
+        The pinned half only. What a run *learns* changes from window to
+        window by design, so folding it in would make every resume look like
+        a different run — and it is not something the operator chose.
+        """
+        pinned = getattr(self.translate_model, "pinned", None)
+        return pinned.to_lines() if pinned else ""
+
     def _run_fingerprint(self):
         """What a checkpoint's translations were written by.
 
@@ -1163,10 +1177,12 @@ class EPUBBookLoader(BaseBookLoader):
         to splice two languages into one book and call it finished. The
         prompt and the model are the same kind of fact — the checkpoint
         holds translations, and a translation is of a language, under a
-        prompt, by a model.
+        prompt, by a model. A pinned glossary is the fourth: it is a
+        substitution the run must make, so a resume under a different
+        `--glossary` would splice two vocabularies into one book.
 
-        Both are taken as the run *resolved* them, not as the command spelled
-        them: see `_resolved_prompt` and `_configured_models`.
+        The first two are taken as the run *resolved* them, not as the command
+        spelled them: see `_resolved_prompt` and `_configured_models`.
 
         Deliberately not the whole flag set: only what changes the words in
         the slots already written.
@@ -1183,6 +1199,7 @@ class EPUBBookLoader(BaseBookLoader):
                         "language": self.language,
                         "prompt": self._resolved_prompt(),
                         "model": self._configured_models(),
+                        "glossary": self._pinned_glossary_lines(),
                     },
                     sort_keys=True,
                     default=str,
