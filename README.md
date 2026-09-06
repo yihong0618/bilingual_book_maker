@@ -310,7 +310,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--key`:
 
-  API key for the endpoint. Without the flag the key is read from `$BBM_API_KEY`, then from the format's own variable: `$OPENAI_API_KEY`, `$ANTHROPIC_API_KEY`, `$BBM_GOOGLE_GEMINI_KEY`, `$BBM_QWEN_API_KEY`, `$BBM_GROQ_API_KEY`, `$BBM_XAI_API_KEY`, `$BBM_CAIYUN_API_KEY` or `$BBM_DEEPL_API_KEY`. The old per-vendor flags (`--openai_key` and the rest) still work. `--api_key` is the same flag under its older name.
+  API key for the endpoint. Without the flag the key is read from `$BBM_API_KEY`, then from the format's own variable. Same flag as `--api_key`.
 
 - `--api_format`:
 
@@ -326,16 +326,13 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   | `xai` | required: `--key`, else `$BBM_API_KEY`, `$BBM_XAI_API_KEY`, `$XAI_API_KEY` | xAI; `--model` required |
   | `litellm` | none for a proxy on this machine, else `--key` or `$LITELLM_MASTER_KEY` | a LiteLLM proxy, `http://localhost:4000` unless `--api_base` says otherwise; `--model` required |
   | `codex` | none: `codex login` (Codex CLI) | the local `codex app-server` sidecar on a ChatGPT/Codex plan, default `gpt-5.6-luna` |
+  | `orcarouter` | required: `--key` or `$BBM_ORCAROUTER_API_KEY` | OrcaRouter |
   | `google` | none | Google Translate, free |
   | `caiyun` | required: `--key` or `$BBM_CAIYUN_API_KEY` | Caiyun |
   | `deepl` | required: `--key` or `$BBM_DEEPL_API_KEY` | DeepL (paid) |
   | `deeplfree` | none | DeepL free tier |
   | `tencent` | none | Tencent TranSmart, free |
   | `customapi` | none | a `{text, source_lang, target_lang}` format API |
-
-- `--source_lang`:
-
-  Source language. Stated, it reaches every LLM route's prompt as evidence ("Translate from english"), and rides in the request itself on `--api_format qwen` (whose request names a language pair) and `--api_format customapi`. Default: auto-detect, which states nothing.
 
 - `--interval`:
 
@@ -347,8 +344,12 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--language`:
 
-  Set the target language: a tag (`--language zh-hant`), a name (`--language "Traditional Chinese"`), or both at once — `--language "zh-hant:Traditional Chinese"`. The tag is what gets stamped on the output (inserted markup, `dc:language`, the provenance record) and names the structured-output field; the name is what the model is asked for. A bare tag or name behaves as before; the two-part form is for a language the built-in tables miss. Default `zh-hans`.
-  The tag list ships in `docs/languages.md`; `python make_book.py --help` prints it too. The source language is never part of this flag — `--source_lang` states it when detection isn't enough.
+  Set the target language: a tag (`--language zh-hant`), a name (`--language "Traditional Chinese"`), or both at once — `--language "zh-hant:Traditional Chinese"`. The tag names the JSON structured-output field; the name is what the model is asked for. The two-part form is for a language the built-in tables miss. Default `zh-hans`.
+  [Available tags](./docs/languages.md).
+
+- `--source_lang`:
+
+  Source language. Stated, it appends a prompt line ("Translate from English"), and on `--api_format qwen` (whose request names a language pair) and `--api_format customapi` it rides in the request itself. Default: auto-detect.
 
 - `--proxy`:
 
@@ -356,12 +357,8 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--resume`:
 
-  Use `--resume` option to manually resume the process after an interruption. An EPUB
-  checkpoint records the run's language, prompt and model, and a resume under different
-  ones stops with a message rather than splicing two runs into one book (checkpoints from
-  older versions warn once and continue). Refused together with `--parallel-workers` and
-  `--accumulated_num` above 1 — that path writes no checkpoint, so there would be nothing
-  to resume.
+  Use `--resume` option to manually resume the process after an interruption. Mutually
+  exclusive with `--parallel-workers`.
 
   ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --api_format google --resume
@@ -379,8 +376,8 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   The value decides how is translation decision of each tag made:
 
-  - `auto` (default): when the book is an epub, ask the LLM what to translate. On an endpoint verified to apply a strict JSON schema the question rides structured output; on any other endpoint that can hold a conversation (the codex route, plain proxies) it is asked over a plain session — three signatures at a time, answered with exact `skip,translate,unsure` replies; a reply that does not carry exactly as many verdicts as asked is re-asked one signature at a time, and `unsure` or anything unparseable counts as translate (never skip; the coverage gate polices skips). `--context-compact-at` bounds that classifier session too, whether or not `--use_context` was passed. Only when the route has no conversation at all, and when the plan fails, translate the `--translate-tags` selection instead. Rows decided over a plain session appear in `<book>_plan.json` with an `unnamed (…)` content type naming how the verdict was reached rather than what the content is.
-  - `none`: no plan; only the `--translate-tags` selection.
+  - `auto` (default): when the book is an epub, ask the LLM what to translate. Only when the route cannot hold a conversation, and when the plan fails, translate the `--translate-tags` selection instead. Rows decided over a plain session appear in `<book>_plan.json` with an `unnamed (…)` content type naming how the verdict was reached rather than what the content is.
+  - `none`: no plan; only the `--translate-tags` selection — unselected, that defaults to `p`, most body text.
   - `all`: translate the whole partition, no classification.
   - `model`: the translating LLM judges, then translates. `--plan-classify-model X` picks the model that classifies.
   - `agent`: writes the classification plan for the book and prints instructions to paste into your coding tool for classification. 
@@ -389,7 +386,8 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   - `--plan-dry-run`: print the per-signature table, write `<book>_plan.json`, and exit. Honors `--only_filelist` / `--exclude_filelist`.
   - `<book>_plan.json`: the translation plan; delete it to classify again.
   - `--plan-min-coverage` (default 0.5, range 0–1): plan mode aborts if the plan covers less than this fraction of the text. `0` disables the guard and values above `0.9` usually abort after classification is already paid for — both warn.
-  - `--poetry-group-size` (default 8): consecutive short lines — verse, lists, tables of short entries — are translated together, up to this many per request, so each line sees its neighbours. Deprecated: general grouping and the session handoff give lines their neighbours now, and the units cap is `--max-batch-units`; the flag still works, warns, and is on its way out.
+
+  - `--max-batch-units`: the most units one grouped request may carry (default `32`). Lower it if the run keeps printing misalignment recoveries; content is also bounded by the token budget (`--accumulated_num`). Replaces the deprecated `--poetry-group-size`.
 
   ```shell
   # let the model judge which tags need translating
@@ -423,7 +421,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   - If you need to set the `system` role content, you can use the following format: `--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'` or `--prompt prompt_template_sample.json` (example of a JSON file can be found at [./prompt_template_sample.json](./prompt_template_sample.json)).
 
-  - A third key, `style`, is a standing instruction about how to write — register, tone, vocabulary — that rides in **every** request, and in session mode replaces the style the handoff would otherwise observe for itself. A section with no native slot on a route (`style` everywhere, `system` on the codex format) is appended to the user message instead of being dropped, and a run with `--prompt` prints one line at start naming which sections it adopted and where they landed. Samples carrying all three sections: [./prompt_sections_sample.json](./prompt_sections_sample.json) for a plain run, [./prompt_session_sample.json](./prompt_session_sample.json) for a session run.
+  - A third key, `style`, is a standing instruction about how to write — register, tone, vocabulary — that rides in **every** request. Samples carrying all three sections: [./prompt_sections_sample.json](./prompt_sections_sample.json) for a plain run, [./prompt_session_sample.json](./prompt_session_sample.json) for a session run.
   
   - You can now use [PromptDown](https://github.com/btfranklin/promptdown) format (`.md` files) for more structured prompts: `--prompt prompt_md.prompt.md`. PromptDown supports both traditional system messages and developer messages (used by newer AI models). Example:
   
@@ -452,10 +450,6 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   value, there is no way to know if the limit is reached before sending.
   In EPUB plan mode this is a per-request token budget: consecutive units of any length share one request up to `N` tokens. Untyped, every plan run derives a default from the run's own prompt overhead — `1600` with the stock prompts, up to `2000` under a fat custom `--prompt` — and an endpoint without a strict-schema verdict carries half that per request (floor `800`), the same margin that halves the unit cap there — except session runs (codex included), which keep the un-halved value, their measured default. The run narrates the number and the route class it chose; pass `1` to turn grouping off. Minimum `1`.
 
-- `--max-batch-units`:
-
-  EPUB plan mode only: the most units one grouped request may carry (default `32`, half the measured fault-emergence level — our September 2026 measurement put the first content faults at 64 effective units per request, on prose). An endpoint that verifies JSON mode but not a strict schema automatically carries half this many (16), which is where miscounted replies actually live. Lower it if the run keeps printing misalignment recoveries; the token budget (`--accumulated_num`) is what bounds content either way.
-
 - `--use_context`:
 
   Translate with context.
@@ -477,9 +471,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   - `--context-compact-at`:
 
-    The estimated-token budget a rolling history may reach. In session mode the history is then compacted into a handoff report. Minimum `500`. When unset, every session run — grouped or not, the codex route included — compacts at `8000`, printed at start. It also bounds the plan classifier's own conversation on endpoints that classify over a plain session (which simply restarts there — no handoff), whether or not `--use_context` was passed. An explicit value always wins.
-
-    The `8000` is pinned on measurement (September 2026, whole-book runs): the per-book cost optimum sits between `1500` and `4000`, `8000` runs 9–25% above it — inside single-run noise — and `20000` up to 56% more, in the one cell that also showed register drift. `8000` is the short edge of the band where a typical run compacts 0–1 times, so continuity costs the least; short windows did not hurt name consistency either, since the handoff re-states the recurring terms at every seam.
+    Session mode only. The estimated-token budget the history may reach before it is compacted into a handoff report. Default `8000`, minimum `500`.
 
   - `--no-context-compact`:
 
@@ -488,23 +480,17 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 - `--glossary` / `--terminology`:
 
   A file of `term → translation` lines — one per line, `#` starts a note or a
-  comment — that this run must render that way. The two spellings are one
-  flag. Only the terms that occur in a request are sent with it, so a long
-  file costs nothing on the paragraphs it does not touch. A missing file stops
-  the run at parse time. Read by the openai- and codex-shaped routes for EPUB
-  and Markdown books; the other routes say so and ignore it.
+  comment. A missing file stops the run at parse time.
+  Read by the openai- and codex-shaped routes for EPUB and Markdown books; the
+  other routes say so and ignore it.
 
-  A pinned term makes the translation say what you pinned, so pin only
-  renderings you can stand behind.
+  *Use this responsibly: an idiosyncratic pinned rendering can pull the
+  translation far from the source's meaning and emotional reading.
 
   - `--glossary-auto on|off`:
 
-    Whether a session run also keeps the renderings its own handoff reports
-    establish, so recurring names stay unified across a window seam. On by
-    default wherever a session runs (`--use_context session`, and the codex
-    route's one thread); `off` asks the compact turn for a summary only.
-    Learned terms live in this run and in `<book>_handoff.md`, and nowhere
-    else — what a run taught itself is never treated as a pin you chose.
+    Keep the renderings the handoff reports establish, so recurring names
+    stay unified across window seams. Session mode only.
 
 - `--parallel-workers`:
 
@@ -529,11 +515,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--no_disclosure`:
 
-  An epub output says it is an AI translation (a machine translation on the `google`, `deepl`, `caiyun`, `tencent` and `customapi` engines): the tool is added as a translator contributor, a description line names the model, and a one-page note closes the book — a `Translation Credits` heading, then the model, the date and the unreviewed-translation note, nothing more. `--no_disclosure` leaves all of it out. The author, rights and source metadata are carried over either way.
-
-- `--provenance`:
-
-  Record how this file was made, invisibly. The full record is `bbm_provenance.json` inside the book — the tool's build, the model, the endpoint **host**, the sanitized command line, both languages, the date, and a named glossary's sha256; format conversions keep manifest files, so this is the copy that survives. The package metadata beside it is deliberately just three `bbm:` entries — a tool marker carrying the build, the model, and the date — because metadata is trivially stripped, so nothing load-bearing lives there. Never recorded anywhere: the API key under any spelling, the `--prompt` text, header values — a test sweeps every file in the archive for them. The endpoint host is there on purpose: a model claim alone is unverifiable, so the book names the model *as served by that host*, and a reseller that serves something else is the accountable party. Plan-mode and session runs record all this by themselves; this flag is the opt-in for a plain tag-mode run. A glossary named on the command line is embedded verbatim (`bbm_glossary.txt`) so pins are auditable; what a run learned by itself never is. Re-running the tool on its own output replaces the record. `--no_disclosure` turns this off too, and the sanitized command line does include file paths as you typed them.
+  An epub output is marked as an AI translation by default; this flag leaves the marking out. It also turns off the translation-info metadata (`--provenance`).
 
 - `--translation_style`:
 
