@@ -266,10 +266,12 @@ the request budget from its own prompt overhead, and pins the rest.
   the misalignment hint (`N misaligned batches this run — consider a
   lower --max-batch-units or --accumulated_num`), which appears from the
   third recovered batch on.
-- **`--accumulated_num`**: leave unset (the derived 1600–2000 band).
-  Raising it toward 4800 produced no faults, but retry cost climbs past
-  the ceiling and per-content savings flatten — the measured optimum is
-  the derived band.
+- **`--accumulated_num`**: leave unset (the derived 2400–3200 band).
+  The whole 1600–4800 range measured fault-free at the 32-unit cap —
+  on the weak-model rerun too — so the default floor sits at half the
+  measured-clean ceiling, the same margin the unit cap takes below its
+  emergence point. Raising it toward 4800 produced no faults but spends
+  that margin for flattening per-content savings.
 - **`--context-compact-at`**: leave unset; every session run compacts
   at the pinned 8000 (§5, §8). Set it lower (toward 2000–4000) only if
   squeezing the last ~10–25% of session cost matters more to you than
@@ -284,11 +286,14 @@ equations, not constants, because prompt overhead is user-customizable
 (`--prompt`) and measured at run start:
 
 ```
-B_default = clamp( 3·F, 1600, 2000 )          # F = measured prompt overhead
+B_default = clamp( 3·F, 2400, 3200 )          # F = measured prompt overhead
 C_default = 8000                              # pinned, every session run
 ```
 
-With the stock prompts F ≈ 104–111, so B defaults to the floor 1600. F
+The floor is half the largest B measured fault-free (4800, at the
+32-unit cap, weak models included); the ceiling is a directly measured
+clean rung, 1.5× under that edge. With the stock prompts F ≈ 104–111,
+so B defaults to the floor 2400. F
 does not appear in a compaction optimum (it drops out of the
 derivative); prompt growth reaches C only through B.
 

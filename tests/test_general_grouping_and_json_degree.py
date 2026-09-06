@@ -320,7 +320,7 @@ class TestLoaderHonorsAccumulatedNum:
         loader.make_bilingual_book()
 
         assert any(
-            len(call) > 1 and all(len(text) >= 70 for text in call)
+            len(call) > 1 and sum(len(text) >= 70 for text in call) >= 2
             for call in loader.translate_model.list_calls
         ), loader.translate_model.list_calls
 
@@ -377,14 +377,15 @@ class TestLoaderHonorsAccumulatedNum:
 class TestSessionModeDefaultsTheBudget:
     """`--use_context session` groups by default; every other run does not."""
 
-    def test_session_default_budget_is_the_measured_floor(self, tmp_path):
-        # 1600 is where the 260905 session-cost eval's per-content-token cost
-        # bottomed. A model that cannot measure its prompt overhead (and one
-        # whose overhead is small) both land on the floor.
+    def test_session_default_budget_is_the_margin_floor(self, tmp_path):
+        # 2400 is half the largest budget the 260906 weak-model B sweep
+        # measured fault-free (4800, at the 32-unit cap) — the same half
+        # margin the unit cap takes. A model that cannot measure its prompt
+        # overhead (and one whose overhead is small) both land on the floor.
         from book_maker.loader.plan import SESSION_BUDGET_FLOOR
 
         bare, _ = _plan_loader(tmp_path / "bare", _StrictModel, context_mode="session")
-        assert bare._plan_token_budget == SESSION_BUDGET_FLOOR == 1600
+        assert bare._plan_token_budget == SESSION_BUDGET_FLOOR == 2400
 
         lean, _ = _plan_loader(
             tmp_path / "lean",
@@ -392,7 +393,7 @@ class TestSessionModeDefaultsTheBudget:
             context_mode="session",
         )
         # 3 * 104 = 312, well under the floor
-        assert lean._plan_token_budget == 1600
+        assert lean._plan_token_budget == 2400
 
         # and tag mode is untouched: the default lives in the plan property,
         # not in the attribute every tag-mode path reads
@@ -404,15 +405,15 @@ class TestSessionModeDefaultsTheBudget:
         from book_maker.loader.plan import SESSION_BUDGET_CEILING
 
         fat, _ = _plan_loader(
-            tmp_path / "fat", _OverheadModel(650), context_mode="session"
+            tmp_path / "fat", _OverheadModel(900), context_mode="session"
         )
-        assert fat._plan_token_budget == 1950
+        assert fat._plan_token_budget == 2700
 
         huge, _ = _plan_loader(
-            tmp_path / "huge", _OverheadModel(900), context_mode="session"
+            tmp_path / "huge", _OverheadModel(1200), context_mode="session"
         )
-        # 3 * 900 = 2700, above the evaluated-clean content ceiling
-        assert huge._plan_token_budget == SESSION_BUDGET_CEILING == 2000
+        # 3 * 1200 = 3600, above the measured-clean ceiling rung
+        assert huge._plan_token_budget == SESSION_BUDGET_CEILING == 3200
 
     def test_an_explicit_one_turns_grouping_off_in_session_mode_too(self, tmp_path):
         # `--accumulated_num 1` is the documented way to say "no grouping";
@@ -455,12 +456,12 @@ class TestSessionModeDefaultsTheBudget:
         # 260906: the untyped default is a derived budget on every plan run,
         # not only a session one. It used to be None here, and None meant a
         # request per paragraph — 45,010 of them across the corpus, against
-        # 8,689 at this budget.
+        # 8,689 at the earlier 1600-token floor.
         from book_maker.loader.plan import session_token_budget
 
         loader, _ = _plan_loader(tmp_path, _StrictModel, context_mode=mode)
 
-        assert loader._plan_token_budget == session_token_budget(None) == 1600
+        assert loader._plan_token_budget == session_token_budget(None) == 2400
         assert loader._partition_route() == "schema"
         # a strict endpoint sends what the partition grouped, unsplit
         assert loader._plan_request_budget() is None
@@ -481,8 +482,8 @@ class TestSessionModeDefaultsTheBudget:
 
         loader, _ = _plan_loader(tmp_path, _RecordingModel, context_mode=mode)
 
-        assert loader._plan_token_budget == session_token_budget(None) == 1600
-        assert loader._plan_request_budget() == substrict_token_budget(None) == 800
+        assert loader._plan_token_budget == session_token_budget(None) == 2400
+        assert loader._plan_request_budget() == substrict_token_budget(None) == 1200
         assert loader._plan_request_budget() == SUBSTRICT_BUDGET_FLOOR
 
         strict, _ = _plan_loader(tmp_path / "strict", _StrictModel, context_mode=mode)
@@ -510,18 +511,18 @@ class TestSessionModeDefaultsTheBudget:
 
     def test_a_fat_prompt_raises_both_route_classes_together(self, tmp_path):
         # the halving rides on top of the overhead derivation, it does not
-        # replace it: 3 * 650 = 1950, and half of that is 975
-        Fat = _OverheadModel(650)
+        # replace it: 3 * 900 = 2700, and half of that is 1350
+        Fat = _OverheadModel(900)
         FatSub = type(
-            "FatSub", (_RecordingModel,), {"prompt_overhead_tokens": lambda s: 650}
+            "FatSub", (_RecordingModel,), {"prompt_overhead_tokens": lambda s: 900}
         )
 
         strict, _ = _plan_loader(tmp_path / "s", Fat)
         sub, _ = _plan_loader(tmp_path / "j", FatSub)
 
-        assert strict._plan_token_budget == 1950
-        assert sub._plan_token_budget == 1950
-        assert sub._plan_request_budget() == 975
+        assert strict._plan_token_budget == 2700
+        assert sub._plan_token_budget == 2700
+        assert sub._plan_request_budget() == 1350
 
     def test_an_explicit_one_turns_grouping_off_outside_session_mode_too(
         self, tmp_path
@@ -578,7 +579,7 @@ class TestSessionModeDefaultsTheBudget:
 
         out = " ".join(capsys.readouterr().out.split())
         assert out == (
-            "plan grouping: budget 800 tokens per request (endpoint below "
+            "plan grouping: budget 1200 tokens per request (endpoint below "
             "strict decoding; derived, --accumulated_num overrides)"
         )
 
@@ -589,7 +590,7 @@ class TestSessionModeDefaultsTheBudget:
 
         out = " ".join(capsys.readouterr().out.split())
         assert out == (
-            "plan grouping: budget 1600 tokens per request (schema-verified "
+            "plan grouping: budget 2400 tokens per request (schema-verified "
             "endpoint; derived, --accumulated_num overrides)"
         )
 
@@ -608,8 +609,11 @@ class TestSessionModeDefaultsTheBudget:
         loader, _ = _plan_loader(tmp_path, _StrictModel, context_mode="session")
         loader.make_bilingual_book()
 
+        # the 2400-token budget is big enough that the chapter heading rides
+        # along with the prose, so "grouped" means a multi-text call carrying
+        # at least two real paragraphs — not a call of nothing but prose
         assert any(
-            len(call) > 1 and all(len(t) >= 70 for t in call)
+            len(call) > 1 and sum(len(t) >= 70 for t in call) >= 2
             for call in loader.translate_model.list_calls
         ), loader.translate_model.list_calls
 
@@ -618,7 +622,7 @@ class TestSessionModeDefaultsTheBudget:
         loader.make_bilingual_book()
 
         out = capsys.readouterr().out
-        assert "1600 tokens" in out
+        assert "2400 tokens" in out
 
 
 class TestTheCompactBudgetIsPinned:

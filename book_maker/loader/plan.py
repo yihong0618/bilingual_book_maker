@@ -1453,21 +1453,30 @@ SUBSTRICT_GROUP_MAX_UNITS = GENERAL_GROUP_MAX_UNITS // 2
 # typed. Named for the session run it was measured on, and since 260906 the
 # default for *every* plan run: a plan run without one asked one request per
 # paragraph: 45,010 requests for the 209,021 units of the 45-book epub-sample
-# corpus, against 8,689 at this budget on a schema-verified route and 21,065
-# below strict decoding (measured 260906). Session mode is
+# corpus, against 8,689 at the earlier 1600-token floor on a schema-verified
+# route and 21,065 below strict decoding (measured 260906; the counts fall
+# further at this floor — the unit cap binds sooner). Session mode is
 # simply where the bill is most obviously wrong — the history is re-read at
 # the endpoint's cache rate there, so the run pays by request count.
 #
-# The floor is where the measured per-content-token cost bottomed (260905
-# session-cost eval, gpt-5.6-luna, official endpoint): a request's input bill
-# is dominated by the carried history and the fixed prompt, both of which a
-# larger request amortises over more content — 15.5 input-equivalents per
-# content token at 800, 12.3 at 1600.
-SESSION_BUDGET_FLOOR = 1600
-# The ceiling is the evaluated-clean content ceiling for one request (260904
-# degradation eval): past it the eval stops saying the output is intact, and a
-# cost curve is no reason to translate worse.
-SESSION_BUDGET_CEILING = 2000
+# The floor is half the largest budget measured fault-free: the 260906
+# weak-model B sweep (gpt-4o-mini and deepseek-chat, prose and verse, every
+# cell read back from the produced epub) ran 1600–4800 clean at the 32-unit
+# cap, so 2400 takes the same half-margin the unit cap takes below its
+# emergence point. Honesty about the asymmetry: 64 units is a *measured*
+# fault onset, 4800 is merely the largest B measured clean — no fault onset
+# was found on the B axis at all — so this margin guards an unobserved edge.
+# Cost only helps: the measured per-content-token cost falls monotonically
+# with request size (15.5 input-equivalents at 800, 12.3 at 1600; 260905
+# session-cost eval), so a bigger floor is never the expensive direction.
+SESSION_BUDGET_FLOOR = 2400
+# The ceiling caps the fat-prompt growth term below, at a rung the 260906
+# sweep measured clean directly — 1.5x under the measured 4800, rather than
+# riding the edge of what was evaluated. (The old 2000 ceiling came from the
+# 260904 char-denominated degradation eval, run before the unit cap and the
+# marker guards existed; the 260906 sweep supersedes it on the shipped
+# pipeline.)
+SESSION_BUDGET_CEILING = 3200
 # What a request carries when the endpoint is below strict decoding, exactly
 # as `SUBSTRICT_GROUP_MAX_UNITS` halves the unit cap, for exactly the same
 # reason and off the same verdict: both content regressions the 260905
