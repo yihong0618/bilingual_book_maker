@@ -93,8 +93,8 @@ COLOPHON_TITLE = "Translation note"
 # What the page calls itself to the reader. The document `<title>` stays
 # "Translation note" — it is what a reading system shows in a tab and what
 # the item is called in the manifest — but the heading on the page says the
-# thing the page is for.
-COLOPHON_HEADING = "Disclaimer"
+# thing the page is for: credits, not a warning label (owner call, 260905).
+COLOPHON_HEADING = "Translation Credits"
 UNREVIEWED = "This translation has not been reviewed by a human translator."
 NOTE_LABEL = "Note"
 

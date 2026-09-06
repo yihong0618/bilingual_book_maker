@@ -532,7 +532,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--no_disclosure`:
 
-  An epub output says it is an AI translation (a machine translation on the `google`, `deepl`, `caiyun`, `tencent` and `customapi` engines): the tool is added as a translator contributor, a description line names the model, and a one-page note closes the book — a `Disclaimer` heading, then the model, the date and the unreviewed-translation note, nothing more. `--no_disclosure` leaves all of it out. The author, rights and source metadata are carried over either way.
+  An epub output says it is an AI translation (a machine translation on the `google`, `deepl`, `caiyun`, `tencent` and `customapi` engines): the tool is added as a translator contributor, a description line names the model, and a one-page note closes the book — a `Translation Credits` heading, then the model, the date and the unreviewed-translation note, nothing more. `--no_disclosure` leaves all of it out. The author, rights and source metadata are carried over either way.
 
 - `--provenance`:
 

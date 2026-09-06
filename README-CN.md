@@ -457,7 +457,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--no_disclosure`:
 
-  epub 输出默认标注为 AI 翻译（`google`、`deepl`、`caiyun`、`tencent`、`customapi` 引擎则标注为机器翻译）：工具作为译者写入 contributor，一行描述记录模型名，书末附一页说明——`Disclaimer` 标题下只有模型、日期和"未经人工校对"三行。`--no_disclosure` 去掉全部这些。
+  epub 输出默认标注为 AI 翻译（`google`、`deepl`、`caiyun`、`tencent`、`customapi` 引擎则标注为机器翻译）：工具作为译者写入 contributor，一行描述记录模型名，书末附一页说明——`Translation Credits` 标题下只有模型、日期和"未经人工校对"三行。`--no_disclosure` 去掉全部这些。
 
 - `--provenance`:
 
