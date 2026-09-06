@@ -1749,3 +1749,31 @@ def test_an_explicit_one_keeps_the_session_dry_run_ungrouped(tmp_path):
     # won't do (the zero-budget behavior itself is pinned at the
     # assign_batches level: a 0 budget groups nothing at all)
     assert json.loads(plan.read_text())["token_budget"] == 0
+
+# --------------------------------------------------------------------------
+# --poetry-group-size: deprecated, still honoured
+# --------------------------------------------------------------------------
+
+
+def test_poetry_group_size_still_shapes_the_plan(tmp_path):
+    # deprecated is not removed: the flag reaches the plan exactly as before
+    proc, plan = _run(tmp_path, "--poetry-group-size", "5", "--plan-dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert json.loads(plan.read_text())["poetry_group_size"] == 5
+
+
+def test_poetry_group_size_warns_and_points_at_the_units_cap(tmp_path):
+    proc, _ = _run(tmp_path, "--poetry-group-size", "5", "--plan-dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    flat = " ".join(proc.stdout.split())
+    assert flat.count("--poetry-group-size:") == 1
+    assert "general grouping" in flat
+    assert "--max-batch-units" in flat
+
+
+def test_an_untyped_poetry_group_size_says_nothing(tmp_path):
+    proc, plan = _run(tmp_path, "--plan-dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "--poetry-group-size" not in proc.stdout
+    # and the default is unchanged
+    assert json.loads(plan.read_text())["poetry_group_size"] == 8

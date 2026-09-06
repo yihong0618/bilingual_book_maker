@@ -1450,6 +1450,12 @@ def deprecation_notices(options, given):
             f"{typed} is now --max-batch-units. The old spelling still works "
             f"and means exactly the same thing."
         )
+    if given.poetry_group_size:
+        notices.append(
+            "--poetry-group-size: general grouping and the session handoff "
+            "cover poetry now, and the units cap is --max-batch-units. It "
+            "still shapes verse windows, but it is on its way out."
+        )
     return notices
 
 
@@ -1674,9 +1680,11 @@ def build_parser():
         dest="poetry_group_size",
         type=poetry_group,
         default=None,
-        help="plan mode: consecutive short lines share one translation "
-        "request, at most this many per request (default 8; ~500 "
-        "characters per request either way)",
+        help="deprecated: general grouping and the session handoff cover "
+        "poetry now, and the units cap is --max-batch-units. Still honoured "
+        "-- plan mode gives consecutive short lines one translation request, "
+        "at most this many per request (default 8; ~500 characters per "
+        "request either way) -- but it warns, and it is on its way out",
     )
     parser.add_argument(
         "--plan-classify",
