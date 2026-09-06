@@ -52,7 +52,7 @@ from urllib.parse import urlsplit
 
 from book_maker.redaction import redact
 
-# Every translation metadata meta is `<meta name="bbm:…" content="…"/>` — the EPUB 2
+# Every meta we write is `<meta name="bbm:…" content="…"/>` — the EPUB 2
 # form, because it is the one every reading system, every library tool and
 # every `unzip -p … | grep` already understands. The prefix is what makes an
 # entry ours, and it is the whole ownership test: a previous run's entries

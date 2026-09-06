@@ -351,8 +351,8 @@ class EPUBBookLoader(BaseBookLoader):
         # calibre's record of its own file is not covered by this: that is
         # a false statement about the file, not a disclosure.
         self.disclose = disclose
-        # --translation-metadata: the machine record (build, model, endpoint host, the
-        # sanitized command) in the package document. Only the opt-in half —
+        # --translation-metadata: the record (build, model, endpoint host,
+        # command line) in the package document. Only the opt-in half —
         # a plan or session run writes it whether or not this was passed. See
         # `_wants_translation_metadata`.
         self.translation_metadata = translation_metadata

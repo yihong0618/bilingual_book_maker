@@ -573,9 +573,9 @@ def stamp_disclosure(
     outcome that would make that worse than useless: a credit naming a
     translator with no note behind it says less than saying nothing.
 
-    `translation_metadata`, when given, is a `book_maker.translation_metadata.TranslationMetadata`: the
-    invisible half of the same statement, written under the same all-or-
-    nothing rule. It rides with the disclosure rather than having a switch of
+    `translation_metadata`, when given, is a `TranslationMetadata`: the
+    reader-invisible half of the same statement, written under the same
+    all-or-nothing rule. It rides with the disclosure rather than having a switch of
     its own — `--no_disclosure` says the file must not claim to be a machine
     translation, and `bbm:model` claims exactly that, in the one place a
     script would look.

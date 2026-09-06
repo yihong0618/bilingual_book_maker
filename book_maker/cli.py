@@ -1354,8 +1354,8 @@ COMPAT_RULES = (
         and f.book_type == "epub"
         and not f.options.disclosure,
         lambda f: (
-            "--no_disclosure silences everything the file says about the run, "
-            "the machine record included, so --translation-metadata records nothing. "
+            "--no_disclosure turns off everything the file says about the run, "
+            "the translation metadata included, so --translation-metadata records nothing. "
             "Drop one of the two."
         ),
     ),
@@ -1897,7 +1897,7 @@ off. Minimum 1.
         "--translation-metadata",
         dest="translation_metadata",
         action="store_true",
-        help="record how the file was made, invisibly — the full record (build, model, endpoint host, sanitized command line, languages, date) is a bbm_translation_metadata.json in the book, with three bbm: metas beside it as a marker; never the key or the --prompt text. Plan-mode and session runs record it by themselves; this is the tag-mode opt-in. --no_disclosure silences it too",
+        help="write translation metadata into the book: a bbm_translation_metadata.json (build, model, endpoint host, command line, languages, date) plus three bbm: package metas. API keys and the --prompt text are never included. Plan-mode and session runs write it by themselves; this flag adds it to a plain tag-mode run. --no_disclosure turns it off too",
     )
     parser.add_argument(
         "--use_context",
