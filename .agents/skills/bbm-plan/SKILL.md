@@ -291,15 +291,19 @@ What the report gives you, and what each part is for:
   either a translation unit or a skip with a stated structural reason, and
   the run proves the accounting adds up, so a low number means the book
   really is mostly apparatus — not that something was quietly dropped.
-- **Short-run batches.** Consecutive short lines — verse, lists, short
-  table entries — share one request under the general grouping caps
-  (`--accumulated_num` tokens, `--max-batch-units` units), so each line is
-  translated with its neighbours in view. The report's `batches:` line
-  says how many requests the book's units packed into. (The old
+- **Grouped batches.** Consecutive units — whole paragraphs as well as
+  verse, lists and short table entries — share one request under the
+  general grouping caps (`--accumulated_num` tokens, `--max-batch-units`
+  units), so each unit is translated with its neighbours in view. The
+  budget defaults on every plan run (see the flag table); the report's
+  `batches:` line says how the partition packed, and the narration line
+  under it carries the true per-request numbers for the route. (The old
   `--poetry-group-size` knob is deprecated — grouping covers it.)
-- **Inline markers.** A short excluded inline (`<code>`, `<sup>`, an
-  `<img>`) no longer splits its sentence: the model sees a `⟦code1⟧`
-  token and the original node is put back at that spot afterwards.
+- **Inline markers.** An excluded inline (`<code>`, `<sup>`, an
+  `<img>`) that is short — or of any length when it carries no prose
+  word: a URL, a spaced formula — no longer splits its sentence: the
+  model sees a `⟦code1⟧` token and the original node is put back at
+  that spot afterwards.
 
 Symptom → knob, when reading the report:
 
@@ -467,7 +471,7 @@ so you can honour a request without guessing at legal values.
 | `--resume` | on/off | **off on the first run, on for every rerun** | never off after a crash — replay is positional and fingerprint-guarded. With no `.<book>.temp.bin` it raises an uncaught traceback, so it goes on neither a smoke nor a full run that follows a skipped smoke; and a cache written with `--only_filelist` is refused by the full run, whose filters differ |
 | `--parallel-workers` | integer | **1 (sequential)** | a long book where wall-clock matters more than consistency. Then drop to bare `--use_context`: **`--use_context session` is refused with it** (one history, which workers cannot share), and window context is per chapter anyway, so continuity stops at every chapter boundary. **Never on `codex`** (below) |
 | `--extra_body` | JSON string | *unset* | the endpoint needs a vendor-specific parameter |
-| `--accumulated_num` | integer (tokens per request) | *unset* — only runs of short lines share a request, **except session mode, where unset derives `1600`** (up to `2000` under a fat custom `--prompt`) | a long prose book where request count is the cost driver: consecutive units of any length then share one request up to N tokens. Measured per-content-token cost falls all the way to `1600` (carried history dominates the bill, and a bigger request amortises it); `--use_context session` already defaults there, and an explicit `1` is the off switch in any mode. Interrupted runs checkpoint and `--resume` either way |
+| `--accumulated_num` | integer (tokens per request) | *unset* — **every plan run derives a default**: `1600` with the stock prompts (up to `2000` under a fat custom `--prompt`), halved per request to a floor of `800` on an endpoint without a strict-schema verdict; the run narrates the number and route class it chose | a book where you want a different cost/latency point than the derived one: consecutive units of any length share one request up to N tokens, and a typed value always wins un-halved. Measured per-content-token cost falls monotonically toward `1600`; an explicit `1` is the off switch in any mode. Interrupted runs checkpoint and `--resume` either way |
 | `--max-batch-units` | integer (units per request) | `32` — half the measured fault-emergence level (a 923-request sweep put the first content faults at 64 effective units, prose, weak model; everything through 48 read back clean) | the run keeps printing misalignment recoveries: drop to `16` (or `8`) — the retries, not faults, are what a lower cap buys back. An endpoint that verifies JSON mode but not a strict schema carries half the cap automatically (effective `16`), and that half is where reply miscounts actually live, so don't undo it by doubling. Never raise past `48` — faults emerged at 64, and content per request is bounded by `--accumulated_num` either way |
 
 ### Never pass in plan mode

@@ -143,7 +143,8 @@ is nearly free; being wrong long is not.
 The figure's curves are the §4 cost model evaluated on the same finite
 25-request run as the cells (window sawtooth simulated, measured per-C α
 interpolated), so the dots sit on their own curves; the open squares at
-C=12000 and C=16000 are **model predictions, not measured cells**. The
+C=12000 and C=16000 are **model predictions, not measured cells**
+(measured in §13, and confirmed as predictions there). The
 dashed companion curves re-price cache reads at zero, and they answer a
 question we had wrong until we ran it: the long-C wall barely moves
 (−2 to −8 points) even if cache were free, because at these budgets only
@@ -151,11 +152,15 @@ question we had wrong until we ran it: the long-C wall barely moves
 a token-count effect, not a cache-price effect** — a free-cache endpoint
 does not buy you a long C.
 
-**Why the default is pinned at C=8000 anyway.** The shaded 8k–16k band
-is where a typical run makes 0–1 compactions, so there are almost no
-seams to drift across — a *continuity* argument, bought at a real,
-quantified price (+10% to +50% over C* across the band). 8000 is the
-short edge of that band: at most ~25% over the optimum on the worst
+**Why the default is pinned at C=8000 anyway.** The band was first
+argued on continuity — that a typical run makes 0–1 compactions inside
+it. The measured band cells (§13) *corrected* that: on this same
+301-unit cell the band compacts 4 / 3 / 2 times at 8k / 12k / 16k, so
+the 0–1 reading holds only for runs several times shorter, and buying
+the two fewer seams costs +21% to +33% (inside the +10% to +50% over
+C* this section already conceded). What survives measurement is the
+price argument: C=8000 was the cheapest budget in every §13 model,
+monotonically, and stays at most ~25% over the optimum on the worst
 book, which we treat as inside the don't-care zone (<30% on a single
 run is noise-adjacent), while 20000 is past it — that cell showed the
 grid's only drift *and* costs up to 56% more. Pinning one number also
@@ -285,9 +290,11 @@ C is **pinned, not derived** — a deliberate simplification over the
 earlier derived value (~3156). The measured case for it: the per-book
 optima solve to 1580–2512 and the 1500–4000 region is flat within
 single-run noise, but everything up to ~16000 stays inside a <30%
-penalty — a don't-care zone for a single book run — while 8000 is the
-short edge of the band where a run compacts 0–1 times, so it buys the
-fewest seams at the smallest premium (9–25% over C*, §5). Terminology
+penalty — a don't-care zone for a single book run — while 8000
+measured as the cheapest budget outright in every §13 model (the
+0–1-compactions reading of the band was corrected there: the 301-unit
+cell compacts 4/3/2 times across it), at a 9–25% premium over C* (§5).
+Terminology
 held across 44 seams in the validation run and the only drift ever
 observed was *within* a long window, so the seams 8000 still makes are
 the cheap side of that trade. A pinned number also never moves between
@@ -351,3 +358,158 @@ target-script test. A "does the sibling contain CJK" check scores zero
 on the eight CJK-source books, and — the same coin's other face — a
 model echoing the source back is not counted as a translation, because
 its text is still in the source's string set.
+
+## 11. Requested model verification: gpt-4o-mini and deepseek (runs 260905, reported 260906)
+
+These cells were run on request as the default-verification pass and
+were recorded only in working notes at the time; this section reports
+them, from the preserved artifacts re-read at reporting time — a
+reporting lapse, not a measurement one.
+
+All cells: `animal_farm.epub` (except the 64-unit probes, on
+`childrens-literature.epub`), `--test --quiet --language zh-hans`,
+memory-capped. Read-back re-run on the produced epubs: **0 ids lost, 0
+hrefs lost, 0 marker/JSON residue, 0 missing documents in every cell.**
+
+| cell | model / endpoint | result |
+|---|---|---|
+| 4omini-plain / -session | gpt-4o-mini, vendor | clean; 13 translated nodes placed adjacent |
+| 4omini-bu32 / -bu48 (±`--accumulated_num`) | gpt-4o-mini, 64-unit probe book | clean at **32 and 48 units per request** — a weak model held format at 1.5× the shipped 32-unit cap; 74 translated nodes each |
+| deepseek-plain / -session | DeepSeek via OpenRouter | clean |
+| router-plain / -session | the domestic router | clean; session showed a large cache share (latency/verbosity tax only) |
+| claude-fixed-plain / -session | claude-haiku via OpenRouter, post-fence-fix | clean, 0 fences (the pre-fix cells are what found the fence leak) |
+
+What this adds to the grid's conclusions: the unit-cap margin (§6) holds
+on a genuinely weak model, and the defaults transfer across two
+non-vendor endpoints without structural faults. What it does not do:
+these are smoke-depth cells (8 units, probes 64), not ledger cells — the
+cost columns of §5 are unaffected.
+
+The 12k/16k budget squares of §5/§8 are **projected** from the
+calibrated finite-run model, not measured; measured cells at both
+budgets (gpt-5.6-luna for grid comparability, plus gpt-4o-mini and
+DeepSeek as requested) are running at reporting time and will be
+reported here as measurements against those projections when complete —
+now reported in §13.
+
+## 12. Glossary alignment: uncommon and abbreviated terms (run 260906)
+
+Purpose: measure whether a user `--glossary` actually lands — per
+occurrence, in the produced epub — when the pinned renderings are
+uncommon or abbreviated, and capture the auto-glossary artifact a
+session run builds on its own. Model `gpt-5.6-luna`, a fixed 120-unit
+slice of `animal_farm.epub` (the plan file from a probe run copied into
+every cell, so all cells translate the identical slice).
+
+**Every pin is provably non-default.** A no-glossary baseline run of the
+same slice was translated first; all 12 pinned renderings occur **zero**
+times in it, so a hit below can only be injection, never agreement.
+
+The glossary: 12 entries — `Mr./Mrs. + surname` abbreviations
+(钟斯老爷/钟斯夫人 against the model's own 琼斯先生/琼斯太太), two
+abbreviated names **absent from the slice** (`Mr. Whymper`,
+`Mr. Pilkington`, to measure hits-only), uncommon renderings for the
+proper names (兽园, 冰糖山, 雪团儿, 鲍克赛, 苜蓿婶, 老麦哲, 曼诺庄园),
+and one keep-untranslated pin (`Beasts of England` → itself).
+
+Per-occurrence alignment over the 50 term-bearing nodes (66 term
+occurrences in the slice, 50 inside translated nodes):
+
+| cell | hit / n | misses |
+|---|---|---|
+| plain, notes in file | 48/50 | 2× `Beasts of England` translated anyway |
+| session, notes in file | 49/50 | 1× `Clover` — see below: the miss is correct |
+| plain, notes stripped | **50/50** | none |
+
+Three findings behind those numbers:
+
+- **A `#` note is prompt text, not a comment.** `prompt_block` sends the
+  note as a parenthetical, so a note reading "(baseline default:
+  琼斯先生)" hands the model the rendering it was meant to avoid. Both
+  plain-cell misses disappeared when notes were stripped: 48/50 → 50/50.
+  Never put a rejected alternative in a glossary note.
+- **Case-insensitive matching over-fires on homographs.** The one
+  session "miss" is the model correctly rendering the *plant* clover
+  (苜蓿) in "clover was in season all the year round"; both plain cells
+  applied the mare's pin and produced 苜蓿婶一年四季都在生长. Restricted
+  to the capitalized mare, every cell is 4/4.
+- **Session mode propagates a pin to unpinned surface forms; plain mode
+  cannot.** Session rendered bare `Jones`/`Major` consistently with the
+  pinned full forms (10 such generalizations, zero contaminating leaks);
+  the plain cells left 琼斯 ×3 and 少校 ×8 at their defaults next to
+  钟斯老爷/老麦哲 in the same book. Session mode is the mode to
+  recommend with `--glossary`.
+
+**Hits-only, measured on the wire** (in-process trace of
+`prompt_block`, repo untouched): the two absent names were sent in
+**0/90** plain and **0/33** session requests; the plain run emitted a
+glossary block in only 34 of 90 requests. Read-back on all four epubs:
+0 residue, 0 tag/class mismatches, 0 duplicate ids, 0 broken anchors.
+
+**Auto-glossary artifact.** A session run with no user glossary
+(`--glossary-auto on` default, `--context-compact-at 3000`) produced
+seven handoff windows. Choosing freely it learned exactly the
+baseline's defaults (雪球, 糖果山, 庄园农场, 琼斯先生, 老少校, 克洛弗,
+《英格兰兽》…) — independent confirmation the §12 pins were genuinely
+non-default. By Window 7 the accumulated block is 130 lines, 28 of them
+new that window: renderings replay quadratically across windows, and
+the model emits the block under a markdown `### Established renderings`
+heading rather than the `<renderings>` tags the prompt asks for
+(`strip_handoff_glossary` handles both; nothing reached the epub). Both
+are noted as artifact-format rough edges, not faults. With a user
+glossary present, `--glossary-auto` grew the working set 12 → 69
+entries across three compactions without ever overwriting a pin.
+
+
+## 13. The 12k/16k squares, measured (runs 260906)
+
+The C=12000 and C=16000 squares of §5/§8 were model predictions. This
+section measures them — on the grid's own cell (`childrens-literature`,
+301 units, 25 requests, `--accumulated_num 800`, strict-schema route)
+— on `gpt-5.6-luna` for grid comparability plus `gpt-4o-mini` and
+`deepseek-v3.2` as requested, with a same-methodology C=8000 anchor per
+model so the comparison never crosses metering methods. Token figures
+come from a per-request tape, plan-classification requests subtracted
+(the grid's meter never saw them), compaction turns metered rather than
+modeled.
+
+| model | C | compactions/windows | tok-eq/content | USD/1k content |
+|---|---|---|---|---|
+| gpt-5.6-luna | 8000 | 4 / 5 | 16.27 | — |
+| gpt-5.6-luna | 12000 | 3 / 4 | 17.05 | — |
+| gpt-5.6-luna | 16000 | 2 / 3 | 19.70 | — |
+| gpt-4o-mini | 8000 | 4 / 5 | 13.53 | $0.0021 |
+| gpt-4o-mini | 12000 | 3 / 4 | 16.03 | $0.0025 |
+| gpt-4o-mini | 16000 | 2 / 3 | 17.98 | $0.0028 |
+| deepseek-v3.2 | 8000 | 4 / 5 | 12.48 | $0.0043 |
+| deepseek-v3.2 | 12000 | 3 / 4 | 12.63 | $0.0040 |
+| deepseek-v3.2 | 16000 | 2 / 3 | 16.11 | $0.0045 |
+
+Against the predicted squares (12000 → 16.10, 16000 → 18.91 tok-eq per
+content token): **gpt-4o-mini lands −0.4% and −4.9% off** — its
+measured band shape (+18.4% at 12k, +32.9% at 16k over its own 8k)
+tracks the model's +17.8% / +38.3% almost line for line;
+**gpt-5.6-luna +5.9% / +4.2% above**; **deepseek −21.5% / −14.8%
+below**, entirely a cache-behaviour effect — its prompt-cache hit rate
+ran 2–4× the grid's (α 0.29–0.48 vs 0.12–0.17) and cached input is
+discounted tenfold, so the level moves while the shape doesn't.
+
+**Verdict.** The squares are confirmed as cost predictions, and the
+C=8000 pin survives on price: it is the cheapest budget measured,
+monotonically, on all three models. What did **not** survive is the
+band's continuity premise — this cell compacts **4 / 3 / 2** times at
+8k / 12k / 16k, not 0–1; §5 and §8 above are corrected accordingly
+(the 0–1 reading applies only to runs several times shorter than this
+one, and two fewer seams cost +21% to +33%).
+
+Caveats, reported not hidden: the deepseek cells ran on a pre-seeded
+plan (its own no-JSON classifier left two shapes undecided and fell to
+the legacy path, so each deepseek cell reused the luna-12k plan file to
+hold the slice identical), and deepseek needed the misalignment ladder
+1–2 times per cell (40 translation requests at C=8000 instead of 25);
+neither OpenAI model recovered once. Two luna/mini cells ran against
+the live worktree while it was being edited (unit counts and source
+totals verified identical against a snapshot; translation code paths
+byte-identical). Read-back on all nine epubs: 301 translated nodes
+each, 0 lost ids, 0 dangling hrefs, 0 residue, 0 schema demotions.
+

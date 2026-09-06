@@ -450,7 +450,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   Wait for how many tokens have been accumulated before starting the translation. gpt3.5 limits the total_token to 4090. For example, if you use `--accumulated_num 1600`, maybe openai will output 2200 tokens and maybe 200 tokens for other messages in the system messages user messages, 1600+2200+200=4000, So you are close to reaching the limit. You have to choose your own
   value, there is no way to know if the limit is reached before sending.
-  In EPUB plan mode this is a per-request token budget: consecutive units of any length share one request up to `N` tokens. With `--use_context session` — and always on the codex route, whose thread is a session either way — a default is derived from the run's own prompt overhead — `1600` with the stock prompts, up to `2000` under a fat custom `--prompt` (fewer requests is most of a session run's bill); pass `1` to turn grouping off. Minimum `1`.
+  In EPUB plan mode this is a per-request token budget: consecutive units of any length share one request up to `N` tokens. Untyped, every plan run derives a default from the run's own prompt overhead — `1600` with the stock prompts, up to `2000` under a fat custom `--prompt` — and an endpoint without a strict-schema verdict carries half that per request (floor `800`), the same margin that halves the unit cap there. The run narrates the number and the route class it chose; pass `1` to turn grouping off. Minimum `1`.
 
 - `--max-batch-units`:
 

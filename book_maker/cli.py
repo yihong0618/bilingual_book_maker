@@ -1812,11 +1812,11 @@ In EPUB plan mode this is a per-request token budget: consecutive units of any
 length share one request up to this many tokens (at most --max-batch-units units
 per request; half that when the endpoint verifies JSON mode but not a strict
 schema).
-Plan mode with --use_context session — and always on the codex route, whose
-thread is a session whether or not the flag was passed — derives a default
-from the run's own prompt overhead (1600 with the stock prompts, up to 2000
-under a fat custom --prompt), because a session run's bill is roughly its
-request count; pass 1 to turn grouping off there. Minimum 1.
+Untyped, every plan run derives a default from the run's own prompt overhead:
+1600 with the stock prompts, up to 2000 under a fat custom --prompt, and half
+that (floor 800) per request on an endpoint without a strict-schema verdict —
+the same margin that halves the unit cap there. The run narrates the number
+and the route class it chose; pass 1 to turn grouping off. Minimum 1.
 """,
     )
     parser.add_argument(
