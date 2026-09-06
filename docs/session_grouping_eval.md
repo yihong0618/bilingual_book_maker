@@ -266,6 +266,20 @@ the request budget from its own prompt overhead, and pins the rest.
   the misalignment hint (`N misaligned batches this run — consider a
   lower --max-batch-units or --accumulated_num`), which appears from the
   third recovered batch on.
+
+  The weak-model rerun in one picture — what a raised unit cap costs is
+  retries first, faults later, so the cap is the knob to lower and the
+  budget is not:
+
+  ![retry overhead vs effective units per request on gpt-4o-mini and deepseek-chat](img/retry_overhead_vs_units.png)
+
+  A caveat that belongs to model choice rather than to any knob here:
+  DeepSeek compresses aggressively at every unit cap and budget
+  (median zh/en character ratio 0.25–0.31 against gpt-4o-mini's
+  0.31–0.35), so short translations on that model are the model, not a
+  grouping fault:
+
+  ![per-cell median zh/en ratio and heavily-compressed slot counts](img/compression_ratio.png)
 - **`--accumulated_num`**: leave unset (the derived 2400–3200 band).
   The whole 1600–4800 range measured fault-free at the 32-unit cap —
   on the weak-model rerun too — so the default floor sits at half the
