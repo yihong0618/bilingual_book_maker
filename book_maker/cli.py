@@ -1848,19 +1848,7 @@ request count; pass 1 to turn grouping off there. Minimum 1.
         "--provenance",
         dest="provenance",
         action="store_true",
-        # help=argparse.SUPPRESS until the operator text lands: an advertised
-        # long option must have a row in README.md, README-CN.md and
-        # docs/cmd.md (test_cli_documentation), and those three files are
-        # written by hand, not by the change that adds the flag. Swap this
-        # comment for the help string when the rows are written.
-        #
-        # What it does: record the machine provenance — the tool's build, the
-        # model, the endpoint host, the sanitized command line, the two
-        # languages — as `bbm:` metas in the package document. Plan and
-        # session runs already do; this is the legacy tag-mode opt-in.
-        # --no_disclosure turns it off again, as it turns off everything else
-        # the file says about the run.
-        help=argparse.SUPPRESS,
+        help="record how the file was made, invisibly — the tool's build, the model, the endpoint host, the sanitized command line and the languages, as bbm: package metadata plus a bbm_provenance.json in the book; never the key or the --prompt text. Plan-mode and session runs record it by themselves; this is the tag-mode opt-in. --no_disclosure silences it too",
     )
     parser.add_argument(
         "--use_context",

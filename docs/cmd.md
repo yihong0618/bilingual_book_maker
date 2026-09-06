@@ -14,7 +14,8 @@ sections after it provide additional notes for selected workflows.
 | `--language LANGUAGE` | Target language, or `SOURCE:TARGET` (e.g. `en:zh-hant`) to state the source; default `zh-hans`. |
 | `--source_lang LANGUAGE` | Source language for models such as Qwen; default `auto`. |
 | `--single_translate` | Output translation only instead of bilingual text. |
-| `--no_disclosure` | Do not mark the epub as an AI translation, or a machine translation on the engine formats (translator credit, description line, closing note). |
+| `--no_disclosure` | Do not mark the epub as an AI translation, or a machine translation on the engine formats (translator credit, description line, closing note). Silences `--provenance`'s machine record too. |
+| `--provenance` | Record how the file was made, invisibly: `bbm:` package metadata plus `bbm_provenance.json` in the book (conversions rewrite metadata; the file survives) — the tool's build, model, endpoint host, sanitized command line, languages; never the key or the `--prompt` text. Automatic on plan-mode and session runs; this is the tag-mode opt-in. A `--glossary` file is embedded verbatim with its sha256; learned terms never are. |
 | `--translate-tags TAGS` | Comma-separated EPUB tags; default `p`, ignored in plan mode. |
 | `--exclude-translate-tags TAGS` | EPUB ancestor tags to exclude; default `sup,code`; `""` clears it. |
 | `--allow_navigable_strings` | Include otherwise untagged EPUB strings; redundant in plan mode. |
@@ -33,7 +34,7 @@ sections after it provide additional notes for selected workflows.
 | `--plan-classify {auto,none,all,model,agent}` | No plan, the whole partition, model triage, or coding-agent triage. Default `auto`: model triage on any epub endpoint that can answer — over structured output where a strict JSON schema is verified, over a plain conversation (exact `skip`/`translate` replies; anything else translates) elsewhere, codex included; tag mode only where no conversation exists. |
 | `--plan-classify-model MODEL` | Classification model; implies model mode and conflicts with `all`/`agent`. |
 | `--plan-min-coverage FRACTION` | Fail if selected planned text is below this fraction; default `0.5`, must be between 0 and 1 (`0` disables the guard, values above `0.9` usually abort — both warn). |
-| `--poetry-group-size N` | Maximum consecutive short lines per planned translation request; default `8`, minimum `1`. |
+| `--poetry-group-size N` | Deprecated — general grouping and the session handoff give short lines their neighbours now, and the units cap is `--max-batch-units`. Still works (default `8`, minimum `1`) but warns. |
 
 ### Translation and execution
 
@@ -42,11 +43,11 @@ sections after it provide additional notes for selected workflows.
 | `--test` | Translate only a preview sample. |
 | `--test_num N` | Number of test units; default `10`. |
 | `--resume` | Continue from the loader's saved checkpoint. An EPUB checkpoint records the run's language, prompt and model; a mismatch stops the resume (older checkpoints warn once and continue). Refused together with `--parallel-workers` and `--accumulated_num` above 1, where no checkpoint is ever written. |
-| `--prompt VALUE_OR_FILE` | Prompt config: `user` (must contain `{text}`), `system`, and `style`. A `style` goes into every request and verbatim into each handoff report. On the `codex` format `system` is appended to the built-in instructions. |
+| `--prompt VALUE_OR_FILE` | Prompt config: `user` (must contain `{text}`), `system`, and `style`. A `style` goes into every request and verbatim into each handoff report. A section with no native slot on a route (`style` everywhere, `system` on the `codex` format) is appended to the user message instead of dropped; a run with `--prompt` prints which sections it adopted and where. Samples: `prompt_sections_sample.json`, `prompt_session_sample.json`. |
 | `--temperature FLOAT` | Sampling temperature; default `1.0`. |
 | `--use_context [window\|session]` | Send earlier paragraphs as context. Bare or `window`: re-send the last few source/translation pairs (the long-standing behaviour). `session`: one append-only history, re-read at the endpoint's prompt-cache rate. |
 | `--context_paragraph_limit N` | Window mode only: context history limit. Parser default `0` means the translator default (3 paragraphs for ChatGPT), not zero history. |
-| `--context-compact-at N` | Estimated-token budget for a rolling history. In session mode the history is compacted into a handoff report at this size; minimum `500`. When unset, a grouped session run — the `codex` format counts as one, `--use_context` or not — derives a budget from its request budget (~3200 at the defaults; measured cost is flat across 1500–4000 and rises past it) and prints it at start; an ungrouped session keeps `8000`. Also bounds the plan classifier's conversation on endpoints that classify over a plain session (restart there, no handoff), with or without `--use_context`. An explicit value always wins. |
+| `--context-compact-at N` | Estimated-token budget for a rolling history. In session mode the history is compacted into a handoff report at this size; minimum `500`. When unset, every session run — grouped or not, the `codex` format included — compacts at `8000`, printed at start (pinned on measurement: the cost optimum sits at 1500–4000, 8000 runs 9–25% above it — noise — and it is where a typical run compacts 0–1 times, so continuity costs the least; 20000 cost up to 56% more and drifted). Also bounds the plan classifier's conversation on endpoints that classify over a plain session (restart there, no handoff), with or without `--use_context`. An explicit value always wins. |
 | `--no-context-compact` | Session mode only: skip the handoff report. The window still rolls over at the budget, but the next one starts empty. |
 | `--glossary FILE` / `--terminology FILE` | A file of `term → translation` lines (one per line; `#` starts a note or a comment) this run must render that way. Two names for one flag. Only the terms that occur in a request are sent with it. A missing file stops the run at parse time. Read by the openai- and codex-shaped routes for EPUB and Markdown books; other routes warn and ignore it. |
 | `--glossary-auto on\|off` | Whether a session run also keeps the renderings its own handoff reports establish. On by default wherever a session runs (`--use_context session`, and the `codex` format's one thread); `off` asks the compact turn for a summary only. Learned terms stay in this run and in `<book>_handoff.md`, and nowhere else. |

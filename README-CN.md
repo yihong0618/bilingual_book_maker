@@ -93,7 +93,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 - 或使用`--provider`进行翻译: `bbm_providers.example.json` 里预设了以下厂家（Gemini、Qwen、xAI、Groq、OrcaRouter、Ollama、LiteLLM、DeepSeek、
   SiliconFlow、OpenRouter）：复制为 `bbm_providers.json`，并修改其中的key，
   例如`--provider gemini` 就是使用其中 Gemini 的api。
-- `--use_context session` 使用会话模式翻译；开启请求合并的运行会自动推导压缩预算（默认参数下约 `3200`，启动时打印），未合并的运行仍在 8k 时压缩。
+- `--use_context session` 使用会话模式翻译；历史默认在 8k 时压缩（`--context-compact-at` 可改）。
 - 旧的预设名和 key 参数仍然可用，见 [从旧参数迁移](./docs/migration.md)。
 
 ## 支持的翻译服务
@@ -354,7 +354,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   - `--plan-dry-run`：仅打印按标签签名分组的表格，写出 `<book>_plan.json` 后退出。同时遵守 `--only_filelist` / `--exclude_filelist`。
   - `<book>_plan.json`：翻译计划；想重新分类请先删除该文件。
   - `--plan-min-coverage`（默认 0.5，范围 0–1）：如果计划覆盖的正文比例低于该阈值，计划模式会直接报错退出。`0` 关闭该闸门，高于 `0.9` 的值多半会在分类已付费之后中止——两种情况都会警告。
-  - `--poetry-group-size`（默认 8）：连续的短诗行按最多这么多行合成一个诗节一起翻译。
+  - `--poetry-group-size`（默认 8）：连续的短诗行按最多这么多行合成一个诗节一起翻译。已废弃：通用合并与会话交接已经让每行看得到相邻行，单位上限由 `--max-batch-units` 管；参数仍可用，但会警告，将来会移除。
 
   ```shell
   # 使用模型判断哪些标签需要翻译
@@ -385,6 +385,8 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   - 如果您不需要设置 `system` 角色，可以这样：`--prompt "Translate {text} to {language}"` 或者 `--prompt prompt_template_sample.txt`（示例文本文件可以在 [./prompt_template_sample.txt](./prompt_template_sample.txt) 找到）。
 
   - 如果您需要设置 `system` 角色，可以使用以下方式配置：`--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'`，或者 `--prompt prompt_template_sample.json`（示例 JSON 文件可以在 [./prompt_template_sample.json](./prompt_template_sample.json) 找到）。
+
+  - 第三个键 `style` 是关于文风的常驻指令——语域、语气、用词——随**每个**请求发出；session 模式下它取代交接报告自行观察的文风。某路由没有原生位置的部分（`style` 在所有路由、`system` 在 codex 格式）会追加到 user 消息里而不是被丢弃；带 `--prompt` 的运行启动时会打印一行，说明采用了哪些部分、落在哪里。三个键齐全的示例：[./prompt_sections_sample.json](./prompt_sections_sample.json)（普通运行）、[./prompt_session_sample.json](./prompt_session_sample.json)（session 运行）。
 
   - 你也可以用环境以下环境变量来配置 `system` 和 `user` 角色 prompt：`BBM_CHATGPTAPI_USER_MSG_TEMPLATE` 和 `BBM_CHATGPTAPI_SYS_MSG`。
   该参数可以是提示模板字符串，也可以是模板 `.txt` 文件的路径。
@@ -421,9 +423,9 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
   - `--context-compact-at`:
 
-    滚动历史可以达到的估算 token 预算。session 模式下历史达到该值时被压缩成交接报告。最小值 `500`。未指定时，开启请求合并的运行——codex 路由无论传不传 `--use_context` 都算——会根据请求预算自动推导（默认参数下约 `3200`，启动时打印）；未合并的 session 保持 `8000`。在通过纯会话分类的端点上，它同样约束计划分类器自己的会话（该会话到达预算时直接重开，无交接报告），与是否传 `--use_context` 无关。显式指定的值总是优先。
+    滚动历史可以达到的估算 token 预算。session 模式下历史达到该值时被压缩成交接报告。最小值 `500`。未指定时，所有 session 运行——合并与否、codex 路由在内——都在 `8000` 时压缩，启动时打印。在通过纯会话分类的端点上，它同样约束计划分类器自己的会话（该会话到达预算时直接重开，无交接报告），与是否传 `--use_context` 无关。显式指定的值总是优先。
 
-    我们的实测（2026年9月，整本书运行）发现成本曲线在 `1500`–`4000` 之间平坦，超过后急剧上升——`20000` 比最优值贵 56%。短窗口并不损害名词一致性：交接报告每个窗口都会重申重复出现的术语，唯一观察到的语域漂移反而出现在窗口*最长*的那次运行中。
+    `8000` 这个默认值来自实测（2026年9月，整本书运行）：各书的成本最优点在 `1500`–`4000` 之间，`8000` 高出 9–25%——在单次运行的噪声范围内——而 `20000` 最多贵 56%，且唯一一次语域漂移正是在那个格子。定在 `8000` 是因为它是"一次运行只压缩 0–1 次"区间的短端，接缝最少、连续性代价最小；短窗口也不损害名词一致性，交接报告每个接缝都会重申重复术语。
 
   - `--no-context-compact`:
 
@@ -455,7 +457,11 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--no_disclosure`:
 
-  epub 输出默认标注为 AI 翻译（`google`、`deepl`、`caiyun`、`tencent`、`customapi` 引擎则标注为机器翻译）：工具作为译者写入 contributor，一行描述记录模型名，书末附一页翻译说明。`--no_disclosure` 去掉这三项。
+  epub 输出默认标注为 AI 翻译（`google`、`deepl`、`caiyun`、`tencent`、`customapi` 引擎则标注为机器翻译）：工具作为译者写入 contributor，一行描述记录模型名，书末附一页说明——`Disclaimer` 标题下只有模型、日期和"未经人工校对"三行。`--no_disclosure` 去掉全部这些。
+
+- `--provenance`:
+
+  以读者不可见的方式记录这个文件是怎么来的：`bbm:` 包元数据加书内的 `bbm_provenance.json`（格式转换会重写元数据但保留文件，两条路都留得住记录），内容为工具版本、模型、端点**主机名**、脱敏后的命令行和两种语言。永不记录：任何拼写下的 API key、`--prompt` 内容、header 值——有测试逐个扫描压缩包内每个文件确认。记录主机名是有意的：单独一个模型名无法验证，书里写的是"经由该主机提供的某模型"，转售方挂羊头卖狗肉时责任在它。计划模式与 session 运行自动记录；此参数是普通 tag 模式的选择开关。命令行里指定的术语表会原样嵌入（`bbm_glossary.txt`，附 sha256）以便审计；运行自己学到的术语永不记录。对自己的输出重跑会替换记录而不是叠加。`--no_disclosure` 会连同这份记录一起关闭；脱敏命令行中保留你键入的文件路径。
 
 - `--translation_style`:
 

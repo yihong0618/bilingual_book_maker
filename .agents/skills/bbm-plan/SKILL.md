@@ -257,7 +257,7 @@ legal alternatives.
 
 | format | `ROUTE` | `CONTEXT` | why |
 |---|---|---|---|
-| openai (any OpenAI-shaped entry, `orcarouter`, and `groq`/`xai`/`litellm`, which are that route at their own address) | `(--provider NAME)` | `(--use_context session)` | one cached history, compacted at a budget the run derives (~3200 with grouping on, 8000 ungrouped); costs less than window mode for several times the context |
+| openai (any OpenAI-shaped entry, `orcarouter`, and `groq`/`xai`/`litellm`, which are that route at their own address) | `(--provider NAME)` | `(--use_context session)` | one cached history, compacted at 8000 by default (`--context-compact-at` overrides); costs less than window mode for several times the context |
 | anthropic (`api_style: anthropic`) | `(--provider NAME)` | `(--use_context session)` | the same history, and this route keeps it |
 | gemini, qwen | `(--provider NAME)` | `(--use_context)` | neither keeps a re-sendable session history, so `--use_context session` is refused; window mode is what they have — Gemini's own chat history, Qwen's translation memory |
 | codex | `(--api_format codex)` | `()` | the thread is the context; a context flag has nothing to add to it |
@@ -287,9 +287,11 @@ What the report gives you, and what each part is for:
   the run proves the accounting adds up, so a low number means the book
   really is mostly apparatus — not that something was quietly dropped.
 - **Short-run batches.** Consecutive short lines — verse, lists, short
-  table entries — share one request, `--poetry-group-size` lines at most,
-  so each line is translated with its neighbours in view. The report's
-  `batches:` line says how many requests the book's units packed into.
+  table entries — share one request under the general grouping caps
+  (`--accumulated_num` tokens, `--max-batch-units` units), so each line is
+  translated with its neighbours in view. The report's `batches:` line
+  says how many requests the book's units packed into. (The old
+  `--poetry-group-size` knob is deprecated — grouping covers it.)
 - **Inline markers.** A short excluded inline (`<code>`, `<sup>`, an
   `<img>`) no longer splits its sentence: the model sees a `⟦code1⟧`
   token and the original node is put back at that spot afterwards.
@@ -298,7 +300,7 @@ Symptom → knob, when reading the report:
 
 | symptom in report | knob |
 |---|---|
-| short lines split awkwardly across requests | raise `--poetry-group-size` |
+| short lines split awkwardly across requests | raise `--accumulated_num` (the token budget is what usually splits them); `--poetry-group-size` is deprecated |
 | `N marker(s) missing … — reconciled` lines | benign one-off; if most units say it, the model ignores the token instruction — try a stronger model |
 | legit low coverage (dictionary, critical edition, apparatus-heavy) | lower `--plan-min-coverage` deliberately, and say so in the plan summary |
 | visible text under a `hidden` skip reason, or vice versa | inspect the epub's CSS before overriding |
@@ -426,7 +428,7 @@ so you can honour a request without guessing at legal values.
 |---|---|---|---|
 | `--plan-classify` | `auto`, `none`, `all`, `model`, `agent` | **`agent`** — this skill's hard constraint | never, inside this skill |
 | `--plan-min-coverage` | 0.0–1.0 | **0.5** | a dictionary, critical edition or apparatus-heavy book legitimately translates less; lower it deliberately and say so |
-| `--poetry-group-size` | integer, short lines per request | **8** | short lines split awkwardly across requests (raise it), or grouped lines confuse each other's translation (lower it) |
+| `--poetry-group-size` | integer, short lines per request | **leave unset — deprecated** | never set it fresh; general grouping covers verse and the units cap is `--max-batch-units`. It still works for old command lines, and warns |
 | `--exclude-translate-tags` | comma-separated tags; `""` excludes nothing | **`sup,code`** | the book puts real prose in one of those, or another tag is pure apparatus |
 
 ### Context and consistency
@@ -434,9 +436,10 @@ so you can honour a request without guessing at legal values.
 | flag | values | default / recommended | choose otherwise when |
 |---|---|---|---|
 | `--use_context` | bare/`window`, `session` | **`session`** on openai and anthropic; **nothing** on codex, where the thread is the context | the progress bar's `cached=` count is still 0 after a dozen requests: the endpoint is not caching, and session mode re-reads the history at full price. Drop to bare `--use_context`, which re-sends the last few pairs. Drop to it too when a run must go parallel, where `session` is refused. The bar shows `in= out= cached=` live (`spent=` when the entry carries `prices`, §0b) and the run ends with one closing line; under `--quiet` only the line |
-| `--context-compact-at` | estimated-token budget, minimum 500 | **unset → derived** (~3200 at the defaults, printed at start, when grouping is on; 8000 on an ungrouped session) | leave it unset: measured cost is flat across 1500–4000 and rises steeply past it, and the derived value sits in that band. Set it only when the user insists on a number — an explicit value always wins. **Needs `--use_context session`** on an API route; without it the flag is accepted and does nothing. On `codex` it always applies |
+| `--context-compact-at` | estimated-token budget, minimum 500 | **unset → 8000**, pinned, printed at start — every session run, grouped or not, codex included | leave it unset: 8000 is the short edge of the 0–1-compaction band (fewest seams), measured 9–25% over the per-book optimum — noise. Set it only when the user insists on a number — an explicit value always wins. **Needs `--use_context session`** on an API route; without it the flag is accepted and does nothing. On `codex` it always applies |
 | `--context_paragraph_limit` | integer | *unset* (the translator uses 3) | window mode only, when the user wants a different number of pairs re-sent |
-| `--prompt` | path to `.json` / `.txt` / `.md`, or a template string | *unset* unless the user has one (§1) | the user hands over their own voice/register — the usual reason to set it |
+| `--prompt` | path to `.json` / `.txt` / `.md`, or a template string | *unset* unless the user has one (§1) | the user hands over their own voice/register — the usual reason to set it. Three sections: `user` (must keep `{text}`), `system`, `style`; a section without a native slot on the route is appended to the user message, and the run prints where each landed |
+| `--glossary` / `--terminology` | path to a `term → translation` file | *unset* unless the user has pinned terms | the user names renderings that must hold (people, places, titles). Hits-only: costs nothing on untouched paragraphs. openai-shaped and codex routes only; a pin is verbatim — use only renderings the user stands behind. `--glossary-auto` defaults on wherever a session runs and keeps the handoff's learned renderings; `off` if the user wants no self-taught terms |
 | `--temperature` | float | *unset* | output is erratic; lower it and check the markup again. The openai format leaves an unset value out of the request and retries once without it if the model rejects one; the anthropic route sends `1.0` on every call; codex ignores it |
 
 ### Output form
@@ -460,7 +463,7 @@ so you can honour a request without guessing at legal values.
 | `--parallel-workers` | integer | **1 (sequential)** | a long book where wall-clock matters more than consistency. Then drop to bare `--use_context`: **`--use_context session` is refused with it** (one history, which workers cannot share), and window context is per chapter anyway, so continuity stops at every chapter boundary. **Never on `codex`** (below) |
 | `--extra_body` | JSON string | *unset* | the endpoint needs a vendor-specific parameter |
 | `--accumulated_num` | integer (tokens per request) | *unset* — only runs of short lines share a request, **except session mode, where unset derives `1600`** (up to `2000` under a fat custom `--prompt`) | a long prose book where request count is the cost driver: consecutive units of any length then share one request up to N tokens. Measured per-content-token cost falls all the way to `1600` (carried history dominates the bill, and a bigger request amortises it); `--use_context session` already defaults there, and an explicit `1` is the off switch in any mode. Interrupted runs checkpoint and `--resume` either way |
-| `--batch_units` | integer (units per request) | `32` — half the measured fault-emergence level (a 923-request sweep put the first content faults at 64 effective units, prose, weak model; everything through 48 read back clean) | the run keeps printing misalignment recoveries: drop to `16` (or `8`) — the retries, not faults, are what a lower cap buys back. An endpoint that verifies JSON mode but not a strict schema carries half the cap automatically (effective `16`), and that half is where reply miscounts actually live, so don't undo it by doubling. Never raise past `48` — faults emerged at 64, and content per request is bounded by `--accumulated_num` either way |
+| `--max-batch-units` | integer (units per request) | `32` — half the measured fault-emergence level (a 923-request sweep put the first content faults at 64 effective units, prose, weak model; everything through 48 read back clean) | the run keeps printing misalignment recoveries: drop to `16` (or `8`) — the retries, not faults, are what a lower cap buys back. An endpoint that verifies JSON mode but not a strict schema carries half the cap automatically (effective `16`), and that half is where reply miscounts actually live, so don't undo it by doubling. Never raise past `48` — faults emerged at 64, and content per request is bounded by `--accumulated_num` either way |
 
 ### Never pass in plan mode
 
@@ -546,7 +549,7 @@ name-then-rule reasoning), what the read-back showed, and hand over
 | `refused the … request shape; using a simpler one` | classification's ladder descended a rung. Informational |
 | a `--test` run printing its request count (grouping merges the slice into few requests), or that classification covers the whole book regardless of `--test` | **not a failure.** New compatibility narration; the smoke recipe triggers both by design |
 | `classifying over a plain session` | **not a failure.** The endpoint has no structured output, so plan classification runs over a conversation with verbatim `skip`/`translate` replies |
-| `N misaligned batches this run — … lower --batch_units or --accumulated_num` | the model keeps miscounting large batches; follow the hint on the next run |
+| `N misaligned batches this run — … lower --max-batch-units or --accumulated_num` | the model keeps miscounting large batches; follow the hint on the next run |
 | `… N invented (⟦…⟧) — reconciled` | the model typed a marker token where none belongs; the run scrubbed it before writing. Informational — worth a read-back look only if it repeats |
 | fingerprint refusal on `--resume` | book file or plan changed since the cache was written; delete the cache only if that was intentional. A checkpoint refusal naming language/prompt/model means the resume flags differ from the original run's — rerun with the original flags, or delete the checkpoint |
 | `undecided signature(s)` on plan load | null actions remain — answer every open question, then rerun |
