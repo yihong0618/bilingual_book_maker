@@ -2917,6 +2917,43 @@ class TestPlanExitCodes:
         assert PLAN_HANDOFF_EXIT_CODE not in (0, 1, 130)
 
 
+class TestRerunCommandOwnsItsRunControl:
+    """The handoff appends `--quiet --test --test_num 8` itself and spells
+    out the full-run variant, so the caller's own run-control flags must
+    not be reprinted — a line saying `--test_num 64 … --test_num 8` reads
+    as a contradiction even though argparse takes the last."""
+
+    @staticmethod
+    def _rerun(argv):
+        from book_maker.loader.epub_loader import EPUBBookLoader
+
+        with mock.patch.object(sys, "argv", ["make_book.py", *argv]):
+            return EPUBBookLoader._rerun_command()
+
+    def test_the_smoke_flags_are_not_doubled(self):
+        cmd = self._rerun(
+            ["--book_name", "b.epub", "--test", "--test_num", "64", "--quiet"]
+        )
+        assert "--test" not in cmd and "--quiet" not in cmd
+        assert "64" not in cmd
+        assert "--book_name b.epub" in cmd
+
+    def test_a_joined_test_num_is_stripped_too(self):
+        cmd = self._rerun(["--model", "gpt-5.6-luna", "--test_num=64"])
+        assert "--test_num" not in cmd and "64" not in cmd
+        assert "--model gpt-5.6-luna" in cmd
+
+    def test_a_stale_resume_does_not_ride_along(self):
+        # the handoff's full-run line adds --resume itself
+        cmd = self._rerun(["--book_name", "b.epub", "--resume"])
+        assert "--resume" not in cmd
+
+    def test_other_flags_survive_untouched(self):
+        cmd = self._rerun(["--language", "zh-hans", "--use_context", "session"])
+        assert "--language zh-hans" in cmd
+        assert "--use_context session" in cmd
+
+
 class TestRerunCommandKeepsSecretsOut:
     """`_rerun_command` reprints the user's own argv so the handoff names
     their book and model — but a secret in that argv must never come back

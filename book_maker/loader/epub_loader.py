@@ -1604,7 +1604,12 @@ class EPUBBookLoader(BaseBookLoader):
         generic example would have to be translated back by hand. The one
         thing not reproduced verbatim is a secret: a key becomes its env
         variable (see KEY_FLAG_ENV) and every `--extra_headers` value is
-        masked, since any of them may be a credential.
+        masked, since any of them may be a credential. Run-control flags
+        (`--test`, `--test_num`, `--quiet`, `--resume`) are dropped too:
+        the handoff text appends its own smoke flags to this command and
+        spells out the full-run variant, so reprinting the caller's would
+        state them twice — argparse takes the last, which happens to be
+        the right one, but the printed line reads as a contradiction.
         """
         parts = []
         # Set once a bare key flag is seen, so the value that follows it in
@@ -1613,7 +1618,12 @@ class EPUBBookLoader(BaseBookLoader):
         # The same, for a bare `--extra_headers`: the JSON in the next entry
         # is masked, since any of its values may be a credential.
         pending_header_mask = False
+        # And for a bare `--test_num`: the count in the next entry goes too.
+        pending_drop = False
         for arg in sys.argv:
+            if pending_drop:
+                pending_drop = False
+                continue
             if pending_env is not None:
                 parts.append(f'"${pending_env}"')
                 pending_env = None
@@ -1623,6 +1633,13 @@ class EPUBBookLoader(BaseBookLoader):
                 pending_header_mask = False
                 continue
             flag, joined, value = arg.partition("=")
+            if flag in ("--test", "--quiet", "--resume"):
+                continue
+            if flag != "--test" and flag.startswith("--test_n"):
+                # `--test_num` or an unambiguous argparse prefix of it;
+                # a bare form carries its count in the next entry
+                pending_drop = not joined
+                continue
             if _is_extra_headers_flag(flag):
                 if joined:
                     # `--extra_headers={…}`: value never becomes its own entry
