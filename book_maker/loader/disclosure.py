@@ -8,8 +8,10 @@ own `dc:description` are never touched — the tool is appended as a
 sits beside the publisher's. Calibre's metadata is the "now false" case: it
 records the file calibre built, which this is not.
 
-The colophon says the same thing in prose, on one page at the end, because
-metadata is not something a reader sees.
+The colophon says the same thing to a reader, on one page at the end,
+because metadata is not something a reader sees. It is written as a log —
+one heading, then `Title: content` a line at a time — rather than as prose:
+a page of facts about a file should not arrive dressed as a chapter.
 
 Two rules keep this from colliding with the book it is stamping:
 
@@ -70,7 +72,13 @@ COLOPHON_ID = "bbm-translation-note"
 COLOPHON_STEM = "bbm_translation_note"
 COLOPHON_FILE = f"{COLOPHON_STEM}.xhtml"
 COLOPHON_TITLE = "Translation note"
+# What the page calls itself to the reader. The document `<title>` stays
+# "Translation note" — it is what a reading system shows in a tab and what
+# the item is called in the manifest — but the heading on the page says the
+# thing the page is for.
+COLOPHON_HEADING = "Disclaimer"
 UNREVIEWED = "This translation has not been reviewed by a human translator."
+NOTE_LABEL = "Note"
 
 # What makes a colophon *ours*, written into the document and read back out
 # of it. An id or a file name is a coincidence waiting to happen; a
@@ -330,7 +338,14 @@ def allocate_colophon_names(book):
 def build_colophon(
     model, language, source_identifier=None, when=None, item_id=None, file_name=None
 ):
-    """The one page that says, in prose, what this file is."""
+    """The one page that says, to a reader, what this file is.
+
+    A log, not a document: one heading, then `Title: content` on a line of
+    its own, in the order a person asks the questions. No list markup, no
+    bold, no nesting — a page of facts about a file should not arrive
+    dressed as a chapter, and a reader flicking to the end of a book wants
+    to read five lines, not parse a layout.
+    """
     when = when or date.today()
     lines = [
         ("Translated by", TOOL_NAME),
@@ -340,10 +355,10 @@ def build_colophon(
     if source_identifier:
         lines.append(("Source identifier", source_identifier))
     lines.append(("Target language", language))
+    lines.append((NOTE_LABEL, UNREVIEWED))
 
     rows = "\n".join(
-        f"    <p><strong>{escape(label)}:</strong> {escape(str(value))}</p>"
-        for label, value in lines
+        f"    <p>{escape(label)}: {escape(str(value))}</p>" for label, value in lines
     )
     document = (
         '<?xml version="1.0" encoding="utf-8"?>\n'
@@ -353,9 +368,8 @@ def build_colophon(
         f'    <meta name="generator" content="{GENERATOR_MARK}"/>\n'
         "  </head>\n"
         "  <body>\n"
-        f"    <h1>{COLOPHON_TITLE}</h1>\n"
+        f"    <h1>{COLOPHON_HEADING}</h1>\n"
         f"{rows}\n"
-        f"    <p>{UNREVIEWED}</p>\n"
         "  </body>\n</html>\n"
     )
 

@@ -19,8 +19,10 @@ from book_maker.loader.disclosure import (
     model_id,
     COLOPHON_FILE,
     COLOPHON_ID,
+    COLOPHON_TITLE,
     CONTRIBUTOR_ID,
     DESCRIPTION_TAIL,
+    GENERATOR_MARK,
 )
 from book_maker.loader.epub_loader import EPUBBookLoader
 
@@ -172,6 +174,44 @@ def test_the_colophon_says_everything_it_has_to(tmp_path):
     assert "urn:uuid:source-1" in page
     assert "zh-hans" in page
     assert "This translation has not been reviewed by a human translator." in page
+
+
+def test_the_colophon_reads_like_a_log(tmp_path):
+    """One heading, then `Title: content` a line at a time, in the order a
+    person asks the questions. A page of facts about a file should not
+    arrive dressed as a chapter."""
+    page = _colophon_of(_rebuild(_source())).content.decode("utf-8")
+
+    assert "<h1>Disclaimer</h1>" in page
+    assert page.count("<h1") == 1
+    assert "<p>Translated by: bilingual_book_maker</p>" in page
+    assert "<p>Model: x/y</p>" in page
+    assert f"<p>Date: {date.today().isoformat()}</p>" in page
+    assert "<p>Source identifier: urn:uuid:source-1</p>" in page
+    assert "<p>Target language: zh-hans</p>" in page
+    assert (
+        "<p>Note: This translation has not been reviewed by a human "
+        "translator.</p>" in page
+    )
+
+
+def test_the_colophon_carries_no_structure_a_reader_has_to_parse(tmp_path):
+    """No list markup, no bold, no emphasis: plain lines, so nobody reads
+    the page as a document with a shape."""
+    page = _colophon_of(_rebuild(_source())).content.decode("utf-8")
+
+    for markup in ("<ul", "<ol", "<li", "<strong", "<em", "<b>", "<i>"):
+        assert markup not in page, markup
+
+
+def test_the_colophon_keeps_what_identifies_it(tmp_path):
+    """The generator marker is how a rerun recognises its own page, and the
+    document title is what a reading system shows. The reformat moved
+    neither — only the heading, which is the reader's."""
+    page = _colophon_of(_rebuild(_source())).content.decode("utf-8")
+
+    assert f'<meta name="generator" content="{GENERATOR_MARK}"/>' in page
+    assert f"<title>{COLOPHON_TITLE}</title>" in page
 
 
 def test_the_colophon_omits_a_source_line_there_is_no_identifier_for(tmp_path):
