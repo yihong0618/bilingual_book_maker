@@ -235,7 +235,12 @@ the request budget from its own prompt overhead, and pins the rest.
 
 - **Endpoint verifies a strict JSON schema** (the official OpenAI API):
   the full cap (32) applies and every reply is schema-checked. Nothing
-  to change.
+  to change — and a weak model is not a reason to lower it: rerunning
+  both axes on gpt-4o-mini and DeepSeek kept the 32-unit cap at a 2×
+  margin below the first observable fault (64 effective units) and the
+  derived budget band fault-free through 4800, so if a run keeps
+  printing misalignment recoveries, lower `--max-batch-units` before
+  touching the budget.
 - **Endpoint accepts JSON mode but not a strict schema**: the run
   halves the cap to 16 by itself. Do not raise `--max-batch-units` to undo
   it — the halved tier is where miscounted replies were actually
