@@ -95,6 +95,56 @@ def _text_blocks(message):
     )
 
 
+# A reply whose whole content sits inside one symmetric pair of triple-backtick
+# fences. The opening fence may carry a markdown info string ("```zh"), but only
+# when it owns its line — otherwise "```Animal Farm```" would read "Animal" as a
+# language tag and lose the first word of the translation. `(?P=fence)` pins the
+# closing run to the same length as the opening one, and the trailing `\s*\Z`
+# makes it the *last* fence in the reply, not the first one found.
+_OUTER_FENCE = re.compile(
+    r"""\A\s*
+        (?P<fence>`{3,})
+        (?:(?P<tag>[A-Za-z0-9_+.#-]*)[ \t]*\r?\n)?
+        (?P<body>.*?)
+        (?P=fence)\s*\Z
+    """,
+    re.DOTALL | re.VERBOSE,
+)
+
+
+def _strip_outer_fence(text):
+    """Unwrap a translation the model handed back inside a code fence.
+
+    This route's DEFAULT_PROMPT delimits the source with triple backticks
+    ("...the text within triple backticks..."), and models mirror the
+    delimiter back around their answer. Nothing downstream removes it, so the
+    fences were written into the book: `<p>```动物庄园```</p>` on every
+    paragraph of a default anthropic run (seen live 260905, plain and
+    `--use_context session` alike).
+
+    The prompt is upstream's contract and users write `--prompt` text against
+    it, so the fix is here, on the reply. Only a *symmetric outer* wrap is
+    removed:
+
+    * no wrap, or an opening fence with no closing one, and the text comes
+      back byte-identical — a half-fenced reply is a damaged reply, and
+      quietly half-repairing it hides that;
+    * a fence run inside the body means the reply is a document with code
+      blocks in it rather than a wrapped translation, so it is left alone;
+    * a wrap around nothing is left alone too, rather than manufacturing an
+      empty translation out of a garbage reply.
+    """
+    match = _OUTER_FENCE.match(text or "")
+    if not match:
+        return text
+    body = match.group("body")
+    # Anything as long as the outer fence, inside it, and this is not a wrap.
+    if match.group("fence") in body:
+        return text
+    body = body.strip()
+    return body if body else text
+
+
 def _reply_text(message):
     """`_text_blocks`, but a reply with no text at all is an error, not ""."""
     text = _text_blocks(message)
@@ -568,7 +618,11 @@ class Claude(Base):
         except APIStatusError as e:
             self._explain_wrong_shape(e)
         self._note_usage(r)
-        t_text = _reply_text(r)
+        # Blocks first, fences second: the strip has to see the final joined
+        # text, or a reply split across two text blocks ("```" + "译文```")
+        # keeps its wrapper. Everything downstream — the batch splitter, the
+        # session history, the book — then sees the same unwrapped string.
+        t_text = _strip_outer_fence(_reply_text(r))
 
         if self.context_flag:
             self.save_context(text, t_text)
