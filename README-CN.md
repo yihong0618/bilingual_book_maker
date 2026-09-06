@@ -276,8 +276,6 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   | `claude-sonnet-4-6` | `anthropic` | Anthropic 官方地址 |
   | `gpt-4o-mini` | `openai` | OpenAI |
   | `deepseek-v4-flash-0731` | `openai` | 与`--api_base` 配合使用 |
-  | `codex` | 即 `--api_format codex` | 通过 Codex CLI 使用 |
-  | `orcarouter` | `openai` | 使用OrcaRouter，key 读取 `BBM_ORCAROUTER_API_KEY` |
 
   旧的预设值仍然可以写，会被改写成真实模型 ID 并打印说明，对照表见[从旧参数迁移](./docs/migration.md)。其他任何接口：`--api_base <url> --key <key> --model <id>`，或一条 `--provider` 配置（见「自定义 API Provider」章节）。
 

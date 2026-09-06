@@ -305,8 +305,6 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   | `gemini-flash-latest` | `gemini` | the default there, at Google's own address |
   | `qwen-mt-turbo` | `qwen` | the default there, on DashScope |
   | `llama-3.3-70b-versatile` | `groq` | Groq's own address |
-  | `codex` | same as `--api_format codex` | through the Codex CLI |
-  | `orcarouter` | `openai` | OrcaRouter, key from `BBM_ORCAROUTER_API_KEY` |
 
   The old preset values still parse and are rewritten to a real model id with a note; [Migrating from the old flags](./docs/migration.md) lists them. Anything else is an endpoint: `--api_base <url> --key <key> --model <id>`, or a `--provider` entry (see the Custom API Provider section).
 
