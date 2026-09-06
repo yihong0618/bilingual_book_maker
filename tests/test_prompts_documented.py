@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from book_maker.glossary import Glossary
 from book_maker.session_context import HandoffReport, handoff_prompt
 from book_maker.translator.chatgptapi_translator import ChatGPTAPI
 from book_maker.translator.codex_translator import BASE_INSTRUCTIONS
@@ -39,6 +40,19 @@ _STYLE = (
 )
 
 
+_RENDERINGS = (
+    "Established renderings — nouns we need to keep unified that are **not "
+    "already listed above**. If none are new, emit an empty block. One per "
+    "line as `term → translation # note` (the note is optional). Wrap the "
+    "list in <renderings> and </renderings> tags so its start and end are "
+    "unambiguous. This is the only place term equivalences belong."
+)
+
+_GLOSSARY_BLOCK_TAIL = (
+    "Use these translations verbatim whenever the source term appears."
+)
+
+
 def _compact(*sections: str) -> str:
     numbered = [f"{n}. {body}" for n, body in enumerate(sections, start=1)]
     return "\n\n".join([_PREAMBLE, *numbered])
@@ -56,6 +70,23 @@ EXPECTED = {
     "compact (user style)": (
         handoff_prompt(with_style=False),
         _compact(_SUMMARY),
+    ),
+    # A run that learns its own renderings asks for one more section. It is
+    # the last one, so a fixed style does not leave it numbered "3." in a
+    # two-section request.
+    "compact (glossary)": (
+        handoff_prompt(with_glossary=True),
+        _compact(_SUMMARY, _STYLE, _RENDERINGS),
+    ),
+    "compact (glossary, user style)": (
+        handoff_prompt(with_glossary=True, with_style=False),
+        _compact(_SUMMARY, _RENDERINGS),
+    ),
+    # The pinned block, as it rides next to one unit. Only the terms that
+    # occur in that unit are ever listed.
+    "glossary block": (
+        Glossary.parse("Winston → 温斯顿\n").prompt_block("Winston went home"),
+        f"<glossary>\nWinston → 温斯顿\n</glossary>\n{_GLOSSARY_BLOCK_TAIL}",
     ),
     "next-window seed": (
         HandoffReport(1, "<SUMMARY>").seed_text(),

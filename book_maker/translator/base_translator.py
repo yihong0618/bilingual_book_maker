@@ -8,7 +8,9 @@ from dataclasses import dataclass
 from rich import print
 from rich.markup import escape
 
+from ..glossary import Glossary
 from ..redaction import redact, remember
+from ..session_context import parse_handoff_glossary
 
 from ..structured import (
     extract_json_object,
@@ -289,6 +291,65 @@ class Base(ABC):
     # services speak their own protocol; both refuse the flags rather than
     # printing success and dropping the fields.
     SUPPORTS_REQUEST_EXTRAS = False
+
+    # Does this route inject a `--glossary` / `--terminology` block next to the
+    # unit it is translating? True where the request is built here out of a
+    # prompt we control. The fixed-endpoint MT services take a string and give
+    # one back, with nowhere to say "render this term that way" — they get the
+    # flag warned about rather than accepting a pin that reaches nothing.
+    SUPPORTS_GLOSSARY = False
+
+    # Glossary state, declared here so every route answers it — including the
+    # ones that carry no glossary at all and the instances a test builds
+    # without __init__. `pinned` is the operator's file, `learned` what this
+    # run's compact turns established, `glossary` the two merged with the pins
+    # on top. Nothing ever merges back into `pinned`: it stays exactly the
+    # file, which is what lets the run record its provenance without ever
+    # naming a derived term.
+    glossary = None
+    pinned = None
+    learned = None
+    glossary_auto = None
+
+    # Whether this run learns renderings from its own handoff reports. False
+    # on any route without a session to compact; the session routes decide it
+    # from `--glossary-auto` and whether a session is actually open.
+    glossary_auto_on = False
+
+    def _learn_from_handoff(self, report_text):
+        """Fold a handoff report's renderings into this run's glossary.
+
+        Returns the lines to record in the report — "" when this run is not
+        learning, so a route that never asked for the section cannot acquire
+        terms from prose that happens to contain an arrow.
+        """
+        if not self.glossary_auto_on or not report_text:
+            return ""
+        learned, source = parse_handoff_glossary(report_text)
+        if source == "scanned":
+            # The block is what makes this parseable; say so rather than let a
+            # quietly degraded recovery look like a clean one.
+            print(
+                f"[yellow]ℹ the handoff report left out its <renderings> "
+                f"block; recovered {len(learned)} terms from loose "
+                f"lines[/yellow]"
+            )
+        elif source == "missing":
+            print(
+                "[yellow]ℹ the handoff report established no renderings; "
+                "this window carries no learned terms[/yellow]"
+            )
+        if not learned:
+            return ""
+        # This window's reading wins over earlier ones: the model has seen
+        # more of the book than it had last time. Then the operator's pins are
+        # laid over the top, so a term they chose never drifts, while
+        # everything else keeps improving.
+        self.learned, _ = learned.merge(self.learned or Glossary())
+        self.glossary, conflicts = (self.pinned or Glossary()).merge(self.learned)
+        for conflict in conflicts:
+            print(f"[yellow]ℹ glossary conflict — {conflict.describe()}[/yellow]")
+        return self.glossary.to_lines()
 
     def set_request_extras(self, extra_body=None, extra_headers=None):
         """Fields and headers to add to every request this route makes.

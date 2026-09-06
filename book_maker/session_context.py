@@ -12,8 +12,8 @@ Two rules follow from that and are load-bearing everywhere below:
 
 1. Nothing already sent may be rewritten. Editing an earlier message shifts
    the prefix and the cache misses, which is strictly worse than window mode.
-2. Anything that varies per unit rides in the fresh tail message, never in
-   the prefix.
+2. Anything that varies per unit (the glossary block) rides in the fresh tail
+   message, never in the prefix.
 
 When the history reaches `--context-compact-at`, we ask the model for a
 translator handoff report, start a new window seeded with it, and keep going.
@@ -29,6 +29,9 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import NamedTuple
+
+from book_maker.glossary import Glossary
 
 # Estimated, never billed. A chars-based estimate is what the budget table was
 # derived from, so the knob and the math agree by construction; reading
@@ -144,27 +147,139 @@ _SUMMARY_REQUEST = (
 # Capped, and scoped to deviations only. Both clauses earn their place:
 # uncapped, this section grew past twenty bullets; unscoped, it restates
 # defaults the model would follow anyway ("使用简体中文"), which costs a line of
-# the cap and tells the next window nothing.
+# the cap and tells the next window nothing. One wording for both paths — a
+# variant that dropped the scope clause without a glossary used to exist, on
+# the reasoning that the glossary section is what keeps term equivalences out
+# of here. But that is what "this is the only place term equivalences belong"
+# does, over in the renderings section; the clause dropped was the scope cap,
+# which nothing else supplies. The result was that the *default* path, with no
+# glossary, was the one running unscoped.
 _STYLE_REQUEST = (
     "Style — up to 3 lines of what translation style is used so far. "
     "Only note down what's different from general translation."
 )
 
+# Only *new* renderings are requested. The accumulated set is already held on
+# this side and merged, and it is replayed to the model in the seed, so asking
+# for the whole list again is output paid twice — and it compounds: a shorter
+# budget means more compacts, each re-emitting a longer list, so the cost of
+# re-listing grows with the square of the compact count. Asking only for what
+# is new keeps the report flat for the length of the book.
+_GLOSSARY_REQUEST = (
+    "Established renderings — nouns we need to keep unified that are **not "
+    "already listed above**. If none are new, emit an empty block. One per "
+    "line as `term → translation # note` (the note is optional). Wrap the "
+    "list in <renderings> and </renderings> tags so its start and end are "
+    "unambiguous. This is the only place term equivalences belong."
+)
 
-def handoff_prompt(with_style: bool = True) -> str:
+
+def handoff_prompt(with_glossary: bool = False, with_style: bool = True) -> str:
     """The compact turn's request, built from the sections in play.
 
     Each section costs output tokens and invites the model to spend attention
     on it, so one is only asked for when something downstream consumes it —
+    the renderings only when this run learns a glossary (`--glossary-auto`),
     the style only when the user has not fixed one via `--prompt`'s `style`
     field. Numbering follows what is actually included, so a fixed style does
-    not leave the summary alone under a "1." it does not need.
+    not leave the renderings labelled "3." in a two-section request.
     """
     sections = [_SUMMARY_REQUEST]
     if with_style:
         sections.append(_STYLE_REQUEST)
+    if with_glossary:
+        sections.append(_GLOSSARY_REQUEST)
     numbered = [f"{n}. {body}" for n, body in enumerate(sections, start=1)]
     return "\n\n".join([_PREAMBLE, *numbered])
+
+
+# The block the report is asked to emit. Tolerant of a missing closing tag:
+# a truncated answer should still yield the terms it managed to write.
+_RENDERINGS = re.compile(
+    r"<renderings>(.*?)(?:</renderings>|\Z)", re.DOTALL | re.IGNORECASE
+)
+
+# Fallback only. A glossary line is short and is not a sentence, which is what
+# separates it from prose that happens to contain an arrow.
+_MAX_TERM_LEN = 60
+_SENTENCE_END = ("。", ".", "！", "!", "？", "?", "；", ";")
+
+
+class HandoffGlossary(NamedTuple):
+    """What a handoff report yielded, and how it had to be recovered.
+
+    `source` is reported so a run can say out loud that the model skipped the
+    block — with the derived glossary on, silently learning nothing looks
+    identical to a book with no recurring terms.
+    """
+
+    glossary: Glossary
+    source: str  # "tagged" | "scanned" | "missing"
+
+
+def _entries_from_lines(lines, strict):
+    entries = []
+    for raw in lines:
+        line = raw.strip().lstrip("-*•").strip()
+        if not line or line.startswith("#") or line.startswith("<"):
+            continue
+        if not strict:
+            # Outside the tags, only accept things shaped like an entry.
+            head = re.split(r"→|->", line)[0].strip()
+            if len(head) > _MAX_TERM_LEN or line.endswith(_SENTENCE_END):
+                continue
+        try:
+            entries.extend(Glossary.parse(line).entries)
+        except ValueError:
+            continue  # model output; one bad line must not lose the rest
+    return entries
+
+
+def parse_handoff_glossary(text: str) -> HandoffGlossary:
+    """Read the renderings the handoff report established.
+
+    Preferred shape is the tagged block the prompt asks for. Models drop it,
+    so there is a fallback: scan loose `term → translation` lines, guarded so
+    ordinary prose containing an arrow is not mistaken for an entry.
+    """
+    if not text:
+        return HandoffGlossary(Glossary(), "missing")
+
+    match = _RENDERINGS.search(text)
+    if match:
+        entries = _entries_from_lines(match.group(1).splitlines(), strict=True)
+        if entries:
+            return HandoffGlossary(Glossary(entries), "tagged")
+
+    entries = _entries_from_lines(text.splitlines(), strict=False)
+    if entries:
+        return HandoffGlossary(Glossary(entries), "scanned")
+    return HandoffGlossary(Glossary(), "missing")
+
+
+# A markdown heading that introduced the renderings block and is left dangling
+# once the block is removed ("## 3. Glossary", "### Established renderings").
+_EMPTY_GLOSSARY_HEADING = re.compile(
+    r"^#{1,6}\s*\d*\.?\s*(glossary|established renderings|terms)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def strip_handoff_glossary(text: str) -> str:
+    """The report's prose, with the renderings block removed.
+
+    The block is parsed into real entries and re-rendered canonically, so
+    leaving it in the prose would write every term twice into
+    `<book>_handoff.md` and send it twice in the next window's seed.
+    """
+    if not text:
+        return text
+    without = _RENDERINGS.sub("", text)
+    without = _EMPTY_GLOSSARY_HEADING.sub("", without)
+    without = re.sub(r"\n{3,}", "\n\n", without).strip()
+    # A heading now left at the very end introduced the block just removed.
+    # Matched by position, since the model writes it in the target language.
+    return re.sub(r"\n#{1,6}[^\n]*$", "", without).strip()
 
 
 @dataclass
@@ -173,6 +288,12 @@ class HandoffReport:
 
     window: int
     summary: str
+    # The renderings this run has established so far, pins included, rendered
+    # canonically. Written to the handoff file and replayed in the seed so the
+    # next window keeps the same names — and so an operator can read back what
+    # the run taught itself. It never reaches the book: the provenance stamp
+    # records the `--glossary` file the operator wrote, nothing derived.
+    glossary_lines: str = ""
     # A style the user fixed via --prompt's `style` field. It is not asked of
     # the model, so it is written in here instead — otherwise the next window
     # would inherit a report with no style at all.
@@ -187,6 +308,8 @@ class HandoffReport:
             "terminology and register consistent with it.\n\n"
             f"{self.summary}"
         )
+        if self.glossary_lines:
+            seed += f"\n\nEstablished renderings:\n{self.glossary_lines}"
         return seed
 
     def render(self) -> str:
@@ -194,6 +317,8 @@ class HandoffReport:
         body = self.summary
         if self.style_note:
             body += f"\n\n### Style\n\n{self.style_note}"
+        if self.glossary_lines:
+            body += f"\n\n### Established renderings\n\n{self.glossary_lines}"
         return body
 
     def append_to(self, path) -> None:
