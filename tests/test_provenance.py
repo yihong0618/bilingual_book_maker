@@ -375,6 +375,35 @@ def test_a_key_nested_inside_a_recordable_value_is_masked(monkeypatch):
     assert "gateway.example/v1" in args
 
 
+def test_a_secret_named_field_is_masked_whatever_its_value_looks_like(
+    monkeypatch,
+):
+    """Reverify finding 260906: `{"api_key": "secondary-secret"}` carries no
+    token prefix for the shape net; the field *name* is the evidence."""
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["make_book.py", "--extra_body", '{"api_key": "secondary-secret"}'],
+    )
+
+    args = _metas(_rebuild(_source(), provenance=True))[prov.ARGS_META]
+
+    assert "secondary-secret" not in args
+    assert "api_key" in args
+
+
+def test_a_token_prefix_inside_a_word_is_not_a_token(monkeypatch):
+    """Reverify finding 260906: `desk-notes.epub` contains `sk-notes` and
+    the unanchored pass recorded the book argument as `de<redacted>` —
+    corrupting exactly the nonsecret shape the record exists to keep."""
+    monkeypatch.setattr(sys, "argv", ["make_book.py", "--book_name", "desk-notes.epub"])
+
+    args = _metas(_rebuild(_source(), provenance=True))[prov.ARGS_META]
+
+    assert "desk-notes.epub" in args
+    assert prov.MASK not in args
+
+
 def test_a_bearer_value_nested_in_a_field_is_masked(monkeypatch):
     monkeypatch.setattr(
         sys,

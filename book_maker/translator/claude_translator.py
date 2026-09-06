@@ -212,6 +212,10 @@ class Claude(Base):
         self.model = "claude-haiku-4-5-20251001"  # default it for now
         self.language = language
         self.prompt_template = prompt_template or self.DEFAULT_PROMPT
+        # Construction-time intent, because prompt_template itself is
+        # temporarily swapped for the joined prompt on the batch path — a
+        # stock-prompt batch must still unwrap its mirrored fence.
+        self._uses_stock_prompt = not prompt_template
         self.prompt_sys_msg = prompt_sys_msg or ""
         self.temperature = temperature
         self.context_flag = context_flag
@@ -648,7 +652,12 @@ class Claude(Base):
         # text, or a reply split across two text blocks ("```" + "译文```")
         # keeps its wrapper. Everything downstream — the batch splitter, the
         # session history, the book — then sees the same unwrapped string.
-        t_text = _strip_outer_fence(_reply_text(r), source=text)
+        # Stock prompt only: the mirrored wrapper is DEFAULT_PROMPT's own
+        # fencing instruction coming back, so a custom `--prompt` owns its
+        # reply format — one asking for fenced Markdown must receive it.
+        t_text = _reply_text(r)
+        if self._uses_stock_prompt:
+            t_text = _strip_outer_fence(t_text, source=text)
 
         if self.context_flag:
             self.save_context(text, t_text)

@@ -273,9 +273,11 @@ def looks_like_token(arg):
 # written into a URL (`https://user:secret@host/v1`), an Authorization value
 # in `--extra_headers`. The whole argument is worth keeping — the field
 # names and the host are the record — so only the credential substring is
-# masked.
+# masked. The lookbehind anchors a prefix to the start of a word: without
+# it `desk-notes.epub` carries `sk-notes.epub` and a harmless book argument
+# came out of the record as `de<redacted>` (reverify finding, 260906).
 _EMBEDDED_TOKEN = re.compile(
-    "(?:"
+    r"(?<![A-Za-z0-9])(?:"
     + "|".join(
         re.escape(prefix) for prefix in TOKEN_PREFIXES if prefix.lower() != "bearer "
     )
@@ -283,11 +285,23 @@ _EMBEDDED_TOKEN = re.compile(
 )
 _BEARER_VALUE = re.compile(r"(?i)\bbearer[ \t]+[A-Za-z0-9._\-]{4,}")
 _URL_USERINFO = re.compile(r"(?<=://)[^/@\s]{1,128}@")
+# A JSON-ish field whose *name* announces a credential, whatever shape its
+# value has: `"api_key": "secondary-secret"` has no token prefix for the
+# shape net to see, and the value never passed through this process's hands
+# for `redact` to know. The name is the evidence, so the name decides —
+# and the name is exactly what stays in the record.
+_SECRET_FIELD = re.compile(
+    r"([\"'](?:api[_-]?key|apikey|key|token|access[_-]?token|refresh[_-]?token"
+    r"|secret|client[_-]?secret|password|authorization|auth)[\"']\s*:\s*)"
+    r"[\"'][^\"']*[\"']",
+    re.IGNORECASE,
+)
 
 
 def mask_embedded_secrets(text):
     """`text` with credential-shaped substrings replaced by the mask."""
     text = _URL_USERINFO.sub(f"{MASK}@", text)
+    text = _SECRET_FIELD.sub(rf'\1"{MASK}"', text)
     text = _BEARER_VALUE.sub(MASK, text)
     return _EMBEDDED_TOKEN.sub(MASK, text)
 

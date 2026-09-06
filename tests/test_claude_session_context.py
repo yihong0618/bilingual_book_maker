@@ -704,6 +704,21 @@ class TestOuterFenceStripping:
             _strip_outer_fence("```\n动物庄园\n```", source="Animal Farm") == "动物庄园"
         )
 
+    def test_a_custom_prompt_keeps_its_fenced_reply(self):
+        # The mirrored wrapper is DEFAULT_PROMPT's own fencing instruction
+        # coming back; a --prompt that asks for fenced Markdown owns its
+        # reply format and must receive it verbatim.
+        t = _translator(
+            ["```md\n译文\n```"],
+            context_flag=False,
+            prompt_template="Render {text} as fenced markdown in {language}.",
+        )
+        assert t.translate("plain source") == "```md\n译文\n```"
+
+    def test_the_stock_prompt_still_unwraps_through_translate(self):
+        t = _translator(["```\n译文\n```"], context_flag=False)
+        assert t.translate("plain source") == "译文"
+
     def test_an_inline_wrap_is_unwrapped(self):
         # what the live run actually produced
         assert (
