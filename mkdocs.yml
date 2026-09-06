@@ -18,5 +18,6 @@ nav:
     - Translate from different source: book_source.md
     - Environment setting: env_settings.md
     - Tweak the prompt: prompt.md
+    - Session grouping evaluation: session_grouping_eval.md
   - Disclaimer: disclaimer.md
     
