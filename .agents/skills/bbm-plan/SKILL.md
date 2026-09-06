@@ -469,7 +469,9 @@ so you can honour a request without guessing at legal values.
 - `--plan-dry-run` — it returns *before* classification, so the plan it
   writes has every `action` still `null` and there is no agent handoff
   block to work from. The base command writes the same plan *and* hands
-  off.
+  off. The preview does forecast which channel classification would use
+  on this route (structured output, a plain session, or plan mode off) —
+  the partition is exact, the verdicts are what is missing.
 - `--allow_navigable_strings` — explicitly ignored; the plan already
   accounts for every text node.
 - `--batch` / `--batch-use`, `--retranslate`, `--sentence_mode` —
@@ -545,6 +547,7 @@ name-then-rule reasoning), what the read-back showed, and hand over
 | a `--test` run printing its request count (grouping merges the slice into few requests), or that classification covers the whole book regardless of `--test` | **not a failure.** New compatibility narration; the smoke recipe triggers both by design |
 | `classifying over a plain session` | **not a failure.** The endpoint has no structured output, so plan classification runs over a conversation with verbatim `skip`/`translate` replies |
 | `N misaligned batches this run — … lower --batch_units or --accumulated_num` | the model keeps miscounting large batches; follow the hint on the next run |
+| `… N invented (⟦…⟧) — reconciled` | the model typed a marker token where none belongs; the run scrubbed it before writing. Informational — worth a read-back look only if it repeats |
 | fingerprint refusal on `--resume` | book file or plan changed since the cache was written; delete the cache only if that was intentional. A checkpoint refusal naming language/prompt/model means the resume flags differ from the original run's — rerun with the original flags, or delete the checkpoint |
 | `undecided signature(s)` on plan load | null actions remain — answer every open question, then rerun |
 | `invalid action` on plan load | typo in a hand-edited `action` — fix the JSON, rerun |

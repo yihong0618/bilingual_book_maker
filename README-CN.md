@@ -345,7 +345,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
   取值决定每个标签的翻译与否如何判断：
 
-  - `auto`（默认）：书籍是 epub 时，问 LLM 该翻哪段。端点验证支持严格 JSON Schema 时走结构化输出；其他能对话的端点（codex 路由、普通代理）改走纯会话——每次问三个签名，要求逐字回答 `skip,translate,unsure`，其中 `unsure` 和无法解析的回答一律按 translate 处理（绝不误跳过，跳过侧由覆盖率闸门把关）。`--context-compact-at` 同样约束该分类会话，与 `--use_context` 无关。只有路由完全不能对话时，以及计划失败时，才仅翻译 `--translate-tags` 选中的标签。经纯会话判定的行在 `<book>_plan.json` 中以 `unnamed (…)` 内容类型标注判定方式。
+  - `auto`（默认）：书籍是 epub 时，问 LLM 该翻哪段。端点验证支持严格 JSON Schema 时走结构化输出；其他能对话的端点（codex 路由、普通代理）改走纯会话——每次问三个签名，要求逐字回答 `skip,translate,unsure`；回答的判定数与所问不符时改为逐个重问，`unsure` 和无法解析的回答一律按 translate 处理（绝不误跳过，跳过侧由覆盖率闸门把关）。`--context-compact-at` 同样约束该分类会话，与 `--use_context` 无关。只有路由完全不能对话时，以及计划失败时，才仅翻译 `--translate-tags` 选中的标签。经纯会话判定的行在 `<book>_plan.json` 中以 `unnamed (…)` 内容类型标注判定方式。
   - `none`：不建计划，仅 `--translate-tags` 选中的标签。
   - `all`：翻译整个分区，不做分类。
   - `model`：使用进行翻译的 LLM 进行判断，然后翻译。可用 `--plan-classify-model X` 指定分类用的模型。
