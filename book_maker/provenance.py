@@ -285,21 +285,78 @@ _EMBEDDED_TOKEN = re.compile(
 )
 _BEARER_VALUE = re.compile(r"(?i)\bbearer[ \t]+[A-Za-z0-9._\-]{4,}")
 _URL_USERINFO = re.compile(r"(?<=://)[^/@\s]{1,128}@")
-# A JSON-ish field whose *name* announces a credential, whatever shape its
-# value has: `"api_key": "secondary-secret"` has no token prefix for the
-# shape net to see, and the value never passed through this process's hands
-# for `redact` to know. The name is the evidence, so the name decides —
-# and the name is exactly what stays in the record.
+# A field whose *name* announces a credential, whatever shape its value
+# has: `"api_key": "secondary-secret"` has no token prefix for the shape
+# net to see, and the value never passed through this process's hands for
+# `redact` to know. The name is the evidence, so the name decides — and
+# the name is exactly what stays in the record. An argument that actually
+# parses as JSON (an `--extra_body` value) is walked as JSON, because a
+# regex over string contents is quote-blind — `"prefix'secondary-secret"`
+# ended the old match at the apostrophe (reverify finding, 260906). The
+# regex stays as the fallback for JSON-shaped fragments inside text that
+# does not parse whole, with each value matched to its own opening quote.
+_SECRET_NAMES = frozenset(
+    name.replace("-", "_")
+    for name in (
+        "api_key",
+        "apikey",
+        "key",
+        "token",
+        "access_token",
+        "refresh_token",
+        "secret",
+        "client_secret",
+        "password",
+        "authorization",
+        "auth",
+    )
+)
 _SECRET_FIELD = re.compile(
     r"([\"'](?:api[_-]?key|apikey|key|token|access[_-]?token|refresh[_-]?token"
     r"|secret|client[_-]?secret|password|authorization|auth)[\"']\s*:\s*)"
-    r"[\"'][^\"']*[\"']",
+    r"(\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*')",
     re.IGNORECASE,
 )
 
 
+def _mask_json_value(node):
+    if isinstance(node, dict):
+        return {
+            key: (
+                MASK
+                if isinstance(key, str)
+                and key.lower().replace("-", "_") in _SECRET_NAMES
+                and not isinstance(value, (dict, list))
+                else _mask_json_value(value)
+            )
+            for key, value in node.items()
+        }
+    if isinstance(node, list):
+        return [_mask_json_value(value) for value in node]
+    return node
+
+
+def _mask_json_part(text):
+    """`text` rewritten through a real JSON walk, or None when it isn't one.
+
+    Handles the bare object argument and the `--flag={…}` joined form; the
+    prefix before the first brace is kept as typed.
+    """
+    prefix, brace, payload = text.partition("{")
+    if not brace:
+        return None
+    try:
+        data = json.loads(brace + payload)
+    except ValueError:
+        return None
+    return prefix + json.dumps(_mask_json_value(data), ensure_ascii=False)
+
+
 def mask_embedded_secrets(text):
     """`text` with credential-shaped substrings replaced by the mask."""
+    structured = _mask_json_part(text)
+    if structured is not None:
+        text = structured
     text = _URL_USERINFO.sub(f"{MASK}@", text)
     text = _SECRET_FIELD.sub(rf'\1"{MASK}"', text)
     text = _BEARER_VALUE.sub(MASK, text)

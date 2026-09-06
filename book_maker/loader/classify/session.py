@@ -188,9 +188,15 @@ def example_tokens():
 
     Both routes send it — one as a message pair, one folded into the trunk
     text — so the estimate that decides when to restart has to see it, or
-    every session runs that much past its budget.
+    every session runs that much past its budget. Counted at the *inline*
+    shape, which is the larger of the two (the pair plus its framing
+    lines), so the estimate is never under what either route actually
+    sends — an early restart costs one re-sent trunk, a late one risks
+    the window.
     """
-    return estimate_tokens(build_example_turn()) + estimate_tokens(EXAMPLE_REPLY)
+    # The inline composition already carries the turn, the reply and the
+    # framing, so it is the whole cost in one string.
+    return estimate_tokens(trunk_with_inline_example(""))
 
 
 def trunk_with_inline_example(trunk=None):

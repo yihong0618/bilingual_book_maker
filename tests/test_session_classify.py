@@ -516,6 +516,23 @@ class TestTheDemonstratedTurn:
         assert build_example_turn() not in TRUNK
         assert "Example. Given:" not in TRUNK
 
+    def test_the_example_cost_covers_the_codex_inline_shape(self):
+        # reverify round 2, 260906: the codex route sends the framing lines
+        # ("Example. Given:", "You reply exactly:") as well as the pair, so
+        # an estimate counting only the pair undercounts and delays the
+        # restart a turn past the budget. The cost is counted at the inline
+        # shape — the larger of the two routes' realities.
+        from book_maker.loader.classify.session import (
+            estimate_tokens,
+            example_tokens,
+        )
+
+        trunk = build_trunk()
+        inline_delta = estimate_tokens(
+            trunk_with_inline_example(trunk)
+        ) - estimate_tokens(trunk)
+        assert example_tokens() >= inline_delta
+
     def test_the_example_is_static(self):
         # the prefix a caching endpoint pays for once cannot vary per session
         assert build_example_turn() == build_example_turn()

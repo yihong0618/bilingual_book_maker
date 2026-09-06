@@ -392,6 +392,53 @@ def test_a_secret_named_field_is_masked_whatever_its_value_looks_like(
     assert "api_key" in args
 
 
+def test_a_quote_inside_a_secret_value_does_not_leak_its_tail(monkeypatch):
+    """Reverify round 2, 260906: the field regex was quote-blind, so an
+    apostrophe inside a double-quoted JSON value ended the match early and
+    `secondary-secret` survived. A value that parses as JSON is now walked
+    as JSON, not matched by regex."""
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "make_book.py",
+            "--extra_body",
+            '{"api_key": "prefix\'secondary-secret", "note": "kept"}',
+        ],
+    )
+
+    args = _metas(_rebuild(_source(), provenance=True))[prov.ARGS_META]
+
+    assert "secondary-secret" not in args
+    assert "api_key" in args
+    assert "kept" in args  # non-secret fields still travel
+
+
+def test_an_escaped_quote_inside_a_secret_value_does_not_leak(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["make_book.py", "--extra_body", '{"token": "a\\"b-secondary-secret"}'],
+    )
+
+    args = _metas(_rebuild(_source(), provenance=True))[prov.ARGS_META]
+
+    assert "secondary-secret" not in args
+
+
+def test_a_joined_flag_with_a_json_value_is_walked_too(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["make_book.py", '--extra_body={"password": "pre\'fix-secret"}'],
+    )
+
+    args = _metas(_rebuild(_source(), provenance=True))[prov.ARGS_META]
+
+    assert "fix-secret" not in args
+    assert "--extra_body" in args
+
+
 def test_a_token_prefix_inside_a_word_is_not_a_token(monkeypatch):
     """Reverify finding 260906: `desk-notes.epub` contains `sk-notes` and
     the unanchored pass recorded the book argument as `de<redacted>` —
