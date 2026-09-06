@@ -433,6 +433,9 @@ class Gemini(Base):
             )
         print(f"Using model list {model_list}")
         self._model_names = tuple(model_list)
+        # The configured fact is the alias's full expansion, before the
+        # endpoint's availability filter above pared it down.
+        self._configured_model_names = tuple(dict.fromkeys(allowed_models))
         self.model_list = cycle(model_list)
         self.rotate_model()
 
@@ -445,6 +448,7 @@ class Gemini(Base):
         # copy it reads, and a rotation mid-book means every name here may
         # have translated part of the book.
         self._model_names = tuple(model_list)
+        self._configured_model_names = tuple(model_list)
         self.model_list = cycle(model_list)
         self.rotate_model()
 

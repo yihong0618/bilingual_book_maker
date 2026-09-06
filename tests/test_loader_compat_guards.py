@@ -48,6 +48,7 @@ class ListModel(Model):
     """A `--model_list` run: several models, one of them current."""
 
     _model_names = ("first-model", "second-model")
+    _configured_model_names = ("first-model", "second-model")
 
     def __init__(self, key, language, **kwargs):
         super().__init__(key, language, **kwargs)
@@ -60,6 +61,7 @@ class ListModel(Model):
 
 class OtherListModel(ListModel):
     _model_names = ("first-model", "third-model")
+    _configured_model_names = ("first-model", "third-model")
 
 
 class CodexLike(Model):
@@ -324,6 +326,31 @@ class TestTheFingerprintIsOfTheRunAsResolved:
 
         loader.translate_model._model_names = ("second-model",)
         assert loader._run_fingerprint() == before
+
+    def test_a_narrowing_before_the_snapshot_does_not_move_it_either(self, tmp_path):
+        # the CLI's plan probe runs `_ensure_models_routable` before the
+        # loader ever takes its snapshot, so the configured list has to be
+        # recorded at configuration time, not read from the routable list
+        source = _write_epub(tmp_path / "book.epub")
+        loader = _loader(source, ListModel)
+        loader.translate_model._model_names = ("second-model",)  # probe narrowed
+
+        untouched = _loader(source, ListModel)
+        assert loader._run_fingerprint() == untouched._run_fingerprint()
+
+    def test_a_changed_style_note_moves_the_fingerprint(self, tmp_path):
+        # a fixed --prompt style rides in every request, so a style-only
+        # change writes a different book under the same user/system pair
+        from book_maker.translator.chatgptapi_translator import ChatGPTAPI
+
+        source = _write_epub(tmp_path / "book.epub")
+        plain = _loader(source, ChatGPTAPI, key="k")
+        plain.translate_model.style_note = "wooden, literal"
+        before = plain._run_fingerprint()
+
+        restyled = _loader(source, ChatGPTAPI, key="k")
+        restyled.translate_model.style_note = "breezy"
+        assert restyled._run_fingerprint() != before
 
 
 # ------------------------------------------- B1: codex counts as a session

@@ -356,7 +356,7 @@ class Base(ABC):
         return " ".join([(sys_content or "").strip(), note]).strip()
 
     def resolved_prompt_parts(self):
-        """The prompt this run actually sends, as ``{"user", "system"}``.
+        """The prompt this run sends, as ``{"user", "system", "style"}``.
 
         Not what the command typed: a run's prompt is settled from the flag,
         then the environment (`$OPENAI_API_SYS_MSG` and the
@@ -380,6 +380,10 @@ class Base(ABC):
         return {
             "user": user or "",
             "system": self._augment_system_content(system or "") or "",
+            # A fixed --prompt style rides in every request (and replaces
+            # the handoff's observed style), so a style-only change writes
+            # a different book and must move the fingerprint with it.
+            "style": getattr(self, "style_note", None) or "",
         }
 
     def _marker_preamble(self, request_text):

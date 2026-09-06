@@ -1694,6 +1694,10 @@ class ChatGPTAPI(Base):
         # budget has to size the shared history for the smallest window among
         # *all* of them, not just whichever is current.
         self._model_names = model_list
+        # What the command configured, as distinct from `_model_names`,
+        # which `_ensure_models_routable` narrows to what the endpoint
+        # serves — availability must not move a checkpoint fingerprint.
+        self._configured_model_names = tuple(model_list)
         self.model_list = cycle(model_list)
         # Set the initial model so it is available before rotate_model() runs.
         self.model = model_list[0]

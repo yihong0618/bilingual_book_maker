@@ -1132,12 +1132,23 @@ class EPUBBookLoader(BaseBookLoader):
         `--model_list` rotates, so "the model in hand" is whichever request
         happened to be last: hashing it made the same command's checkpoint
         accept or reject by luck. The configured list is the fact that does
-        not move. Narrowing is why this is snapshotted once per run rather
-        than read at save time — `_ensure_models_routable` drops models the
-        endpoint refuses, mid-run.
+        not move — `_configured_model_names`, recorded when the list is
+        set and untouched by `_ensure_models_routable`, which narrows
+        `_model_names` to what the endpoint serves (and may have already
+        run, via the CLI's plan probe, before the snapshot here is taken).
+        The snapshot still happens once per run, and `_model_names` is
+        only the fallback for doubles that never set a configured list.
         """
         model = self.translate_model
-        names = [n for n in (getattr(model, "_model_names", None) or ()) if n]
+        names = [
+            n
+            for n in (
+                getattr(model, "_configured_model_names", None)
+                or getattr(model, "_model_names", None)
+                or ()
+            )
+            if n
+        ]
         if names:
             return names
         return [getattr(model, "model_name", None) or ""]

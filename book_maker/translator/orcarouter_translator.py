@@ -22,6 +22,7 @@ class OrcaRouterTranslator(ChatGPTAPI):
         self.model_list = ORCAROUTER_MODEL_LIST
         self.api_url = self.api_base
         self._model_names = tuple(ORCAROUTER_MODEL_LIST)
+        self._configured_model_names = tuple(ORCAROUTER_MODEL_LIST)
         self.model = ORCAROUTER_MODEL_LIST[0]
 
     def rotate_model(self):
