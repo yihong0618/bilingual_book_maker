@@ -799,8 +799,14 @@ class ChatGPTAPI(Base):
         every request. Once this message is frozen into the history it stops
         varying, so it is stable there.
         """
-        content = self._marker_preamble(text) + self.prompt_template.format(
-            text=text, language=self.language, crlf="\n"
+        content = (
+            self._marker_preamble(text)
+            + self.prompt_template.format(text=text, language=self.language, crlf="\n")
+            # No endpoint has a slot for `--prompt`'s style section, so it
+            # rides here. Last, after the user's own template: it is the
+            # standing instruction the run must not lose, and a fixed string
+            # keeps every request's tail comparable.
+            + self.style_suffix()
         )
         block = self.glossary.prompt_block(text) if self.glossary else ""
         return f"{block}\n\n{content}" if block else content
@@ -808,8 +814,7 @@ class ChatGPTAPI(Base):
     def create_messages(self, text, intermediate_messages=None):
         content = self._user_content(text)
 
-        sys_content = self.system_content or self.prompt_sys_msg.format(crlf="\n")
-        sys_content = self._augment_system_content(sys_content)
+        sys_content = self._augment_system_content(self._system_message())
         messages = [
             {"role": "system", "content": sys_content},
         ]
@@ -1349,11 +1354,16 @@ class ChatGPTAPI(Base):
         if self._structured_enabled():
             return self._do_structured_batch_translate(text_list)
 
-        # Fallback to delimiter-based method
+        # Fallback to delimiter-based method. The *effective* system message,
+        # not `system_content`: that attribute only ever holds
+        # `$OPENAI_API_SYS_MSG`, so passing it dropped a `--prompt` system
+        # message for the whole group — `_build_batch_prompt` then wrapped the
+        # empty string and installed "Professional translator. …" over the top
+        # of it, and the operator's own instruction never left the process.
         return self._do_batch_translate(
             text_list,
             self.prompt_template,
-            self.system_content,
+            self._system_message(),
             self.DEFAULT_PROMPT,
             lambda text: self.translate(text, False),
         )
@@ -1410,9 +1420,15 @@ class ChatGPTAPI(Base):
         }
         texts_json = json.dumps(payload, ensure_ascii=False)
 
-        # Format user's prompt template with the JSON payload as {text}
-        user_prompt = self.prompt_template.format(
-            text=texts_json, language=self.language, crlf="\n"
+        # Format user's prompt template with the JSON payload as {text}.
+        # `--prompt`'s style section has no slot of its own anywhere, so it is
+        # appended here — before the shape instruction below, which has to
+        # stay the last thing the model reads.
+        user_prompt = (
+            self.prompt_template.format(
+                text=texts_json, language=self.language, crlf="\n"
+            )
+            + self.style_suffix()
         )
 
         # Add structured format instruction. The target language goes last: this
@@ -1448,8 +1464,7 @@ class ChatGPTAPI(Base):
                 f"Every translation must be written in {self.language}."
             )
 
-        sys_content = self.system_content or self.prompt_sys_msg.format(crlf="\n")
-        sys_content = self._augment_system_content(sys_content)
+        sys_content = self._augment_system_content(self._system_message())
 
         messages = [
             {"role": "system", "content": sys_content},
