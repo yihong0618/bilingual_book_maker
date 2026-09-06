@@ -11,6 +11,7 @@ nothing secret reaches the zip, and nothing a previous run wrote survives
 into the next one's output.
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -328,7 +329,11 @@ def test_no_member_of_the_zip_carries_the_key_or_the_prompt(
     output = _written(tmp_path, _rebuild(_source(), provenance=True))
 
     with zipfile.ZipFile(output) as archive:
-        for member in archive.namelist():
+        members = archive.namelist()
+        # the record file repeats the command line, so the sweep below is
+        # only meaningful while it is actually in there
+        assert any(m.endswith(prov.PROVENANCE_FILE) for m in members), members
+        for member in members:
             body = archive.read(member)
             assert SECRET_KEY.encode() not in body, member
             assert SECRET_PROMPT.encode() not in body, member
@@ -583,6 +588,161 @@ def test_the_glossary_name_is_allocated_against_the_book(tmp_path):
     assert f'id="{prov.GLOSSARY_ID}-2"' in opf
 
 
+# ------------------------------------------------------- the record file
+
+
+def _record_of(book):
+    """The parsed `bbm_provenance.json` the stamp wrote, or None."""
+    item = book.get_item_with_id(prov.PROVENANCE_ID)
+    return None if item is None else json.loads(item.content.decode("utf-8"))
+
+
+def test_the_record_file_says_exactly_what_the_metas_say():
+    """The point of the file is to outlive the metas, so it has to be the
+    same facts — a mirror with the `bbm:` prefix dropped, not a summary that
+    can quietly say something else."""
+    book = _rebuild(_source(), provenance=True)
+    metas = _metas(book)
+
+    record = _record_of(book)
+
+    assert record[prov.RECORD_MARK_KEY] == prov.RECORD_MARK
+    mirrored = {k: v for k, v in record.items() if k != prov.RECORD_MARK_KEY}
+    assert mirrored == {
+        name[len(prov.PREFIX) :]: content
+        for name, content in metas.items()
+        # the one meta that names the file cannot be inside it
+        if name != prov.PROVENANCE_SHA_META
+    }
+    assert record["commit"] and record["model"] == "x/y"
+    assert record["endpoint"] == "api.openai.com"
+
+
+def test_the_metas_vouch_for_the_record_file():
+    """Ownership works the way the glossary's does: a checksum in the package
+    naming the exact bytes."""
+    book = _rebuild(_source(), provenance=True)
+
+    item = book.get_item_with_id(prov.PROVENANCE_ID)
+    assert item.media_type == prov.PROVENANCE_MEDIA_TYPE
+    assert item.file_name == prov.PROVENANCE_FILE
+    assert _metas(book)[prov.PROVENANCE_SHA_META] == sha256(item.content).hexdigest()
+
+
+def test_the_record_file_is_in_the_manifest_and_not_in_the_spine(tmp_path):
+    book = _rebuild(_source(), provenance=True)
+
+    assert prov.PROVENANCE_ID not in [
+        getattr(entry, "id", None) for entry in book.spine if not isinstance(entry, str)
+    ]
+    opf = _opf_of(_written(tmp_path, book))
+    assert f'href="{prov.PROVENANCE_FILE}"' in opf
+    assert f'media-type="{prov.PROVENANCE_MEDIA_TYPE}"' in opf
+    assert f'idref="{prov.PROVENANCE_ID}"' not in opf
+
+
+def test_a_run_that_records_nothing_writes_no_record_file():
+    book = _rebuild(_source())
+
+    assert book.get_item_with_id(prov.PROVENANCE_ID) is None
+    assert prov.PROVENANCE_SHA_META not in _metas(book)
+
+
+def test_an_absent_fact_is_left_out_of_the_file_rather_than_written_empty():
+    """`"endpoint": null` reads like a finding. An absent key does not."""
+
+    class Modelless(StubModel):
+        api_base = None
+
+    book = _rebuild(_source(), model=Modelless, provenance=True)
+
+    record = _record_of(book)
+    assert "endpoint" not in record
+    assert None not in record.values() and "" not in record.values()
+    # and the metas agree, key for key
+    assert prov.ENDPOINT_META not in _metas(book)
+
+
+def test_the_record_file_carries_the_glossary_checksum(tmp_path):
+    book = _with_glossary(tmp_path)
+
+    assert _record_of(book)["glossary-sha256"] == sha256(GLOSSARY).hexdigest()
+
+
+def test_the_record_file_name_is_allocated_against_the_book(tmp_path):
+    """A book that already ships `bbm_provenance.json` keeps it; ours takes
+    the next name, the way the colophon and the glossary do."""
+    source = _source()
+    source.add_item(
+        epub.EpubItem(
+            uid=prov.PROVENANCE_ID,
+            file_name=prov.PROVENANCE_FILE,
+            media_type=prov.PROVENANCE_MEDIA_TYPE,
+            content=b'{"theirs": true}',
+        )
+    )
+    book_path = tmp_path / "book.epub"
+    epub.write_epub(str(book_path), source)
+
+    output = _translate_file(book_path, provenance=True)
+
+    with zipfile.ZipFile(output) as archive:
+        assert archive.read(f"EPUB/{prov.PROVENANCE_FILE}") == b'{"theirs": true}'
+        ours = json.loads(archive.read(f"EPUB/{prov.PROVENANCE_STEM}-2.json"))
+    assert ours[prov.RECORD_MARK_KEY] == prov.RECORD_MARK
+    assert f'id="{prov.PROVENANCE_ID}-2"' in _opf_of(output)
+
+
+def test_a_books_own_provenance_file_is_never_taken_for_ours(tmp_path):
+    """Neither the checksum nor the marker inside answers for a stranger's
+    file, so a book shipping its own `bbm_provenance.json` keeps it through a
+    translation — even one that writes no record of its own."""
+    source = _source()
+    source.add_item(
+        epub.EpubItem(
+            uid="theirs",
+            file_name=prov.PROVENANCE_FILE,
+            media_type=prov.PROVENANCE_MEDIA_TYPE,
+            content=b"not even json",
+        )
+    )
+    path = tmp_path / "book.epub"
+    epub.write_epub(str(path), source)
+
+    output = _translate_file(path)
+
+    with zipfile.ZipFile(output) as archive:
+        assert archive.read(f"EPUB/{prov.PROVENANCE_FILE}") == b"not even json"
+
+
+def test_the_record_is_still_ours_after_a_conversion_drops_the_metas(tmp_path):
+    """The case the file exists for. A converter rewrites the package
+    document — every `bbm:` meta with it — and copies the files across. The
+    checksum that vouched for the record is gone, so the marker inside it is
+    the only thing left saying whose it is; a rerun must still replace it
+    rather than shipping two."""
+    source = _source()
+    stale = prov.Provenance(commit="aaaaaaa", model="old/model").record()
+    source.add_item(
+        epub.EpubItem(
+            uid="converted-record",
+            file_name=prov.PROVENANCE_FILE,
+            media_type=prov.PROVENANCE_MEDIA_TYPE,
+            content=stale,
+        )
+    )
+    path = tmp_path / "book.epub"
+    epub.write_epub(str(path), source)
+
+    output = _translate_file(path, provenance=True)
+
+    with zipfile.ZipFile(output) as archive:
+        members = [m for m in archive.namelist() if prov.PROVENANCE_STEM in m]
+        assert members == [f"EPUB/{prov.PROVENANCE_FILE}"]
+        record = json.loads(archive.read(members[0]))
+    assert record["model"] == "x/y" and "old/model" not in json.dumps(record)
+
+
 # ------------------------------------------------------------- rerunning it
 
 
@@ -637,6 +797,14 @@ def test_a_second_run_leaves_none_of_the_first_runs_record(tmp_path, monkeypatch
     # the first run's glossary is gone, item and checksum both
     assert not [m for m in members if "bbm_glossary" in m]
     assert "bbm:glossary-sha256" not in opf
+    # and the record file is replaced, not accumulated
+    assert [m for m in members if prov.PROVENANCE_STEM in m] == [
+        f"EPUB/{prov.PROVENANCE_FILE}"
+    ]
+    with zipfile.ZipFile(twice) as archive:
+        record = json.loads(archive.read(f"EPUB/{prov.PROVENANCE_FILE}"))
+    assert record["commit"] == "bbbbbbb" and record["model"] == "vendor/b"
+    assert "glossary-sha256" not in record
 
 
 def test_a_rerun_without_the_record_strips_the_previous_one(tmp_path, monkeypatch):
@@ -653,6 +821,8 @@ def test_a_rerun_without_the_record_strips_the_previous_one(tmp_path, monkeypatc
     opf = _opf_of(twice)
     assert "bbm:" not in opf
     assert "aaaaaaa" not in opf
+    with zipfile.ZipFile(twice) as archive:
+        assert not [m for m in archive.namelist() if prov.PROVENANCE_STEM in m]
     # the reader-facing disclosure is still written
     assert COLOPHON_FILE in opf
 

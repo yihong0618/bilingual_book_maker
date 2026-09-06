@@ -388,10 +388,10 @@ def test_copied_rights_metadata_validates(epubcheck, rights_book):
 def provenance_book(tmp_path):
     """A book carrying the machine record, glossary and all.
 
-    Two things here are new shapes in the package and neither is exercised
+    Three things here are new shapes in the package and none is exercised
     anywhere else: EPUB 2 `<meta name= content=>` entries in an EPUB 3
-    package, and a `text/plain` resource in the manifest that no content
-    document references.
+    package, and a `text/plain` and an `application/json` resource in the
+    manifest that no content document references.
     """
     path = tmp_path / "provenance.epub"
     epub.write_epub(
@@ -411,8 +411,10 @@ def test_the_machine_record_validates(epubcheck, provenance_book):
         opf = archive.read(opf_name).decode("utf-8")
     assert '<meta name="bbm:commit"' in opf
     assert "EPUB/bbm_glossary.txt" in names
+    assert "EPUB/bbm_provenance.json" in names
     # in the manifest, never in the spine
     assert 'idref="bbm-glossary"' not in opf
+    assert 'idref="bbm-provenance"' not in opf
 
 
 @pytest.mark.parametrize("fixture", ["tdm_book", "font_book", "rights_book"])

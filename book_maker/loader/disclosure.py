@@ -15,9 +15,11 @@ a page of facts about a file should not arrive dressed as a chapter.
 
 Beside it, on a plan or session run or when `--provenance` asks, goes the
 machine half: the `bbm:` metas and the book-producer credit that say which
-build, which model, which endpoint host and which command produced the file.
-That record is `book_maker.provenance`'s to compose and this module's to put
-in the package, under the same rules everything else here follows.
+build, which model, which endpoint host and which command produced the file,
+and `bbm_provenance.json` saying it a second time as a manifest item, because
+a conversion rewrites the package document and keeps the files. That record is
+`book_maker.provenance`'s to compose and this module's to put in the package,
+under the same rules everything else here follows.
 
 Two rules keep this from colliding with the book it is stamping:
 
@@ -35,6 +37,7 @@ it is stripped on copy and rewritten from this run's facts, so a book
 translated by model A and then again by model B does not claim both.
 """
 
+import json
 import re
 from datetime import date
 from hashlib import sha256
@@ -273,27 +276,65 @@ def prior_glossary_shas(book):
     That is a stronger test than the id or the file name would have been,
     and it leaves a book carrying a `bbm_glossary.txt` of its own alone.
     """
+    return _vouched_shas(book, prov.GLOSSARY_SHA_META)
+
+
+def prior_provenance_shas(book):
+    """The checksums a previous run's `bbm:provenance-sha256` metas vouch for."""
+    return _vouched_shas(book, prov.PROVENANCE_SHA_META)
+
+
+def _vouched_shas(book, meta_name):
     return {
         str((others or {}).get("content") or "").strip()
         for _, name, _, others in _iter_metadata(book)
         if name == "meta"
-        and (others or {}).get("name") == prov.GLOSSARY_SHA_META
+        and (others or {}).get("name") == meta_name
         and (others or {}).get("content")
     }
+
+
+def _item_bytes(item):
+    content = getattr(item, "content", None)
+    if content is None:
+        # `is None`, not falsy: an empty file is still a file, it has a
+        # checksum like any other, and a rerun must still drop it.
+        return None
+    if isinstance(content, str):
+        return content.encode("utf-8", "ignore")
+    return content
 
 
 def is_prior_glossary(item, shas):
     """Whether a manifest item is the glossary a previous run embedded."""
     if not shas:
         return False
-    content = getattr(item, "content", None)
+    content = _item_bytes(item)
+    return content is not None and sha256(content).hexdigest() in shas
+
+
+def is_prior_provenance(item, shas):
+    """Whether a manifest item is the record a previous run wrote.
+
+    Two ways, and either is enough. The checksum is the glossary's test,
+    kept for consistency; the marker inside the file is the colophon's, and
+    it is the one that still works when the metas are gone — which is the
+    whole reason the file exists. A book shipping a `bbm_provenance.json`
+    of its own answers to neither and is left alone.
+    """
+    content = _item_bytes(item)
     if content is None:
-        # `is None`, not falsy: an empty glossary is a file the user named,
-        # it has a checksum like any other, and a rerun must still drop it.
         return False
-    if isinstance(content, str):
-        content = content.encode("utf-8", "ignore")
-    return sha256(content).hexdigest() in shas
+    if shas and sha256(content).hexdigest() in shas:
+        return True
+    try:
+        record = json.loads(content.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return False
+    return (
+        isinstance(record, dict)
+        and record.get(prov.RECORD_MARK_KEY) == prov.RECORD_MARK
+    )
 
 
 def is_prior_disclosure(name, value, others, owned_ids):
@@ -418,6 +459,12 @@ def allocate_colophon_names(book, ids=None, files=None):
 def allocate_glossary_names(book, ids=None, files=None):
     return allocate_names(
         book, prov.GLOSSARY_STEM, ".txt", prov.GLOSSARY_ID, ids, files
+    )
+
+
+def allocate_provenance_names(book, ids=None, files=None):
+    return allocate_names(
+        book, prov.PROVENANCE_STEM, ".json", prov.PROVENANCE_ID, ids, files
     )
 
 
@@ -549,7 +596,7 @@ def stamp_disclosure(
     ids.add(item_id)
     files.add(file_name)
 
-    producer_id = glossary_item = None
+    producer_id = glossary_item = record_item = None
     producer_credit = None
     provenance_metas = ()
     if provenance is not None:
@@ -560,6 +607,22 @@ def stamp_disclosure(
         # belongs between the credit and the note.
         provenance_metas = provenance.metas()
         producer_credit = provenance.producer()
+        # The file is built from the very list the metas are written from, so
+        # the two forms cannot drift; its own checksum is then appended as a
+        # meta, which is why it could not have been in the file.
+        record_bytes = provenance.record(provenance_metas)
+        provenance_metas = provenance_metas + [
+            (prov.PROVENANCE_SHA_META, sha256(record_bytes).hexdigest())
+        ]
+        record_id, record_file = allocate_provenance_names(book, ids=ids, files=files)
+        ids.add(record_id)
+        files.add(record_file)
+        record_item = epub.EpubItem(
+            uid=record_id,
+            file_name=record_file,
+            media_type=prov.PROVENANCE_MEDIA_TYPE,
+            content=record_bytes,
+        )
         if provenance.glossary_bytes is not None:
             glossary_id, glossary_file = allocate_glossary_names(
                 book, ids=ids, files=files
@@ -615,9 +678,10 @@ def stamp_disclosure(
                 "scheme": MARC_SCHEME,
             },
         )
+        # Manifest only, never the spine: both are evidence about the
+        # translation, not pages of the book.
+        book.add_item(record_item)
         if glossary_item is not None:
-            # Manifest only, never the spine: it is evidence about the
-            # translation, not a page of the book.
             book.add_item(glossary_item)
     book.add_item(item)
     book.spine.append(item)

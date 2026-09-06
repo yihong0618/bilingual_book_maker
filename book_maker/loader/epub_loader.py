@@ -55,8 +55,10 @@ from .disclosure import (
     is_our_colophon,
     is_prior_disclosure,
     is_prior_glossary,
+    is_prior_provenance,
     model_id,
     prior_glossary_shas,
+    prior_provenance_shas,
     stamp_disclosure,
     tool_contributor_ids,
     translation_label,
@@ -587,10 +589,12 @@ class EPUBBookLoader(BaseBookLoader):
         # would claim both models and carry two colophons.
         try:
             prior_ids = tool_contributor_ids(book)
-            # Which embedded glossary — if any — a previous run vouched for.
-            # Captured here, before the copy loop strips the metas that say
-            # so, because the item loops that drop the file run afterwards.
+            # Which embedded glossary and which record — if any — a previous
+            # run vouched for. Captured here, before the copy loop strips the
+            # metas that say so, because the item loops that drop the files
+            # run afterwards.
             self._prior_glossary_shas = prior_glossary_shas(book)
+            self._prior_provenance_shas = prior_provenance_shas(book)
         except Exception as e:
             # Reads the same metadata the loop below does, and fails the same
             # way on the same malformed entry — but before the loop, where
@@ -606,6 +610,7 @@ class EPUBBookLoader(BaseBookLoader):
             )
             prior_ids = set()
             self._prior_glossary_shas = set()
+            self._prior_provenance_shas = set()
         # Entries the copy could not carry, reported once at the end rather
         # than once each: a book with a systematically odd metadata block
         # would otherwise bury its own translation under warnings.
@@ -813,6 +818,19 @@ class EPUBBookLoader(BaseBookLoader):
         this run's.
         """
         return is_prior_glossary(item, getattr(self, "_prior_glossary_shas", set()))
+
+    def _is_prior_record(self, item):
+        """Whether this item is the machine record a previous run wrote."""
+        return is_prior_provenance(item, getattr(self, "_prior_provenance_shas", set()))
+
+    def _is_prior_evidence(self, item):
+        """Whether this item is either file a previous run left about itself.
+
+        Both are dropped here and written again from this run's facts, for
+        the reason the previous run's note is: a file that says how it was
+        made must say how *this* run made it, once.
+        """
+        return self._is_prior_glossary(item) or self._is_prior_record(item)
 
     def _wants_provenance(self):
         """Whether this run writes the machine record into the package.
@@ -2985,7 +3003,7 @@ class EPUBBookLoader(BaseBookLoader):
             if (
                 item.file_name != fixname
                 and not is_our_colophon(item)
-                and not self._is_prior_glossary(item)
+                and not self._is_prior_evidence(item)
             ):
                 new_book.add_item(item)
         if soup_complete:
@@ -3772,7 +3790,7 @@ class EPUBBookLoader(BaseBookLoader):
                 exit(0)
             # Add the things that don't need to be translated first, so that you can see the img after the interruption
             for item in self.origin_book.get_items():
-                if item.get_type() != ITEM_DOCUMENT and not self._is_prior_glossary(
+                if item.get_type() != ITEM_DOCUMENT and not self._is_prior_evidence(
                     item
                 ):
                     new_book.add_item(item)
@@ -4036,7 +4054,7 @@ class EPUBBookLoader(BaseBookLoader):
                 # the stamp below thinking the book was already stamped —
                 # so the recovery book kept the *last* run's claim, and
                 # --no_disclosure kept it too.
-                if is_our_colophon(item) or self._is_prior_glossary(item):
+                if is_our_colophon(item) or self._is_prior_evidence(item):
                     continue
                 if item.get_type() == ITEM_DOCUMENT:
                     # one plan per document, consumed in document order: the

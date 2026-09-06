@@ -26,6 +26,7 @@ Three rules shape every field here.
   something they did not.
 """
 
+import json
 import shlex
 import subprocess
 import sys
@@ -52,6 +53,7 @@ ARGS_META = "bbm:args"
 SOURCE_LANG_META = "bbm:source-lang"
 TARGET_LANG_META = "bbm:target-lang"
 GLOSSARY_SHA_META = "bbm:glossary-sha256"
+PROVENANCE_SHA_META = "bbm:provenance-sha256"
 
 # The glossary lands in the manifest, not the spine: it is evidence about the
 # translation, not a page of the book.
@@ -59,6 +61,24 @@ GLOSSARY_ID = "bbm-glossary"
 GLOSSARY_STEM = "bbm_glossary"
 GLOSSARY_FILE = f"{GLOSSARY_STEM}.txt"
 GLOSSARY_MEDIA_TYPE = "text/plain"
+
+# The same facts as the metas, in a file. The metas are the readable form and
+# the file is the durable one: a Calibre conversion rewrites the package
+# document and drops every `bbm:` meta with it, while a manifest item it does
+# not understand is copied across. Neither is the original — they are written
+# together from one `Provenance`, so they cannot disagree.
+PROVENANCE_ID = "bbm-provenance"
+PROVENANCE_STEM = "bbm_provenance"
+PROVENANCE_FILE = f"{PROVENANCE_STEM}.json"
+PROVENANCE_MEDIA_TYPE = "application/json"
+
+# What makes the file ours. The glossary is the user's, so it can only be
+# vouched for from outside (a `bbm:glossary-sha256` naming its bytes); this
+# one we write, so it also says so itself — which is the ownership rule the
+# colophon has always used, and the only one that still holds after a
+# conversion has thrown the metas away.
+RECORD_MARK_KEY = "generator"
+RECORD_MARK = "bilingual_book_maker provenance record"
 
 # MARC relator "bkp" — book producer. The `trl` contributor says what did the
 # translating; this one says what built the file, and carries the build.
@@ -339,6 +359,27 @@ class Provenance:
             (GLOSSARY_SHA_META, self.glossary_sha256),
         )
         return [(name, str(value)) for name, value in candidates if value]
+
+    def record(self, metas=None):
+        """The same facts as `metas()`, as the bytes of `bbm_provenance.json`.
+
+        Keys are the meta names with the `bbm:` prefix dropped, so the two
+        forms are a literal mirror of each other and a test can say so in one
+        line; the same omission rule applies, so a key present in the file is
+        a fact this run actually had. `metas` may be passed in to guarantee
+        both forms are built from one list rather than two calls.
+
+        The one key that is not a meta is `generator`, which is what makes the
+        file recognisable as ours after a conversion has dropped the metas.
+        `bbm:provenance-sha256` is the one meta that is not a key: it names
+        these bytes, so it cannot be inside them.
+        """
+        body = {RECORD_MARK_KEY: RECORD_MARK}
+        for name, content in self.metas() if metas is None else metas:
+            if name == PROVENANCE_SHA_META:
+                continue
+            body[name[len(PREFIX) :]] = content
+        return json.dumps(body, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
 
     def producer(self):
         """What the `bkp` contributor says: the tool, and which build of it."""
