@@ -18,6 +18,7 @@ import pytest
 from book_maker.cli import (
     COMPAT_RULES,
     DRY_RUN_RULES,
+    _route_can_session_classify,
     accumulated_tokens,
     build_parser,
     check_compatibility,
@@ -368,8 +369,16 @@ WARN_FIXTURES = [
         "outside plan mode leaves grouping off",
     ),
     (
+        # the codex thread is a session nobody asked for, so the same
+        # grouping-off cost lands there without --use_context
+        "A8:codex",
+        ["--api_format", "codex", "--plan-classify", "none"],
+        {"api_format": "codex"},
+        "one growing thread outside plan mode leaves grouping off",
+    ),
+    (
         "A9",
-        ["--prompt", "translate {text}"],
+        ["--prompt", '{"system": "be terse", "user": "translate {text}"}'],
         {"env": {"OPENAI_API_SYS_MSG": "you are a translator"}},
         "$OPENAI_API_SYS_MSG is exported",
     ),
@@ -515,7 +524,9 @@ def test_a_warn_row_fires_and_says_why(
         monkeypatch.setenv(name, value)
     f = facts(["--book_name", "b.epub", *argv], **resolved)
 
-    assert row in tripped(f)
+    # a row may need more than one demonstration (one route each, say); the
+    # part before the colon is the row it belongs to
+    assert _row_id(row) in tripped(f)
     check_compatibility(f)
 
     out = " ".join(capsys.readouterr().out.split())
@@ -574,9 +585,111 @@ class TestNoiseGuard:
         assert "Warning:" not in proc.stdout
 
 
+class TestASystemMessageIsOnlyOutrankedWhenThereIsOne:
+    """A9 names a conflict between two system messages. A `--prompt` that
+    carries only a user template is in no conflict at all: the two fill
+    different halves of the request and both are honoured."""
+
+    def test_a_user_only_prompt_says_nothing(self, capsys, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_SYS_MSG", "you are a translator")
+        f = facts(["--book_name", "b.epub", "--prompt", "translate {text}"])
+
+        assert "A9" not in tripped(f)
+        check_compatibility(f)
+        assert capsys.readouterr().out == ""
+
+    def test_a_prompt_with_a_system_key_still_warns(self, capsys, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_SYS_MSG", "you are a translator")
+        f = facts(
+            [
+                "--book_name",
+                "b.epub",
+                "--prompt",
+                '{"system": "be terse", "user": "translate {text}"}',
+            ]
+        )
+
+        assert "A9" in tripped(f)
+        check_compatibility(f)
+        assert "$OPENAI_API_SYS_MSG is exported" in " ".join(
+            capsys.readouterr().out.split()
+        )
+
+    def test_reading_the_prompt_here_prints_nothing(self, capsys):
+        # the run announces its prompt config once, from its own parse; this
+        # pass asks the same question and must stay silent
+        facts(["--book_name", "b.epub", "--prompt", "translate {text}"])
+        tripped(facts(["--book_name", "b.epub", "--prompt", "translate {text}"]))
+        assert "prompt config" not in capsys.readouterr().out
+
+
+class TestTheCodexThreadIsASessionWithoutTheFlag:
+    """A8 is about a growing history nothing groups against. The codex
+    thread is one whether or not --use_context was typed (0b8e2ef), so the
+    row has to reach it."""
+
+    def test_grouping_off_on_the_codex_route_warns_without_the_flag(self, capsys):
+        f = facts(
+            [
+                "--book_name",
+                "b.epub",
+                "--api_format",
+                "codex",
+                "--plan-classify",
+                "none",
+            ],
+            api_format="codex",
+        )
+
+        assert "A8" in tripped(f)
+        check_compatibility(f)
+        out = " ".join(capsys.readouterr().out.split())
+        assert "the codex route's one growing thread" in out
+        assert "leaves grouping off" in out
+
+    def test_a_codex_run_that_groups_is_not_warned(self, capsys):
+        f = facts(
+            [
+                "--book_name",
+                "b.epub",
+                "--api_format",
+                "codex",
+                "--plan-classify",
+                "none",
+                "--accumulated_num",
+                "1200",
+            ],
+            api_format="codex",
+        )
+        assert "A8" not in tripped(f)
+
+    def test_the_cli_and_the_loader_name_the_same_sessions(self):
+        # one attribute behind both answers: a route the loader bills as a
+        # session and the table does not would be warned about wrongly, or
+        # not at all
+        from book_maker.cli import session_run_expected
+        from book_maker.loader.epub_loader import EPUBBookLoader
+
+        for api_format, translator in FORMAT_DICT.items():
+            f = facts(
+                ["--book_name", "b.epub", "--api_format", api_format],
+                api_format=api_format,
+                translate_model=translator,
+            )
+            loader = EPUBBookLoader.__new__(EPUBBookLoader)
+            loader.context_mode = None
+            loader.translate_model = translator
+            assert session_run_expected(f) == loader._session_run, api_format
+
+
+def _row_id(fixture_name):
+    """The rule a fixture demonstrates. `A8:codex` demonstrates `A8`."""
+    return fixture_name.split(":", 1)[0]
+
+
 def test_every_warn_row_has_a_fixture():
     # a row nobody has seen fire is a row nobody knows the wording of
-    covered = {row for row, *_ in WARN_FIXTURES}
+    covered = {_row_id(row) for row, *_ in WARN_FIXTURES}
     warns = {rule.id for rule in COMPAT_RULES if rule.level == "warn"}
     assert warns - covered == set()
 
@@ -621,6 +734,60 @@ class TestDryRunPreview:
         )
         assert proc.returncode == 0, proc.stdout + proc.stderr
         assert "each turn plan mode off" not in _flat(proc)
+
+    def test_a_codex_preview_forecasts_a_session_classification_not_off(self, tmp_path):
+        # B2 called every non-OpenAI route "plan mode off". The codex route
+        # has planned on every run since the session classifier landed, so
+        # the preview was forecasting a run nobody makes.
+        proc = _cli(
+            "--book_name",
+            str(_book(tmp_path)),
+            "--plan-dry-run",
+            "--api_format",
+            "codex",
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        out = _flat(proc)
+        assert "each turn plan mode off" not in out
+        assert "over a plain session" in out
+
+    def test_a_route_that_cannot_hold_a_conversation_is_still_told_off(self, tmp_path):
+        # anthropic has neither a JSON-schema verdict nor a classifier
+        # session, so plan mode really is off there
+        proc = _cli(
+            "--book_name",
+            str(_book(tmp_path)),
+            "--plan-dry-run",
+            "--api_format",
+            "anthropic",
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert "each turn plan mode off" in _flat(proc)
+
+    def test_the_dry_run_forecast_mirrors_resolve_plan_mode(self):
+        # the parity rule: what the preview says and what the run derives are
+        # the same branches, per route
+        from book_maker.cli import dry_run_plan_divergence
+
+        for api_format, translator in FORMAT_DICT.items():
+            f = facts(
+                ["--book_name", "b.epub", "--api_format", api_format],
+                api_format=api_format,
+                translate_model=translator,
+            )
+            mode, _reason = resolve_plan_mode(
+                "epub",
+                api_format,
+                False,
+                probe=(
+                    (lambda: "strict")
+                    if hasattr(translator, "_probe_verdict")
+                    else None
+                ),
+                session=_route_can_session_classify(translator),
+            )
+            note = dry_run_plan_divergence(f) or ""
+            assert ("each turn plan mode off" in note) == (mode == "none"), api_format
 
     def test_the_divergence_note_counts_the_openai_system_message(self, tmp_path):
         # B4: prompt_overhead_tokens counts $OPENAI_API_SYS_MSG like any

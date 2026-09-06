@@ -332,7 +332,13 @@ def get_book_type(book_name):
     return Path(book_name).suffix.lower().lstrip(".")
 
 
-def parse_prompt_arg(prompt_arg):
+def parse_prompt_arg(prompt_arg, announce=True):
+    """The `--prompt` argument as a config dict, or None.
+
+    `announce` is off for the compatibility pass, which asks the same
+    question earlier only to decide whether a row fires: the run's own
+    "prompt config:" line must still be printed once, by the real call.
+    """
     prompt = None
     if prompt_arg is None:
         return prompt
@@ -376,7 +382,8 @@ def parse_prompt_arg(prompt_arg):
                     "PromptDown file must contain at least one user message"
                 )
 
-            print(f"Successfully loaded PromptDown file: {prompt_arg}")
+            if announce:
+                print(f"Successfully loaded PromptDown file: {prompt_arg}")
 
             # Validate required placeholders
             if any(c not in prompt["user"] for c in ["{text}"]):
@@ -434,7 +441,8 @@ def parse_prompt_arg(prompt_arg):
             "prompt can only contain the keys of `user`, `system` and `style`"
         )
 
-    print("prompt config:", prompt)
+    if announce:
+        print("prompt config:", prompt)
     return prompt
 
 
@@ -727,6 +735,51 @@ def plan_mode_expected(facts):
 
 CompatRule = namedtuple("CompatRule", "id level when say")
 
+
+def session_run_expected(facts):
+    """Whether this run's context will be one growing history.
+
+    `--use_context session` says so outright. The codex route is one without
+    being asked — its thread *is* the history, with no windowed shape to
+    fall back to — and since it is billed like a session run, both budgets a
+    session run derives are derived for it too. `SESSION_CONTEXT_ALWAYS_ON`
+    on the translator is the single fact behind that, in the loader
+    (`_session_run`) and here, so the rows that talk about a session cannot
+    disagree with the run that has one.
+    """
+    if facts.options.context_mode == "session":
+        return True
+    return bool(getattr(facts.translate_model, "SESSION_CONTEXT_ALWAYS_ON", False))
+
+
+def _session_run_source(facts):
+    """What to call the session in a warning: the flag, or the route."""
+    if facts.options.context_mode == "session":
+        return "--use_context session"
+    return f"the {facts.api_format} route's one growing thread"
+
+
+def prompt_has_system(prompt_arg):
+    """Whether `--prompt` carries a system message of its own.
+
+    A user-only prompt loses nothing to `$OPENAI_API_SYS_MSG`: the two fill
+    different halves of the request and both are honoured, so warning about
+    an outranked system message there names a conflict that is not there.
+
+    Read from the argument rather than the config because the config is
+    built after this pass — and deliberately: a malformed `--prompt` is
+    refused further down, by the message that explains it, and this row must
+    not pre-empt that with a traceback. Announced nowhere, so the run still
+    prints its prompt config exactly once.
+    """
+    if prompt_arg is None:
+        return False
+    try:
+        return bool((parse_prompt_arg(prompt_arg, announce=False) or {}).get("system"))
+    except Exception:
+        return False
+
+
 # Loaders that read the tag-selection flags. Markdown reads the exclusions
 # and nothing else; everything outside epub ignores the styling flags, the
 # worker count and the context switch.
@@ -737,6 +790,7 @@ PARALLEL_AWARE_BOOK_TYPES = ("epub", "md", "markdown")
 # Engines that detect the source language themselves, so the source half of
 # `--language SRC:TGT` reaches nothing they send.
 SOURCE_BLIND_FORMATS = ("google", "deepl", "deeplfree", "caiyun", "tencent")
+
 
 # Formats that read `--source_lang` off the options and put it in the request.
 SOURCE_LANG_FORMATS = ("qwen", "customapi")
@@ -856,21 +910,21 @@ COMPAT_RULES = (
     CompatRule(
         "A8",
         "warn",
-        lambda f: f.options.context_mode == "session"
+        lambda f: session_run_expected(f)
         and not f.plan_mode
         and (f.options.accumulated_num or 1) <= 1,
         lambda f: (
-            "--use_context session outside plan mode leaves grouping off, so "
-            "every paragraph is its own request and each one re-reads the "
-            "whole history. Raise --accumulated_num to put several "
-            "paragraphs in one request; only plan mode derives that budget "
-            "for you."
+            f"{_session_run_source(f)} outside plan mode leaves grouping "
+            f"off, so every paragraph is its own request and each one "
+            f"re-reads the whole history. Raise --accumulated_num to put "
+            f"several paragraphs in one request; only plan mode derives that "
+            f"budget for you."
         ),
     ),
     CompatRule(
         "A9",
         "warn",
-        lambda f: f.options.prompt_arg is not None
+        lambda f: prompt_has_system(f.options.prompt_arg)
         and bool(f.env.get("OPENAI_API_SYS_MSG"))
         and hasattr(f.translate_model, "_probe_verdict"),
         lambda f: (
@@ -1108,6 +1162,57 @@ COMPAT_RULES = (
     ),
 )
 
+
+def dry_run_plan_divergence(facts):
+    """How the real run's plan will differ from this preview, or None.
+
+    The preview is built the way a JSON-classified plan-mode run is built,
+    and `--plan-dry-run` returns before there is an endpoint to contradict
+    it. Two things can: the run may not be in plan mode at all, or it may
+    plan over a plain conversation rather than a schema.
+
+    Both are `resolve_plan_mode`'s own branches, mirrored here from the
+    command alone — the preview has to mirror the runtime derivation, or it
+    forecasts a run nobody makes. It forecast one until now: every
+    non-OpenAI route was called "plan mode off", which stopped being true
+    for the chat-capable ones when the session classifier landed. The codex
+    route plans on every run.
+    """
+    api_format = facts.options.api_format or PLAN_AUTO_FORMAT
+    translator = FORMAT_DICT.get(api_format)
+    can_talk = translator is not None and _route_can_session_classify(translator)
+    if (
+        facts.translate_tags_given
+        or facts.options.plan_classify == "none"
+        or not (api_format == PLAN_AUTO_FORMAT or can_talk)
+    ):
+        return (
+            "this preview describes a plan-mode run. --translate-tags, "
+            "--plan-classify none and a route that can neither be asked for "
+            "JSON nor hold a conversation each turn plan mode off, and the "
+            "real run then translates the --translate-tags selection instead "
+            "of this plan."
+        )
+    if api_format == PLAN_AUTO_FORMAT:
+        return None
+    if translator is not None and hasattr(translator, "_probe_verdict"):
+        # groq, xai, litellm: the OpenAI shape at another address, so the
+        # probe decides at run time which channel carries the questions
+        return (
+            f"the {api_format} route's JSON-schema support is probed at run "
+            f"time: the real run classifies this partition on the JSON path "
+            f"where the probe holds, and over a plain session otherwise. The "
+            f"partition itself is the same either way."
+        )
+    return (
+        f"the {api_format} route has no JSON-schema verdict, so the real run "
+        f"classifies this partition over a plain session — three signatures "
+        f"a turn, replies checked verbatim. The partition below is what it "
+        f"will be asked about; which rows come back skipped can differ from "
+        f"a schema-classified run."
+    )
+
+
 # `--plan-dry-run` returns before an endpoint is resolved (it needs no
 # credentials and builds no translator), so its own rows are checked there,
 # against what the command typed rather than what a run would resolve.
@@ -1115,15 +1220,8 @@ DRY_RUN_RULES = (
     CompatRule(
         "B2",
         "warn",
-        lambda f: f.translate_tags_given
-        or f.options.plan_classify == "none"
-        or (f.options.api_format or "openai") != PLAN_AUTO_FORMAT,
-        lambda f: (
-            "this preview describes a plan-mode run. --translate-tags, "
-            "--plan-classify none and a route with no JSON-schema verdict "
-            "each turn plan mode off, and the real run then translates the "
-            "--translate-tags selection instead of this plan."
-        ),
+        lambda f: dry_run_plan_divergence(f) is not None,
+        dry_run_plan_divergence,
     ),
     CompatRule(
         "B3",
