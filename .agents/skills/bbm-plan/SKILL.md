@@ -126,9 +126,14 @@ and tell the user to rotate it.
 ## 1. Intake — what else to ask for
 
 1. **Book path** and **target language** (`--language`, e.g. `zh-hans`,
-   `ja`, `Simplified Chinese`). When the operator names the source
-   language too, pass the pair: `--language en:zh-hant` — worth doing for
-   a book whose short lines or names could be misdetected.
+   `ja`, `Simplified Chinese`). For a small language the tables may not
+   know, pass both halves yourself: `--language "gsw:Swiss German"` — the
+   tag before the colon is stamped on the output and names the reply
+   field, the name after it is what the model is asked for. The tag list
+   ships in `docs/languages.md`; a free-typed value matching no tag still
+   runs and says so in one `Note:` line at startup. The source language
+   is not part of this flag — `--source_lang` states it for a book whose
+   short lines or names could be misdetected.
 2. **Their prompt file** — asked in step 0's one question. If they hand
    one over, lint it before the first paid run — contract and commands in
    **`references/prompt-files.md`**. If they say no, offer one sentence of

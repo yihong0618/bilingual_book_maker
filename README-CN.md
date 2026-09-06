@@ -306,7 +306,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   | `tencent` | 不需要 | 腾讯交互翻译，免费 |
   | `customapi` | 不需要 |  `{text, source_lang, target_lang}` 格式的API |
 
-- `--source_lang`: 源语言，给需要显式声明的路线用：`--api_format qwen`（请求里就是一对语言）和 `--api_format customapi`，默认自动检测。
+- `--source_lang`: 源语言。写了就会进每条 LLM 路线的提示词（"Translate from english"），在 `--api_format qwen`（请求里就是一对语言）和 `--api_format customapi` 还会写进请求本身；默认 `auto`，即什么都不声明。
 
 - `--interval`: 请求之间等待的秒数，例如 `--interval 0.1` 就是 100ms。只有 `--api_format gemini` 会按它控制节奏，其余路线忽略。默认 `0.01`。
 
@@ -320,8 +320,8 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--language`: 指定目标语言
 
-  - 例如： `--language "Simplified Chinese"`，预设值为 `"Simplified Chinese"`.
-  - 请阅读 helper message 来查找可用的目标语言： `python make_book.py --help`
+  - 可以写语言标签（`--language zh-hant`）、语言名（`--language "Traditional Chinese"`），或用 `--language "zh-hant:Traditional Chinese"` 同时指定两者——冒号前的标签用于输出标记（`lang` 属性、`dc:language`、溯源记录）和结构化输出字段名，冒号后的名字是发给模型的说法。内置表里没有的小语种就用这种双写形式。预设值 `zh-hans`。
+  - 可用标签见 `docs/languages.md`，也可阅读 helper message：`python make_book.py --help`。源语言不属于这个参数——需要显式声明源语言时用 `--source_lang`。
 
 - `--proxy`
 

@@ -337,7 +337,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--source_lang`:
 
-  Source language, for the routes that want it stated: `--api_format qwen`, whose request names a language pair, and `--api_format customapi`. Default: auto-detect.
+  Source language. Stated, it reaches every LLM route's prompt as evidence ("Translate from english"), and rides in the request itself on `--api_format qwen` (whose request names a language pair) and `--api_format customapi`. Default: auto-detect, which states nothing.
 
 - `--interval`:
 
@@ -349,9 +349,8 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--language`:
 
-  Set the target language like `--language "Simplified Chinese"`. Default target language is `"Simplified Chinese"`.
-  A pair form names the source as well: `--language en:zh-hant` translates from English. With a bare target the source is auto-detected, as before.
-  Read available languages by helper message: `python make_book.py --help`
+  Set the target language: a tag (`--language zh-hant`), a name (`--language "Traditional Chinese"`), or both at once — `--language "zh-hant:Traditional Chinese"`. The tag is what gets stamped on the output (inserted markup, `dc:language`, the provenance record) and names the structured-output field; the name is what the model is asked for. A bare tag or name behaves as before; the two-part form is for a language the built-in tables miss. Default `zh-hans`.
+  The tag list ships in `docs/languages.md`; `python make_book.py --help` prints it too. The source language is never part of this flag — `--source_lang` states it when detection isn't enough.
 
 - `--proxy`:
 

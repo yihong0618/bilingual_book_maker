@@ -11,8 +11,8 @@ sections after it provide additional notes for selected workflows.
 | Option | Purpose |
 |---|---|
 | `--book_name PATH` | Input EPUB, TXT, Markdown, SRT, or PDF path (required). |
-| `--language LANGUAGE` | Target language, or `SOURCE:TARGET` (e.g. `en:zh-hant`) to state the source; default `zh-hans`. |
-| `--source_lang LANGUAGE` | Source language for models such as Qwen; default `auto`. |
+| `--language LANGUAGE` | Target language: a tag (`zh-hant`), a name (`"Traditional Chinese"`), or `TAG:NAME` to pin both when the tables miss the language — tag → output stamps and field names, name → the prompt. Default `zh-hans`; list in `docs/languages.md`. |
+| `--source_lang LANGUAGE` | Source language. Stated, it reaches every LLM route's prompt, and the request body on `qwen`/`customapi`; default `auto` (states nothing). |
 | `--single_translate` | Output translation only instead of bilingual text. |
 | `--no_disclosure` | Do not mark the epub as an AI translation, or a machine translation on the engine formats (translator credit, description line, closing note). Silences `--provenance`'s machine record too. |
 | `--provenance` | Record how the file was made, invisibly: `bbm:` package metadata plus `bbm_provenance.json` in the book (conversions rewrite metadata; the file survives) — the tool's build, model, endpoint host, sanitized command line, languages; never the key or the `--prompt` text. Automatic on plan-mode and session runs; this is the tag-mode opt-in. A `--glossary` file is embedded verbatim with its sha256; learned terms never are. |
@@ -79,7 +79,7 @@ A route is an endpoint, not a model name.
 | `--model codex` | The Codex CLI sidecar on a ChatGPT plan, the same as `--api_format codex`. It runs `gpt-5.6-luna`; `--api_format codex --model <id>` names another (the sidecar also offers `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.5`, `gpt-5.2`). |
 | `--model orcarouter` | The OrcaRouter gateway and its smart-routing model `orcarouter/auto`. Needs no `--api_base`; one you pass wins. The key comes from `BBM_ORCAROUTER_API_KEY`. Not a legacy alias: nothing is rewritten. |
 | `--model_list IDS` | Several model ids to rotate across, comma-separated. A single model belongs in `--model`; naming a model in both flags is an error. Refused with `--use_context session`: rotation makes every request a full-price cache miss and mixes models in one conversation. |
-| `--source_lang LANG` | Source language, for the routes that want it stated (`qwen`, `customapi`); default `auto`. |
+| `--source_lang LANG` | Source language. Stated, it reaches every LLM route's prompt as evidence, and the request itself on `qwen`/`customapi`; default `auto`. |
 | `--interval SECONDS` | Pause between requests, default `0.01`. Only the `gemini` route paces itself with it. |
 | `--provider NAME` | A named endpoint from `bbm_providers.json` (this directory) or `~/.bbm/providers.json`; the project file wins on a shared name, and a name in neither falls back to the shipped `bbm_providers.example.json`, with a warning naming the address and key variable it used (its `FILL-ME` templates excluded). Its `base_url`, `api_style` (`openai`, `anthropic`, `gemini`, `qwen`, `groq`, `xai` or `litellm`), `default_models` and `env_key` stand in for `--api_base`, `--api_format`, `--model`/`--model_list` and the key. Flags you pass yourself win. |
 

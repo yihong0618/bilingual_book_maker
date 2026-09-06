@@ -375,8 +375,11 @@ class TestTheLanguageDocIsInStep:
         assert len(rows) == len(LANGUAGES) + len(_alias_rows())
         assert set(rows) == set(LANGUAGES) | set(_alias_rows())
 
-    def test_the_intro_is_still_the_lead_s_to_write(self):
-        """Delete this test when the placeholder goes — not the marker."""
+    def test_the_intro_names_both_halves_and_the_pair_form(self):
+        """The lead-written intro: the load-bearing statements stay."""
         text = DOC.read_text(encoding="utf-8")
 
-        assert "<!-- lead rewrites -->" in text
+        assert "PLACEHOLDER" not in text
+        assert "TAG:NAME" in text
+        assert "zh_hant_translation" in text
+        assert "--source_lang" in text

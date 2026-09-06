@@ -188,18 +188,28 @@ rather than a silent no-op.
 
 They translate text and nothing else: no context window, no structured
 output, and no plan classification. `--source_lang` reaches `customapi`
-(it goes into the request body); the others detect the source themselves.
+(it goes into the request body); the other engines detect the source
+themselves. (On the LLM routes the flag reaches the prompt — see
+Languages below.)
 
 ## Languages
 
-`--language LANGUAGE` sets the target language and defaults to `zh-hans`. The
-accepted choices are generated from `book_maker/utils.py`:
+`--language LANGUAGE` sets the target language and defaults to `zh-hans`.
+It takes a tag (`zh-hant`), a name (`"Traditional Chinese"`), or both at
+once — `--language "zh-hant:Traditional Chinese"` — for a language the
+built-in tables miss. The tag half is mechanical: stamped on the inserted
+markup and `dc:language`, recorded in provenance, and it names the
+structured-output field. The name half is what the model is asked for in
+the prompt. A bare tag or name resolves through the tables as before; a
+value matching no tag still runs, prints one `Note:` at startup, and
+stamps nothing. The full table: [Language tags and names](languages.md).
 
 ```sh
 bbook_maker --help
 bbook_maker --book_name book.epub --api_format google --language ja
 ```
 
-`--source_lang` states the source language for endpoints that want it rather
-than detecting it; the default is `auto`. Not every endpoint supports every
-language the parser accepts.
+`--source_lang` states the source language rather than detecting it; stated,
+it reaches every LLM route's prompt and the request body on
+`qwen`/`customapi`. The default `auto` states nothing. Not every endpoint
+supports every language the parser accepts.
