@@ -93,7 +93,6 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 - 或使用`--provider`进行翻译: `bbm_providers.example.json` 里预设了以下厂家（Gemini、Qwen、xAI、Groq、OrcaRouter、Ollama、LiteLLM、DeepSeek、
   SiliconFlow、OpenRouter）：复制为 `bbm_providers.json`，并修改其中的key，
   例如`--provider gemini` 就是使用其中 Gemini 的api。
-- `--key` 可以写多个 key，英文逗号分隔，轮换使用。
 - `--use_context session` 使用会话模式翻译；开启请求合并的运行会自动推导压缩预算（默认参数下约 `3200`，启动时打印），未合并的运行仍在 8k 时压缩。
 - 旧的预设名和 key 参数仍然可用，见 [从旧参数迁移](./docs/migration.md)。
 
@@ -284,7 +283,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--key`:
 
-  接口的 API key。多个 key 用英文逗号分隔会轮换使用，绕开单 key 限流。不写时依次读取 `$BBM_API_KEY`，再读取该格式自己的变量：`$OPENAI_API_KEY`、`$ANTHROPIC_API_KEY`、`$BBM_GOOGLE_GEMINI_KEY`、`$BBM_QWEN_API_KEY`、`$BBM_GROQ_API_KEY`、`$BBM_XAI_API_KEY`、`$BBM_CAIYUN_API_KEY`、`$BBM_DEEPL_API_KEY`。旧的各家 key 参数（`--openai_key` 等）仍然可用。`--api_key` 是同一个参数的旧名字。
+  接口的 API key。不写时依次读取 `$BBM_API_KEY`，再读取该格式自己的变量：`$OPENAI_API_KEY`、`$ANTHROPIC_API_KEY`、`$BBM_GOOGLE_GEMINI_KEY`、`$BBM_QWEN_API_KEY`、`$BBM_GROQ_API_KEY`、`$BBM_XAI_API_KEY`、`$BBM_CAIYUN_API_KEY`、`$BBM_DEEPL_API_KEY`。旧的各家 key 参数（`--openai_key` 等）仍然可用。`--api_key` 是同一个参数的旧名字。
 
 - `--api_format`:
 
@@ -525,9 +524,9 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   --extra_body '{"chat_template_kwargs": {"enable_thinking": false}}'
   # openai 路径（chat completions）—— 推理力度与 token 上限，二者都没有独立 flag（是否支持视模型而定）
   --extra_body '{"reasoning_effort": "low", "max_completion_tokens": 2000}'
-  # anthropic 路径 —— 关闭扩展思考，或带预算开启
+  # anthropic 路径 —— 关闭扩展思考；对翻译来说思考主要带来偏离原文的风险，
+  # 收益甚微
   --extra_body '{"thinking": {"type": "disabled"}}'
-  --extra_body '{"thinking": {"type": "enabled", "budget_tokens": 2000}}'
 
   # OpenRouter 归属标识（显示在其后台）
   --extra_headers '{"HTTP-Referer": "https://example.com", "X-Title": "bilingual_book_maker"}'

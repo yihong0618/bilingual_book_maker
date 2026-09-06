@@ -100,7 +100,6 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   LiteLLM, DeepSeek, SiliconFlow, OpenRouter). Copy it to
   `bbm_providers.json`, set the key in it, and `--provider gemini` uses the
   Gemini API from it.
-- `--key` takes several keys separated by commas and rotates them.
 - `--use_context session` translates in session mode; grouped runs derive
   their compaction budget (~3200 at the defaults, printed at start),
   ungrouped ones compact at 8k.
@@ -272,6 +271,8 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   | `prices` | No | Prices per million tokens, per model: `{"<model id>": {"input": …, "output": …, "cached_input": …}}`. When every model in the run has a price, the progress bar shows money spent (`spent=$0.012`) instead of token counts, and the closing line shows both. Without `cached_input`, cache reads are charged at the input price. A model without a price puts the bar back on tokens, and the closing line names it |
   | `currency` | No | Currency code for the prices, default `USD`. `USD`, `EUR`, `GBP`, `CNY` and `JPY` print with their symbol; any other code prints after the amount, as in `0.500 CHF` |
 
+  The spent amount and the token counts are estimates, accumulated from the usage each request reports — close enough to steer by, but the vendor's bill is the number that counts.
+
   Priority: project-level `./bbm_providers.json` overrides global `~/.bbm/providers.json`.
 
   `--model` names a model at that provider; without it the first of `default_models` is used.
@@ -312,7 +313,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--key`:
 
-  API key for the endpoint. Several keys separated by commas are rotated, which gets past per-key rate limits. Without the flag the key is read from `$BBM_API_KEY`, then from the format's own variable: `$OPENAI_API_KEY`, `$ANTHROPIC_API_KEY`, `$BBM_GOOGLE_GEMINI_KEY`, `$BBM_QWEN_API_KEY`, `$BBM_GROQ_API_KEY`, `$BBM_XAI_API_KEY`, `$BBM_CAIYUN_API_KEY` or `$BBM_DEEPL_API_KEY`. The old per-vendor flags (`--openai_key` and the rest) still work. `--api_key` is the same flag under its older name.
+  API key for the endpoint. Without the flag the key is read from `$BBM_API_KEY`, then from the format's own variable: `$OPENAI_API_KEY`, `$ANTHROPIC_API_KEY`, `$BBM_GOOGLE_GEMINI_KEY`, `$BBM_QWEN_API_KEY`, `$BBM_GROQ_API_KEY`, `$BBM_XAI_API_KEY`, `$BBM_CAIYUN_API_KEY` or `$BBM_DEEPL_API_KEY`. The old per-vendor flags (`--openai_key` and the rest) still work. `--api_key` is the same flag under its older name.
 
 - `--api_format`:
 
@@ -594,9 +595,9 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   # openai route (chat completions) — reasoning effort and a token ceiling,
   # neither of which has its own flag (both model-dependent)
   --extra_body '{"reasoning_effort": "low", "max_completion_tokens": 2000}'
-  # anthropic route — turn extended thinking off, or on with a budget
+  # anthropic route — keep extended thinking off; for translation it mostly
+  # buys deviation from the source, not quality
   --extra_body '{"thinking": {"type": "disabled"}}'
-  --extra_body '{"thinking": {"type": "enabled", "budget_tokens": 2000}}'
 
   # OpenRouter attribution (shown on its dashboard)
   --extra_headers '{"HTTP-Referer": "https://example.com", "X-Title": "bilingual_book_maker"}'
