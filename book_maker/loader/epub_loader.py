@@ -77,7 +77,13 @@ from .plan import (
     session_token_budget,
 )
 from ..session_context import derived_compact_budget
-from .markers import marker_report, reconcile_markers, split_on_markers
+from .markers import (
+    MARKER_OPEN,
+    find_markers,
+    marker_report,
+    reconcile_markers,
+    split_on_markers,
+)
 from ..translator.base_translator import BatchMismatch
 from .classify import (
     PlanClassifyError,
@@ -2089,7 +2095,7 @@ class EPUBBookLoader(BaseBookLoader):
             # hold references into this subtree
             element.extract()
 
-    def _translate_texts_aligned(self, texts, translator=None):
+    def _translate_texts_aligned(self, texts, translator=None, units=None):
         """translate_list with an alignment ladder: group -> halves -> singles.
 
         The one fallback in the system. Every LLM route's `translate_list`
@@ -2102,6 +2108,10 @@ class EPUBBookLoader(BaseBookLoader):
 
         `translator` defaults to the shared model; parallel chapters pass
         their own clone so --use_context stays chapter-local.
+
+        `units` (plan mode) is the Unit behind each text, in the same order.
+        It is what lets a reply whose *count* is right but whose slots are
+        shifted be caught — see `_marker_slot_mismatch`.
         """
         if not texts:
             return []
@@ -2123,7 +2133,7 @@ class EPUBBookLoader(BaseBookLoader):
                 f"({e}); splitting[/yellow]"
             )
             self._note_misalign_recovery()
-            return self._divide_and_translate(texts, translator)
+            return self._divide_and_translate(texts, translator, units)
         except Exception as e:
             if translator._fatal_error_detected:
                 # a clone's fatal flag must reach the shared model, or the
@@ -2143,7 +2153,17 @@ class EPUBBookLoader(BaseBookLoader):
             # model, or a clone's death stays invisible to other workers
             self.translate_model._fatal_error_detected = True
         if len(result) == len(texts):
-            return result
+            evidence = self._marker_slot_mismatch(texts, result, units)
+            if evidence is None:
+                return result
+            # The count agreed and every slot holds fluent target text, so
+            # nothing else in the run would have noticed.
+            print(
+                f"[bold red]batch of {len(texts)} came back shifted "
+                f"({evidence}) — splitting for realignment[/bold red]"
+            )
+            self._note_misalign_recovery()
+            return self._divide_and_translate(texts, translator, units)
         # A belt for routes that still answer with the wrong count instead of
         # raising — the MT engines translate one by one and cannot, but a
         # gateway wrapper might.
@@ -2152,7 +2172,55 @@ class EPUBBookLoader(BaseBookLoader):
             f"received {len(result)} — splitting for realignment[/bold red]"
         )
         self._note_misalign_recovery()
-        return self._divide_and_translate(texts, translator)
+        return self._divide_and_translate(texts, translator, units)
+
+    @staticmethod
+    def _marker_slot_mismatch(texts, result, units):
+        """One slot's marker token found in another slot's reply, or None.
+
+        The only cheap evidence there is that a reply of the *right length*
+        is nonetheless shifted against the units it answers. A shift is
+        otherwise silent: the counts agree, every slot holds fluent target
+        text, and no id or link is lost. What it costs is measured (260905
+        emergence sweep, cell `s-child-u48`): marker reconciliation and
+        restoration are keyed on `unit.markers`, so the reply that *carries*
+        `⟦span3⟧` is handed to a neighbour that owns no markers, the whole
+        marker block is skipped for it, and the literal token is written into
+        reader-visible prose — three of them in that one cell, under a log
+        line that said "— reconciled".
+
+        Only **wrong-slot** evidence counts, and that is the point of keying
+        on ownership rather than on any marker anomaly. A model that simply
+        dropped a marker — the token missing from its own slot and appearing
+        in no other — is still reconciled, reported and never retried; that
+        leniency is a pinned decision, and `reconcile_markers` does real
+        repair work behind it.
+
+        A marker-shaped token the book prints itself is not ours: collision
+        avoidance is per unit, so a token issued to one unit can be literal
+        text in another. Anything already present in the source that slot was
+        sent is therefore left alone, whoever else it was issued to.
+        """
+        if not units or len(units) != len(texts) or len(result) != len(texts):
+            return None
+        owned = [set(getattr(unit, "markers", None) or ()) for unit in units]
+        issued = set().union(*owned)
+        if not issued:
+            return None
+        for index, reply in enumerate(result):
+            if not reply or MARKER_OPEN not in reply:
+                continue
+            for token in find_markers(reply):
+                if (
+                    token in issued
+                    and token not in owned[index]
+                    and token not in texts[index]
+                ):
+                    return (
+                        f"{token} came back in slot {index + 1} of "
+                        f"{len(result)}, which does not own it"
+                    )
+        return None
 
     def _note_misalign_recovery(self):
         """Every split retries; a run that splits often is telling the
@@ -2166,8 +2234,13 @@ class EPUBBookLoader(BaseBookLoader):
                 f"--accumulated_num may fit this model better[/yellow]"
             )
 
-    def _divide_and_translate(self, texts, translator):
-        """Halve a chunk that came back misaligned; a chunk of 1 translates alone."""
+    def _divide_and_translate(self, texts, translator, units=None):
+        """Halve a chunk that came back misaligned; a chunk of 1 translates alone.
+
+        `units` rides along so each half is checked for a shift the same way
+        the whole chunk was — the ladder's own retry misaligned in the
+        measured case, which is how the fault reached the book.
+        """
         if len(texts) == 1:
             t = translator.translate(texts[0])
             if t is None:
@@ -2176,9 +2249,11 @@ class EPUBBookLoader(BaseBookLoader):
                 )
             return [t]
         mid = len(texts) // 2
+        left = units[:mid] if units else None
+        right = units[mid:] if units else None
         return self._translate_texts_aligned(
-            texts[:mid], translator
-        ) + self._translate_texts_aligned(texts[mid:], translator)
+            texts[:mid], translator, left
+        ) + self._translate_texts_aligned(texts[mid:], translator, right)
 
     def _insert_trans_preserving_tags(
         self, p, translated_text, translation_style="", single_translate=False
@@ -2374,7 +2449,13 @@ class EPUBBookLoader(BaseBookLoader):
 
         # Translate only the non-resumed paragraphs
         new_texts = [text for _, _, text, _ in entries if text is not None]
-        translated_text_list = self._translate_texts_aligned(new_texts)
+        # the same filter, so slot i of the reply is unit i of this list
+        new_units = (
+            [plan_units[k] for k, _, text, _ in entries if text is not None]
+            if plan_units is not None
+            else None
+        )
+        translated_text_list = self._translate_texts_aligned(new_texts, units=new_units)
 
         translate_iter = iter(translated_text_list)
         for k, p, text, cached in entries:
@@ -3083,7 +3164,9 @@ class EPUBBookLoader(BaseBookLoader):
                             fresh.append(job)
                     if fresh:
                         translated = self._translate_texts_aligned(
-                            [job.source_text for job in fresh], plan_translator
+                            [job.source_text for job in fresh],
+                            plan_translator,
+                            [job.unit for job in fresh],
                         )
                         for job, t_text in zip(fresh, translated):
                             self._record_translation_result(job.global_index, t_text)

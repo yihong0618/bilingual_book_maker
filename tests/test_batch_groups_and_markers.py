@@ -340,6 +340,187 @@ class TestDivideLadder:
         assert "--batch_units" in out and "--accumulated_num" in out
 
 
+# ------------------------- D2. a right-length reply that is shifted anyway
+
+MARKER_ANY_RE = re.compile(r"⟦[^⟦⟧\s]{1,32}⟧")
+
+
+class _MarkerBatchFake:
+    """Answers batches straight, except one size it answers shifted by a slot.
+
+    `shift_at=3` reproduces the measured failure: the reply is the right
+    length so nothing raises, but slot 3 carries the text — and therefore the
+    marker token — that belongs to unit 2. Halves are answered honestly, so
+    the ladder converges.
+    """
+
+    TRANSLATION_ERROR_MARKER = None
+    _fatal_error_detected = False
+
+    def __init__(self, shift_at=None, drop_markers=False):
+        self.shift_at = shift_at
+        self.drop_markers = drop_markers
+        self.batch_calls = []
+        self.single_calls = []
+
+    def _render(self, text):
+        if self.drop_markers:
+            text = MARKER_ANY_RE.sub("", text)
+        return f"T[{text}]"
+
+    def translate_list(self, texts):
+        self.batch_calls.append(list(texts))
+        straight = [self._render(t) for t in texts]
+        if self.shift_at is not None and len(texts) == self.shift_at:
+            # one slot late: every reply lands on the following unit
+            return ["T[the slot before]"] + straight[:-1]
+        return straight
+
+    def translate(self, text):
+        self.single_calls.append(text)
+        return self._render(text)
+
+
+def _marker_loader():
+    """A bare loader that can both run the ladder and write a unit back."""
+    from book_maker.loader.epub_loader import EPUBBookLoader
+    from book_maker.loader.helper import EPUBBookLoaderHelper
+
+    loader = EPUBBookLoader.__new__(EPUBBookLoader)
+    loader.language_tag = "zh-Hans"
+    loader.translation_style = ""
+    loader.single_translate = False
+    loader.exclude_translate_tags = "sup,code"
+    loader.helper = EPUBBookLoaderHelper(
+        SimpleNamespace(TRANSLATION_ERROR_MARKER=None), "", False, "zh-Hans"
+    )
+    return loader
+
+
+THREE_UNITS_ONE_MARKER = (
+    "<p>Alpha, the paragraph that comes first.</p>"
+    "<p>Press <code>Ctrl+C</code> to stop it now.</p>"
+    "<p>Gamma, the paragraph that comes last.</p>"
+)
+
+
+def _three_units():
+    from book_maker.loader.plan import DisplayResolver, partition_soup
+
+    soup = _soup(THREE_UNITS_ONE_MARKER)
+    fp = partition_soup(soup, DisplayResolver([]), "chap.xhtml")
+    assert len(fp.units) == 3
+    assert not fp.units[0].markers and not fp.units[2].markers
+    assert len(fp.units[1].markers) == 1
+    return soup, fp.units
+
+
+class TestShiftedReplyIsCaughtByItsMarkers:
+    """A one-slot shift is silent unless the markers give it away.
+
+    Measured 260905 (`s-child-u48`): the counts agree, every slot holds
+    fluent target text, no id or href is lost — but marker restoration is
+    keyed on `unit.markers`, so the reply carrying `⟦span3⟧` reaches a unit
+    that owns no markers, its marker block is skipped entirely, and the
+    literal token is written into reader-visible prose.
+    """
+
+    def test_a_token_in_the_wrong_slot_sends_the_batch_to_the_ladder(self):
+        soup, units = _three_units()
+        texts = [u.text for u in units]
+        loader = _marker_loader()
+        fake = _MarkerBatchFake(shift_at=3)
+        loader.translate_model = fake
+
+        result = loader._translate_texts_aligned(texts, fake, units)
+
+        # the shifted batch was sent once, then divided rather than written
+        assert fake.batch_calls[0] == texts
+        assert fake.single_calls == [texts[0]]
+        assert texts[1:] in fake.batch_calls
+        # every slot now answers its own unit
+        assert result == [f"T[{t}]" for t in texts]
+
+        for unit, t_text in zip(units, result):
+            loader._insert_plan_translation(unit, t_text)
+
+        assert "⟦" not in soup.get_text()
+        # the marker's source node is restored beside the original
+        assert [c.get_text() for c in soup.find_all("code")] == ["Ctrl+C", "Ctrl+C"]
+        # and it is unit 2's translation that sits beside unit 2, not a
+        # neighbour's — the shift itself is gone, not merely its residue
+        paragraphs = [p.get_text() for p in soup.find_all("p")]
+        assert paragraphs == [
+            "Alpha, the paragraph that comes first.",
+            "T[Alpha, the paragraph that comes first.]",
+            "Press Ctrl+C to stop it now.",
+            "T[Press Ctrl+C to stop it now.]",
+            "Gamma, the paragraph that comes last.",
+            "T[Gamma, the paragraph that comes last.]",
+        ]
+
+    def test_the_shift_is_named_in_the_realignment_notice(self, capsys):
+        soup, units = _three_units()
+        loader = _marker_loader()
+        fake = _MarkerBatchFake(shift_at=3)
+        loader.translate_model = fake
+
+        loader._translate_texts_aligned([u.text for u in units], fake, units)
+
+        out = capsys.readouterr().out
+        assert "shifted" in out and "splitting for realignment" in out
+        assert next(iter(units[1].markers)) in out
+
+    def test_a_clean_reply_is_returned_byte_identically(self):
+        soup, units = _three_units()
+        texts = [u.text for u in units]
+        loader = _marker_loader()
+        fake = _MarkerBatchFake()
+        loader.translate_model = fake
+
+        result = loader._translate_texts_aligned(texts, fake, units)
+
+        assert result == [f"T[{t}]" for t in texts]
+        assert fake.batch_calls == [texts]  # one request, no ladder
+        assert fake.single_calls == []
+
+    def test_a_dropped_marker_is_still_reconciled_not_retried(self):
+        """The fix keys on wrong-slot evidence, not on any marker anomaly.
+
+        A model that simply left the token out of its own slot is the
+        pinned-lenient case: reconciliation appends it and the run never
+        re-pays the request.
+        """
+        soup, units = _three_units()
+        texts = [u.text for u in units]
+        loader = _marker_loader()
+        fake = _MarkerBatchFake(drop_markers=True)
+        loader.translate_model = fake
+
+        result = loader._translate_texts_aligned(texts, fake, units)
+
+        assert fake.batch_calls == [texts]  # no split
+        assert fake.single_calls == []
+        assert "⟦" not in result[1]
+
+        loader._insert_plan_translation(units[1], result[1])
+        assert [c.get_text() for c in soup.find_all("code")] == ["Ctrl+C", "Ctrl+C"]
+        assert "⟦" not in soup.get_text()
+
+    def test_without_units_the_check_cannot_and_does_not_fire(self):
+        # tag mode passes no units; the reply is accepted exactly as before
+        _soup_, units = _three_units()
+        texts = [u.text for u in units]
+        loader = _marker_loader()
+        fake = _MarkerBatchFake(shift_at=3)
+        loader.translate_model = fake
+
+        result = loader._translate_texts_aligned(texts, fake)
+
+        assert result[0] == "T[the slot before]"
+        assert fake.batch_calls == [texts]
+
+
 # --------------------------------------------- §9 inline atomic markers
 
 MARKER_RE = re.compile(r"⟦[a-z0-9]+⟧")
