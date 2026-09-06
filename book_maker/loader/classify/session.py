@@ -117,20 +117,28 @@ def render_turn(candidates):
 def parse_verdicts(reply, count):
     """`count` verdicts from a reply, or None when it does not parse.
 
-    Liberal in, strict out: the reply is trimmed, split on commas and the
-    first `count` tokens taken; case, surrounding whitespace and a trailing
-    period are tolerated, and anything past the `count`th token is ignored.
-    There is deliberately no fuzzy matching — a token that is not one of the
-    three words is a reply we did not understand, and guessing at it is how
-    a hallucinated skip loses a chapter.
+    Liberal in, strict out: the reply is trimmed and split on commas, and
+    case, surrounding whitespace and a trailing period are tolerated. What
+    is not tolerated is a count that does not match — *exactly* `count`
+    tokens, all of them verdicts, or this is not a reply we understood.
+
+    Taking the first `count` of a longer list is the tempting leniency, and
+    it is the wrong one: a reply carrying more verdicts than there were
+    signatures is a model that lost track of what it was answering, and its
+    first tokens are no more trustworthy than its last. Three signatures
+    answered `translate,skip,translate,unsure` do not mean the first three
+    are right — they mean the ordering the whole verdict list depends on is
+    in doubt, and a wrong skip loses content. So it falls to the
+    one-at-a-time singles path, which re-asks each signature on its own and
+    cannot be misaligned.
     """
     if not isinstance(reply, str):
         return None
     tokens = reply.strip().split(",")
-    if len(tokens) < count:
+    if len(tokens) != count:
         return None
     verdicts = []
-    for token in tokens[:count]:
+    for token in tokens:
         word = token.strip().rstrip(".").strip().lower()
         if word not in VERDICTS:
             return None

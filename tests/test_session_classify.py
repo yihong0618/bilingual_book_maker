@@ -217,8 +217,6 @@ class TestParser:
             ("  skip , translate , unsure  ", ["skip", "translate", "unsure"]),
             ("skip,translate,unsure.", ["skip", "translate", "unsure"]),
             ("skip,\ntranslate,\nunsure", ["skip", "translate", "unsure"]),
-            # trailing junk past the third token is ignored
-            ("skip,translate,unsure,translate", ["skip", "translate", "unsure"]),
         ],
     )
     def test_what_a_triple_may_look_like(self, reply, expected):
@@ -239,6 +237,23 @@ class TestParser:
     def test_what_it_refuses(self, reply):
         assert parse_verdicts(reply, 3) is None
 
+    @pytest.mark.parametrize(
+        "reply,count",
+        [
+            ("translate,skip,translate,unsure", 3),
+            ("skip, translate", 1),
+            ("skip,skip", 1),
+        ],
+    )
+    def test_surplus_verdicts_are_refused_not_truncated(self, reply, count):
+        """A reply longer than the question is a model that lost track.
+
+        Keeping its first `count` tokens assumes the ordering the verdicts
+        depend on survived — and a wrong skip loses content. It falls to the
+        singles path instead, which cannot be misaligned.
+        """
+        assert parse_verdicts(reply, count) is None
+
     def test_no_fuzzy_matching(self):
         # "do not translate" contains "translate"; a parser that went looking
         # for the word inside a sentence would answer the opposite of what
@@ -247,7 +262,7 @@ class TestParser:
 
     def test_a_single_is_parsed_the_same_way(self):
         assert parse_verdicts("Skip.", 1) == ["skip"]
-        assert parse_verdicts("skip, translate", 1) == ["skip"]
+        assert parse_verdicts("translate", 1) == ["translate"]
         assert parse_verdicts("nope", 1) is None
 
 
