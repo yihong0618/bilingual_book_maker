@@ -5,13 +5,16 @@ import time
 import requests
 from rich import print
 
-from .base_translator import Base
+from .base_translator import Base, NO_PROMPT_SECTIONS
 
 
 class Caiyun(Base):
     """
     caiyun translator
     """
+
+    # Handed text and nothing else: --prompt has no slot here.
+    PROMPT_SECTION_SLOTS = NO_PROMPT_SECTIONS
 
     def __init__(self, key, language, **kwargs) -> None:
         super().__init__(key, language)

@@ -4,7 +4,7 @@ import re
 
 from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE
 
-from .base_translator import Base
+from .base_translator import Base, NO_PROMPT_SECTIONS
 from rich import print
 from PyDeepLX import PyDeepLX
 
@@ -13,6 +13,9 @@ class DeepLFree(Base):
     """
     DeepL free translator
     """
+
+    # Handed text and nothing else: --prompt has no slot here.
+    PROMPT_SECTION_SLOTS = NO_PROMPT_SECTIONS
 
     def __init__(self, key, language, **kwargs) -> None:
         super().__init__(key, language)

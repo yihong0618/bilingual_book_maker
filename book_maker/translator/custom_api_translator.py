@@ -1,4 +1,4 @@
-from .base_translator import Base
+from .base_translator import Base, NO_PROMPT_SECTIONS
 import json
 import requests
 import time
@@ -8,6 +8,9 @@ class CustomAPI(Base):
     """
     Custom API translator
     """
+
+    # Handed text and nothing else: --prompt has no slot here.
+    PROMPT_SECTION_SLOTS = NO_PROMPT_SECTIONS
 
     def __init__(
         self, key, language, api_base=None, source_lang="auto", **kwargs
