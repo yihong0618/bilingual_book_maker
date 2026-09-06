@@ -430,7 +430,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   一个 `term → translation` 术语文件（每行一条，`#` 之后是注释）。文件不存在时在解析阶段即报错退出。
   仅 openai 系与 codex 路由、且书籍为 EPUB 或 Markdown 时生效；其他路由会提示并忽略。
   
-  *请负责任地使用该功能，某些特色译法可能会导致释义严重偏离原来的情感解读。
+  钉住一个术语就等于让译文照此表述，所以只钉你能负责的译法。
 
   - `--glossary-auto on|off`:
 

@@ -484,8 +484,8 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   Read by the openai- and codex-shaped routes for EPUB and Markdown books; the
   other routes say so and ignore it.
 
-  *Use this responsibly: an idiosyncratic pinned rendering can pull the
-  translation far from the source's meaning and emotional reading.
+  A pinned term makes the translation say what you pinned, so pin only
+  renderings you can stand behind.
 
   - `--glossary-auto on|off`:
 
