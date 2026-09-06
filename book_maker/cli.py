@@ -1895,7 +1895,7 @@ request count; pass 1 to turn grouping off there. Minimum 1.
         "--provenance",
         dest="provenance",
         action="store_true",
-        help="record how the file was made, invisibly — the tool's build, the model, the endpoint host, the sanitized command line and the languages, as bbm: package metadata plus a bbm_provenance.json in the book; never the key or the --prompt text. Plan-mode and session runs record it by themselves; this is the tag-mode opt-in. --no_disclosure silences it too",
+        help="record how the file was made, invisibly — the full record (build, model, endpoint host, sanitized command line, languages, date) is a bbm_provenance.json in the book, with three bbm: metas beside it as a marker; never the key or the --prompt text. Plan-mode and session runs record it by themselves; this is the tag-mode opt-in. --no_disclosure silences it too",
     )
     parser.add_argument(
         "--use_context",

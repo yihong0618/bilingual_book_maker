@@ -9,7 +9,7 @@ The name is the prose half: what the model is actually asked for.
 
 For a language this table misses, pass both halves yourself as
 `TAG:NAME`, split on the first colon — for example
-`--language "gsw:Swiss German"`. The tag then drives the stamps and
+`--language "ain:Ainu"`. The tag then drives the stamps and
 field names exactly as if it were listed here; the name goes to the
 model. A free-typed name matching nothing still runs — the run prints
 one `Note:` line saying nothing will be stamped on the output.

@@ -127,7 +127,7 @@ and tell the user to rotate it.
 
 1. **Book path** and **target language** (`--language`, e.g. `zh-hans`,
    `ja`, `Simplified Chinese`). For a small language the tables may not
-   know, pass both halves yourself: `--language "gsw:Swiss German"` — the
+   know, pass both halves yourself: `--language "ain:Ainu"` — the
    tag before the colon is stamped on the output and names the reply
    field, the name after it is what the model is asked for. The tag list
    ships in `docs/languages.md`; a free-typed value matching no tag still
