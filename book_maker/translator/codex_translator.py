@@ -161,6 +161,17 @@ class Codex(Base):
     # once, when a thread opens, and the thread outlives any one window.
     BATCH_SYS_MSG_PER_REQUEST = False
 
+    # A thread has no system slot, so `--prompt`'s system section is appended
+    # to the thread instructions rather than replacing them: those base
+    # instructions are what keep a turn behaving like a completion instead of
+    # an agent turn (see `_instructions`). Style joins it there.
+    PROMPT_SECTION_SLOTS = {
+        "user": "native",
+        "system": "appended",
+        "style": "appended",
+    }
+    PROMPT_APPEND_TARGET = "the thread instructions"
+
     # Set by the CLI from --quiet. Suppresses this class's own echoes.
     quiet = False
     style_note = None
@@ -370,9 +381,11 @@ class Codex(Base):
         if note:
             parts.append(note)
         if self.prompt_sys_msg:
-            parts.append(self.prompt_sys_msg.format(language=self.language, crlf="\n"))
+            parts.append(self.fill_optional(self.prompt_sys_msg))
         if self.style_note:
-            parts.append(f"Style to follow: {self.style_note}")
+            # Same wording as the suffix every API route appends, so a style
+            # reads identically whichever route carries it.
+            parts.append(f"{self.STYLE_HEADING} {self.fill_optional(self.style_note)}")
         if seed:
             parts.append(seed)
         return "\n\n".join(parts)

@@ -165,6 +165,10 @@ class Gemini(Base):
     # Regex patterns
     TAG_PATTERN = r"<step3_refined_translation>(.*?)</step3_refined_translation>"
 
+    # `--prompt`'s style section. Class-level so an instance built without
+    # __init__ — a subclass, a test double — still answers.
+    style_note = None
+
     def __init__(
         self,
         key,
@@ -174,6 +178,7 @@ class Gemini(Base):
         prompt_sys_msg=None,
         context_flag=False,
         temperature=1.0,
+        style_note=None,
         **kwargs,
     ) -> None:
         super().__init__(key, language)
@@ -192,6 +197,9 @@ class Gemini(Base):
             or environ.get(PROMPT_ENV_MAP["system"])
             or None  # Allow None, but not empty string
         )
+        # `--prompt`'s style section. It used to fall into **kwargs and be
+        # discarded here, so a style this route was given was never sent.
+        self.style_note = style_note
         self.interval = self.DEFAULT_INTERVAL
         self.client = self._new_client()
         generation_config.temperature = temperature
@@ -201,6 +209,18 @@ class Gemini(Base):
             types.HttpOptions(base_url=self.api_base) if self.api_base else None
         )
         return genai.Client(api_key=next(self.keys), http_options=http_options)
+
+    def _system_instruction(self):
+        """The system slot's value, or None.
+
+        `--prompt`'s system section fills it, with `{language}`/`{crlf}`
+        resolved the way the other routes resolve them. None rather than "":
+        this SDK takes an absent instruction, and an empty one is not the same
+        request.
+        """
+        return self._augment_system_content(
+            self.fill_optional(self.prompt_sys_msg) or None
+        )
 
     def _build_config_kwargs(
         self, response_mime_type: str | None = None, response_schema: type | None = None
@@ -214,7 +234,7 @@ class Gemini(Base):
             "safety_settings": safety_settings,
             # `--language src:tgt` names the source; the note is fixed for a
             # run, so it belongs with the run's standing instructions.
-            "system_instruction": self._augment_system_content(self.prompt_sys_msg),
+            "system_instruction": self._system_instruction(),
         }
 
         if response_mime_type:
@@ -243,6 +263,19 @@ class Gemini(Base):
             # a classification request may name --plan-classify-model, and
             # pricing it as the translation model would be wrong
             model=model or getattr(self, "model", None),
+        )
+
+    def _user_content(self, text: str) -> str:
+        """The turn's text: the user template, then the style section.
+
+        Gemini's system slot is `system_instruction`, so `system` is native
+        here. There is no style slot, so `--prompt`'s style rides at the end
+        of the turn, in the wording every other route uses. `{crlf}` is filled
+        too — it is documented for `--prompt` and used to raise KeyError here.
+        """
+        return (
+            self.prompt.format(text=text, language=self.language, crlf="\n")
+            + self.style_suffix()
         )
 
     def _extract_translation_text(self, response_text: str) -> str:
@@ -300,9 +333,7 @@ class Gemini(Base):
     def _translate_with_retry(self, text: str, paragraph_num: str | None) -> str:
         """Internal translation method with tenacity retry logic."""
         try:
-            response = self.convo.send_message(
-                self.prompt.format(text=text, language=self.language)
-            )
+            response = self.convo.send_message(self._user_content(text))
             self._note_usage(response)
             t_text = self._extract_translation_text(response.text)
 
@@ -499,9 +530,7 @@ class Gemini(Base):
                     response_mime_type="application/json",
                     response_schema=TranslationResponse,
                     temperature=generation_config.temperature,
-                    system_instruction=self._augment_system_content(
-                        self.prompt_sys_msg
-                    ),
+                    system_instruction=self._system_instruction(),
                 ),
             )
 
@@ -555,7 +584,7 @@ class Gemini(Base):
         expected_count = len(non_empty_texts)
         batch_text = "\n\n".join(non_empty_texts)
 
-        prompt = self.prompt.format(text=batch_text, language=self.language)
+        prompt = self._user_content(batch_text)
         if "translated_paragraphs" not in prompt.lower():
             prompt += (
                 f"\n\nReturn the translations as a JSON object with a 'translated_paragraphs' "

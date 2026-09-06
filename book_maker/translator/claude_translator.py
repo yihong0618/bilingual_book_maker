@@ -325,8 +325,19 @@ class Claude(Base):
         exactly what it sent without threading the string around — the marker
         preamble included, since it is a function of the text too.
         """
-        return self._marker_preamble(text) + self.prompt_template.format(
-            text=text, language=self.language
+        return (
+            self._marker_preamble(text)
+            + self.prompt_template.format(
+                # `{crlf}` is documented for `--prompt` and was filled on the
+                # openai and codex routes only; here the same template raised
+                # KeyError mid-book.
+                text=text,
+                language=self.language,
+                crlf="\n",
+            )
+            # Anthropic has no slot for `--prompt`'s style section either, so
+            # it rides at the end of the turn, in the wording every route uses.
+            + self.style_suffix()
         )
 
     def create_messages(self, text, intermediate_messages=None):
@@ -357,6 +368,7 @@ class Claude(Base):
                 "content": self.prompt_template.format(
                     text="\n\n".join(self.context_list),
                     language=self.language,
+                    crlf="\n",
                 ),
             },
             {"role": "assistant", "content": "\n\n".join(self.context_translated_list)},
@@ -468,7 +480,11 @@ class Claude(Base):
             r = self.client.messages.create(
                 max_tokens=4096,
                 messages=messages,
-                system=self.prompt_sys_msg,
+                # The same system message every other request on this route
+                # sends, `--language src:tgt` note included: the compact turn
+                # used the raw attribute and so ran under different standing
+                # instructions than the window it was condensing.
+                system=self._augment_system_content(self._system_message()),
                 temperature=self.temperature,
                 model=self.model,
                 extra_body=self.extra_body or None,
@@ -614,7 +630,7 @@ class Claude(Base):
             r = self.client.messages.create(
                 max_tokens=4096,
                 messages=messages,
-                system=self._augment_system_content(self.prompt_sys_msg),
+                system=self._augment_system_content(self._system_message()),
                 temperature=self.temperature,
                 model=self.model,
                 extra_body=self.extra_body or None,
@@ -652,7 +668,7 @@ class Claude(Base):
         return self._do_batch_translate(
             text_list,
             self.prompt_template,
-            self.prompt_sys_msg,
+            self._system_message(),
             self.DEFAULT_PROMPT,
             self.translate,
         )
