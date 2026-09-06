@@ -418,7 +418,7 @@ class EPUBBookLoader(BaseBookLoader):
         self.plan_fallback_tags = "p"
         self.plan_min_coverage = 0.5
         self.poetry_group_size = 8
-        # `--batch_units`: units one plan request may carry at the strict
+        # `--max-batch-units`: units one plan request may carry at the strict
         # degree. Below strict it is halved (see `_plan_request_cap`).
         self.batch_units = GENERAL_GROUP_MAX_UNITS
         self._misalign_recoveries = 0
@@ -2491,7 +2491,7 @@ class EPUBBookLoader(BaseBookLoader):
         if count >= 3:
             print(
                 f"[yellow]{count} misaligned batches this run — if this "
-                f"keeps happening, a lower --batch_units or "
+                f"keeps happening, a lower --max-batch-units or "
                 f"--accumulated_num may fit this model better[/yellow]"
             )
 

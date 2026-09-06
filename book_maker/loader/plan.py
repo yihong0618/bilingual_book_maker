@@ -1505,7 +1505,7 @@ def assign_batches(
 
     With `token_budget` (plan mode's `--accumulated_num N`), *any*
     consecutive units are packed — mixed lengths, prose included — greedily
-    to at most N tokens and at most `max_units` units (`--batch_units`,
+    to at most N tokens and at most `max_units` units (`--max-batch-units`,
     defaulting to `GENERAL_GROUP_MAX_UNITS`). A unit that is over budget on
     its own stays solo. Either way a group of one keeps `group_id` None, so
     the single-translate path is untouched.
@@ -1648,7 +1648,7 @@ class TranslationPlan:
         # the short-run-only grouping. Recorded (see `plan_meta`) because it
         # is part of how this plan's requests were shaped.
         self.token_budget = token_budget
-        # `--batch_units`: units the budget path may put in one request.
+        # `--max-batch-units`: units the budget path may put in one request.
         # Recorded for the same reason the budget is — it shaped the requests.
         self.batch_units = batch_units
         self.only_files = frozenset(only_files or ())

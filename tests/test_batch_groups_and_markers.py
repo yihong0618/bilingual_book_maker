@@ -337,7 +337,7 @@ class TestDivideLadder:
         loader._translate_texts_aligned(["POISON", "f"])
         out = capsys.readouterr().out  # event 3: the cue
         assert "3 misaligned batches this run" in out
-        assert "--batch_units" in out and "--accumulated_num" in out
+        assert "--max-batch-units" in out and "--accumulated_num" in out
 
 
 # ------------------------- D2. a right-length reply that is shifted anyway

@@ -454,7 +454,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   value, there is no way to know if the limit is reached before sending.
   In EPUB plan mode this is a per-request token budget: consecutive units of any length share one request up to `N` tokens. With `--use_context session` — and always on the codex route, whose thread is a session either way — a default is derived from the run's own prompt overhead — `1600` with the stock prompts, up to `2000` under a fat custom `--prompt` (fewer requests is most of a session run's bill); pass `1` to turn grouping off. Minimum `1`.
 
-- `--batch_units`:
+- `--max-batch-units`:
 
   EPUB plan mode only: the most units one grouped request may carry (default `32`, half the measured fault-emergence level — our September 2026 measurement put the first content faults at 64 effective units per request, on prose). An endpoint that verifies JSON mode but not a strict schema automatically carries half this many (16), which is where miscounted replies actually live. Lower it if the run keeps printing misalignment recoveries; the token budget (`--accumulated_num`) is what bounds content either way.
 

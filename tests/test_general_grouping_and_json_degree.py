@@ -185,7 +185,7 @@ class TestTokenBudgetGrouping:
         assert all(isinstance(u.token_count, int) for u in units)
 
     def test_a_lower_unit_cap_bounds_the_groups(self):
-        # --batch_units: the ceiling came from one model's eval, so it is the
+        # --max-batch-units: the ceiling came from one model's eval, so it is the
         # default and not a law. A generous budget makes the cap the only
         # thing bounding a group, which is where it has to be visible.
         units = _units("".join(_paragraph(20) for _ in range(40)))
@@ -199,7 +199,7 @@ class TestTokenBudgetGrouping:
 
     def test_the_unit_cap_does_not_reach_the_no_budget_path(self):
         # the short-run grouping is bounded by group_size and GROUP_MAX_CHARS;
-        # --batch_units is a budget-path bound and must not silently re-cut it
+        # --max-batch-units is a budget-path bound and must not silently re-cut it
         html = "<p>a</p><p>b</p><p>c</p><p>d</p><p>e</p><p>f</p>"
         capped, plain = _units(html), _units(html)
 
@@ -336,7 +336,7 @@ class TestLoaderHonorsAccumulatedNum:
         assert max(sizes) <= GENERAL_GROUP_MAX_UNITS
 
     def test_the_default_cap_is_the_measured_cap(self, tmp_path):
-        # no --batch_units: 32 strict, 16 below it — the halving is derived,
+        # no --max-batch-units: 32 strict, 16 below it — the halving is derived,
         # so the two can never drift apart
         strict, _ = _plan_loader(tmp_path / "s", _StrictModel)
         sub, _ = _plan_loader(tmp_path / "j", _RecordingModel)
@@ -345,7 +345,7 @@ class TestLoaderHonorsAccumulatedNum:
         assert sub._plan_request_cap() == SUBSTRICT_GROUP_MAX_UNITS
 
     def test_a_chosen_cap_is_halved_below_strict_decoding(self, tmp_path):
-        # --batch_units 4: the strict cap as typed, half of it otherwise —
+        # --max-batch-units 4: the strict cap as typed, half of it otherwise —
         # the same 32/16 ratio the default ships with
         strict, _ = _plan_loader(tmp_path / "s", _StrictModel, batch_units=4)
         sub, _ = _plan_loader(tmp_path / "j", _RecordingModel, batch_units=4)
@@ -717,7 +717,7 @@ class TestJsonDegreeBatchTranslate:
         assert ChatGPTAPI.substrict_batch_cap == SUBSTRICT_GROUP_MAX_UNITS
 
     def test_a_lowered_cap_chunks_at_the_lowered_size(self):
-        # --batch_units 4 halves to 2 here, and the chunking has to follow
+        # --max-batch-units 4 halves to 2 here, and the chunking has to follow
         # that rather than the class default. Six, not five: a tail of one
         # leaves the batch path entirely (`get_translation`, through .parse),
         # which would measure the single-translate path instead of this cap.
@@ -966,7 +966,7 @@ class TestPlanMetaRecordsTheBudget:
         assert "token_budget" not in planning_settings(("sup", "code"))
 
     def test_the_unit_cap_is_recorded_and_changes_the_plan_identity(self, tmp_path):
-        # --batch_units gets the budget's treatment: it shaped the requests,
+        # --max-batch-units gets the budget's treatment: it shaped the requests,
         # so it is written down
         tmp_path.mkdir(parents=True, exist_ok=True)
         src = tmp_path / ANIMAL_FARM.name

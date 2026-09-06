@@ -435,7 +435,7 @@ WARN_FIXTURES = [
     ),
     (
         "C1",
-        ["--batch_units", "4", "--plan-classify", "none"],
+        ["--max-batch-units", "4", "--plan-classify", "none"],
         {},
         "nothing reads it outside plan mode",
     ),

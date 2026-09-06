@@ -1626,7 +1626,7 @@ def test_the_written_epub_carries_each_translation_beside_its_source(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# --batch_units, and the session-mode grouping default
+# --max-batch-units, and the session-mode grouping default
 # --------------------------------------------------------------------------
 
 
@@ -1642,23 +1642,63 @@ def test_a_batch_of_zero_units_is_refused():
 
 
 def test_a_zero_batch_units_run_stops_at_the_parser(tmp_path):
-    proc, _ = _run(tmp_path, "--batch_units", "0", "--plan-dry-run")
+    proc, _ = _run(tmp_path, "--max-batch-units", "0", "--plan-dry-run")
     # argparse's own refusal: exit 2, one line, nothing translated
     assert proc.returncode == 2, proc.stdout + proc.stderr
-    assert "--batch_units" in proc.stderr
+    assert "--max-batch-units" in proc.stderr
     assert not list(tmp_path.glob("*_plan.json"))
     assert "Traceback" not in proc.stdout + proc.stderr
 
 
 def test_a_negative_batch_units_is_refused_the_same_way(tmp_path):
-    proc, _ = _run(tmp_path, "--batch_units", "-4", "--plan-dry-run")
+    proc, _ = _run(tmp_path, "--max-batch-units", "-4", "--plan-dry-run")
     assert proc.returncode == 2, proc.stdout + proc.stderr
 
 
 def test_batch_units_is_recorded_in_the_plan(tmp_path):
+    proc, plan = _run(tmp_path, "--max-batch-units", "4", "--plan-dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert json.loads(plan.read_text())["batch_units"] == 4
+
+
+# ------------------------------------- --batch_units, the old spelling
+
+
+def test_the_old_spelling_still_reaches_the_same_dest():
+    from book_maker.cli import parse_args
+
+    old = parse_args(["--book_name", "b.epub", "--batch_units", "4"])
+    new = parse_args(["--book_name", "b.epub", "--max-batch-units", "4"])
+    assert old.batch_units == new.batch_units == 4
+    # only the old one records that it was the spelling typed
+    assert old.batch_units_deprecated_flag == "--batch_units"
+    assert new.batch_units_deprecated_flag is None
+
+
+def test_the_old_spelling_plans_exactly_as_the_new_one_does(tmp_path):
     proc, plan = _run(tmp_path, "--batch_units", "4", "--plan-dry-run")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert json.loads(plan.read_text())["batch_units"] == 4
+
+
+def test_the_old_spelling_earns_one_notice_naming_the_new_one(tmp_path):
+    proc, _ = _run(tmp_path, "--batch_units", "4", "--plan-dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    flat = " ".join(proc.stdout.split())
+    assert flat.count("--batch_units is now --max-batch-units") == 1
+
+
+def test_the_new_spelling_earns_no_notice(tmp_path):
+    proc, _ = _run(tmp_path, "--max-batch-units", "4", "--plan-dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "deprecated" not in proc.stdout
+
+
+def test_help_advertises_only_the_new_spelling():
+    proc = _cli("--help")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "--max-batch-units" in proc.stdout
+    assert "--batch_units" not in proc.stdout
 
 
 def test_batch_units_defaults_to_the_measured_cap(tmp_path):

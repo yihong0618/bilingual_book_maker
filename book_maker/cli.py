@@ -555,7 +555,7 @@ def glossary_auto_flag(value):
 
 
 def batch_unit_cap(value):
-    """argparse type for --batch_units: units one plan request may carry."""
+    """argparse type for --max-batch-units: units one plan request may carry."""
     try:
         units = int(value)
     except ValueError:
@@ -566,6 +566,20 @@ def batch_unit_cap(value):
             f"(--accumulated_num 1 is how grouping is turned off)"
         )
     return units
+
+
+class DeprecatedAlias(argparse.Action):
+    """An old spelling of a flag: same dest, plus a record that it was typed.
+
+    argparse has no notion of a deprecated *option string*, and giving one
+    `add_argument` call both spellings would advertise both in `--help`. So
+    the alias is its own `SUPPRESS`ed argument writing the same dest, and
+    `main` prints the notice from the spelling recorded here.
+    """
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, values)
+        setattr(namespace, f"{self.dest}_deprecated_flag", option_string)
 
 
 def accumulated_tokens(value):
@@ -1130,7 +1144,7 @@ COMPAT_RULES = (
         "warn",
         lambda f: f.batch_units_given and not f.plan_mode,
         lambda f: (
-            "--batch_units caps the units one plan request may carry; "
+            "--max-batch-units caps the units one plan request may carry; "
             "nothing reads it outside plan mode."
         ),
     ),
@@ -1380,7 +1394,7 @@ DRY_RUN_RULES = (
         "warn",
         lambda f: True,
         lambda f: (
-            f"this preview groups at --batch_units {f.batch_units} units per "
+            f"this preview groups at --max-batch-units {f.batch_units} units per "
             f"request. An endpoint that verifies JSON mode but not a strict "
             f"schema carries half that, so the real run can make up to about "
             f"twice these requests."
@@ -1421,6 +1435,22 @@ def normalize_options(options, given=None):
     if not given.poetry_group_size:
         options.poetry_group_size = POETRY_GROUP_SIZE_DEFAULT
     return given
+
+
+def deprecation_notices(options, given):
+    """One line for every deprecated flag the command actually typed.
+
+    A list rather than prints, so a test can ask what a command line earns
+    without running one, and so the wording sits next to the flags it names.
+    """
+    notices = []
+    typed = getattr(options, "batch_units_deprecated_flag", None)
+    if typed:
+        notices.append(
+            f"{typed} is now --max-batch-units. The old spelling still works "
+            f"and means exactly the same thing."
+        )
+    return notices
 
 
 def run_facts(options, given, **resolved):
@@ -1723,8 +1753,9 @@ For example, if you use --accumulated_num 1600, maybe openai will output 2200 to
 and maybe 200 tokens for other messages in the system messages user messages, 1600+2200+200=4000,
 So you are close to reaching the limit. You have to choose your own value, there is no way to know if the limit is reached before sending.
 In EPUB plan mode this is a per-request token budget: consecutive units of any
-length share one request up to this many tokens (at most --batch_units units per
-request; half that when the endpoint verifies JSON mode but not a strict schema).
+length share one request up to this many tokens (at most --max-batch-units units
+per request; half that when the endpoint verifies JSON mode but not a strict
+schema).
 Plan mode with --use_context session — and always on the codex route, whose
 thread is a session whether or not the flag was passed — derives a default
 from the run's own prompt overhead (1600 with the stock prompts, up to 2000
@@ -1733,7 +1764,7 @@ request count; pass 1 to turn grouping off there. Minimum 1.
 """,
     )
     parser.add_argument(
-        "--batch_units",
+        "--max-batch-units",
         dest="batch_units",
         type=batch_unit_cap,
         default=None,
@@ -1742,6 +1773,15 @@ request count; pass 1 to turn grouping off there. Minimum 1.
         "half the level a fault-emergence eval measured content faults at; "
         "lower it for a weaker model. An endpoint that verifies JSON mode "
         "but not a strict schema carries half this many.",
+    )
+    # The old spelling, kept working and kept out of --help; see DeprecatedAlias.
+    parser.add_argument(
+        "--batch_units",
+        dest="batch_units",
+        type=batch_unit_cap,
+        action=DeprecatedAlias,
+        default=None,
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--translation_style",
@@ -1986,6 +2026,9 @@ request count; pass 1 to turn grouping off there. Minimum 1.
     # Which spelling of the glossary flag was typed, so a warning can name it.
     # Set by `GlossaryPath`; this is the value when neither was.
     parser.set_defaults(glossary_flag="--glossary")
+    # Set only by `DeprecatedAlias`; this is the value when the current
+    # spelling (or nothing) was typed.
+    parser.set_defaults(batch_units_deprecated_flag=None)
     return parser
 
 
@@ -2003,7 +2046,7 @@ def main():
     options = parse_args(legacy.argv)
     # None is "not typed": --accumulated_num keeps its explicitness (plan
     # mode defaults the budget by context mode, and an explicit 1 must still
-    # mean grouping off), and --batch_units falls back to the measured cap.
+    # mean grouping off), and --max-batch-units falls back to the measured cap.
     given = normalize_options(options)
     accumulated_num_given = given.accumulated_num
     translate_tags_given = given.translate_tags
@@ -2013,6 +2056,8 @@ def main():
     if options.plan_classify == "most":
         print("[yellow]--plan-classify most is now --plan-classify all[/yellow]")
         options.plan_classify = "all"
+    for notice in deprecation_notices(options, given):
+        print(f"[yellow]deprecated:[/yellow] {escape(notice)}")
 
     if not options.book_name:
         print("Error: please provide the path of your book using --book_name <path>")
