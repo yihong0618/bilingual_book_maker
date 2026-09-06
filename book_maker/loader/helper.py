@@ -1,6 +1,8 @@
 import posixpath
 import re
 import zipfile
+
+from rich import print
 from dataclasses import dataclass
 import backoff
 import logging

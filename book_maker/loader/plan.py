@@ -1954,8 +1954,8 @@ class TranslationPlan:
             # in `planning_settings` for the same reason: the budget decides
             # how many units share a request, never which units exist or
             # what a row's evidence says, so changing it must not reopen a
-            # decided plan. Additive, so the stored shape stays schema 6 —
-            # no row key and no resume slot moves with it.
+            # decided plan. Additive — no row key and no resume slot
+            # moves with it.
             "token_budget": self.token_budget,
             # Same treatment, for the same reason: the unit cap decides how
             # many units share a request, never which units exist.
