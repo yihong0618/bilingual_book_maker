@@ -87,6 +87,7 @@ from .plan import (
 from ..session_context import compact_budget_notice
 from .markers import (
     MARKER_OPEN,
+    MARKER_RE,
     find_markers,
     marker_report,
     reconcile_markers,
@@ -190,6 +191,19 @@ def _mask_header_values(raw):
 _KEEP_WHEN_EMPTY = frozenset(
     ["img", "br", "hr", "svg", "input", "video", "audio", "object", "iframe"]
 )
+
+# `_numeric_slot_shift`'s two constants; both measured, see that docstring.
+# A one-digit run is in every book on every page ("chapter 1", "note 1"), so
+# it says nothing about which slot a translation came from. Two digits up is
+# the shortest run that names something: a verse number, a year, a page.
+_SHIFT_DIGIT_RUN = re.compile(r"\d{2,}")
+# Cross-slot numbers needed before the batch is charged through the ladder.
+# Measured over the 36-cell 260906 weak-model sweep: the one shifted cell
+# (`ds-waste-u96-b4800`) has four, all one slot earlier; the busiest clean
+# cell (`o4m-waste-u256-b1600`) has exactly one. Every other cell has none,
+# so 2 is the only value the evidence separates on — 1 would have cost a
+# clean 256-unit batch its whole halving ladder.
+_SHIFT_MIN_WITNESSES = 2
 
 
 @dataclass(frozen=True)
@@ -2443,7 +2457,10 @@ class EPUBBookLoader(BaseBookLoader):
 
         `units` (plan mode) is the Unit behind each text, in the same order.
         It is what lets a reply whose *count* is right but whose slots are
-        shifted be caught — see `_marker_slot_mismatch`.
+        shifted be caught — see `_marker_slot_mismatch`. `_numeric_slot_shift`
+        catches the same fault from the numbers alone, so it needs no units
+        and covers tag mode and every reply shape (schema, delimiter, plain)
+        that comes back through this ladder.
         """
         if not texts:
             return []
@@ -2485,7 +2502,9 @@ class EPUBBookLoader(BaseBookLoader):
             # model, or a clone's death stays invisible to other workers
             self.translate_model._fatal_error_detected = True
         if len(result) == len(texts):
-            evidence = self._marker_slot_mismatch(texts, result, units)
+            evidence = self._marker_slot_mismatch(
+                texts, result, units
+            ) or self._numeric_slot_shift(texts, result)
             if evidence is None:
                 return result
             # The count agreed and every slot holds fluent target text, so
@@ -2571,6 +2590,79 @@ class EPUBBookLoader(BaseBookLoader):
                         f"{len(result)}, which does not own it, and is gone "
                         f"from the slot that does"
                     )
+        return None
+
+    @staticmethod
+    def _numeric_slot_shift(texts, result):
+        """A shift the numbers give away, or None. Needs no markers, no units.
+
+        The fault `_marker_slot_mismatch` was written for has a second,
+        commoner shape, measured 260906 in sweep cell `ds-waste-u96-b4800`
+        (DeepSeek, strict schema, 96 units a batch): the model merged two
+        adjacent source lines into one slot and then kept the reply *count*
+        right by inventing a filler item — a meta-comment, 「（此处应有一个空行
+        表示节段间隔）」, which was duly written into the book. Everything the
+        run checks agreed: the count, the echoed ids, the per-slot fluency.
+        Forty-two slots downstream of the merge nevertheless faced the wrong
+        original, straight through an `<h2>`. No marker was anywhere near it.
+
+        Digits are the evidence because they are language-invariant. A
+        translation carries its source's numbers with it, so a translation
+        sitting in the wrong slot drags them into the neighbour: The Waste
+        Land's verse number `170` belongs to source slot 176 and came back
+        inside slot 175's Chinese.
+
+        Three non-rules, each one a false positive this would otherwise have:
+
+        * **Absence alone is never evidence.** A number missing from its own
+          slot is routine — on the clean cell `ds-waste-u64-b4800` six of
+          twenty-four verse numbers were simply dropped, and DeepSeek also
+          renders them as CJK numerals in place (`171` → 「一七一」). Only a
+          number that turns up *next door* counts.
+        * **One witness is not enough.** Cell `o4m-waste-u256-b1600` has
+          exactly one cross-slot number and is not shifted; the shifted cell
+          has four. Hence `_SHIFT_MIN_WITNESSES`.
+        * **The witnesses must agree which way.** A shift moves every slot the
+          same direction, so contradictory witnesses are noise, not a shift.
+
+        A number the neighbour's own source already carried explains itself
+        without a shift (repeated verse lines, a date on both sides of a
+        paragraph break), so it is not a witness either. Marker tokens are
+        stripped first: `⟦code12⟧` is ours, not the book's, and a stray one is
+        `_marker_slot_mismatch`'s business under its own pinned leniency.
+        """
+        if len(result) != len(texts) or len(texts) < 2:
+            return None
+
+        def digits(text):
+            return set(_SHIFT_DIGIT_RUN.findall(MARKER_RE.sub(" ", text or "")))
+
+        sources = [digits(text) for text in texts]
+        replies = [digits(reply) for reply in result]
+        witnesses = {-1: [], 1: []}
+        for index, tokens in enumerate(sources):
+            for token in sorted(tokens - replies[index]):
+                moved = [
+                    step
+                    for step in (-1, 1)
+                    if 0 <= index + step < len(texts)
+                    and token in replies[index + step]
+                    and token not in sources[index + step]
+                ]
+                if len(moved) == 1:  # both neighbours: says nothing about way
+                    witnesses[moved[0]].append((index, token))
+        for step, found in witnesses.items():
+            if len(found) < _SHIFT_MIN_WITNESSES:
+                continue
+            if len(found) <= len(witnesses[-step]):
+                continue
+            index, token = found[0]
+            others = len(found) - 1
+            return (
+                f"{token} belongs to slot {index + 1} of {len(result)} and "
+                f"came back in slot {index + 1 + step}, with {others} more "
+                f"number{'' if others == 1 else 's'} moved the same way"
+            )
         return None
 
     def _note_misalign_recovery(self):

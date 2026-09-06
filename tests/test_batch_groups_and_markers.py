@@ -583,6 +583,245 @@ class TestShiftedReplyIsCaughtByItsMarkers:
         assert fake.batch_calls == [texts]
 
 
+# ------------------- D3. a count-compensated shift, caught by the numbers
+#
+# Measured 260906, sweep cell `ds-waste-u96-b4800` (DeepSeek, strict schema,
+# 96 units a batch). The model merged two adjacent source lines into one
+# reply slot and kept the *count* right by inventing a filler item — the
+# meta-comment below, which was written into the book. Counts, echoed ids
+# and per-slot fluency all agreed; 42 slots faced the wrong original. No
+# marker was near it, so `_marker_slot_mismatch` could not see it. What did
+# see it was a number: verse line `170` belongs to source slot 176 and came
+# back inside slot 175's Chinese.
+
+FILLER = "（此处应有一个空行表示节段间隔）"
+
+# The Waste Land, ll. 168-178 as the loader sees them, verse numbers and the
+# repeated refrain included: the numbers ride at the end of the line they
+# count, and two slots are byte-identical.
+WASTE_LINES = [
+    "You are a proper fool, I said.",
+    "Well, if Albert won't leave you alone, there it is, I said,",
+    "What you get married for if you don't want children?160",
+    "HURRY UP PLEASE ITS TIME",
+    "Well, that Sunday Albert was home, they had a hot gammon,",
+    "And they asked me in to dinner, to get the beauty of it hot―",
+    "HURRY UP PLEASE ITS TIME",
+    "Ta ta. Goonight. Goonight.",
+    "Goonight Bill. Goonight Lou. Goonight May. Goonight.170",
+    "Good night, ladies, good night, sweet ladies, good night.",
+    "III. THE FIRE SERMON",
+    "The river's tent is broken: the last fingers of leaf178",
+]
+
+
+class _MergingBatchFake:
+    """Answers one batch size with the measured fault, others honestly.
+
+    `merge_at=12`: slots 0 and 1 come back welded into one, every later slot
+    holds the *following* source's translation, and a fabricated filler pads
+    the tail so the count still matches. Halves are answered straight, so the
+    ladder converges.
+    """
+
+    TRANSLATION_ERROR_MARKER = None
+    _fatal_error_detected = False
+
+    def __init__(self, merge_at=None):
+        self.merge_at = merge_at
+        self.batch_calls = []
+        self.single_calls = []
+
+    @staticmethod
+    def _render(text):
+        return f"译[{text}]"
+
+    def translate_list(self, texts):
+        self.batch_calls.append(list(texts))
+        straight = [self._render(t) for t in texts]
+        if self.merge_at is not None and len(texts) == self.merge_at:
+            merged = f"{straight[0]}{straight[1]}"
+            return [merged] + straight[2:] + [FILLER]
+        return straight
+
+    def translate(self, text):
+        self.single_calls.append(text)
+        return self._render(text)
+
+
+def _shift_check(texts, result):
+    from book_maker.loader.epub_loader import EPUBBookLoader
+
+    return EPUBBookLoader._numeric_slot_shift(texts, result)
+
+
+class TestCountCompensatedShiftIsCaughtByItsNumbers:
+    def test_the_measured_pattern_sends_the_batch_to_the_ladder(self):
+        from book_maker.loader.epub_loader import EPUBBookLoader
+
+        loader = EPUBBookLoader.__new__(EPUBBookLoader)
+        fake = _MergingBatchFake(merge_at=len(WASTE_LINES))
+        loader.translate_model = fake
+
+        result = loader._translate_texts_aligned(WASTE_LINES)
+
+        # the poisoned batch was sent once, then halved rather than written
+        assert fake.batch_calls[0] == WASTE_LINES
+        assert WASTE_LINES[:6] in fake.batch_calls
+        assert WASTE_LINES[6:] in fake.batch_calls
+        # every slot now answers its own line, and the invention is gone
+        assert result == [f"译[{line}]" for line in WASTE_LINES]
+        assert FILLER not in "".join(result)
+
+    def test_the_moved_number_is_named_in_the_realignment_notice(self, capsys):
+        from book_maker.loader.epub_loader import EPUBBookLoader
+
+        loader = EPUBBookLoader.__new__(EPUBBookLoader)
+        loader.translate_model = _MergingBatchFake(merge_at=len(WASTE_LINES))
+
+        loader._translate_texts_aligned(WASTE_LINES)
+
+        out = " ".join(capsys.readouterr().out.split())  # rich wraps the line
+        # the same narration wrong-slot marker evidence earns
+        assert "came back shifted" in out and "splitting for realignment" in out
+        # the moved number, where it belongs and where it landed
+        assert "160 belongs to slot 3 of 12 and came back in slot 2" in out
+        assert "2 more numbers moved the same way" in out
+
+    def test_a_clean_reply_costs_one_request(self):
+        from book_maker.loader.epub_loader import EPUBBookLoader
+
+        loader = EPUBBookLoader.__new__(EPUBBookLoader)
+        fake = _MergingBatchFake()
+        loader.translate_model = fake
+
+        result = loader._translate_texts_aligned(WASTE_LINES)
+
+        assert result == [f"译[{line}]" for line in WASTE_LINES]
+        assert fake.batch_calls == [WASTE_LINES]  # no ladder
+        assert fake.single_calls == []
+
+    def test_digits_turned_into_cjk_numerals_in_place_are_not_a_shift(self):
+        """The commonest way a number leaves its slot, and it is innocent.
+
+        DeepSeek writes `171` as 「一七一」 and drops verse numbers outright —
+        six of twenty-four on the clean cell `ds-waste-u64-b4800`. Absence
+        alone must never fire, or every weak-model batch pays the ladder.
+        """
+        texts = [
+            "And went on in sunlight, into the Hofgarten,10",
+            "Out of this stony rubbish? Son of man,20",
+            "I will show you fear in a handful of dust.30",
+        ]
+        cjk = [
+            "又继续前行，在阳光下，进入宫廷花园一〇",
+            "从这片碎石废墟中生长？人之子啊，二〇",
+            "我要让你看一把尘土里的恐惧。",  # dropped entirely
+        ]
+        assert _shift_check(texts, cjk) is None
+
+        from book_maker.loader.epub_loader import EPUBBookLoader
+
+        loader = EPUBBookLoader.__new__(EPUBBookLoader)
+        loader.translate_model = SimpleNamespace(
+            TRANSLATION_ERROR_MARKER=None,
+            _fatal_error_detected=False,
+            translate_list=lambda _texts: list(cjk),
+        )
+        assert loader._translate_texts_aligned(texts) == cjk
+
+    def test_one_cross_slot_number_is_not_enough(self):
+        """Cell `o4m-waste-u256-b1600` has exactly one and is not shifted.
+
+        A book supplies coincidences — a number quoted in the sentence before
+        the one that owns it — so a single witness cannot buy a whole batch's
+        halving ladder.
+        """
+        texts = ["line one, 160", "line two", "line three, 170", "line four"]
+        result = ["译[line one]", "译[160 line two]", "译[line three, 170]", "译[four]"]
+        assert _shift_check(texts, result) is None
+
+    def test_two_witnesses_disagreeing_on_direction_do_not_fire(self):
+        """A shift moves every slot the same way; contradiction is noise."""
+        texts = ["a 160", "b", "c 170", "d"]
+
+        agreeing = [
+            "译[a]",
+            "译[b 160]",  # slot 1's number, one slot later
+            "译[c]",
+            "译[d 170]",  # slot 3's number, one slot later
+        ]
+        assert _shift_check(texts, agreeing) is not None  # a real shift
+
+        opposed = [
+            "译[a]",
+            "译[b 160 170]",  # slot 1's number one later, slot 3's one earlier
+            "译[c]",
+            "译[d]",
+        ]
+        assert _shift_check(texts, opposed) is None
+
+    def test_a_number_the_neighbour_source_also_carries_is_not_a_witness(self):
+        # the refrain repeats verbatim; the neighbour's own line explains the
+        # number without any shift
+        texts = ["Ash Wednesday 1930", "Ash Wednesday 1930", "and after, 1940"]
+        result = ["译[Ash Wednesday]", "译[1930 again]", "译[and after, 1940]"]
+        assert _shift_check(texts, result) is None
+
+    def test_single_digit_runs_are_ignored(self):
+        # "1" is on every page of every book
+        texts = ["part 1 of it", "part 2 of it", "part 3 of it"]
+        result = ["译[part]", "译[1 and 2]", "译[part]"]
+        assert _shift_check(texts, result) is None
+
+    def test_a_marker_token_is_not_numeric_evidence(self):
+        # ⟦code12⟧ is ours, not the book's; a stray one is the marker check's
+        # business, under its own pinned leniency
+        texts = ["press ⟦code12⟧ now", "or ⟦code13⟧ instead", "then stop"]
+        result = ["译[press now]", "译[or ⟦code12⟧ ⟦code13⟧]", "译[then stop]"]
+        assert _shift_check(texts, result) is None
+
+
+class TestShiftPoisonedBatchDoesNotReachTheBook:
+    """End to end over the write path: the retry's text is what is written."""
+
+    def _soup_and_units(self):
+        from book_maker.loader.plan import DisplayResolver, partition_soup
+
+        body = "".join(
+            f"<h2>{line}</h2>" if line.startswith("III.") else f"<p>{line}</p>"
+            for line in WASTE_LINES
+        )
+        soup = _soup(body)
+        fp = partition_soup(soup, DisplayResolver([]), "wasteland.xhtml")
+        assert [u.text for u in fp.units] == WASTE_LINES
+        return soup, fp.units
+
+    def test_the_clean_retry_is_what_lands_beside_each_original(self):
+        soup, units = self._soup_and_units()
+        texts = [u.text for u in units]
+        loader = _marker_loader()
+        fake = _MergingBatchFake(merge_at=len(texts))
+        loader.translate_model = fake
+
+        result = loader._translate_texts_aligned(texts, fake, units)
+        for unit, t_text in zip(units, result):
+            loader._insert_plan_translation(unit, t_text)
+
+        # the fabricated filler never reached the markup
+        assert FILLER not in soup.get_text()
+        # and the shift is gone, not merely its residue: every translation
+        # sits next to the line it translates, the heading included
+        rendered = [e.get_text() for e in soup.find_all(["p", "h2"])]
+        assert rendered == [
+            text for line in WASTE_LINES for text in (line, f"译[{line}]")
+        ]
+        assert [h.get_text() for h in soup.find_all("h2")] == [
+            "III. THE FIRE SERMON",
+            "译[III. THE FIRE SERMON]",
+        ]
+
+
 # --------------------------------------------- §9 inline atomic markers
 
 MARKER_RE = re.compile(r"⟦[a-z0-9]+⟧")
