@@ -335,8 +335,9 @@ class TestLoaderHonorsAccumulatedNum:
         assert max(sizes) > SUBSTRICT_GROUP_MAX_UNITS
         assert max(sizes) <= GENERAL_GROUP_MAX_UNITS
 
-    def test_the_default_cap_is_the_evals_ceiling(self, tmp_path):
-        # no --batch_units: 16 strict, 8 below it, exactly as before the flag
+    def test_the_default_cap_is_the_measured_cap(self, tmp_path):
+        # no --batch_units: 32 strict, 16 below it — the halving is derived,
+        # so the two can never drift apart
         strict, _ = _plan_loader(tmp_path / "s", _StrictModel)
         sub, _ = _plan_loader(tmp_path / "j", _RecordingModel)
 
@@ -345,7 +346,7 @@ class TestLoaderHonorsAccumulatedNum:
 
     def test_a_chosen_cap_is_halved_below_strict_decoding(self, tmp_path):
         # --batch_units 4: the strict cap as typed, half of it otherwise —
-        # the same 16/8 ratio the default ships with
+        # the same 32/16 ratio the default ships with
         strict, _ = _plan_loader(tmp_path / "s", _StrictModel, batch_units=4)
         sub, _ = _plan_loader(tmp_path / "j", _RecordingModel, batch_units=4)
 

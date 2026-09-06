@@ -1488,9 +1488,10 @@ request count; pass 1 to turn grouping off there. Minimum 1.
         type=batch_unit_cap,
         default=None,
         help="EPUB plan mode only: the most units --accumulated_num's token "
-        "budget may put in one request. Default 16, which a degradation eval "
-        "found safe; lower it for a weaker model. An endpoint that verifies "
-        "JSON mode but not a strict schema carries half this many.",
+        f"budget may put in one request. Default {GENERAL_GROUP_MAX_UNITS}, "
+        "half the level a fault-emergence eval measured content faults at; "
+        "lower it for a weaker model. An endpoint that verifies JSON mode "
+        "but not a strict schema carries half this many.",
     )
     parser.add_argument(
         "--translation_style",
@@ -1704,7 +1705,7 @@ def main():
     options = parse_args(legacy.argv)
     # None is "not typed": --accumulated_num keeps its explicitness (plan
     # mode defaults the budget by context mode, and an explicit 1 must still
-    # mean grouping off), and --batch_units falls back to the eval's ceiling.
+    # mean grouping off), and --batch_units falls back to the measured cap.
     given = normalize_options(options)
     accumulated_num_given = given.accumulated_num
     translate_tags_given = given.translate_tags

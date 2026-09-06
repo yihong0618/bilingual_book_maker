@@ -1312,17 +1312,34 @@ SHORT_UNIT_CHARS = 70
 # ones, and only the character cap tells them apart.
 GROUP_MAX_CHARS = 500
 
-# Units one *general* (token-budget) group may carry. The 260904 degradation
-# eval put every content fault at 50 units per request and none at 16, so 16
-# is the conservative ceiling rather than a measured limit.
-GENERAL_GROUP_MAX_UNITS = 16
+# Units one *general* (token-budget) group may carry. This one is measured,
+# not assumed: the 260905 fault-emergence sweep (923 requests, four books,
+# two models, every cell read back out of the produced EPUB) found the first
+# content fault at **64 effective units in one request** — 9.4% of the slots
+# of a prose-dense book came back shifted against their sources — and none at
+# any lower cap on any book. 32 is half of that, which is where a default
+# belongs.
+#
+# What the sweep also showed is that the unit count is only half the story:
+# 4705 tokens in 48 units was clean, 3563 tokens in 64 units faulted, and 64
+# units of short verse lines were clean on three books. The risk tracks
+# *segments x output length* — how long an enumeration the model has to hold
+# across its own generation — so `--accumulated_num`'s token budget is what
+# actually caps the content of a request, and this is the safety net behind
+# it rather than the primary limit.
+GENERAL_GROUP_MAX_UNITS = 32
 # What a request carries when the endpoint is below strict decoding. Half,
 # because both content regressions the 260905 json_object eval found were
 # large batches, and a probe verdict cannot tell such an endpoint apart in
-# advance (both corrupting arms probed `strict`). Applied where the verdict
-# is known — at request time, in the loader — not to the partition, which
-# has to describe the book rather than the endpoint that happens to run it.
-SUBSTRICT_GROUP_MAX_UNITS = 8
+# advance (both corrupting arms probed `strict`). Derived rather than typed
+# so the halving survives a change to the cap above — and the emergence sweep
+# is a second reason to keep the margin exactly here: on the sub-strict path
+# the *strong* model misaligned more often than the weak one (5 recoveries
+# across 6 prose cells against 2 across 9), so this is a format-compliance
+# margin, not a competence one. Applied where the verdict is known — at
+# request time, in the loader — not to the partition, which has to describe
+# the book rather than the endpoint that happens to run it.
+SUBSTRICT_GROUP_MAX_UNITS = GENERAL_GROUP_MAX_UNITS // 2
 
 # The grouping budget plan mode assumes when `--use_context session` is on and
 # `--accumulated_num` was not typed. In session mode the history is re-read at

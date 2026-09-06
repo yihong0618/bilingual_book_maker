@@ -1661,7 +1661,8 @@ def test_batch_units_is_recorded_in_the_plan(tmp_path):
     assert json.loads(plan.read_text())["batch_units"] == 4
 
 
-def test_batch_units_defaults_to_the_evals_ceiling(tmp_path):
+def test_batch_units_defaults_to_the_measured_cap(tmp_path):
+    # half the level the 260905 fault-emergence sweep measured faults at
     from book_maker.loader.plan import GENERAL_GROUP_MAX_UNITS
 
     proc, plan = _run(tmp_path, "--plan-dry-run")
