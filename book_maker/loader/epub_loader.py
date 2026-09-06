@@ -25,6 +25,7 @@ from rich import print
 from rich.markup import escape
 from tqdm import tqdm
 
+from book_maker import provenance as prov
 from book_maker.redaction import redact
 from book_maker.session_context import handoff_path
 from book_maker.utils import num_tokens_from_text, prompt_config_to_kwargs
@@ -53,7 +54,9 @@ from .disclosure import (
     is_calibre_metadata,
     is_our_colophon,
     is_prior_disclosure,
+    is_prior_glossary,
     model_id,
+    prior_glossary_shas,
     stamp_disclosure,
     tool_contributor_ids,
     translation_label,
@@ -84,7 +87,7 @@ from .markers import (
     reconcile_markers,
     split_on_markers,
 )
-from ..translator.base_translator import BatchMismatch
+from ..translator.base_translator import BatchMismatch, service_name
 from .classify import (
     PlanClassifyError,
     PlanUnresolvedError,
@@ -326,6 +329,7 @@ class EPUBBookLoader(BaseBookLoader):
         source_lang="auto",
         parallel_workers=1,
         disclose=True,
+        provenance=False,
     ):
         # Before the translator is built and before a byte of the book is
         # read: a protected book is refused, and there is no flag that opens
@@ -341,6 +345,17 @@ class EPUBBookLoader(BaseBookLoader):
         # calibre's record of its own file is not covered by this: that is
         # a false statement about the file, not a disclosure.
         self.disclose = disclose
+        # --provenance: the machine record (build, model, endpoint host, the
+        # sanitized command) in the package document. Only the opt-in half —
+        # a plan or session run writes it whether or not this was passed. See
+        # `_wants_provenance`.
+        self.provenance = provenance
+        # Kept for that record: which host the run talked to, and which
+        # source language it was told about. Neither is stored anywhere else
+        # on the loader, and both are facts about the run rather than about
+        # the book.
+        self._api_base = model_api_base
+        self._source_lang = source_lang
         # what `lang=` may carry for that language, or None when nothing may
         self.language_tag = language_tag(language)
         self.new_epub = epub.EpubBook()
@@ -572,6 +587,10 @@ class EPUBBookLoader(BaseBookLoader):
         # would claim both models and carry two colophons.
         try:
             prior_ids = tool_contributor_ids(book)
+            # Which embedded glossary — if any — a previous run vouched for.
+            # Captured here, before the copy loop strips the metas that say
+            # so, because the item loops that drop the file run afterwards.
+            self._prior_glossary_shas = prior_glossary_shas(book)
         except Exception as e:
             # Reads the same metadata the loop below does, and fails the same
             # way on the same malformed entry — but before the loop, where
@@ -586,6 +605,7 @@ class EPUBBookLoader(BaseBookLoader):
                 "[/bold yellow]"
             )
             prior_ids = set()
+            self._prior_glossary_shas = set()
         # Entries the copy could not carry, reported once at the end rather
         # than once each: a book with a systematically odd metadata block
         # would otherwise bury its own translation under warnings.
@@ -784,6 +804,103 @@ class EPUBBookLoader(BaseBookLoader):
         else:
             new_book.add_metadata(namespace, name, value)
 
+    def _is_prior_glossary(self, item):
+        """Whether this item is the glossary a previous run of this tool embedded.
+
+        Dropped rather than carried, for the reason the previous run's note
+        is: a book translated again, with a different glossary or none at
+        all, must not ship the last run's instructions as though they were
+        this run's.
+        """
+        return is_prior_glossary(item, getattr(self, "_prior_glossary_shas", set()))
+
+    def _wants_provenance(self):
+        """Whether this run writes the machine record into the package.
+
+        A plan or session run writes it by default. Both are the deliberate,
+        expensive, resumable shape of this tool — a run someone will come
+        back to, hand to a reviewer, or repeat — and the questions the record
+        answers ("which build, which model, which endpoint, which command")
+        are exactly the ones that come up about such a run days later.
+
+        The legacy tag-mode path does not, unless `--provenance` says so: it
+        is the quick pass, the record is the same size as the book's real
+        metadata, and turning it on for every casual run would be deciding
+        for the user that their command line belongs in the file.
+        """
+        if getattr(self, "provenance", False):
+            return True
+        return (
+            bool(getattr(self, "plan_mode", False))
+            or getattr(self, "context_mode", None) == "session"
+        )
+
+    def _declared_source_language(self):
+        """What the source book says its own language is, or None.
+
+        The last resort for `bbm:source-lang`, and the only one that is not
+        a statement by the user. A book that declares nothing gets no meta:
+        recording "auto" would say the run detected a language, which is a
+        claim about a detection that never happened.
+        """
+        try:
+            declared = self.origin_book.get_metadata("DC", "language")
+        except Exception:
+            return None
+        for entry in declared or []:
+            value = entry[0] if isinstance(entry, tuple) else entry
+            if value:
+                return str(value)
+        return None
+
+    def _run_provenance(self):
+        """This run's facts, or None when nothing is to be recorded.
+
+        Total by construction: every field falls back to "not known" rather
+        than raising, because the stamp's failure mode is losing the whole
+        disclosure, and a missing endpoint host is not worth that.
+        """
+        if not self._wants_provenance():
+            return None
+        translator = getattr(self, "translate_model", None)
+        # The translator's own base is preferred over the flag: it is the
+        # address requests actually went to, including the SDK default the
+        # route filled in when the flag was absent.
+        api_base = (
+            getattr(translator, "api_base", None)
+            or getattr(translator, "api_url", None)
+            or getattr(self, "_api_base", None)
+        )
+        # `--language en:zh` reaches the translator; `--source_lang` reaches
+        # the loader; "auto" is the default and states nothing. Last resort
+        # is what the source book says about itself, which is a fact about
+        # the book rather than a guess.
+        source_language = getattr(translator, "source_language", None) or (
+            self._source_lang
+            if str(getattr(self, "_source_lang", "") or "").lower() != "auto"
+            else None
+        )
+        if not source_language:
+            source_language = self._declared_source_language()
+        # The user's glossary, never a derived one: the loader carries the
+        # path only when a file was named on the command line. `getattr`
+        # because the glossary itself is a separate piece of work — this
+        # records it when it is there and says nothing when it is not.
+        glossary_path = getattr(self, "glossary_path", None) or getattr(
+            translator, "glossary_path", None
+        )
+        return prov.Provenance(
+            commit=prov.tool_commit(),
+            model=model_id(translator),
+            endpoint=prov.endpoint_host(api_base),
+            route=service_name(translator) if translator is not None else None,
+            args=prov.sanitize_args(),
+            source_language=source_language,
+            target_language=getattr(self, "_disclosure_language", None)
+            or self.language,
+            glossary_bytes=prov.read_glossary(glossary_path),
+        )
+
     def _stamp_disclosure(self, new_book):
         """Say the file is a machine translation, on the book about to be written.
 
@@ -800,6 +917,7 @@ class EPUBBookLoader(BaseBookLoader):
                 getattr(self, "_disclosure_language", None) or self.language,
                 source_identifier=getattr(self, "_disclosure_source", None),
                 label=translation_label(getattr(self, "translate_model", None)),
+                provenance=self._run_provenance(),
             )
         except Exception as e:
             # A book that took hours and real money to translate is not
@@ -2864,7 +2982,11 @@ class EPUBBookLoader(BaseBookLoader):
             # A previous output's translation note is replaced by this run's,
             # not carried alongside it — two would be two ids and two members
             # of the same zip.
-            if item.file_name != fixname and not is_our_colophon(item):
+            if (
+                item.file_name != fixname
+                and not is_our_colophon(item)
+                and not self._is_prior_glossary(item)
+            ):
                 new_book.add_item(item)
         if soup_complete:
             complete_item.content = soup_complete.encode()
@@ -3650,7 +3772,9 @@ class EPUBBookLoader(BaseBookLoader):
                 exit(0)
             # Add the things that don't need to be translated first, so that you can see the img after the interruption
             for item in self.origin_book.get_items():
-                if item.get_type() != ITEM_DOCUMENT:
+                if item.get_type() != ITEM_DOCUMENT and not self._is_prior_glossary(
+                    item
+                ):
                     new_book.add_item(item)
 
             # A document with no jobs — filtered out by --only_filelist or
@@ -3912,7 +4036,7 @@ class EPUBBookLoader(BaseBookLoader):
                 # the stamp below thinking the book was already stamped —
                 # so the recovery book kept the *last* run's claim, and
                 # --no_disclosure kept it too.
-                if is_our_colophon(item):
+                if is_our_colophon(item) or self._is_prior_glossary(item):
                     continue
                 if item.get_type() == ITEM_DOCUMENT:
                     # one plan per document, consumed in document order: the

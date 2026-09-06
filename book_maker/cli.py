@@ -1290,6 +1290,28 @@ COMPAT_RULES = (
             f"block, and the file will be ignored."
         ),
     ),
+    CompatRule(
+        "C22",
+        "warn",
+        lambda f: f.options.provenance and f.book_type != "epub",
+        lambda f: (
+            f"--provenance records the run in the package document, and only "
+            f"an epub has one; on a {f.book_type} book it is accepted and "
+            f"records nothing."
+        ),
+    ),
+    CompatRule(
+        "C23",
+        "warn",
+        lambda f: f.options.provenance
+        and f.book_type == "epub"
+        and not f.options.disclosure,
+        lambda f: (
+            "--no_disclosure silences everything the file says about the run, "
+            "the machine record included, so --provenance records nothing. "
+            "Drop one of the two."
+        ),
+    ),
 )
 
 
@@ -1772,6 +1794,24 @@ request count; pass 1 to turn grouping off there. Minimum 1.
         dest="disclosure",
         action="store_false",
         help="do not mark the epub as a machine translation (translator credit, description line and the closing translation note); the model id is recorded verbatim",
+    )
+    parser.add_argument(
+        "--provenance",
+        dest="provenance",
+        action="store_true",
+        # help=argparse.SUPPRESS until the operator text lands: an advertised
+        # long option must have a row in README.md, README-CN.md and
+        # docs/cmd.md (test_cli_documentation), and those three files are
+        # written by hand, not by the change that adds the flag. Swap this
+        # comment for the help string when the rows are written.
+        #
+        # What it does: record the machine provenance — the tool's build, the
+        # model, the endpoint host, the sanitized command line, the two
+        # languages — as `bbm:` metas in the package document. Plan and
+        # session runs already do; this is the legacy tag-mode opt-in.
+        # --no_disclosure turns it off again, as it turns off everything else
+        # the file says about the run.
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--use_context",
@@ -2258,8 +2298,13 @@ def main():
         )
     if book_type == "pdf":
         loader_kwargs["pdf_layout"] = options.pdf_layout
+    # `--provenance` has no warning of its own here: the two ways it can be
+    # asked for and do nothing — a non-epub book, and `--no_disclosure`
+    # beside it — are rows C22 and C23 of COMPAT_RULES, said before the
+    # endpoint is resolved with everything else that does not fit together.
     if book_type == "epub":
         loader_kwargs["disclose"] = options.disclosure
+        loader_kwargs["provenance"] = options.provenance
     elif not options.disclosure:
         print(
             "[bold yellow]Warning:[/bold yellow] --no_disclosure is ignored for "

@@ -201,11 +201,13 @@ def _base_book(identifier, extra_items=()):
     return book
 
 
-def _translate(path):
+def _translate(path, glossary_path=None, **kwargs):
     loader = EPUBBookLoader(
-        str(path), StandInModel, key="", resume=False, language="japanese"
+        str(path), StandInModel, key="", resume=False, language="japanese", **kwargs
     )
     loader.quiet = True
+    if glossary_path is not None:
+        loader.glossary_path = glossary_path
     loader.make_bilingual_book()
     return path.with_name(f"{path.stem}_bilingual.epub")
 
@@ -380,6 +382,37 @@ def test_a_round_tripped_book_validates(epubcheck, font_book, tmp_path):
 
 def test_copied_rights_metadata_validates(epubcheck, rights_book):
     _assert_valid(epubcheck, rights_book, "the dc:rights book")
+
+
+@pytest.fixture
+def provenance_book(tmp_path):
+    """A book carrying the machine record, glossary and all.
+
+    Two things here are new shapes in the package and neither is exercised
+    anywhere else: EPUB 2 `<meta name= content=>` entries in an EPUB 3
+    package, and a `text/plain` resource in the manifest that no content
+    document references.
+    """
+    path = tmp_path / "provenance.epub"
+    epub.write_epub(
+        str(path), _base_book("urn:uuid:55555555-5555-4555-8555-555555555555")
+    )
+    glossary = tmp_path / "terms.txt"
+    glossary.write_text("sett: badger set\n", encoding="utf-8")
+    return _translate(path, glossary_path=str(glossary), provenance=True)
+
+
+def test_the_machine_record_validates(epubcheck, provenance_book):
+    _assert_valid(epubcheck, provenance_book, "the provenance book")
+
+    with zipfile.ZipFile(provenance_book) as archive:
+        names = archive.namelist()
+        opf_name = next(n for n in names if n.endswith(".opf"))
+        opf = archive.read(opf_name).decode("utf-8")
+    assert '<meta name="bbm:commit"' in opf
+    assert "EPUB/bbm_glossary.txt" in names
+    # in the manifest, never in the spine
+    assert 'idref="bbm-glossary"' not in opf
 
 
 @pytest.mark.parametrize("fixture", ["tdm_book", "font_book", "rights_book"])

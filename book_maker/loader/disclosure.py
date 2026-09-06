@@ -13,6 +13,12 @@ because metadata is not something a reader sees. It is written as a log —
 one heading, then `Title: content` a line at a time — rather than as prose:
 a page of facts about a file should not arrive dressed as a chapter.
 
+Beside it, on a plan or session run or when `--provenance` asks, goes the
+machine half: the `bbm:` metas and the book-producer credit that say which
+build, which model, which endpoint host and which command produced the file.
+That record is `book_maker.provenance`'s to compose and this module's to put
+in the package, under the same rules everything else here follows.
+
 Two rules keep this from colliding with the book it is stamping:
 
 - **Nothing is recognised by its id or file name.** A publisher's own
@@ -31,9 +37,12 @@ translated by model A and then again by model B does not claim both.
 
 import re
 from datetime import date
+from hashlib import sha256
 from html import escape
 
 from ebooklib import epub
+
+from book_maker import provenance as prov
 
 TOOL_NAME = "bilingual_book_maker"
 
@@ -41,6 +50,12 @@ TOOL_NAME = "bilingual_book_maker"
 CONTRIBUTOR_ID = "bbm-trl"
 CONTRIBUTOR_ROLE = "trl"
 MARC_SCHEME = "marc:relators"
+
+# Both roles this tool ever claims: it translated the text (`trl`) and, when
+# the machine record is written, it produced the file (`bkp`). Listed
+# together because ownership is decided once: an entry carrying this tool's
+# name refined by either role is a previous run's stamp, to be rewritten.
+CONTRIBUTOR_ROLES = (CONTRIBUTOR_ROLE, prov.PRODUCER_ROLE)
 
 # The description this tool writes: a label, then the model and the year in
 # parentheses, then a fixed tail. The label says what did the work — a
@@ -209,28 +224,76 @@ def _iter_metadata(book):
                 yield namespace, name, value, others
 
 
+def is_tool_credit(value):
+    """Whether a contributor value is this tool naming itself.
+
+    Two spellings, because the two roles say different amounts. The `trl`
+    credit is the bare tool name; the `bkp` credit carries the build that
+    produced the file (`bilingual_book_maker 0449d78`), which is the whole
+    reason a machine record exists. Both are ours to rewrite; a book that
+    credits this project in a sentence of its own — "with thanks to
+    bilingual_book_maker and its contributors" — is neither.
+    """
+    text = (value or "").strip()
+    return text == TOOL_NAME or text.startswith(f"{TOOL_NAME} ")
+
+
 def tool_contributor_ids(book):
     """The ids of `dc:contributor` entries a previous run of this tool wrote.
 
-    Ours is the tool's name refined by the `trl` role — both halves, so a
-    book that merely credits this project in its own contributor list is
-    not mistaken for a stamp and quietly deleted.
+    Ours is the tool's name refined by one of this tool's roles — both
+    halves, so a book that merely credits this project in its own
+    contributor list is not mistaken for a stamp and quietly deleted.
     """
     refined = {
         (others or {}).get("refines", "").lstrip("#")
         for _, name, value, others in _iter_metadata(book)
         if name == "meta"
         and (others or {}).get("property") == "role"
-        and (value or "").strip() == CONTRIBUTOR_ROLE
+        and (value or "").strip() in CONTRIBUTOR_ROLES
     }
     refined.discard("")
     return {
         (others or {}).get("id")
         for _, name, value, others in _iter_metadata(book)
         if name == "contributor"
-        and value == TOOL_NAME
+        and is_tool_credit(value)
         and (others or {}).get("id") in refined
     }
+
+
+def prior_glossary_shas(book):
+    """The checksums a previous run's glossary metas vouch for.
+
+    The embedded glossary is the one thing this tool writes that carries no
+    marker of its own — it is the user's file, byte for byte, and putting
+    anything inside it would make it not that. So ownership is decided by
+    the record instead: an item is a previous run's glossary only if a
+    `bbm:glossary-sha256` meta in the same package names its exact bytes.
+    That is a stronger test than the id or the file name would have been,
+    and it leaves a book carrying a `bbm_glossary.txt` of its own alone.
+    """
+    return {
+        str((others or {}).get("content") or "").strip()
+        for _, name, _, others in _iter_metadata(book)
+        if name == "meta"
+        and (others or {}).get("name") == prov.GLOSSARY_SHA_META
+        and (others or {}).get("content")
+    }
+
+
+def is_prior_glossary(item, shas):
+    """Whether a manifest item is the glossary a previous run embedded."""
+    if not shas:
+        return False
+    content = getattr(item, "content", None)
+    if content is None:
+        # `is None`, not falsy: an empty glossary is a file the user named,
+        # it has a checksum like any other, and a rerun must still drop it.
+        return False
+    if isinstance(content, str):
+        content = content.encode("utf-8", "ignore")
+    return sha256(content).hexdigest() in shas
 
 
 def is_prior_disclosure(name, value, others, owned_ids):
@@ -243,7 +306,7 @@ def is_prior_disclosure(name, value, others, owned_ids):
     attributes = others or {}
     if (
         name == "contributor"
-        and value == TOOL_NAME
+        and is_tool_credit(value)
         and attributes.get("id") in owned_ids
     ):
         return True
@@ -252,6 +315,12 @@ def is_prior_disclosure(name, value, others, owned_ids):
         and attributes.get("property") == "role"
         and attributes.get("refines", "").lstrip("#") in owned_ids
     ):
+        return True
+    if name == "meta" and str(attributes.get("name") or "").startswith(prov.PREFIX):
+        # The machine record. The whole `bbm:` prefix is this tool's, so the
+        # test is the prefix and nothing else: a run by another model, from
+        # another build, against another endpoint must not leave the previous
+        # run's answers standing beside its own.
         return True
     if name == "description":
         # Compared with whitespace collapsed: the tail's line break is
@@ -307,29 +376,49 @@ def _suffixes():
         counter += 1
 
 
-def allocate_contributor_id(book):
-    ids = taken_ids(book)
+def taken_file_names(book):
+    return {
+        item.file_name for item in book.get_items() if getattr(item, "file_name", None)
+    }
+
+
+def allocate_contributor_id(book, base=CONTRIBUTOR_ID, ids=None):
+    """An id the book does not already use.
+
+    `ids` lets a caller allocating more than one in a row pass the set it is
+    growing: two ids allocated independently against the same book would
+    both be handed the same free name.
+    """
+    ids = taken_ids(book) if ids is None else ids
     for suffix in _suffixes():
-        candidate = f"{CONTRIBUTOR_ID}{suffix}"
+        candidate = f"{base}{suffix}"
         if candidate not in ids:
             return candidate
 
 
-def allocate_colophon_names(book):
+def allocate_names(book, stem, extension, base_id, ids=None, files=None):
     """An id and a file name neither of which the book already uses.
 
     Both move together: a reader that finds `bbm_translation_note-2.xhtml`
     should find it under the matching id, not under a third name.
     """
-    ids = taken_ids(book)
-    files = {
-        item.file_name for item in book.get_items() if getattr(item, "file_name", None)
-    }
+    ids = taken_ids(book) if ids is None else ids
+    files = taken_file_names(book) if files is None else files
     for suffix in _suffixes():
-        item_id = f"{COLOPHON_ID}{suffix}"
-        file_name = f"{COLOPHON_STEM}{suffix}.xhtml"
+        item_id = f"{base_id}{suffix}"
+        file_name = f"{stem}{suffix}{extension}"
         if item_id not in ids and file_name not in files:
             return item_id, file_name
+
+
+def allocate_colophon_names(book, ids=None, files=None):
+    return allocate_names(book, COLOPHON_STEM, ".xhtml", COLOPHON_ID, ids, files)
+
+
+def allocate_glossary_names(book, ids=None, files=None):
+    return allocate_names(
+        book, prov.GLOSSARY_STEM, ".txt", prov.GLOSSARY_ID, ids, files
+    )
 
 
 # ------------------------------------------------------------- the stamp
@@ -392,9 +481,15 @@ def entry_is_our_colophon(source_book, entry):
 
 
 def stamp_disclosure(
-    book, model, language, source_identifier=None, when=None, label=AI_LABEL
+    book,
+    model,
+    language,
+    source_identifier=None,
+    when=None,
+    label=AI_LABEL,
+    provenance=None,
 ):
-    """Add the credit, the description and the colophon, once.
+    """Add the credit, the description, the colophon and the machine record, once.
 
     Called on the finished book just before it is written, not while it is
     being built: `--model_list` rotation means the model a run actually
@@ -408,6 +503,13 @@ def stamp_disclosure(
     `EPUBBookLoader._stamp_disclosure`), and a half-applied stamp is the one
     outcome that would make that worse than useless: a credit naming a
     translator with no note behind it says less than saying nothing.
+
+    `provenance`, when given, is a `book_maker.provenance.Provenance`: the
+    invisible half of the same statement, written under the same all-or-
+    nothing rule. It rides with the disclosure rather than having a switch of
+    its own — `--no_disclosure` says the file must not claim to be a machine
+    translation, and `bbm:model` claims exactly that, in the one place a
+    script would look.
     """
     if any(is_our_colophon(item) for item in book.get_items()):
         return None
@@ -419,7 +521,9 @@ def stamp_disclosure(
     # `book.metadata[namespace]` as a dict of lists, and `_iter_metadata`
     # deliberately tolerates a namespace that is not one — so such a book can
     # reach here, and committing would raise between the credit and the note.
-    for namespace in (epub.NAMESPACES["DC"], None):
+    # The OPF namespace is checked with them because the machine record is
+    # written there, as `<meta name= content=>`.
+    for namespace in (epub.NAMESPACES["DC"], epub.NAMESPACES["OPF"], None):
         existing = book.metadata.get(namespace)
         if existing is not None and not isinstance(existing, dict):
             raise TypeError(
@@ -434,8 +538,39 @@ def stamp_disclosure(
         )
 
     when = when or date.today()
-    contributor_id = allocate_contributor_id(book)
-    item_id, file_name = allocate_colophon_names(book)
+    # One growing set for every id this stamp allocates: two allocations run
+    # independently against the same book would both be handed the same free
+    # name, and a duplicate id is a book no reading system opens.
+    ids = taken_ids(book)
+    files = taken_file_names(book)
+    contributor_id = allocate_contributor_id(book, ids=ids)
+    ids.add(contributor_id)
+    item_id, file_name = allocate_colophon_names(book, ids=ids, files=files)
+    ids.add(item_id)
+    files.add(file_name)
+
+    producer_id = glossary_item = None
+    producer_credit = None
+    provenance_metas = ()
+    if provenance is not None:
+        producer_id = allocate_contributor_id(book, base=prov.PRODUCER_ID, ids=ids)
+        ids.add(producer_id)
+        # Both settled here, so the commit half only appends: `metas()`
+        # hashes the glossary and `producer()` reads the build, and neither
+        # belongs between the credit and the note.
+        provenance_metas = provenance.metas()
+        producer_credit = provenance.producer()
+        if provenance.glossary_bytes is not None:
+            glossary_id, glossary_file = allocate_glossary_names(
+                book, ids=ids, files=files
+            )
+            glossary_item = epub.EpubItem(
+                uid=glossary_id,
+                file_name=glossary_file,
+                media_type=prov.GLOSSARY_MEDIA_TYPE,
+                content=provenance.glossary_bytes,
+            )
+
     description = f"{label} ({model}, {when.year}{DESCRIPTION_TAIL}"
     item = build_colophon(
         model,
@@ -464,6 +599,26 @@ def stamp_disclosure(
         },
     )
     book.add_metadata("DC", "description", description)
+    if provenance is not None:
+        for meta_name, content in provenance_metas:
+            book.add_metadata(
+                "OPF", "meta", None, {"name": meta_name, "content": content}
+            )
+        book.add_metadata("DC", "contributor", producer_credit, {"id": producer_id})
+        book.add_metadata(
+            None,
+            "meta",
+            prov.PRODUCER_ROLE,
+            {
+                "refines": f"#{producer_id}",
+                "property": "role",
+                "scheme": MARC_SCHEME,
+            },
+        )
+        if glossary_item is not None:
+            # Manifest only, never the spine: it is evidence about the
+            # translation, not a page of the book.
+            book.add_item(glossary_item)
     book.add_item(item)
     book.spine.append(item)
     return item
