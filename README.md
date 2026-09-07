@@ -515,7 +515,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--no_disclosure`:
 
-  An epub output is marked as an AI translation by default — one small line below the book intro, e.g. "Translated by gpt-5.6-luna, 2026."; this flag leaves it out. It also turns off the translation metadata (`--translation-metadata`, a small record file carrying the model, the date and the checksum of a `--glossary` file — nothing about who ran the tool).
+  An epub output is marked as an AI translation by default — one small line below the book intro, e.g. "Translated by gpt-5.6-luna, 2026."; this flag leaves it out. It also turns off the translation metadata (`--translation-metadata`: the model, the date and the glossary).
 
 - `--translation_style`:
 
