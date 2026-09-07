@@ -1,6 +1,4 @@
-import re
 import requests
-from rich import print
 
 from book_maker.utils import TO_LANGUAGE_CODE
 from .base_translator import Base, NO_PROMPT_SECTIONS

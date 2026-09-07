@@ -1,4 +1,3 @@
-import re
 import time
 from rich import print
 from openai import OpenAI

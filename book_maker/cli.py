@@ -2735,8 +2735,6 @@ def main():
             f"choose, so --model is not supported by it.[/bold red]"
         )
         exit(1)
-    if options.block_size > 0:
-        e.block_size = options.block_size
     if options.batch_flag:
         e.batch_flag = options.batch_flag
     if options.batch_use_flag:

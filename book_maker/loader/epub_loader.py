@@ -985,38 +985,6 @@ class EPUBBookLoader(BaseBookLoader):
         remaining_text = temp_p.get_text().strip()
         return not remaining_text or self._is_special_text(remaining_text)
 
-    def _count_translatable_paragraphs(self, items, trans_taglist):
-        """Count paragraphs that actually need translation (excluding special content)."""
-        count = 0
-        for i in items:
-            if i.get_type() != ITEM_DOCUMENT:
-                continue
-            if i.file_name in self.exclude_filelist.split(","):
-                continue
-            if self.only_filelist and i.file_name not in self.only_filelist.split(","):
-                continue
-
-            if self._plan_mode:
-                count += len(self._plan_partition(i)[1].units)
-                continue
-
-            content = i.content
-            soup = bs(content, "html.parser")
-            p_list = soup.findAll(trans_taglist)
-
-            if self.allow_navigable_strings:
-                p_list.extend(soup.findAll(text=True))
-
-            for p in p_list:
-                if not p.text or self._is_special_text(p.text):
-                    continue
-                # Skip paragraphs that only contain excluded tags
-                if self._is_content_only_excluded_tags(p):
-                    continue
-                count += 1
-
-        return count
-
     # ------------------------------------------------------------ plan mode
 
     @property
@@ -3413,7 +3381,6 @@ class EPUBBookLoader(BaseBookLoader):
         else:
             is_test_done = self.is_test and index >= self.test_num
             p_block = []
-            block_len = 0
             for p in p_list:
                 if is_test_done:
                     break

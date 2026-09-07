@@ -1,10 +1,8 @@
 import time
 import random
-import re
 
 from .base_translator import Base, NO_PROMPT_SECTIONS
 from .deepl_translator import deepl_target
-from rich import print
 from PyDeepLX import PyDeepLX
 
 

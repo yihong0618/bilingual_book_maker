@@ -2,7 +2,6 @@ import json
 import time
 
 import requests
-import re
 
 from book_maker.utils import TO_LANGUAGE_CODE
 

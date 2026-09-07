@@ -119,22 +119,6 @@ PROMPT_ENV_MAP = {
     "system": "BBM_GEMINIAPI_SYS_MSG",
 }
 
-GEMINIPRO_MODEL_LIST = [
-    "gemini-pro-latest",
-    "gemini-2.5-pro",
-    "gemini-3-pro-preview",
-]
-
-GEMINIFLASH_MODEL_LIST = [
-    "gemini-flash-latest",
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-2.0-flash-001",
-    "gemini-flash-lite-latest",
-]
-
-
 class TranslationResponse(typing.TypedDict):
     """Schema for batch translation response."""
 
@@ -353,7 +337,7 @@ class Gemini(Base):
             else:
                 self.rotate_key()
             raise
-        except Exception as e:
+        except Exception:
             self.rotate_key()
             raise
 
@@ -433,42 +417,8 @@ class Gemini(Base):
             ("prompt", lambda: self._prompt_rung(prompt, schema, target)),
         ]
 
-    _available_models_cache = None
-
     def set_interval(self, interval):
         self.interval = interval
-
-    def set_geminipro_models(self):
-        self.set_models(GEMINIPRO_MODEL_LIST)
-
-    def set_geminiflash_models(self):
-        self.set_models(GEMINIFLASH_MODEL_LIST)
-
-    def set_models(self, allowed_models):
-        if Gemini._available_models_cache is None:
-            available_models = [
-                re.sub(r"^models/", "", m.name) for m in self.client.models.list()
-            ]
-            Gemini._available_models_cache = available_models
-        else:
-            available_models = Gemini._available_models_cache
-
-        model_list = sorted(
-            list(set(available_models) & set(allowed_models)),
-            key=allowed_models.index,
-        )
-        if not model_list:
-            raise ValueError(
-                f"None of the expected models {allowed_models} are available "
-                f"for this API key. Available models: {available_models}"
-            )
-        print(f"Using model list {model_list}")
-        self._model_names = tuple(model_list)
-        # The configured fact is the alias's full expansion, before the
-        # endpoint's availability filter above pared it down.
-        self._configured_model_names = tuple(dict.fromkeys(allowed_models))
-        self.model_list = cycle(model_list)
-        self.rotate_model()
 
     def set_model_list(self, model_list):
         # keep the order of input
@@ -560,7 +510,7 @@ class Gemini(Base):
         except ValueError:
             # Parsing/response mismatch - retry without rotating key
             raise
-        except Exception as e:
+        except Exception:
             self.rotate_key()
             raise
 

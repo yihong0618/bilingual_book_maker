@@ -17,7 +17,6 @@ from openai import (
     BadRequestError,
     InternalServerError,
     LengthFinishReasonError,
-    NotFoundError,
     OpenAI,
     RateLimitError,
 )
@@ -1299,74 +1298,6 @@ class ChatGPTAPI(Base):
         lines = result_str.splitlines()
         lines = [line.strip() for line in lines if line.strip() != ""]
         return lines
-
-    def log_retry(self, state, retry_count, elapsed_time, log_path="log/buglog.txt"):
-        if retry_count == 0:
-            return
-        print(f"retry {state}")
-        with open(log_path, "a", encoding="utf-8") as f:
-            print(
-                f"retry {state}, count = {retry_count}, time = {elapsed_time:.1f}s",
-                file=f,
-            )
-
-    def log_translation_mismatch(
-        self,
-        plist_len,
-        result_list,
-        new_str,
-        sep,
-        log_path="log/buglog.txt",
-    ):
-        if len(result_list) == plist_len:
-            return
-        newlist = new_str.split(sep)
-        with open(log_path, "a", encoding="utf-8") as f:
-            print(f"problem size: {plist_len - len(result_list)}", file=f)
-            for i in range(len(newlist)):
-                print(newlist[i], file=f)
-                print(file=f)
-                if i < len(result_list):
-                    print("............................................", file=f)
-                    print(result_list[i], file=f)
-                    print(file=f)
-                print("=============================", file=f)
-
-        print(
-            f"bug: {plist_len} paragraphs of text translated into {len(result_list)} paragraphs",
-        )
-        print("continue")
-
-    def join_lines(self, text):
-        lines = text.splitlines()
-        new_lines = []
-        temp_line = []
-
-        # join
-        for line in lines:
-            if line.strip():
-                temp_line.append(line.strip())
-            else:
-                if temp_line:
-                    new_lines.append(" ".join(temp_line))
-                    temp_line = []
-                new_lines.append(line)
-
-        if temp_line:
-            new_lines.append(" ".join(temp_line))
-
-        text = "\n".join(new_lines)
-        # try to fix #372
-        if not text:
-            return ""
-
-        # del ^M
-        text = text.replace("^M", "\r")
-        lines = text.splitlines()
-        filtered_lines = [line for line in lines if line.strip() != "\r"]
-        new_text = "\n".join(filtered_lines)
-
-        return new_text
 
     def translate_list(self, text_list):
         """

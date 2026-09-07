@@ -357,8 +357,3 @@ def translate_legacy_argv(argv):
         notices=notices,
         env_keys=tuple(dict.fromkeys(k for k in env_keys if k)),
     )
-
-
-def legacy_env_key(env_keys):
-    """First value set among `env_keys`, for the legacy key fallback."""
-    return next((os.environ[n] for n in env_keys if os.environ.get(n)), "")

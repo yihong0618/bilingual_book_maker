@@ -1,9 +1,7 @@
-import re
 import time
 import uuid
 import requests
 
-from rich import print
 from .base_translator import Base, NO_PROMPT_SECTIONS
 
 
