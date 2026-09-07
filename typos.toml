@@ -7,5 +7,6 @@ ba = "ba"
 opf = "opf" # the EPUB package document format
 pn = "pn" # a CSS class in test fixtures
 chpater = "chpater" # a deliberate misspelling: the fail-loud filelist test
+unparseable = "unparseable" # valid spelling; keeps reappearing, pinned for good
 [files]
 extend-exclude = ["LICENSE"]
