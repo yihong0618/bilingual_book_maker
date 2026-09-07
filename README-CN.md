@@ -354,7 +354,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   - `<book>_plan.json`：翻译计划；想重新分类请先删除该文件。
   - `--plan-min-coverage`（默认 0.5，范围 0–1）：如果计划覆盖的正文比例低于该阈值，计划模式会直接报错退出。`0` 关闭该闸门，高于 `0.9` 的值多半会在分类已付费之后中止——两种情况都会警告。
 
-  - `--max-batch-units`:一个合并请求最多携带的段落数（默认 `32`）若运行反复打印错位恢复提示可调低此值；内容量同时由 token 预算（`--accumulated_num`）约束。取代已废弃的 `--poetry-group-size`。
+  - `--max-batch-units`:一个合并请求最多携带的段落数（默认 `32`）。使用较弱的模型时，把它和 `--accumulated_num` 一起调低——尤其是运行开始打印错位恢复等退化提示时（可先试 `16` 和 `1200`，仍有提示再减半）。内容量同时由 token 预算（`--accumulated_num`）约束。取代已废弃的 `--poetry-group-size`。
 
   ```shell
   # 使用模型判断哪些标签需要翻译

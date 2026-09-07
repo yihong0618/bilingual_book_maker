@@ -387,7 +387,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   - `<book>_plan.json`: the translation plan; delete it to classify again.
   - `--plan-min-coverage` (default 0.5, range 0–1): plan mode aborts if the plan covers less than this fraction of the text. `0` disables the guard and values above `0.9` usually abort after classification is already paid for — both warn.
 
-  - `--max-batch-units`: the most units one grouped request may carry (default `32`). Lower it if the run keeps printing misalignment recoveries; content is also bounded by the token budget (`--accumulated_num`). Replaces the deprecated `--poetry-group-size`.
+  - `--max-batch-units`: the most units one grouped request may carry (default `32`). On a weaker model, move both this and `--accumulated_num` lower — especially once the run prints degradation warnings such as the misalignment-recovery hint (try `16` and `1200` first, then halve again). Content is also bounded by the token budget (`--accumulated_num`). Replaces the deprecated `--poetry-group-size`.
 
   ```shell
   # let the model judge which tags need translating
