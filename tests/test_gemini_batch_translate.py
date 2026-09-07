@@ -1,5 +1,8 @@
 import json
 
+import pytest
+
+from book_maker.translator.base_translator import BatchMismatch
 from book_maker.translator.gemini_translator import Gemini
 
 
@@ -92,9 +95,13 @@ def test_whitespace_only_treated_as_empty():
 
 # 6. Count check stays strict: a short response is rejected, an exact one accepted.
 def test_parse_rejects_short_response():
+    # a count mismatch is the loader's business now: the route raises so the
+    # divide ladder halves the chunk, instead of returning None and letting
+    # the retry policy pay for the same bad reply again
     g = _make_gemini()
     short = json.dumps({"translated_paragraphs": ["only-one"]})
-    assert g._parse_batch_response(short, expected_count=2) is None
+    with pytest.raises(BatchMismatch):
+        g._parse_batch_response(short, expected_count=2)
 
 
 def test_parse_accepts_exact_response():

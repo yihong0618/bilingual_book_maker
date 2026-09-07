@@ -607,6 +607,107 @@ class TestQuestionThread:
         assert len(t.server.threads) == 2
 
 
+class TestClassifierThread:
+    """`classify_session` is how plan mode classifies on this route.
+
+    There is no capability probe here at all — the sidecar is not an
+    endpoint the OpenAI-shaped probe can grade — so the schema classifier
+    has nothing to work with and the session entry does the asking. The
+    thread is the append-only history, which is exactly the shape that
+    entry wants: the trunk is paid for once, as the thread's instructions.
+    """
+
+    def test_the_trunk_becomes_the_threads_instructions(self):
+        from book_maker.loader.classify.session import trunk_with_inline_example
+
+        t = _codex(["skip,translate,unsure"])
+        session = t.classify_session()
+        session.start("TRUNK")
+        assert t.server.threads == []  # opened on the first turn, not before
+        assert session.ask("units 1-3") == "skip,translate,unsure"
+        assert t.server.threads == [
+            {
+                "model": t.model,
+                "base_instructions": trunk_with_inline_example("TRUNK"),
+            }
+        ]
+        # the turn carries the signatures and nothing else: repeating the
+        # instructions is the one cost an append-only thread exists to avoid
+        assert [turn["text"] for turn in t.server.turns] == ["units 1-3"]
+
+    def test_the_instructions_carry_the_demonstrated_exchange_inline(self):
+        # a thread has no room for a reply nobody made, so the pair the
+        # openai-shaped route seeds as messages degrades to text here — it is
+        # never silently dropped
+        from book_maker.loader.classify.session import (
+            EXAMPLE_REPLY,
+            build_example_turn,
+        )
+
+        t = _codex(["skip,translate,unsure"])
+        session = t.classify_session()
+        session.start("TRUNK")
+        session.ask("units 1-3")
+
+        instructions = t.server.threads[0]["base_instructions"]
+        assert instructions.startswith("TRUNK")
+        assert build_example_turn() in instructions
+        assert EXAMPLE_REPLY in instructions
+
+    def test_a_restart_opens_a_new_thread_carrying_the_trunk(self):
+        from book_maker.loader.classify.session import trunk_with_inline_example
+
+        t = _codex(["skip", "translate"])
+        session = t.classify_session()
+        session.start("TRUNK")
+        session.ask("units 1-3")
+        session.start("TRUNK")  # what crossing the budget does
+        session.ask("units 4-6")
+        assert [th["base_instructions"] for th in t.server.threads] == [
+            trunk_with_inline_example("TRUNK"),
+            trunk_with_inline_example("TRUNK"),
+        ]
+        assert len({turn["thread"] for turn in t.server.turns}) == 2
+
+    def test_it_is_neither_the_translation_thread_nor_the_question_thread(self):
+        t = _codex(["译文", "answer", "skip"])
+        t.translate("one", needprint=False)
+        t._chat_completion("a question")
+        session = t.classify_session()
+        session.start("TRUNK")
+        session.ask("units 1-3")
+        assert len({turn["thread"] for turn in t.server.turns}) == 3
+
+    def test_a_named_classify_model_gets_its_own_thread(self):
+        t = _codex(["skip"])
+        session = t.classify_session(model="gpt-5.6-sol")
+        session.start("TRUNK")
+        session.ask("units 1-3")
+        assert t.server.threads[0]["model"] == "gpt-5.6-sol"
+
+    def test_a_dropped_thread_is_reopened_with_the_trunk(self):
+        # the sidecar can lose a thread; the trunk is re-sent as the new
+        # thread's instructions, and the verdicts already given do not matter
+        # to the ones still to come
+        t = _codex(["first"])
+        session = t.classify_session()
+        session.start("TRUNK")
+        session.ask("units 1-3")
+        dead = t.server.threads[-1]
+        real = t.server.run_turn
+
+        def run_turn(thread_id, text, output_schema=None, timeout=None):
+            if thread_id == "th-1":
+                raise CodexTurnFailed("thread not found")
+            return real(thread_id, text, output_schema, timeout)
+
+        t.server.run_turn = run_turn
+        t.server.answers = ["recovered"]
+        assert session.ask("units 4-6") == "recovered"
+        assert len(t.server.threads) == 2
+        assert t.server.threads[-1] == dead  # same model, same trunk
+
+
 class TestQuiet:
     """--quiet is what every paid run of the plan workflow uses; it must
     reach this format's own echoes, not just the loader's."""

@@ -29,7 +29,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 
 `--provider` 是另一种传凭据的方式，通过 JSON 配置文件 `bbm_providers.json`。
 
-epub 标签分类仅在支持 JSON Schema 的接口上自动开启；不支持时只翻译 `p` 标签，
+epub 标签分类在支持 JSON Schema 的接口上自动开启，在其他任何能对话的接口（含 codex 路由和普通转售代理）上也会开启，改为让模型直接回答 `skip`/`translate`；只有完全不能对话的路由（机器翻译引擎）才只翻译 `p` 标签，
 因此诗歌等内容可能不会被翻译。详见计划模式。
 
 旧参数（`--model gpt4o`、`--model gemini`、`--openai_key` 等）仍然可用：详见
@@ -93,8 +93,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 - 或使用`--provider`进行翻译: `bbm_providers.example.json` 里预设了以下厂家（Gemini、Qwen、xAI、Groq、OrcaRouter、Ollama、LiteLLM、DeepSeek、
   SiliconFlow、OpenRouter）：复制为 `bbm_providers.json`，并修改其中的key，
   例如`--provider gemini` 就是使用其中 Gemini 的api。
-- `--key` 可以写多个 key，英文逗号分隔，轮换使用。
-- `--use_context session` 使用会话模式翻译，并在8k上下文时进行压缩。
+- `--use_context session` 使用会话模式翻译；历史默认在 8k 时压缩（`--context-compact-at` 可改）。
 - 旧的预设名和 key 参数仍然可用，见 [从旧参数迁移](./docs/migration.md)。
 
 ## 支持的翻译服务
@@ -277,14 +276,12 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   | `claude-sonnet-4-6` | `anthropic` | Anthropic 官方地址 |
   | `gpt-4o-mini` | `openai` | OpenAI |
   | `deepseek-v4-flash-0731` | `openai` | 与`--api_base` 配合使用 |
-  | `codex` | 即 `--api_format codex` | 通过 Codex CLI 使用 |
-  | `orcarouter` | `openai` | 使用OrcaRouter，key 读取 `BBM_ORCAROUTER_API_KEY` |
 
   旧的预设值仍然可以写，会被改写成真实模型 ID 并打印说明，对照表见[从旧参数迁移](./docs/migration.md)。其他任何接口：`--api_base <url> --key <key> --model <id>`，或一条 `--provider` 配置（见「自定义 API Provider」章节）。
 
 - `--key`:
 
-  接口的 API key。多个 key 用英文逗号分隔会轮换使用，绕开单 key 限流。不写时依次读取 `$BBM_API_KEY`，再读取该格式自己的变量：`$OPENAI_API_KEY`、`$ANTHROPIC_API_KEY`、`$BBM_GOOGLE_GEMINI_KEY`、`$BBM_QWEN_API_KEY`、`$BBM_GROQ_API_KEY`、`$BBM_XAI_API_KEY`、`$BBM_CAIYUN_API_KEY`、`$BBM_DEEPL_API_KEY`。旧的各家 key 参数（`--openai_key` 等）仍然可用。`--api_key` 是同一个参数的旧名字。
+  接口的 API key。不写时依次读取 `$BBM_API_KEY`，再读取该格式自己的变量。同 `--api_key` 。
 
 - `--api_format`:
 
@@ -300,14 +297,13 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   | `xai` | 需要：`--key`，或 `$BBM_API_KEY`、`$BBM_XAI_API_KEY`、`$XAI_API_KEY` | xAI；必须写 `--model` |
   | `litellm` | 本机代理不需要；否则 `--key` 或 `$LITELLM_MASTER_KEY` | LiteLLM 代理，不写 `--api_base` 就是 `http://localhost:4000`；必须写 `--model` |
   | `codex` | 不需要：`codex login`（Codex CLI） | 本地 `codex app-server` 侧车，消耗 ChatGPT/Codex 套餐额度，默认 `gpt-5.6-luna` |
+  | `orcarouter` | 需要：`--key` 或 `$BBM_ORCAROUTER_API_KEY` | 使用OrcaRouter |
   | `google` | 不需要 | 免费谷歌翻译 |
   | `caiyun` | 需要：`--key` 或 `$BBM_CAIYUN_API_KEY` | 彩云小译 |
   | `deepl` | 需要：`--key` 或 `$BBM_DEEPL_API_KEY` | DeepL（付费） |
   | `deeplfree` | 不需要 | DeepL 免费版 |
   | `tencent` | 不需要 | 腾讯交互翻译，免费 |
   | `customapi` | 不需要 |  `{text, source_lang, target_lang}` 格式的API |
-
-- `--source_lang`: 源语言，给需要显式声明的路线用：`--api_format qwen`（请求里就是一对语言）和 `--api_format customapi`，默认自动检测。
 
 - `--interval`: 请求之间等待的秒数，例如 `--interval 0.1` 就是 100ms。只有 `--api_format gemini` 会按它控制节奏，其余路线忽略。默认 `0.01`。
 
@@ -321,8 +317,10 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--language`: 指定目标语言
 
-  - 例如： `--language "Simplified Chinese"`，预设值为 `"Simplified Chinese"`.
-  - 请阅读 helper message 来查找可用的目标语言： `python make_book.py --help`
+  - 可以写语言标签（`--language zh-hant`）、语言名（`--language "Traditional Chinese"`），或用 `--language "zh-hant:Traditional Chinese"` 同时指定两者——冒号前的标签用于 JSON 结构化输出字段名，冒号后的名字是发给模型的说法。内置表里没有的小语种就用这种双写形式。预设值 `zh-hans`。
+  - [可用标签](./docs/languages.md)。
+
+- `--source_lang`: 源语言。写了就会附加提示词（"Translate from English"），在 `--api_format qwen`（请求里就是一对语言）和 `--api_format customapi` 还会写进请求本身；默认自动检测。
 
 - `--proxy`
 
@@ -330,7 +328,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--resume`
 
-  手动中断后，加入命令可以从之前中断的位置继续执行。
+  手动中断后，加入命令可以从之前中断的位置继续执行。与`--parallel-workers` 互斥。
 
   ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --api_format google --resume
@@ -345,8 +343,8 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
   取值决定每个标签的翻译与否如何判断：
 
-  - `auto`（默认）：书籍是 epub、且端点可应用 JSON Schema 时，问LLM该翻哪段。否则，以及计划失败时，仅翻译 `--translate-tags` 选中的标签。
-  - `none`：不建计划，仅 `--translate-tags` 选中的标签。
+  - `auto`（默认）：书籍是 epub 时，问 LLM 该翻哪段。只有路由不能对话时，以及计划出错时，仅翻译 `--translate-tags` 选中的标签。经纯会话判定的行在 `<book>_plan.json` 中以 `unnamed (…)` 内容类型标注判定方式。
+  - `none`：不建计划，仅 `--translate-tags` 选中的标签，未选中则仅翻译`p`，即多数正文。
   - `all`：翻译整个分区，不做分类。
   - `model`：使用进行翻译的 LLM 进行判断，然后翻译。可用 `--plan-classify-model X` 指定分类用的模型。
   - `agent`：对选中书籍输出分类计划。并输出指引，直接复制至你的coding tool进行分类
@@ -354,8 +352,9 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
   - `--plan-dry-run`：仅打印按标签签名分组的表格，写出 `<book>_plan.json` 后退出。同时遵守 `--only_filelist` / `--exclude_filelist`。
   - `<book>_plan.json`：翻译计划；想重新分类请先删除该文件。
-  - `--plan-min-coverage`（默认 0.5）：如果计划覆盖的正文比例低于该阈值，计划模式会直接报错退出。
-  - `--poetry-group-size`（默认 8）：连续的短诗行按最多这么多行合成一个诗节一起翻译。
+  - `--plan-min-coverage`（默认 0.5，范围 0–1）：如果计划覆盖的正文比例低于该阈值，计划模式会直接报错退出。`0` 关闭该闸门，高于 `0.9` 的值多半会在分类已付费之后中止——两种情况都会警告。
+
+  - `--max-batch-units`:一个合并请求最多携带的段落数（默认 `32`）。使用较弱的模型时，把它和 `--accumulated_num` 一起调低——尤其是运行开始打印错位恢复等退化提示时（可先试 `16` 和 `1200`，仍有提示再减半）。内容量同时由 token 预算（`--accumulated_num`）约束。取代已废弃的 `--poetry-group-size`。
 
   ```shell
   # 使用模型判断哪些标签需要翻译
@@ -387,6 +386,8 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
   - 如果您需要设置 `system` 角色，可以使用以下方式配置：`--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'`，或者 `--prompt prompt_template_sample.json`（示例 JSON 文件可以在 [./prompt_template_sample.json](./prompt_template_sample.json) 找到）。
 
+  - 第三个键 `style` 是关于文风的常驻指令——语域、语气、用词——随**每个**请求发出。三个键齐全的示例：[./prompt_sections_sample.json](./prompt_sections_sample.json)（普通运行）、[./prompt_session_sample.json](./prompt_session_sample.json)（session 运行）。
+
   - 你也可以用环境以下环境变量来配置 `system` 和 `user` 角色 prompt：`BBM_CHATGPTAPI_USER_MSG_TEMPLATE` 和 `BBM_CHATGPTAPI_SYS_MSG`。
   该参数可以是提示模板字符串，也可以是模板 `.txt` 文件的路径。
 
@@ -397,7 +398,8 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 - `--accumulated_num`:
 
   达到累计token数开始进行翻译。gpt3.5将total_token限制为4090。
-  例如，如果您使用`--accumulated_num 1600`，则可能会输出2200个令牌，另外200个令牌用于系统指令（system_message）和用户指令（user_message），1600+2200+200 = 4000，所以token接近极限。你必须选择一个自己合适的值，我们无法在发送之前判断是否达到限制
+  例如，如果您使用`--accumulated_num 1600`，则可能会输出2200个令牌，另外200个令牌用于系统指令（system_message）和用户指令（user_message），1600+2200+200 = 4000，所以token接近极限。你必须选择一个自己合适的值，我们无法在发送之前判断是否达到限制。
+  在 EPUB 计划模式下这是每个请求的 token 预算：连续的段落（不限长度）合并进同一个请求，直到累计 `N` 个 token。不传时，每次计划模式运行都会由本次运行自身的提示词开销推导默认值：普通提示词下为 `2400`，很长的自定义 `--prompt` 下最高 `3200`；未验证严格 JSON schema 的端点每个请求减半（下限 `1200`），与该处单位数上限减半是同一套余量；session 运行（含 codex）不减半。运行会播报所选数值和路线类别；传 `1` 可关闭合并。最小值 `1`。
 
 - `--use_context`:
   使用上下文模式翻译。
@@ -419,11 +421,20 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
     仅 session 模式。历史在被压缩成交接报告前可以达到的估算 token 预算。默认 `8000`，最小值 `500`。
 
-    在 `8000` 下，整体花费预估为 window 模式的 0.5–1.1 倍，但携带数倍的上下文——具体比例取决于缓存折扣比例。我们计算发现（2026年8月），大部分模型价格`--context-compact-at 2500` 最省钱（约 0.4–0.5 倍）。
-
   - `--no-context-compact`:
 
     仅 session 模式。跳过交接报告：历史仍在达到预算时滚动，但下一个窗口从空白开始，不继承摘要。更省钱，代价是接缝处的连续性。
+
+- `--glossary` / `--terminology`:
+
+  一个 `term → translation` 术语文件（每行一条，`#` 之后是注释）。文件不存在时在解析阶段即报错退出。
+  仅 openai 系与 codex 路由、且书籍为 EPUB 或 Markdown 时生效；其他路由会提示并忽略。
+  
+  钉住一个术语就等于让译文照此表述，所以只钉你能负责的译法。
+
+  - `--glossary-auto on|off`:
+
+    保留交接报告中确立的译名，使跨窗口的重复人名、术语保持一致。仅 session 模式。
 
 - `--temperature`:
 
@@ -441,7 +452,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--no_disclosure`:
 
-  epub 输出默认标注为 AI 翻译（`google`、`deepl`、`caiyun`、`tencent`、`customapi` 引擎则标注为机器翻译）：工具作为译者写入 contributor，一行描述记录模型名，书末附一页翻译说明。`--no_disclosure` 去掉这三项。
+  epub 输出默认标注为 AI 翻译——在书籍简介下方加一行小字，如 "Translated by gpt-5.6-luna, 2026."；附带该参数则不加。同时关闭翻译元数据（`--translation-metadata`，包含模型、日期和词汇表）。
 
 - `--translation_style`:
 
@@ -521,9 +532,9 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   --extra_body '{"chat_template_kwargs": {"enable_thinking": false}}'
   # openai 路径（chat completions）—— 推理力度与 token 上限，二者都没有独立 flag（是否支持视模型而定）
   --extra_body '{"reasoning_effort": "low", "max_completion_tokens": 2000}'
-  # anthropic 路径 —— 关闭扩展思考，或带预算开启
+  # anthropic 路径 —— 关闭扩展思考；对翻译来说思考主要带来偏离原文的风险，
+  # 且收益甚微
   --extra_body '{"thinking": {"type": "disabled"}}'
-  --extra_body '{"thinking": {"type": "enabled", "budget_tokens": 2000}}'
 
   # OpenRouter 归属标识（显示在其后台）
   --extra_headers '{"HTTP-Referer": "https://example.com", "X-Title": "bilingual_book_maker"}'

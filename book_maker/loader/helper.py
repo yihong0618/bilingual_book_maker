@@ -1,6 +1,8 @@
 import posixpath
 import re
 import zipfile
+
+from rich import print
 from dataclasses import dataclass
 import backoff
 import logging
@@ -11,7 +13,8 @@ from bs4.element import Tag
 from ebooklib import epub
 from lxml import etree
 
-from book_maker.utils import TO_LANGUAGE_CODE
+from book_maker.translator.base_translator import BatchMismatch
+from book_maker.utils import language_code
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
@@ -291,30 +294,18 @@ def strip_duplicate_ids(element):
 
 
 LANG_ATTRS = ("xml:lang", "lang")
-# a language tag as `lang=` accepts one: "zh-hans", "ja", "pt-BR"
-LANGUAGE_TAG = re.compile(r"[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*")
 
 
 def language_tag(language):
     """The tag `lang=` may carry for a --language value, or None.
 
     The CLI hands loaders the prompt wording — "simplified chinese" — which
-    is what the model is asked for, not a language tag; written into
-    `xml:lang` it is a value validators reject. A wording the table knows
-    becomes its code; a value it does not know is kept only when it already
-    reads as a tag, and anything else stamps nothing.
+    is what the model is asked for, not a language tag. Kept here under the
+    name every caller already uses; the rule itself lives beside the tables
+    it reads, in `book_maker.utils`, because `--language TAG:NAME` has to
+    answer the same question before any loader exists.
     """
-    if not language or not isinstance(language, str):
-        return None
-    value = language.strip()
-    if not value:
-        return None
-    known = TO_LANGUAGE_CODE.get(value.lower())
-    if known:
-        return known
-    if LANGUAGE_TAG.fullmatch(value):
-        return value
-    return None
+    return language_code(language)
 
 
 def stamp_translation(node, source, language):
@@ -359,7 +350,9 @@ class EPUBBookLoaderHelper:
         self.accumulated_num = accumulated_num
         self.translation_style = translation_style
         self.context_flag = context_flag
-        # the prompt wording comes in; what `lang=` accepts goes on the copy
+        # The loader hands over the tag it settled on; run through the same
+        # rule anyway, so a caller that still passes prompt wording gets what
+        # `lang=` accepts rather than a value a validator rejects.
         self.language = language_tag(language)
 
     def insert_trans(self, p, text, translation_style="", single_translate=False):
@@ -373,8 +366,7 @@ class EPUBBookLoaderHelper:
         if not single_translate and has_restricted_content_model(p):
             # single-translate extracts the original, so it never creates
             # the second sibling this rule exists to prevent
-            append_inline_translation(p, text, translation_style, self.language)
-            return
+            return append_inline_translation(p, text, translation_style, self.language)
         new_p = copy(p)
         new_p.string = text
         if translation_style != "":
@@ -391,6 +383,10 @@ class EPUBBookLoaderHelper:
         p.insert_after(new_p)
         if single_translate:
             p.extract()
+        # the node the translation was written into, for callers that have to
+        # find their way back to it (marker restore); None when nothing was
+        # written, which the early returns above cover
+        return new_p
 
     @backoff.on_exception(
         backoff.expo,
@@ -415,8 +411,8 @@ class EPUBBookLoaderHelper:
         if not wait_p_list:
             return
 
-        result_txt_list = self.translate_model.translate_list(
-            [p.text for p in wait_p_list]
+        result_txt_list = translate_list_or_singles(
+            self.translate_model, [p.text for p in wait_p_list]
         )
 
         for i in range(len(wait_p_list)):
@@ -440,6 +436,28 @@ url_pattern = r"(http[s]?://|www\.)+(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0
 # and re.compile per call pays a cache lookup for a constant pattern.
 _URL_RE = re.compile(url_pattern)
 _URL_TAIL_RE = re.compile(r".*" + url_pattern + r"$")
+
+
+def translate_list_or_singles(model, texts):
+    """`model.translate_list(texts)`, with tag mode's own alignment fallback.
+
+    Plan mode answers a `BatchMismatch` with `_translate_texts_aligned`: it
+    halves the chunk and asks again, ~2x the batch instead of N singles. Tag
+    mode has no such ladder — `--accumulated_num > 1` calls `translate_list`
+    straight from `deal_old` — so the exception would escape and end a run
+    that used to repair itself. One local sweep of `translate()` calls is
+    what that repair was; it stays here, where the ladder cannot reach.
+    """
+    if not hasattr(model, "translate_list"):
+        return [model.translate(text) for text in texts]
+    try:
+        return model.translate_list(texts)
+    except BatchMismatch as e:
+        print(
+            f"[yellow]batch of {len(texts)} came back misaligned ({e}); "
+            f"translating one by one[/yellow]"
+        )
+        return [model.translate(text) for text in texts]
 
 
 def is_text_link(text):

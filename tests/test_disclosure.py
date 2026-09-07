@@ -1,11 +1,19 @@
-"""The output file says what it is.
+"""The output file says what it is, on one line.
 
-A translated book is a new work made by a machine, and the file should say
-so where both a person and a library will see it: in the package metadata,
-and on one page at the end. Nothing here touches what identifies the
-original — `dc:creator`, `dc:rights` and the rest are the source's and stay
-untouched. What goes is only what describes *this file* and is no longer
-true of it: calibre's record of the book it built.
+Owner ruling, 260906: a distributed book must not be traceable back to the
+operator, but a reader must still be able to see what could have gone wrong
+with the translation. So the whole visible apparatus is a single small
+paragraph below the book's own intro —
+
+    Translated by gpt-5.6-luna, 2026.
+
+— and the package metadata says nothing at all: no `bbm:` metas, no
+`dc:contributor`, no `dc:description`. What survives of the old apparatus is
+the recognition half, so a rerun still strips what an earlier build left
+behind. Nothing here touches what identifies the original — `dc:creator`,
+`dc:rights` and the rest are the source's and stay untouched. What goes is
+only what describes *this file* and is no longer true of it: calibre's
+record of the book it built, and this tool's own previous stamps.
 """
 
 import re
@@ -16,16 +24,28 @@ import pytest
 from ebooklib import epub
 
 from book_maker.loader.disclosure import (
-    model_id,
-    COLOPHON_FILE,
-    COLOPHON_ID,
-    CONTRIBUTOR_ID,
+    CREDIT_CLASS,
+    is_our_colophon,
+    CREDIT_PREFIX,
     DESCRIPTION_TAIL,
+    GENERATOR_MARK,
+    credit_name,
+    model_id,
 )
 from book_maker.loader.epub_loader import EPUBBookLoader
 
 OPF_NS = epub.NAMESPACES["OPF"]
 DC_NS = epub.NAMESPACES["DC"]
+
+TOOL_NAME_IN_A_CREDIT = "bilingual_book_maker"
+
+# What an older build wrote and a rerun must still clear: the closing page,
+# the two contributor credits with their role refines, the description and
+# the package metas.
+LEGACY_COLOPHON_ID = "bbm-translation-note"
+LEGACY_COLOPHON_FILE = "bbm_translation_note.xhtml"
+LEGACY_CONTRIBUTOR_ID = "bbm-trl"
+LEGACY_PRODUCER_ID = "bbm-bkp"
 
 
 class StubModel:
@@ -50,7 +70,22 @@ class ModellessModel(StubModel):
     model = None
 
 
-def _source(identifier="urn:uuid:source-1", metadata=()):
+class ModelB(StubModel):
+    model = "vendor/b"
+
+
+def _page(uid, file_name, body, title="A page"):
+    item = epub.EpubHtml(title=title, file_name=file_name, lang="en")
+    item.id = uid
+    item.content = (
+        "<html xmlns='http://www.w3.org/1999/xhtml'>"
+        f"<head><title>{title}</title></head><body>{body}</body></html>"
+    )
+    return item
+
+
+def _source(identifier="urn:uuid:source-1", metadata=(), guide=None, extra_items=()):
+    """A two-document book: a title page, then a chapter."""
     book = epub.EpubBook()
     book.set_identifier(identifier)
     book.set_title("Disclosure fixture")
@@ -58,14 +93,22 @@ def _source(identifier="urn:uuid:source-1", metadata=()):
     book.add_author("A. Author")
     for namespace, name, value, others in metadata:
         book.add_metadata(namespace, name, value, others)
-    chapter = epub.EpubHtml(title="One", file_name="chapter.xhtml", lang="en")
-    chapter.content = "<html><body><p>Body text</p></body></html>"
+    title = _page("titlepage", "title.xhtml", "<h1>Disclosure fixture</h1>", "Title")
+    chapter = _page("chapter", "chapter.xhtml", "<p>Body text</p>", "One")
+    book.add_item(title)
     book.add_item(chapter)
+    for item in extra_items:
+        book.add_item(item)
     book.add_item(epub.EpubNcx())
     book.add_item(epub.EpubNav())
     book.toc = (chapter,)
-    book.spine = ["nav", chapter]
+    book.spine = ["nav", title, chapter, *extra_items]
+    if guide is not None:
+        book.guide = guide
     return book
+
+
+TITLE_PAGE_GUIDE = [{"type": "title-page", "href": "title.xhtml", "title": "Title"}]
 
 
 def _rebuild(
@@ -78,9 +121,15 @@ def _rebuild(
     loader.disclose = disclose
     loader.translate_model = model() if model else None
     new_book = loader._make_new_book(source)
-    # Findings 7/8: `_make_new_book` no longer stamps. The disclosure is
-    # applied to the finished book at write time, which is the only moment
-    # the model a --model_list run used is settled.
+    # The write routes add the source's items as they finish with them; a
+    # rebuild without a translation has to do the same, or there is no
+    # document in the book for the credit line to land on.
+    for item in source.get_items():
+        if not is_our_colophon(item):
+            new_book.add_item(item)
+    # `_make_new_book` does not stamp. The disclosure is applied to the
+    # finished book at write time, which is the only moment the model a
+    # --model_list run used is settled.
     loader._stamp_disclosure(new_book)
     return new_book
 
@@ -93,20 +142,93 @@ def _written_opf(tmp_path, book, name="out.epub"):
         return archive.read(opf_name).decode("utf-8")
 
 
-# ------------------------------------------------------------- the credit
+_CREDIT_RE = re.compile(rf'<p class="{CREDIT_CLASS}"[^>]*>([^<]*)</p>'.encode("utf-8"))
 
 
-def test_the_tool_is_named_as_a_translator(tmp_path):
-    opf = _written_opf(tmp_path, _rebuild(_source()))
+def _credits_in(content):
+    if isinstance(content, str):
+        content = content.encode("utf-8")
+    return [m.decode("utf-8") for m in _CREDIT_RE.findall(content or b"")]
 
-    assert (
-        f'<dc:contributor id="{CONTRIBUTOR_ID}">bilingual_book_maker</dc:contributor>'
-        in opf
+
+def _credits_of(book):
+    """(file name, text) for every credit line in the book."""
+    found = []
+    for item in book.get_items():
+        for text in _credits_in(getattr(item, "content", None)):
+            found.append((item.file_name, text))
+    return found
+
+
+def _credits_in_zip(path):
+    found = []
+    with zipfile.ZipFile(path) as archive:
+        for name in archive.namelist():
+            for text in _credits_in(archive.read(name)):
+                found.append((name, text))
+    return found
+
+
+def _translate_file(path, model=StubModel, **kwargs):
+    loader = EPUBBookLoader(
+        str(path), model, key="", resume=False, language="zh-hans", **kwargs
     )
-    assert (
-        f'<meta refines="#{CONTRIBUTOR_ID}" property="role" '
-        'scheme="marc:relators">trl</meta>' in opf
-    )
+    loader.quiet = True
+    loader.make_bilingual_book()
+    return path.with_name(f"{path.stem}_bilingual.epub")
+
+
+# --------------------------------------------------------- the credit line
+
+
+def test_the_credit_is_one_line_at_the_end_of_the_title_page(tmp_path):
+    """The whole reader-facing apparatus: one paragraph, appended below the
+    book's own intro, naming the model and the year."""
+    rebuilt = _rebuild(_source(guide=TITLE_PAGE_GUIDE))
+
+    assert _credits_of(rebuilt) == [
+        ("title.xhtml", f"{CREDIT_PREFIX}x/y, {date.today().year}.")
+    ]
+    page = rebuilt.get_item_with_id("titlepage").content.decode("utf-8")
+    # below the intro, not in front of it
+    assert page.index("Disclosure fixture") < page.index(CREDIT_CLASS)
+    assert page.index(CREDIT_CLASS) < page.index("</body>")
+
+
+def test_the_line_is_small_and_muted(tmp_path):
+    """Subtle: it is a note about the file, not a line of the book. Inline,
+    because the book's own stylesheet knows nothing about it."""
+    rebuilt = _rebuild(_source(guide=TITLE_PAGE_GUIDE))
+    page = rebuilt.get_item_with_id("titlepage").content.decode("utf-8")
+
+    style = re.search(rf'class="{CREDIT_CLASS}" style="([^"]*)"', page).group(1)
+    assert "font-size" in style and "opacity" in style
+
+
+def test_nothing_at_all_is_declared_in_the_package_metadata(tmp_path):
+    """The ruling in one assertion: zero `bbm:` metas, no contributor of
+    ours, no description of ours."""
+    opf = _written_opf(tmp_path, _rebuild(_source(guide=TITLE_PAGE_GUIDE)))
+
+    assert "bbm:" not in opf
+    assert "<dc:contributor" not in opf
+    assert "<dc:description" not in opf
+    assert TOOL_NAME_IN_A_CREDIT not in opf
+    assert "marc:relators" not in opf
+
+
+def test_the_visible_apparatus_is_the_line_and_nothing_else(tmp_path):
+    """No closing page, no extra spine entry, no manifest document that was
+    not the book's own."""
+    source = _source(guide=TITLE_PAGE_GUIDE)
+    before = len(source.spine)
+    rebuilt = _rebuild(source)
+    opf = _written_opf(tmp_path, rebuilt)
+
+    assert len(rebuilt.spine) == before
+    assert "translation_note" not in opf
+    assert "Translation Credits" not in opf
+    assert GENERATOR_MARK not in opf
 
 
 def test_the_author_is_left_alone(tmp_path):
@@ -119,137 +241,129 @@ def test_the_author_is_left_alone(tmp_path):
     assert [value for value, _ in creators] == ["A. Author"]
 
 
-def test_the_description_names_the_model_the_run_used(tmp_path):
-    opf = _written_opf(tmp_path, _rebuild(_source()))
-
-    year = date.today().year
-    assert (
-        f"<dc:description>AI translation (x/y, {year}).\n"
-        "Original text unaltered; translation quality not verified."
-        "</dc:description>" in opf
-    )
-
-
-def test_a_translator_with_no_model_still_says_what_made_the_file(tmp_path):
-    opf = _written_opf(tmp_path, _rebuild(_source(), model=ModellessModel))
-
-    assert "AI translation (ModellessModel," in opf
-
-
 def test_the_source_description_survives(tmp_path):
     source = _source(metadata=[("DC", "description", "The publisher's blurb.", None)])
 
     opf = _written_opf(tmp_path, _rebuild(source))
 
     assert "<dc:description>The publisher's blurb.</dc:description>" in opf
-    assert opf.count("<dc:description>") == 2
+    assert opf.count("<dc:description>") == 1
 
 
-# ------------------------------------------------------------ the colophon
+def test_a_translator_with_no_model_still_says_what_made_the_file(tmp_path):
+    rebuilt = _rebuild(_source(guide=TITLE_PAGE_GUIDE), model=ModellessModel)
+
+    ((_, text),) = _credits_of(rebuilt)
+    assert text == f"{CREDIT_PREFIX}ModellessModel, {date.today().year}."
 
 
-def _colophon_of(book):
-    return book.get_item_with_id(COLOPHON_ID)
+def test_the_line_survives_the_write(tmp_path):
+    output = tmp_path / "out.epub"
+    epub.write_epub(str(output), _rebuild(_source(guide=TITLE_PAGE_GUIDE)))
+
+    assert _credits_in_zip(output) == [
+        ("EPUB/title.xhtml", f"{CREDIT_PREFIX}x/y, {date.today().year}.")
+    ]
 
 
-def test_the_colophon_is_the_last_thing_in_the_book(tmp_path):
-    rebuilt = _rebuild(_source())
-
-    assert _colophon_of(rebuilt) is not None
-    assert rebuilt.spine[-1] is _colophon_of(rebuilt)
-    assert rebuilt.spine[0] is not _colophon_of(rebuilt)
+# ---------------------------------------------------------- where it lands
 
 
-def test_the_colophon_says_everything_it_has_to(tmp_path):
-    rebuilt = _rebuild(_source(identifier="urn:uuid:source-1"))
-    page = _colophon_of(rebuilt).content.decode("utf-8")
-
-    assert "<title>" in page
-    assert "Translation note" in page
-    assert "bilingual_book_maker" in page
-    assert "x/y" in page
-    assert date.today().isoformat() in page
-    assert "urn:uuid:source-1" in page
-    assert "zh-hans" in page
-    assert "This translation has not been reviewed by a human translator." in page
-
-
-def test_the_colophon_omits_a_source_line_there_is_no_identifier_for(tmp_path):
-    source = _source()
-    source.uid = None
-    page = _colophon_of(_rebuild(source)).content.decode("utf-8")
-
-    assert "Source identifier" not in page
-    assert "This translation has not been reviewed by a human translator." in page
-
-
-def test_a_single_translation_gets_the_colophon_too(tmp_path):
-    rebuilt = _rebuild(_source(), single=True)
-
-    assert rebuilt.spine[-1] is _colophon_of(rebuilt)
-
-
-def test_the_colophon_is_a_document_at_the_package_root(tmp_path):
-    rebuilt = _rebuild(_source())
-    colophon = _colophon_of(rebuilt)
-
-    assert colophon.file_name == COLOPHON_FILE
-    assert colophon.media_type == "application/xhtml+xml"
-
-
-def test_the_colophon_is_not_put_in_the_navigation(tmp_path):
-    """It is a note about the file, not a chapter of the book."""
-    rebuilt = _rebuild(_source())
-
-    def titles(entries):
-        for entry in entries:
-            if isinstance(entry, tuple):
-                yield from titles(entry[1])
-                yield getattr(entry[0], "title", "")
-            else:
-                yield getattr(entry, "title", "")
-
-    assert "Translation note" not in set(titles(rebuilt.toc))
-
-
-# ------------------------------------------------------- rebuilding a rebuild
-
-
-def _translate_file(path):
-    loader = EPUBBookLoader(
-        str(path), StubModel, key="", resume=False, language="zh-hans"
+def test_the_guide_decides_which_page_takes_the_line(tmp_path):
+    """A book whose title page is not the first document still gets the line
+    on the title page."""
+    later = _page("front", "front.xhtml", "<p>Front matter.</p>", "Front")
+    source = _source(
+        guide=[{"type": "titlepage", "href": "title.xhtml", "title": "Title"}],
     )
-    loader.quiet = True
-    loader.make_bilingual_book()
-    return path.with_name(f"{path.stem}_bilingual.epub")
+    source.add_item(later)
+    source.spine.insert(1, later)
+
+    rebuilt = _rebuild(source)
+
+    assert [name for name, _ in _credits_of(rebuilt)] == ["title.xhtml"]
 
 
-def test_a_rebuild_of_a_translated_book_stacks_nothing(tmp_path):
-    """Run the whole tool on its own output and every disclosure is
-    replaced, not doubled: one contributor, one machine-translation
-    description, one colophon item, one spine entry for it.
+def test_a_guideless_book_takes_the_first_linear_document(tmp_path):
+    """No guide and no landmarks: the first thing a reader opens is as close
+    to a title page as the book has said."""
+    rebuilt = _rebuild(_source())
 
-    The manifest is what makes this a real test rather than a metadata one
-    — the source's colophon arrives as an ordinary document, and a second
-    entry under the same id is a book no reading system will open."""
-    source = tmp_path / "book.epub"
-    epub.write_epub(str(source), _source())
-
-    once = _translate_file(source)
-    twice = _translate_file(once)
-
-    for output in (once, twice):
-        with zipfile.ZipFile(output) as archive:
-            opf_name = next(n for n in archive.namelist() if n.endswith(".opf"))
-            opf = archive.read(opf_name).decode("utf-8")
-        assert opf.count(f'id="{CONTRIBUTOR_ID}"') == 1, output.name
-        assert opf.count("AI translation (") == 1, output.name
-        assert opf.count(f'href="{COLOPHON_FILE}"') == 1, output.name
-        assert opf.count(f'idref="{COLOPHON_ID}"') == 1, output.name
-        assert opf.index(f'idref="{COLOPHON_ID}"') > opf.rindex("<spine")
+    assert [name for name, _ in _credits_of(rebuilt)] == ["title.xhtml"]
 
 
-# ------------------------------------------------- what did the work: the label
+def test_the_epub3_landmarks_are_read_when_there_is_no_guide(tmp_path):
+    """ebooklib parses the EPUB 2 `<guide>` and stops; an EPUB 3 book keeps
+    the same statement in its navigation document."""
+    nav = epub.EpubHtml(title="Nav", file_name="landmarks.xhtml", lang="en")
+    nav.id = "landmarks"
+    nav.properties = ["nav"]
+    nav.content = (
+        "<html xmlns='http://www.w3.org/1999/xhtml' "
+        "xmlns:epub='http://www.idpf.org/2007/ops'><head><title>Nav</title></head>"
+        "<body><nav epub:type='landmarks'><ol>"
+        "<li><a epub:type='titlepage' href='title.xhtml'>Title</a></li>"
+        "</ol></nav></body></html>"
+    )
+    source = _source(extra_items=[nav])
+    # the landmark points backwards, so the spine fallback would answer
+    # differently
+    source.spine = [
+        "nav",
+        nav,
+        source.get_item_with_id("chapter"),
+        source.get_item_with_id("titlepage"),
+    ]
+
+    rebuilt = _rebuild(source)
+
+    assert [name for name, _ in _credits_of(rebuilt)] == ["title.xhtml"]
+
+
+def test_the_navigation_document_never_takes_the_line(tmp_path):
+    """It is a table of contents, not a page of the book: a line appended to
+    it reads as an entry."""
+    source = _source()
+    # nothing but the nav in front of the chapter
+    source.spine = ["nav", source.get_item_with_id("chapter")]
+
+    rebuilt = _rebuild(source)
+
+    assert [name for name, _ in _credits_of(rebuilt)] == ["chapter.xhtml"]
+
+
+def test_a_book_with_nowhere_to_put_the_line_is_refused_before_it_is_touched():
+    """The stamp is all-or-nothing: it fails before it has written
+    anything, so the caller's warning is true."""
+    from book_maker.loader import disclosure
+
+    book = _rebuild(_source(), disclose=False)
+    for item in list(book.get_items()):
+        book.items.remove(item)
+    book.spine = []
+    before = len(book.items)
+
+    with pytest.raises(ValueError):
+        disclosure.stamp_disclosure(book, "x/y")
+
+    assert len(book.items) == before
+
+
+def test_a_document_with_no_body_is_passed_over(tmp_path):
+    """A fragment with nothing to append to costs the next candidate, never
+    a broken page."""
+    broken = _page("broken", "broken.xhtml", "", "Broken")
+    broken.content = b"<html><head><title>Broken</title></head></html>"
+    source = _source()
+    source.add_item(broken)
+    source.spine = ["nav", broken, source.get_item_with_id("chapter")]
+
+    rebuilt = _rebuild(source)
+
+    assert [name for name, _ in _credits_of(rebuilt)] == ["chapter.xhtml"]
+
+
+# ------------------------------------------------- what did the work
 
 
 def _service(cls, model=None):
@@ -259,27 +373,31 @@ def _service(cls, model=None):
     return lambda: translator
 
 
-def test_an_engine_route_is_a_machine_translation(tmp_path):
-    """Google, DeepL and the other fixed services are machine translation;
-    the label says so, and the service is what is named."""
-    from book_maker.translator import Google
+def test_an_engine_is_named_the_way_a_reader_knows_it(tmp_path, monkeypatch):
+    """ "Translated by google, 2026." is a registry key leaking onto the
+    page."""
+    from book_maker.translator import FORMAT_DICT, Google
 
-    opf = _written_opf(tmp_path, _rebuild(_source(), model=_service(Google)))
+    # The name is looked up by registry identity, and the hermetic harness
+    # (when tests/hermetic is on PYTHONPATH) swaps the google entry for an
+    # offline stand-in; the real class must be registered to be named.
+    monkeypatch.setitem(FORMAT_DICT, "google", Google)
 
-    year = date.today().year
-    assert f"Machine translation (google, {year})" in opf
-    assert "AI translation (" not in opf
+    rebuilt = _rebuild(_source(guide=TITLE_PAGE_GUIDE), model=_service(Google))
+
+    ((_, text),) = _credits_of(rebuilt)
+    assert text == f"{CREDIT_PREFIX}Google Translate, {date.today().year}."
 
 
-def test_a_model_route_is_an_ai_translation(tmp_path):
+def test_a_model_route_is_named_by_its_model(tmp_path):
     from book_maker.translator import ChatGPTAPI
 
-    opf = _written_opf(
-        tmp_path, _rebuild(_source(), model=_service(ChatGPTAPI, "gpt-x"))
+    rebuilt = _rebuild(
+        _source(guide=TITLE_PAGE_GUIDE), model=_service(ChatGPTAPI, "gpt-x")
     )
 
-    assert "AI translation (gpt-x," in opf
-    assert "Machine translation (" not in opf
+    ((_, text),) = _credits_of(rebuilt)
+    assert text == f"{CREDIT_PREFIX}gpt-x, {date.today().year}."
 
 
 def test_every_registered_format_gets_the_label_its_kind_earns():
@@ -299,68 +417,44 @@ def test_every_registered_format_gets_the_label_its_kind_earns():
     assert translation_label(None) == AI_LABEL
 
 
-def test_the_description_is_two_lines(tmp_path):
-    """The claim on one line, the caveat on the next: a reader's metadata
-    pane shows them as two sentences, not one run-on."""
-    rebuilt = _rebuild(_source())
+def test_an_unnamed_engine_falls_back_to_its_registry_key(monkeypatch):
+    """Honest rather than pretty: a service with no display name of its own
+    is at least named by the key it is selected with."""
+    from book_maker.loader import disclosure
+    from book_maker.translator import FORMAT_DICT, Google
 
-    ((description, _),) = rebuilt.get_metadata("DC", "description")
-    lines = description.split("\n")
+    monkeypatch.setitem(FORMAT_DICT, "google", Google)
+    monkeypatch.setattr(disclosure, "ENGINE_NAMES", {})
 
-    assert len(lines) == 2
-    assert lines[0].startswith("AI translation (x/y, ") and lines[0].endswith(").")
-    assert lines[1] == "Original text unaltered; translation quality not verified."
-
-
-def test_a_stamp_written_on_one_line_is_still_ours(tmp_path):
-    """The caveat moved onto its own line after the first books were
-    stamped; a description from before the break is recognised all the
-    same, or a rerun of such a book would claim both."""
-    one_line = (
-        "Machine translation (x/y, 2025). Original text unaltered; "
-        "translation quality not verified."
-    )
-    source = _source(metadata=[("DC", "description", one_line, None)])
-
-    opf = _written_opf(tmp_path, _rebuild(source))
-
-    assert opf.count("<dc:description>") == 1
-    assert "2025" not in opf
-    assert "AI translation (x/y," in opf
+    assert credit_name(_service(Google)()) == "google"
 
 
-def test_a_prior_engine_stamp_is_replaced_by_a_model_rerun(tmp_path):
-    """Either label is ours: a book first translated by Google and then by
-    a model must not keep saying Google did it."""
-    source = _source(
-        metadata=[
-            (
-                "DC",
-                "description",
-                f"Machine translation (google, 2025{DESCRIPTION_TAIL}",
-                None,
-            )
-        ]
-    )
+class RotatingModel(StubModel):
+    """A run given --model_list may use any of them — the openai translator's
+    shape, where `_model_names` is the readable list beside the cycle."""
 
-    opf = _written_opf(tmp_path, _rebuild(source))
+    model = "a"
+    _model_names = ["a", "b"]
 
-    assert opf.count(DESCRIPTION_TAIL) == 1
-    assert "google" not in opf
-    assert "AI translation (x/y," in opf
+
+def test_a_model_list_run_names_every_model_it_could_have_used(tmp_path):
+    """Which model a given paragraph went to is not knowable from here, so
+    all of them are named; picking the first would be a false statement."""
+    rebuilt = _rebuild(_source(guide=TITLE_PAGE_GUIDE), model=RotatingModel)
+
+    ((_, text),) = _credits_of(rebuilt)
+    assert text == f"{CREDIT_PREFIX}a, b, {date.today().year}."
 
 
 # ------------------------------------------------------------- the off switch
 
 
 def test_nothing_is_disclosed_when_disclosure_is_off(tmp_path):
-    rebuilt = _rebuild(_source(), disclose=False)
+    rebuilt = _rebuild(_source(guide=TITLE_PAGE_GUIDE), disclose=False)
     opf = _written_opf(tmp_path, rebuilt)
 
-    assert f'id="{CONTRIBUTOR_ID}"' not in opf
-    assert "AI translation (" not in opf
-    assert _colophon_of(rebuilt) is None
-    assert COLOPHON_FILE not in opf
+    assert _credits_of(rebuilt) == []
+    assert "bbm" not in opf
 
 
 def test_the_loader_takes_the_switch(tmp_path):
@@ -377,7 +471,9 @@ def test_the_loader_takes_the_switch(tmp_path):
     )
 
     assert loader.disclose is False
-    assert _colophon_of(loader._make_new_book(loader.origin_book)) is None
+    rebuilt = loader._make_new_book(loader.origin_book)
+    loader._stamp_disclosure(rebuilt)
+    assert _credits_of(rebuilt) == []
 
 
 def test_disclosure_is_on_by_default(tmp_path):
@@ -391,13 +487,191 @@ def test_disclosure_is_on_by_default(tmp_path):
     assert loader.disclose is True
 
 
+# ------------------------------------------------------- rebuilding a rebuild
+
+
+def test_a_rebuild_of_a_translated_book_stacks_nothing(tmp_path):
+    """Run the whole tool on its own output and the line is replaced, not
+    doubled: one credit, naming the model that did *this* run."""
+    source = tmp_path / "book.epub"
+    epub.write_epub(str(source), _source(guide=TITLE_PAGE_GUIDE))
+
+    once = _translate_file(source)
+    twice = _translate_file(once, model=ModelB)
+
+    assert _credits_in_zip(once) == [
+        ("EPUB/title.xhtml", f"{CREDIT_PREFIX}x/y, {date.today().year}.")
+    ]
+    assert _credits_in_zip(twice) == [
+        ("EPUB/title.xhtml", f"{CREDIT_PREFIX}vendor/b, {date.today().year}.")
+    ]
+
+
+def test_the_previous_line_is_removed_before_it_can_be_translated(tmp_path):
+    """The load-bearing half of the rerun: a line left in the source is a
+    paragraph like any other, so the next run would translate it and insert
+    the translation beside it — where no later pass could tell the two
+    apart."""
+    source = tmp_path / "book.epub"
+    epub.write_epub(str(source), _source(guide=TITLE_PAGE_GUIDE))
+    once = _translate_file(source)
+
+    twice = _translate_file(once, model=ModelB)
+
+    with zipfile.ZipFile(twice) as archive:
+        page = archive.read("EPUB/title.xhtml").decode("utf-8")
+    assert page.count(CREDIT_PREFIX) == 1
+    assert "x/y" not in page
+    # not even a translated ghost of it
+    assert f"T{CREDIT_PREFIX}" not in page
+
+
+def test_a_rebuild_with_disclosure_off_carries_no_prior_line(tmp_path):
+    """Prior disclosure is stripped whether or not a fresh one is written —
+    otherwise --no_disclosure would leave the *previous* run's claim
+    standing, which is the worst of both."""
+    source = tmp_path / "book.epub"
+    epub.write_epub(str(source), _source(guide=TITLE_PAGE_GUIDE))
+    once = _translate_file(source)
+
+    twice = _translate_file(once, model=ModelB, disclose=False)
+
+    assert _credits_in_zip(twice) == []
+    with zipfile.ZipFile(twice) as archive:
+        assert "x/y" not in archive.read("EPUB/title.xhtml").decode("utf-8")
+
+
+# ------------------------------------- what an older build left behind
+
+
+def _old_apparatus_source():
+    """A book carrying every piece of the apparatus this build dropped."""
+    colophon = epub.EpubHtml(
+        title="Translation note", file_name=LEGACY_COLOPHON_FILE, lang="en"
+    )
+    colophon.id = LEGACY_COLOPHON_ID
+    colophon.content = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<html xmlns="http://www.w3.org/1999/xhtml">\n  <head>\n'
+        "    <title>Translation note</title>\n"
+        f'    <meta name="generator" content="{GENERATOR_MARK}"/>\n'
+        "  </head>\n  <body>\n    <h1>Translation Credits</h1>\n"
+        "    <p>Model: old/model</p>\n  </body>\n</html>\n"
+    ).encode("utf-8")
+    source = _source(guide=TITLE_PAGE_GUIDE, extra_items=[colophon])
+    source.add_metadata(
+        "DC", "contributor", TOOL_NAME_IN_A_CREDIT, {"id": LEGACY_CONTRIBUTOR_ID}
+    )
+    source.add_metadata(
+        None,
+        "meta",
+        "trl",
+        {
+            "refines": f"#{LEGACY_CONTRIBUTOR_ID}",
+            "property": "role",
+            "scheme": "marc:relators",
+        },
+    )
+    source.add_metadata(
+        "DC",
+        "contributor",
+        f"{TOOL_NAME_IN_A_CREDIT} aaaaaaa",
+        {"id": LEGACY_PRODUCER_ID},
+    )
+    source.add_metadata(
+        None,
+        "meta",
+        "bkp",
+        {
+            "refines": f"#{LEGACY_PRODUCER_ID}",
+            "property": "role",
+            "scheme": "marc:relators",
+        },
+    )
+    source.add_metadata(
+        "DC", "description", f"AI translation (old/model, 2025{DESCRIPTION_TAIL}"
+    )
+    for name, content in (
+        ("bbm:bilingual_book_maker", "aaaaaaa"),
+        ("bbm:model", "old/model"),
+        ("bbm:date", "2025-01-01"),
+        ("bbm:endpoint", "old.example.org"),
+    ):
+        source.add_metadata("OPF", "meta", None, {"name": name, "content": content})
+    return source
+
+
+def test_a_rerun_over_an_old_style_book_leaves_none_of_its_apparatus(tmp_path):
+    """Old apparatus stripped, one credit line written, and nothing of the
+    previous run's claim standing anywhere."""
+    source = tmp_path / "old.epub"
+    epub.write_epub(str(source), _old_apparatus_source())
+
+    output = _translate_file(source, model=ModelB)
+
+    with zipfile.ZipFile(output) as archive:
+        members = archive.namelist()
+        opf_name = next(n for n in members if n.endswith(".opf"))
+        opf = archive.read(opf_name).decode("utf-8")
+    assert "bbm:" not in opf
+    assert "<dc:contributor" not in opf
+    assert "<dc:description" not in opf
+    assert "marc:relators" not in opf
+    assert "old/model" not in opf and "aaaaaaa" not in opf
+    assert not [m for m in members if "translation_note" in m]
+    assert _credits_in_zip(output) == [
+        ("EPUB/title.xhtml", f"{CREDIT_PREFIX}vendor/b, {date.today().year}.")
+    ]
+
+
+def test_the_old_closing_page_goes_even_with_disclosure_off(tmp_path):
+    source = tmp_path / "old.epub"
+    epub.write_epub(str(source), _old_apparatus_source())
+
+    output = _translate_file(source, model=ModelB, disclose=False)
+
+    with zipfile.ZipFile(output) as archive:
+        members = archive.namelist()
+        opf_name = next(n for n in members if n.endswith(".opf"))
+        opf = archive.read(opf_name).decode("utf-8")
+    assert not [m for m in members if "translation_note" in m]
+    assert "bbm:" not in opf
+    assert "<dc:description" not in opf
+    assert _credits_in_zip(output) == []
+
+
+def test_the_books_own_contributors_and_description_are_untouched(tmp_path):
+    """Only entries carrying *our* value and role refine go."""
+    source = _source(
+        metadata=[
+            ("DC", "contributor", "A. Editor", {"id": "ed"}),
+            ("DC", "description", "The publisher's blurb.", None),
+            ("DC", "contributor", TOOL_NAME_IN_A_CREDIT, {"id": "thanks"}),
+        ]
+    )
+
+    opf = _written_opf(tmp_path, _rebuild(source))
+
+    assert '<dc:contributor id="ed">A. Editor</dc:contributor>' in opf
+    assert "The publisher's blurb." in opf
+    # credited without a trl refine: the book's statement, not a stamp
+    assert '<dc:contributor id="thanks">' in opf
+
+
+def test_a_publishers_own_machine_translation_note_survives(tmp_path):
+    """A publisher's `<dc:description>Machine translation (French edition)`
+    is a statement about the book, not a stamp this tool wrote."""
+    source = _source(
+        metadata=[("DC", "description", "Machine translation (French edition)", None)]
+    )
+
+    opf = _written_opf(tmp_path, _rebuild(source))
+
+    assert "Machine translation (French edition)" in opf
+    assert opf.count("<dc:description>") == 1
+
+
 # ---------------------------------------------------------- calibre's record
-
-
-CALIBRE_METAS = [
-    (None, "meta", None, {"name": "calibre:title_sort", "content": "Sorted"}),
-    (None, "meta", None, {"name": "calibre:timestamp", "content": "2016-06-01"}),
-]
 
 
 def _calibre_source():
@@ -510,279 +784,6 @@ def test_a_translator_registered_nowhere_names_its_class():
     assert Unregistered().model_name == "Unregistered"
 
 
-# ------------------------------- findings 3, 4, 9: names that do not collide
-
-
-def _source_with(extra_items=(), extra_metadata=(), identifier="urn:uuid:source-1"):
-    book = _source(identifier=identifier)
-    for item in extra_items:
-        book.add_item(item)
-        book.spine.append(item)
-    for namespace, name, value, others in extra_metadata:
-        book.add_metadata(namespace, name, value, others)
-    return book
-
-
-def _chapter(uid, file_name, text="A real chapter."):
-    item = epub.EpubHtml(title=uid, file_name=file_name, lang="en")
-    item.id = uid
-    item.content = (
-        "<html xmlns='http://www.w3.org/1999/xhtml'><head><title>t</title></head>"
-        f"<body><p>{text}</p></body></html>"
-    )
-    return item
-
-
-def _output_of(tmp_path, source, name="book.epub"):
-    path = tmp_path / name
-    epub.write_epub(str(path), source)
-    return _translate_file(path)
-
-
-def _members_and_opf(output):
-    with zipfile.ZipFile(output) as archive:
-        members = archive.namelist()
-        opf_name = next(n for n in members if n.endswith(".opf"))
-        return members, archive.read(opf_name).decode("utf-8")
-
-
-def _manifest_ids(opf):
-    return re.findall(r'<item\b[^>]*\bid="([^"]+)"', opf)
-
-
-def _all_ids(opf):
-    return re.findall(r'\bid="([^"]+)"', opf)
-
-
-def _assert_sound(members, opf):
-    assert len(members) == len(set(members)), "a duplicate zip member"
-    ids = _all_ids(opf)
-    assert len(ids) == len(set(ids)), f"a duplicate id: {ids}"
-
-
-def test_a_publishers_colophon_id_is_not_taken_over(tmp_path):
-    """Finding 3/9: an `id="colophon"` on something of the book's own must
-    keep its id, its file and its place — and ours must go somewhere else."""
-    source = _source_with([_chapter("colophon", "notes.xhtml", "The book's notes.")])
-
-    members, opf = _output_of(tmp_path, source), None
-    members, opf = _members_and_opf(members)
-
-    _assert_sound(members, opf)
-    assert 'id="colophon"' in opf
-    assert "notes.xhtml" in opf
-    assert "The book" in _text_of(tmp_path, "notes.xhtml")
-
-
-def test_a_publishers_colophon_filename_is_not_taken_over(tmp_path):
-    """Finding 3/9: the source's own colophon.xhtml survives; ours never
-    wanted that name in the first place."""
-    source = _source_with([_chapter("front", "colophon.xhtml", "Set in Bembo.")])
-
-    members, opf = _members_and_opf(_output_of(tmp_path, source))
-
-    _assert_sound(members, opf)
-    assert "EPUB/colophon.xhtml" in members
-    assert "Bembo" in _text_of(tmp_path, "colophon.xhtml")
-
-
-def test_our_own_id_on_a_real_chapter_is_left_alone(tmp_path):
-    """Finding 3/4/9: recognition is by the marker in the document, never by
-    id — a chapter that happens to carry ours is content, and is translated
-    and kept while the note is allocated a suffixed name."""
-    source = _source_with(
-        [_chapter(COLOPHON_ID, "chapter-two.xhtml", "Chapter two begins.")]
-    )
-
-    members, opf = _members_and_opf(_output_of(tmp_path, source))
-
-    _assert_sound(members, opf)
-    assert "EPUB/chapter-two.xhtml" in members
-    body = _text_of(tmp_path, "chapter-two.xhtml")
-    assert "Chapter two begins." in body
-    assert "TChapter two begins." in body  # StubModel's translation, still done
-    assert f'id="{COLOPHON_ID}-2"' in opf
-    assert "bbm_translation_note-2.xhtml" in opf
-
-
-def test_our_contributor_id_on_someone_elses_metadata_is_left_alone(tmp_path):
-    """Finding 4: `dc:creator id="bbm-trl"` belongs to the book. Ours takes
-    the next id rather than colliding with it."""
-    source = _source_with(
-        extra_metadata=[("DC", "creator", "Alice", {"id": CONTRIBUTOR_ID})]
-    )
-
-    members, opf = _members_and_opf(_output_of(tmp_path, source))
-
-    _assert_sound(members, opf)
-    assert f'<dc:creator id="{CONTRIBUTOR_ID}">Alice</dc:creator>' in opf
-    assert f'<dc:contributor id="{CONTRIBUTOR_ID}-2">' in opf
-    assert f'refines="#{CONTRIBUTOR_ID}-2"' in opf
-
-
-def _text_of(tmp_path, file_name):
-    output = tmp_path / "book_bilingual.epub"
-    with zipfile.ZipFile(output) as archive:
-        return archive.read(f"EPUB/{file_name}").decode("utf-8")
-
-
-class ModelB(StubModel):
-    model = "vendor/b"
-
-
-# ------------------------------------- finding 5: --retranslate copies items
-
-
-def test_retranslate_does_not_copy_the_previous_translation_note(tmp_path):
-    """Finding 5: `retranslate_book` copies every item but the one it edits,
-    so a previous output's note was carried into the new book.
-
-    Retranslated with a different model, so a stale note surviving is
-    visible: keeping the old page is not merely a duplicate, it is the
-    wrong claim about who did the work.
-    """
-    source = tmp_path / "book.epub"
-    epub.write_epub(str(source), _source())
-    once = _translate_file(source)
-
-    loader = EPUBBookLoader(
-        str(source), ModelB, key="", resume=False, language="zh-hans"
-    )
-    loader.quiet = True
-    loader.retranslate = [str(once), "chapter.xhtml", "Body text", "Body text"]
-    with pytest.raises(SystemExit):
-        loader.make_bilingual_book()
-
-    # retranslate_book writes back over the book it was given
-    members, opf = _members_and_opf(once)
-    _assert_sound(members, opf)
-    notes = [m for m in members if "translation_note" in m]
-    assert len(notes) == 1
-    with zipfile.ZipFile(once) as archive:
-        page = archive.read(notes[0]).decode("utf-8")
-    assert "vendor/b" in page
-    assert "x/y" not in page
-
-
-# ------------------------------------------ finding 6: the recovery replay
-
-
-def test_the_recovery_book_survives_a_second_generation_source(tmp_path):
-    """Finding 6: `_save_temp_book` filtered our note out of the plan but
-    still asked for one plan per document, so an interrupted run over a
-    previous output died with StopIteration instead of saving."""
-    source = tmp_path / "book.epub"
-    epub.write_epub(str(source), _source())
-    once = _translate_file(source)
-
-    loader = EPUBBookLoader(
-        str(once), StubModel, key="", resume=False, language="zh-hans"
-    )
-    loader.quiet = True
-    loader.make_bilingual_book()
-    # the interruption: some translations done, the run cut short
-    loader.p_to_save = loader.p_to_save[:1]
-
-    loader._save_temp_book()
-
-    temp = once.with_name(f"{once.stem}_bilingual_temp.epub")
-    assert temp.exists()
-    members, opf = _members_and_opf(temp)
-    _assert_sound(members, opf)
-
-
-# -------------------------------- finding 7: a prior stamp is ours to rewrite
-
-
-def test_a_second_translation_names_only_the_model_that_did_it(tmp_path):
-    """Finding 7: the previous run's contributor, refine and description are
-    stripped on copy and written again from this run's facts."""
-    source = tmp_path / "book.epub"
-    epub.write_epub(str(source), _source())
-    once = _translate_file(source)
-
-    loader = EPUBBookLoader(str(once), ModelB, key="", resume=False, language="zh-hans")
-    loader.quiet = True
-    loader.make_bilingual_book()
-
-    members, opf = _members_and_opf(once.with_name(f"{once.stem}_bilingual.epub"))
-    _assert_sound(members, opf)
-    assert "vendor/b" in opf
-    assert "x/y" not in opf
-    assert opf.count("AI translation (") == 1
-    assert opf.count(f'id="{CONTRIBUTOR_ID}"') == 1
-
-
-def test_a_rebuild_with_disclosure_off_carries_no_prior_stamp(tmp_path):
-    """Finding 7: prior disclosure is stripped whether or not a fresh one is
-    written — otherwise --no_disclosure would leave the *previous* run's
-    claim standing, which is the worst of both."""
-    source = tmp_path / "book.epub"
-    epub.write_epub(str(source), _source())
-    once = _translate_file(source)
-
-    loader = EPUBBookLoader(
-        str(once),
-        StubModel,
-        key="",
-        resume=False,
-        language="zh-hans",
-        disclose=False,
-    )
-    loader.quiet = True
-    loader.make_bilingual_book()
-
-    members, opf = _members_and_opf(once.with_name(f"{once.stem}_bilingual.epub"))
-    _assert_sound(members, opf)
-    assert "AI translation (" not in opf
-    assert f'id="{CONTRIBUTOR_ID}"' not in opf
-    assert not [m for m in members if "translation_note" in m]
-
-
-def test_the_books_own_contributors_and_description_are_untouched(tmp_path):
-    """Finding 7: only entries carrying *our* value and role refine go."""
-    source = _source_with(
-        extra_metadata=[
-            ("DC", "contributor", "A. Editor", {"id": "ed"}),
-            ("DC", "description", "The publisher's blurb.", None),
-            ("DC", "contributor", TOOL_NAME_IN_A_CREDIT, {"id": "thanks"}),
-        ]
-    )
-
-    members, opf = _members_and_opf(_output_of(tmp_path, source))
-
-    _assert_sound(members, opf)
-    assert '<dc:contributor id="ed">A. Editor</dc:contributor>' in opf
-    assert "The publisher's blurb." in opf
-    # credited without a trl refine: the book's statement, not a stamp
-    assert '<dc:contributor id="thanks">' in opf
-
-
-TOOL_NAME_IN_A_CREDIT = "bilingual_book_maker"
-
-
-# ------------------------------------------- finding 8: which model ran
-
-
-class RotatingModel(StubModel):
-    """A run given --model_list may use any of them — the openai translator's
-    shape, where `_model_names` is the readable list beside the cycle."""
-
-    model = "a"
-    _model_names = ["a", "b"]
-
-
-def test_a_model_list_run_names_every_model_it_could_have_used(tmp_path):
-    """Finding 8: the model was captured before a single request ran, so a
-    rotating run recorded only the first entry."""
-    rebuilt = _rebuild(_source(), model=RotatingModel)
-    opf = _written_opf(tmp_path, rebuilt, name="rotating.epub")
-
-    assert "AI translation (a, b," in opf
-    page = rebuilt.get_item_with_id(COLOPHON_ID).content.decode("utf-8")
-    assert "a, b" in page
-
-
 class _RotatingStub:
     """The openai translator's shape: `model_list` is an itertools.cycle,
     the readable list lives on `_model_names`."""
@@ -815,54 +816,126 @@ def test_model_id_never_iterates_a_cycle():
     assert model_id(_CycleOnlyStub()) == "a"
 
 
-# --------------------- finding 2 (re-review): whose description is it
+class _StoredListStub:
+    """Codex's shape: `set_model_list` keeps every name, but every request
+    goes to `self.model`. Naming them all would be a false claim."""
+
+    model = "a"
+    model_name = "a"
+    model_list = ["a", "b"]
 
 
-def test_a_publishers_own_machine_translation_note_survives(tmp_path):
-    """Finding 2 (re-review): the matcher keyed on the opening words alone,
-    so a publisher's `<dc:description>Machine translation (French edition)`
-    — a statement about the book — was deleted as though this tool had
-    written it."""
-    source = _source_with(
-        extra_metadata=[
-            ("DC", "description", "Machine translation (French edition)", None)
-        ]
-    )
+def test_a_stored_model_list_without_rotation_names_one_model():
+    """A finite `model_list` was once read as rotation. Only
+    `_model_names`, which the rotating translator keeps, means that."""
+    assert model_id(_StoredListStub()) == "a"
+
+
+# ------------------------------- names that do not collide
+
+
+def _output_of(tmp_path, source, name="book.epub"):
+    path = tmp_path / name
+    epub.write_epub(str(path), source)
+    return _translate_file(path)
+
+
+def _members_and_opf(output):
+    with zipfile.ZipFile(output) as archive:
+        members = archive.namelist()
+        opf_name = next(n for n in members if n.endswith(".opf"))
+        return members, archive.read(opf_name).decode("utf-8")
+
+
+def _all_ids(opf):
+    return re.findall(r'\bid="([^"]+)"', opf)
+
+
+def _assert_sound(members, opf):
+    assert len(members) == len(set(members)), "a duplicate zip member"
+    ids = _all_ids(opf)
+    assert len(ids) == len(set(ids)), f"a duplicate id: {ids}"
+
+
+def _text_of(tmp_path, file_name):
+    output = tmp_path / "book_bilingual.epub"
+    with zipfile.ZipFile(output) as archive:
+        return archive.read(f"EPUB/{file_name}").decode("utf-8")
+
+
+def test_a_publishers_colophon_is_not_taken_over(tmp_path):
+    """An `id="colophon"` on something of the book's own, and a
+    `colophon.xhtml` of its own, must keep their id, their file and their
+    place."""
+    source = _source(guide=TITLE_PAGE_GUIDE)
+    source.add_item(_page("colophon", "colophon.xhtml", "<p>Set in Bembo.</p>"))
+    source.spine.append(source.get_item_with_id("colophon"))
 
     members, opf = _members_and_opf(_output_of(tmp_path, source))
 
     _assert_sound(members, opf)
-    assert "Machine translation (French edition)" in opf
-    # ours is written beside it, not instead of it
-    assert opf.count("<dc:description>") == 2
-    assert DESCRIPTION_TAIL in opf
+    assert 'id="colophon"' in opf
+    assert "EPUB/colophon.xhtml" in members
+    assert "Bembo" in _text_of(tmp_path, "colophon.xhtml")
 
 
-def test_our_own_description_is_still_replaced_on_a_rerun(tmp_path):
-    """Finding 2 (re-review): recognising the whole sentence must not stop
-    the tool from owning what it wrote."""
+def test_a_page_carrying_an_old_builds_id_is_still_content(tmp_path):
+    """Recognition is by the marker inside the document, never by id — a
+    chapter that happens to carry an old build's is translated and kept."""
+    source = _source(guide=TITLE_PAGE_GUIDE)
+    chapter = _page(
+        LEGACY_COLOPHON_ID, "chapter-two.xhtml", "<p>Chapter two begins.</p>"
+    )
+    source.add_item(chapter)
+    source.spine.append(chapter)
+
+    members, opf = _members_and_opf(_output_of(tmp_path, source))
+
+    _assert_sound(members, opf)
+    assert "EPUB/chapter-two.xhtml" in members
+    body = _text_of(tmp_path, "chapter-two.xhtml")
+    assert "Chapter two begins." in body
+    assert "TChapter two begins." in body  # StubModel's translation, still done
+
+
+# ------------------------------------- --retranslate copies items
+
+
+def test_retranslate_does_not_copy_the_previous_credit(tmp_path):
+    """`retranslate_book` copies every item but the one it edits, so a
+    previous output's line was carried into the new book.
+
+    Retranslated with a different model, so a stale line surviving is
+    visible: keeping the old one is not merely a duplicate, it is the wrong
+    claim about who did the work.
+    """
     source = tmp_path / "book.epub"
-    epub.write_epub(str(source), _source())
+    epub.write_epub(str(source), _source(guide=TITLE_PAGE_GUIDE))
     once = _translate_file(source)
 
-    loader = EPUBBookLoader(str(once), ModelB, key="", resume=False, language="zh-hans")
+    loader = EPUBBookLoader(
+        str(source), ModelB, key="", resume=False, language="zh-hans"
+    )
     loader.quiet = True
-    loader.make_bilingual_book()
+    loader.retranslate = [str(once), "chapter.xhtml", "Body text", "Body text"]
+    with pytest.raises(SystemExit):
+        loader.make_bilingual_book()
 
-    _, opf = _members_and_opf(once.with_name(f"{once.stem}_bilingual.epub"))
+    # retranslate_book writes back over the book it was given
+    members, opf = _members_and_opf(once)
+    _assert_sound(members, opf)
+    assert _credits_in_zip(once) == [
+        ("EPUB/title.xhtml", f"{CREDIT_PREFIX}vendor/b, {date.today().year}.")
+    ]
 
-    assert opf.count(DESCRIPTION_TAIL) == 1
-    assert "vendor/b" in opf
-    assert "x/y" not in opf
 
-
-# ------------- finding 3 (re-review): the recovery save still copied the note
+# ------------------------------------------ the recovery replay
 
 
 def _interrupted_loader(tmp_path, disclose=True, model=ModelB):
     """A loader part-way through translating a previous output."""
     source = tmp_path / "book.epub"
-    epub.write_epub(str(source), _source())
+    epub.write_epub(str(source), _source(guide=TITLE_PAGE_GUIDE))
     once = _translate_file(source)
 
     loader = EPUBBookLoader(
@@ -879,10 +952,22 @@ def _interrupted_loader(tmp_path, disclose=True, model=ModelB):
     return loader, once
 
 
-def test_the_recovery_book_carries_this_runs_note_not_the_last_ones(tmp_path):
-    """Finding 3 (re-review): the replay skipped the old note when handing
-    out plans but added it to the book anyway, so the stamp saw a note
-    already there and left the previous run's claim standing."""
+def test_the_recovery_book_survives_a_second_generation_source(tmp_path):
+    """`_save_temp_book` asks for one plan per document; an interrupted run
+    over a previous output must not die on the arithmetic."""
+    loader, once = _interrupted_loader(tmp_path, model=StubModel)
+
+    loader._save_temp_book()
+
+    temp = once.with_name(f"{once.stem}_bilingual_temp.epub")
+    assert temp.exists()
+    members, opf = _members_and_opf(temp)
+    _assert_sound(members, opf)
+
+
+def test_the_recovery_book_carries_this_runs_line_not_the_last_ones(tmp_path):
+    """The replay copies the source's documents; the previous run's line
+    must not be among them."""
     loader, once = _interrupted_loader(tmp_path)
 
     loader._save_temp_book()
@@ -890,17 +975,14 @@ def test_the_recovery_book_carries_this_runs_note_not_the_last_ones(tmp_path):
     temp = once.with_name(f"{once.stem}_bilingual_temp.epub")
     members, opf = _members_and_opf(temp)
     _assert_sound(members, opf)
-    notes = [m for m in members if "translation_note" in m]
-    assert len(notes) == 1
-    with zipfile.ZipFile(temp) as archive:
-        page = archive.read(notes[0]).decode("utf-8")
-    assert "vendor/b" in page
-    assert "x/y" not in page
+    assert _credits_in_zip(temp) == [
+        ("EPUB/title.xhtml", f"{CREDIT_PREFIX}vendor/b, {date.today().year}.")
+    ]
 
 
-def test_the_recovery_book_carries_no_note_with_disclosure_off(tmp_path):
-    """Finding 3 (re-review): --no_disclosure kept the previous run's note,
-    which is the one outcome the flag exists to prevent."""
+def test_the_recovery_book_carries_no_line_with_disclosure_off(tmp_path):
+    """--no_disclosure kept the previous run's note once, which is the one
+    outcome the flag exists to prevent."""
     loader, once = _interrupted_loader(tmp_path, disclose=False)
 
     loader._save_temp_book()
@@ -908,110 +990,7 @@ def test_the_recovery_book_carries_no_note_with_disclosure_off(tmp_path):
     temp = once.with_name(f"{once.stem}_bilingual_temp.epub")
     members, opf = _members_and_opf(temp)
     _assert_sound(members, opf)
-    assert not [m for m in members if "translation_note" in m]
-    assert DESCRIPTION_TAIL not in opf
-
-
-# ------------------ finding 4 (re-review): only a rotating run names several
-
-
-class _StoredListStub:
-    """Codex's shape: `set_model_list` keeps every name, but every request
-    goes to `self.model`. Naming them all would be a false claim."""
-
-    model = "a"
-    model_name = "a"
-    model_list = ["a", "b"]
-
-
-def test_a_stored_model_list_without_rotation_names_one_model():
-    """Finding 4 (re-review): a finite `model_list` was read as rotation.
-    Only `_model_names`, which the rotating translator keeps, means that."""
-    assert model_id(_StoredListStub()) == "a"
-
-
-# ------------------------------- a fixed-layout book has no page for the note
-
-
-FIXED_LAYOUT_META = ("OPF", "meta", "pre-paginated", {"property": "rendition:layout"})
-
-
-def _colophon_entry(book):
-    return next(
-        entry
-        for entry in book.spine
-        if getattr(entry, "file_name", "").startswith("bbm_translation_note")
-    )
-
-
-def test_the_note_declares_itself_reflowable_in_a_fixed_layout_book():
-    """A pre-paginated package requires page dimensions of every spine
-    document (epubcheck HTM-046), and the note has none to give: its length
-    is whatever the model id makes it. So it says it is not laid out like
-    the rest of the book — the same property the corpus's own fixed-layout
-    books put on their prose pages — instead of being handed an invented
-    page size."""
-    rebuilt = _rebuild(_source(metadata=[FIXED_LAYOUT_META]))
-
-    assert _colophon_entry(rebuilt).spine_properties == ["rendition:layout-reflowable"]
-
-
-def test_a_reflowable_book_says_nothing_about_the_note_s_layout():
-    """Nothing to override, so nothing is written: the property would be a
-    `rendition:` name in a book that has no reason to resolve one."""
-    rebuilt = _rebuild(_source())
-
-    assert not getattr(_colophon_entry(rebuilt), "spine_properties", None)
-
-
-def test_a_document_pinned_pre_paginated_does_not_make_the_book_so():
-    """Package level only. A reflowable book that pins individual documents
-    leaves everything it did not name reflowable, the note included."""
-    rebuilt = _rebuild(
-        _source(
-            metadata=[
-                (
-                    "OPF",
-                    "meta",
-                    "pre-paginated",
-                    {"refines": "#chapter", "property": "rendition:layout"},
-                )
-            ]
-        )
-    )
-
-    assert not getattr(_colophon_entry(rebuilt), "spine_properties", None)
-
-
-def test_the_spine_property_reaches_the_opf(tmp_path):
-    """ebooklib's spine writer emits `idref` and `linear` and nothing else,
-    so the property only exists in the file because `epub_loader` wraps it.
-    Nothing is installed here on purpose: importing the loader is what
-    installs the wrapper, so a caller that stamps a book and writes it
-    without ever building a loader gets the same OPF."""
-    opf = _written_opf(tmp_path, _rebuild(_source(metadata=[FIXED_LAYOUT_META])))
-
-    assert (
-        f'<itemref idref="{COLOPHON_ID}" properties="rendition:layout-reflowable"/>'
-        in opf
-    )
-
-
-def test_the_wrapper_is_an_addition_not_a_replacement(tmp_path, monkeypatch):
-    """Under ebooklib's own writer the spine is exactly what it always was,
-    and an item carrying a property nobody reads is not an error. Pinned
-    explicitly rather than by leaving the class alone: any test in this
-    file that builds a real loader installs the wrapper process-wide."""
-    from book_maker.loader import epub_loader
-
-    monkeypatch.setattr(
-        epub.EpubWriter,
-        "_write_opf_spine",
-        epub_loader._EBOOKLIB_WRITE_OPF_SPINE,
-    )
-    opf = _written_opf(tmp_path, _rebuild(_source(metadata=[FIXED_LAYOUT_META])))
-
-    assert f'<itemref idref="{COLOPHON_ID}"/>' in opf
+    assert _credits_in_zip(temp) == []
 
 
 # ------------------------------- a bad entry costs a line, never the book
@@ -1055,46 +1034,65 @@ def test_the_book_survives_a_metadata_block_it_cannot_read_at_all(capsys):
 
 
 def test_a_failed_stamp_still_writes_the_book(tmp_path, capsys, monkeypatch):
-    """Hours of translation are not worth losing over the note at the end.
-    The book goes out unstamped and the run says so."""
+    """Hours of translation are not worth losing over the line at the front
+    of it. The book goes out unstamped and the run says so."""
     from book_maker.loader import epub_loader
 
     def boom(*args, **kwargs):
-        raise RuntimeError("no room at the end of the book")
+        raise RuntimeError("no room on the title page")
 
     monkeypatch.setattr(epub_loader, "stamp_disclosure", boom)
-    opf = _written_opf(tmp_path, _rebuild(_source()))
+    rebuilt = _rebuild(_source(guide=TITLE_PAGE_GUIDE))
 
-    assert "bilingual_book_maker" not in opf
-    assert DESCRIPTION_TAIL not in opf
+    assert _credits_of(rebuilt) == []
     said = _said(capsys)
     assert "could not be marked as a machine translation" in said
-    assert "no room at the end of the book" in said
+    assert "no room on the title page" in said
     # The warning has to say what is missing, not just that something is.
     assert "nothing in the file will say it was translated by a machine" in said
 
 
 def test_a_stamp_that_fails_halfway_leaves_nothing_behind(monkeypatch):
-    """The credit and the note stand or fall together. A `dc:contributor`
-    naming a translator with no note behind it says less than saying
-    nothing, and the caller is entitled to write the book after a failure."""
+    """The line and the record stand or fall together. A record naming a
+    model with no line in front of the reader says the opposite of what the
+    ruling asks for, and the caller is entitled to write the book after a
+    failure."""
     from book_maker.loader import disclosure
 
-    def boom(*args, **kwargs):
-        raise RuntimeError("cannot build the note")
+    class BoomRecord:
+        glossary_bytes = None
 
-    monkeypatch.setattr(disclosure, "build_colophon", boom)
+        def record(self, when=None):
+            raise RuntimeError("cannot build the record")
+
     # Built with the stamp off, so this exercises `stamp_disclosure` alone
     # and not the loader's own guard around it.
-    book = _rebuild(_source(), disclose=False)
-    before = len(book.spine)
+    book = _rebuild(_source(guide=TITLE_PAGE_GUIDE), disclose=False)
+    before = len(book.items)
 
     with pytest.raises(RuntimeError):
-        disclosure.stamp_disclosure(book, "x/y", "zh-hans")
+        disclosure.stamp_disclosure(book, "x/y", translation_metadata=BoomRecord())
 
-    assert not book.get_metadata("DC", "contributor")
-    assert not book.get_metadata("DC", "description")
-    assert len(book.spine) == before
+    assert _credits_of(book) == []
+    assert len(book.items) == before
+
+
+def test_a_stale_credit_that_cannot_be_removed_costs_a_warning(capsys, monkeypatch):
+    """The strip runs on every source. A book whose documents cannot be read
+    must not take the translation down with it, but the operator has to hear
+    that the output may name two translators."""
+    from book_maker.loader import epub_loader
+
+    def boom(*args, **kwargs):
+        raise AttributeError("no content")
+
+    monkeypatch.setattr(epub_loader, "strip_prior_credit", boom)
+    rebuilt = _rebuild(_source(guide=TITLE_PAGE_GUIDE))
+
+    assert rebuilt.get_metadata("DC", "title")
+    said = _said(capsys)
+    assert "earlier translation credit could not be removed" in said
+    assert "may end up naming two translators" in said
 
 
 def test_unreadable_prefix_declarations_do_not_stop_the_book(capsys, monkeypatch):
@@ -1144,20 +1142,6 @@ def test_an_underivable_identifier_does_not_stop_the_book(capsys, monkeypatch):
     assert "could not derive a stable identifier" in _said(capsys)
 
 
-def test_the_wrapper_names_what_it_wraps_so_a_reload_cannot_double_it():
-    """The capture at import reads `_bbm_wraps`. Without it, reloading this
-    module after the wrapper is installed captures the wrapper, which then
-    calls itself on the next write until RecursionError."""
-    from book_maker.loader import epub_loader
-
-    wrapped = epub_loader._write_opf_spine_patch._bbm_wraps
-
-    assert wrapped is not epub_loader._write_opf_spine_patch
-    # What a re-import would capture, run against what is installed now.
-    installed = epub.EpubWriter._write_opf_spine
-    assert getattr(installed, "_bbm_wraps", installed) is wrapped
-
-
 def test_one_badly_shaped_value_does_not_cost_its_whole_namespace(capsys):
     """A three-element entry where the reader expects two. Unpacked in a
     generator it raises at the loop, not at the entry, and everything else
@@ -1176,21 +1160,3 @@ def test_one_badly_shaped_value_does_not_cost_its_whole_namespace(capsys):
     said = _said(capsys)
     assert "1 metadata entry could not be copied" in said
     assert "subject" in said
-
-
-def test_a_book_that_cannot_take_the_stamp_is_refused_before_it_is_touched():
-    """The commit half assumes two things about the book, and they are the
-    only way it can fail. Checked while nothing has been written, so the
-    caller's warning is true: no half-applied credit is left behind."""
-    from book_maker.loader import disclosure
-
-    book = _rebuild(_source(), disclose=False)
-    # `_iter_metadata` tolerates this shape, so such a book reaches the stamp.
-    book.metadata[None] = ["not a dict of entries"]
-    before = len(book.metadata.get(DC_NS, {}).get("contributor", []))
-
-    with pytest.raises(TypeError):
-        disclosure.stamp_disclosure(book, "x/y", "zh-hans")
-
-    assert len(book.metadata.get(DC_NS, {}).get("contributor", [])) == before
-    assert not book.metadata.get(DC_NS, {}).get("description")

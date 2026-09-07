@@ -95,6 +95,61 @@ def _text_blocks(message):
     )
 
 
+# A reply whose whole content sits inside one symmetric pair of triple-backtick
+# fences. The opening fence may carry a markdown info string ("```zh"), but only
+# when it owns its line — otherwise "```Animal Farm```" would read "Animal" as a
+# language tag and lose the first word of the translation. `(?P=fence)` pins the
+# closing run to the same length as the opening one, and the trailing `\s*\Z`
+# makes it the *last* fence in the reply, not the first one found.
+_OUTER_FENCE = re.compile(
+    r"""\A\s*
+        (?P<fence>`{3,})
+        (?:(?P<tag>[A-Za-z0-9_+.#-]*)[ \t]*\r?\n)?
+        (?P<body>.*?)
+        (?P=fence)\s*\Z
+    """,
+    re.DOTALL | re.VERBOSE,
+)
+
+
+def _strip_outer_fence(text, source=None):
+    """Unwrap a translation the model handed back inside a code fence.
+
+    This route's DEFAULT_PROMPT delimits the source with triple backticks
+    ("...the text within triple backticks..."), and models mirror the
+    delimiter back around their answer. Nothing downstream removes it, so the
+    fences were written into the book: `<p>```动物庄园```</p>` on every
+    paragraph of a default anthropic run (seen live 260905, plain and
+    `--use_context session` alike).
+
+    The prompt is upstream's contract and users write `--prompt` text against
+    it, so the fix is here, on the reply. Only a *symmetric outer* wrap is
+    removed:
+
+    * no wrap, or an opening fence with no closing one, and the text comes
+      back byte-identical — a half-fenced reply is a damaged reply, and
+      quietly half-repairing it hides that;
+    * a fence run inside the body means the reply is a document with code
+      blocks in it rather than a wrapped translation, so it is left alone;
+    * a wrap around nothing is left alone too, rather than manufacturing an
+      empty translation out of a garbage reply;
+    * and when the *source* passage is itself one fenced block, a fenced
+      reply is a faithful translation of it, not a mirrored delimiter — it
+      keeps its fence.
+    """
+    if source is not None and _OUTER_FENCE.match(source):
+        return text
+    match = _OUTER_FENCE.match(text or "")
+    if not match:
+        return text
+    body = match.group("body")
+    # Anything as long as the outer fence, inside it, and this is not a wrap.
+    if match.group("fence") in body:
+        return text
+    body = body.strip()
+    return body if body else text
+
+
 def _reply_text(message):
     """`_text_blocks`, but a reply with no text at all is an error, not ""."""
     text = _text_blocks(message)
@@ -157,6 +212,10 @@ class Claude(Base):
         self.model = "claude-haiku-4-5-20251001"  # default it for now
         self.language = language
         self.prompt_template = prompt_template or self.DEFAULT_PROMPT
+        # Construction-time intent, because prompt_template itself is
+        # temporarily swapped for the joined prompt on the batch path — a
+        # stock-prompt batch must still unwrap its mirrored fence.
+        self._uses_stock_prompt = not prompt_template
         self.prompt_sys_msg = prompt_sys_msg or ""
         self.temperature = temperature
         self.context_flag = context_flag
@@ -272,9 +331,23 @@ class Claude(Base):
         """The user message for one unit.
 
         Deterministic for a given text, which is what lets session mode store
-        exactly what it sent without threading the string around.
+        exactly what it sent without threading the string around — the marker
+        preamble included, since it is a function of the text too.
         """
-        return self.prompt_template.format(text=text, language=self.language)
+        return (
+            self._marker_preamble(text)
+            + self.prompt_template.format(
+                # `{crlf}` is documented for `--prompt` and was filled on the
+                # openai and codex routes only; here the same template raised
+                # KeyError mid-book.
+                text=text,
+                language=self.language,
+                crlf="\n",
+            )
+            # Anthropic has no slot for `--prompt`'s style section either, so
+            # it rides at the end of the turn, in the wording every route uses.
+            + self.style_suffix()
+        )
 
     def create_messages(self, text, intermediate_messages=None):
         """Create messages for the current translation request"""
@@ -304,6 +377,7 @@ class Claude(Base):
                 "content": self.prompt_template.format(
                     text="\n\n".join(self.context_list),
                     language=self.language,
+                    crlf="\n",
                 ),
             },
             {"role": "assistant", "content": "\n\n".join(self.context_translated_list)},
@@ -379,7 +453,11 @@ class Claude(Base):
         # this message verbatim, so any difference — the prompt template, say —
         # would make the newest pair a cache miss, and the run would re-read a
         # paragraph at full input price every request.
-        self.session.append(self._user_content(text), t_text)
+        self._record_session_exchange(self._user_content(text), t_text)
+
+    def _record_session_exchange(self, user_content, reply_text):
+        """Append one exchange, given the strings the wire actually carried."""
+        self.session.append(user_content, reply_text)
         if not self.session.should_compact(self._session_budget()):
             return
         if self.no_context_compact:
@@ -399,14 +477,23 @@ class Claude(Base):
             *self.session.messages(),
             {
                 "role": "user",
-                "content": handoff_prompt(with_style=not self.style_note),
+                # This route carries no glossary of its own (SUPPORTS_GLOSSARY
+                # is False on it), so the compact turn is never asked for a
+                # renderings block nobody would read.
+                "content": handoff_prompt(
+                    with_glossary=False, with_style=not self.style_note
+                ),
             },
         ]
         try:
             r = self.client.messages.create(
                 max_tokens=4096,
                 messages=messages,
-                system=self.prompt_sys_msg,
+                # The same system message every other request on this route
+                # sends, `--source_lang` note included: the compact turn
+                # used the raw attribute and so ran under different standing
+                # instructions than the window it was condensing.
+                system=self._augment_system_content(self._system_message()),
                 temperature=self.temperature,
                 model=self.model,
                 extra_body=self.extra_body or None,
@@ -552,7 +639,7 @@ class Claude(Base):
             r = self.client.messages.create(
                 max_tokens=4096,
                 messages=messages,
-                system=self.prompt_sys_msg,
+                system=self._augment_system_content(self._system_message()),
                 temperature=self.temperature,
                 model=self.model,
                 extra_body=self.extra_body or None,
@@ -561,7 +648,16 @@ class Claude(Base):
         except APIStatusError as e:
             self._explain_wrong_shape(e)
         self._note_usage(r)
+        # Blocks first, fences second: the strip has to see the final joined
+        # text, or a reply split across two text blocks ("```" + "译文```")
+        # keeps its wrapper. Everything downstream — the batch splitter, the
+        # session history, the book — then sees the same unwrapped string.
+        # Stock prompt only: the mirrored wrapper is DEFAULT_PROMPT's own
+        # fencing instruction coming back, so a custom `--prompt` owns its
+        # reply format — one asking for fenced Markdown must receive it.
         t_text = _reply_text(r)
+        if self._uses_stock_prompt:
+            t_text = _strip_outer_fence(t_text, source=text)
 
         if self.context_flag:
             self.save_context(text, t_text)
@@ -571,21 +667,22 @@ class Claude(Base):
     def translate_list(self, text_list):
         """Translate a group of paragraphs in one request.
 
-        Plan mode hands whole poetry windows here, and the window is the
-        point: verse only survives if the lines are translated together, with
-        their neighbours in view. The inherited default loops over `translate`
-        and dissolves the group into isolated lines, which is the one thing
-        `--poetry-group-size` exists to prevent.
+        Plan mode hands whole batches of short units here, and the batch is
+        the point: consecutive short lines only survive if they are
+        translated together, with their neighbours in view. The inherited
+        default loops over `translate` and dissolves the group into isolated
+        lines, which is the one thing `--poetry-group-size` exists to
+        prevent.
 
-        The delimiter contract, the count check and the line-by-line retry all
-        come from the base, so this route and the openai one agree on what a
-        batch looks like and on what happens when the reply does not come back
-        in the right number of pieces.
+        The delimiter contract and the count check come from the base, so
+        this route and the openai one agree on what a batch looks like — and
+        on raising `BatchMismatch` rather than repairing a bad reply here.
+        The loader's ladder owns the repair.
         """
         return self._do_batch_translate(
             text_list,
             self.prompt_template,
-            self.prompt_sys_msg,
+            self._system_message(),
             self.DEFAULT_PROMPT,
             self.translate,
         )

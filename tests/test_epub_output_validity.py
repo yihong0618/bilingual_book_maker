@@ -483,7 +483,12 @@ def test_the_stamp_is_a_language_tag_not_the_prompt_wording():
     from bs4 import BeautifulSoup
     from book_maker.loader.helper import EPUBBookLoaderHelper, language_tag
 
-    assert language_tag("simplified chinese") == "zh"
+    # Retires the `== "zh"` pin this line carried: "simplified chinese" was
+    # the name of both `zh` and `zh-hans`, and the reverse map's last-wins
+    # gave it to `zh`. `zh` is "chinese" now, so the name belongs to the tag
+    # that means it (tests/test_language_tag_and_name.py).
+    assert language_tag("simplified chinese") == "zh-hans"
+    assert language_tag("chinese") == "zh"
     assert language_tag("zh-hans") == "zh-hans"
     assert language_tag("pt-BR") == "pt-BR"
     assert language_tag("Klingon, but formal") is None
@@ -495,7 +500,7 @@ def test_the_stamp_is_a_language_tag_not_the_prompt_wording():
     EPUBBookLoaderHelper(
         None, 1, "", False, language="simplified chinese"
     ).insert_trans(soup.div, "我根本不是俄国人")
-    assert soup.find_all("div")[1]["lang"] == "zh"
+    assert soup.find_all("div")[1]["lang"] == "zh-hans"
 
     soup = BeautifulSoup(
         '<body><div lang="de">Bin gar keine Russin</div></body>', "html.parser"

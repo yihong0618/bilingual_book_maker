@@ -44,7 +44,13 @@ import tempfile
 # order, count, or text), or the row contract itself: resume caches are
 # positional over the unit list, and a plan JSON written under a different
 # partition names rows that no longer exist.
-PLAN_SCHEMA_VERSION = 5
+# 6: atomic inline markers. A short excluded <code>/<sup>/<img> mid-sentence
+# stopped being a run barrier, so an owner that used to yield three units now
+# yields one — a different partition, and positional resume caches over it.
+# 7: signatures key on CSS-identifier class tokens only (plus escaped-selector
+# exceptions). A schema-6 plan for a book with non-ident tokens names rows
+# this partition no longer mints (linear-algebra.epub: 1182 → double digits).
+PLAN_SCHEMA_VERSION = 7
 
 # Evidence carried per row. Enough that an agent (or a person) can rule on a
 # signature without unzipping the book; capped because the JSON is read into

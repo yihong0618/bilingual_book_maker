@@ -67,6 +67,12 @@ class OfflineTranslator:
     def __init__(self, *args, **kwargs):
         self._fatal_error_detected = False
         self.is_test = False
+        # A fully context-capable route carries the session knobs, and the
+        # loader reads them back off the translator to decide what to
+        # narrate. A stand-in without them would make the compaction budget
+        # untestable through the CLI.
+        self.context_compact_at = kwargs.get("context_compact_at")
+        self.no_context_compact = kwargs.get("no_context_compact", False)
         # As Base.__init__ does: the key is a secret from the moment the
         # translator holds it, and every sink the CLI prints goes through
         # redact(); a stand-in that skipped this would let a CLI test pass
@@ -101,6 +107,24 @@ class OfflineTranslator:
 
     def translate_and_split_lines(self, text, *args, **kwargs):
         return [self.translate(line) for line in str(text).splitlines()]
+
+
+class _OfflineClassifierSession:
+    """A conversation that answers the plan's turns, offline.
+
+    Every signature is book content, for the reason `structured_json` gives:
+    what these tests need is a plan run that completes.
+    """
+
+    def budget(self):
+        return 8000
+
+    def start(self, trunk):
+        print("offline classifier session started")
+
+    def ask(self, text):
+        units = text.count("occurrence(s)")
+        return ",".join(["translate"] * units)
 
 
 class OfflineLLM(OfflineTranslator):
@@ -144,6 +168,17 @@ class OfflineLLM(OfflineTranslator):
 
     def supports_structured_json(self):
         return True
+
+    def classify_session(self, model=None):
+        """The classifier conversation the real openai route offers.
+
+        Its presence is the contract: an endpoint with no JSON verdict now
+        plans over a plain session instead of dropping to tag mode, and a
+        stand-in without one would make that untestable offline. It answers
+        the format exactly; what a *bad* reply does is
+        tests/test_session_classify.py's subject.
+        """
+        return _OfflineClassifierSession()
 
     def structured_json(self, prompt, schema, model=None, accept=None):
         # Every signature is book content: what the classifier does with a

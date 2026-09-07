@@ -8,6 +8,12 @@ translated is a judgment, and there are three ways to make it:
     agent   no API call: the plan JSON carries the evidence and a coding
             agent (or a person) fills in the actions, then the run repeats
 
+`model` asks in one of two ways, and which one is not a mode the user picks:
+an endpoint whose graded schema support reaches `json_object` is asked for
+JSON (`model.py`), and one below that which can still hold a conversation is
+asked over a plain session (`session.py`). The question, the evidence and the
+verdicts are the same either way; only the wire format differs.
+
 There is deliberately no fourth mode where nobody rules and the code
 translates whatever it could not rule out — that silent default is what
 made a heuristic's blind spot look like a decision. `all` is the same
@@ -26,7 +32,12 @@ from .model import (
     PlanClassifyError,
     PlanClassifyFatal,
     PlanUnresolvedError,
-    classify_plan,
+    classify_plan as classify_with_schema,
+)
+from .session import (
+    can_session_classify,
+    classify_over_session,
+    session_classify_engaged,
 )
 from .all import decide_everything
 
@@ -93,6 +104,19 @@ def mode_policy(name):
         ) from None
 
 
+def classify_plan(ledger, translator, model=None):
+    """Ask this translator for verdicts, in whichever way it can answer.
+
+    The choice is the endpoint's, not the user's: a route that produces no
+    JSON object cannot be asked for one, and asking anyway is what used to
+    turn plan mode off there. Nothing about the two paths differs above this
+    line — both return ``({key: (verdict, content_type)}, candidates)``.
+    """
+    if session_classify_engaged(translator, model):
+        return classify_over_session(ledger, translator, model=model)
+    return classify_with_schema(ledger, translator, model=model)
+
+
 __all__ = [
     "MODES",
     "MODE_POLICY",
@@ -102,8 +126,12 @@ __all__ = [
     "PlanClassifyFatal",
     "PlanUnresolvedError",
     "build_agent_prompt",
+    "can_session_classify",
+    "classify_over_session",
     "classify_plan",
+    "classify_with_schema",
     "decide_everything",
     "gather_candidates",
     "mode_policy",
+    "session_classify_engaged",
 ]

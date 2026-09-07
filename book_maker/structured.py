@@ -35,12 +35,22 @@ class StructuredJSONFailed(Exception):
     """
 
 
-def extract_json_object(text):
+def extract_json_object(text, required_keys=None):
     """Pull the first balanced JSON object out of a model reply.
 
     Endpoints below strict decoding wrap answers in prose or ``` fences
     no matter how firmly the prompt says not to. Returns None when there
     is no parseable object — the caller decides what that means.
+
+    `required_keys` names the top-level keys an *answer* carries, and
+    without it this function fails open. Measured 260905, off-OpenAI: one
+    unescaped quote leaves the outer object unparsable, the scan moves to
+    the next `{`, and an inner fragment — the first item of the answer
+    array — comes back looking like the whole answer. With the keys given,
+    an object that shares none of them (directly, or under the schema
+    echo `unwrap_schema_echo` recovers) is stepped over and the scan
+    continues; sharing *one* is enough, because a partial answer is still
+    worth linting.
     """
     if not text:
         return None
@@ -65,11 +75,43 @@ def extract_json_object(text):
                 depth -= 1
                 if depth == 0:
                     try:
-                        return json.loads(text[start : i + 1])
+                        obj = json.loads(text[start : i + 1])
                     except json.JSONDecodeError:
                         break  # try the next opening brace
+                    if _answers_with_keys(obj, required_keys):
+                        return obj
+                    break  # parsed, but not an answer: try the next one
         start = text.find("{", start + 1)
     return None
+
+
+def _answers_with_keys(obj, required_keys):
+    """Whether `obj` carries at least one of the keys an answer must have."""
+    if not required_keys:
+        return True
+    if not isinstance(obj, dict):
+        return False
+    wanted = set(required_keys)
+    if wanted & set(obj):
+        return True
+    unwrapped = unwrap_schema_echo(obj)
+    return isinstance(unwrapped, dict) and bool(wanted & set(unwrapped))
+
+
+def schema_required_keys(schema):
+    """The top-level keys an answer to `schema` is expected to carry.
+
+    Derived from the schema the caller already has, so no rung has to be
+    told twice what it is asking for. `required` when the schema pins one
+    (ours all do), the declared properties otherwise.
+    """
+    if not isinstance(schema, dict):
+        return ()
+    body = schema.get("schema", schema)
+    if not isinstance(body, dict):
+        return ()
+    keys = body.get("required") or list(body.get("properties") or ())
+    return tuple(k for k in keys if isinstance(k, str))
 
 
 # Keys that mean "this object is a JSON Schema", not "this object is an answer".

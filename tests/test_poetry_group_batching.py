@@ -1,19 +1,22 @@
-"""A poetry window must reach the model as one request, on every LLM route.
+"""A batch must reach the model as one request, on every LLM route.
 
-`--poetry-group-size` exists so stanza-shaped runs are translated with their
-neighbours in view. The grouping happens in the plan, but a window only
+`--poetry-group-size` exists so runs of short units are translated with their
+neighbours in view. The grouping happens in the plan, but a batch only
 becomes a single request if the translator's `translate_list` batches — the
 base implementation loops and translates each line alone, which dissolves the
 group and gives the flag nothing to do. These tests hold `claude` and `codex`
-to the contract the openai route already keeps: N lines in, exactly N lines
-out and in order, or an explicit fall back to line-by-line rather than verse
-landing on the wrong lines.
+to the contract every LLM route now keeps: N lines in, exactly N lines out
+and in order, **or `BatchMismatch`**. No route repairs a bad reply itself any
+more; the loader's `_translate_texts_aligned` ladder halves the chunk, which
+costs about twice the batch instead of N singles on top of it.
 """
 
 import re
 from types import SimpleNamespace
 
-from book_maker.translator.base_translator import BATCH_DELIMITER
+import pytest
+
+from book_maker.translator.base_translator import BATCH_DELIMITER, BatchMismatch
 from book_maker.translator.claude_translator import Claude
 from book_maker.translator.codex_translator import Codex
 
@@ -61,25 +64,38 @@ def test_claude_sends_a_window_as_one_request():
     assert sent == BATCH_DELIMITER.join(STANZA)
 
 
-def test_claude_short_reply_falls_back_to_line_by_line():
+def test_claude_short_reply_raises_for_the_loader_to_divide():
     # one paragraph back for four lines: no split of it yields four, so
     # accepting it would put the whole stanza on the first line
     claude, calls = _claude(["虎啊虎啊，燃烧在夜的森林里"])
 
-    assert claude.translate_list(STANZA) == [f"译[{line}]" for line in STANZA]
+    with pytest.raises(BatchMismatch):
+        claude.translate_list(STANZA)
 
-    # the batch attempt, then one request per line
-    assert len(calls) == 1 + len(STANZA)
-    assert [_claude_payload(c) for c in calls[1:]] == STANZA
+    # the batch attempt and nothing else: no self-repair, no retry of the
+    # same group — the loader halves it instead
+    assert len(calls) == 1
 
 
-def test_claude_over_long_reply_falls_back_to_line_by_line():
+def test_claude_over_long_reply_raises_for_the_loader_to_divide():
     reply = BATCH_DELIMITER.join(["虎", "灼灼", "林中", "夜", "里"])
     claude, calls = _claude([reply])
 
-    assert claude.translate_list(STANZA) == [f"译[{line}]" for line in STANZA]
+    with pytest.raises(BatchMismatch):
+        claude.translate_list(STANZA)
 
-    assert len(calls) == 1 + len(STANZA)
+    assert len(calls) == 1
+
+
+def test_claude_empty_slot_for_a_non_empty_line_raises():
+    # count is not alignment: a merged pair keeps the count by padding
+    reply = BATCH_DELIMITER.join(["虎灼灼", "", "林中", "夜里"])
+    claude, calls = _claude([reply])
+
+    with pytest.raises(BatchMismatch):
+        claude.translate_list(STANZA)
+
+    assert len(calls) == 1
 
 
 def test_claude_single_line_group_takes_the_plain_path():
@@ -163,22 +179,23 @@ def test_codex_sends_a_window_as_one_turn():
     assert "4" in server.turns[0]
 
 
-def test_codex_short_reply_falls_back_to_line_by_line():
+def test_codex_short_reply_raises_for_the_loader_to_divide():
     codex, server = _codex(["虎啊虎啊，燃烧在夜的森林里"])
 
-    assert codex.translate_list(STANZA) == [f"译[{line}]" for line in STANZA]
+    with pytest.raises(BatchMismatch):
+        codex.translate_list(STANZA)
 
-    assert len(server.turns) == 1 + len(STANZA)
-    assert server.turns[1:] == STANZA
+    assert len(server.turns) == 1
 
 
-def test_codex_over_long_reply_falls_back_to_line_by_line():
+def test_codex_over_long_reply_raises_for_the_loader_to_divide():
     reply = BATCH_DELIMITER.join(["虎", "灼灼", "林中", "夜", "里"])
     codex, server = _codex([reply])
 
-    assert codex.translate_list(STANZA) == [f"译[{line}]" for line in STANZA]
+    with pytest.raises(BatchMismatch):
+        codex.translate_list(STANZA)
 
-    assert len(server.turns) == 1 + len(STANZA)
+    assert len(server.turns) == 1
 
 
 def test_codex_single_line_group_takes_the_plain_path():
@@ -276,13 +293,34 @@ def test_claude_session_prefix_survives_a_grouped_request():
     assert _extends(calls), "a grouped request broke the cached prefix"
 
 
-def test_claude_session_prefix_survives_a_fallback_to_line_by_line():
-    """The failed batch request was still sent, so it belongs in the history."""
+def test_claude_session_does_not_record_a_failed_batch():
+    """A misaligned exchange in the prefix is worse than one cache miss.
+
+    Pinned decision: the failed batch request *was* sent, and recording it
+    would keep the history truthful — but it would also seed every later
+    request with an answer we refused to use, and the divide's sub-batches
+    then extend a prefix built on it. Not appended.
+    """
     claude, calls = _session_claude(["虎啊虎啊，燃烧在夜的森林里"])
 
-    claude.translate_list(STANZA)
+    with pytest.raises(BatchMismatch):
+        claude.translate_list(STANZA)
 
-    assert _extends(calls), "the fallback lines did not extend the batch request"
+    assert claude.session.messages() == []
+    assert len(calls) == 1
+
+
+def test_claude_session_prefix_survives_the_divide_that_follows():
+    """The loader's halves extend the prefix, because the failure left none."""
+    good = BATCH_DELIMITER.join(["虎", "灼灼"])
+    claude, calls = _session_claude(["虎啊虎啊，燃烧在夜的森林里", good, good])
+
+    with pytest.raises(BatchMismatch):
+        claude.translate_list(STANZA)
+    claude.translate_list(STANZA[:2])
+    claude.translate_list(STANZA[2:])
+
+    assert _extends(calls[1:]), "the halves did not extend one another"
 
 
 def test_claude_window_mode_still_borrows_the_system_message():

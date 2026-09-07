@@ -25,13 +25,17 @@ from rich import print
 from rich.markup import escape
 from tqdm import tqdm
 
+from book_maker import translation_metadata as tmeta
 from book_maker.redaction import redact
 from book_maker.session_context import handoff_path
-from book_maker.utils import num_tokens_from_text, prompt_config_to_kwargs
+from book_maker.utils import (
+    language_code,
+    num_tokens_from_text,
+    prompt_config_to_kwargs,
+)
 
 from .base_loader import BaseBookLoader
 from .helper import (
-    language_tag,
     stamp_translation,
     restamp_language,
     EPUBBookLoaderHelper,
@@ -46,24 +50,31 @@ from .helper import (
     rebase_ncx_srcs,
     shorter_result_link,
     strip_duplicate_ids,
+    translate_list_or_singles,
 )
 from .disclosure import (
+    credit_name,
     entry_is_our_colophon,
     is_calibre_metadata,
     is_our_colophon,
     is_prior_disclosure,
+    is_prior_glossary,
+    is_prior_translation_metadata,
     model_id,
+    prior_glossary_shas,
     stamp_disclosure,
+    strip_prior_credit,
     tool_contributor_ids,
-    translation_label,
 )
 from .font_obfuscation import deobfuscate_fonts, reobfuscate_written_epub
 from .rights import DRM_MESSAGE, check_epub
 from .plan import (
+    GENERAL_GROUP_MAX_UNITS,
     PLAN_SCHEMA_VERSION,
     BookCss,
     TranslationPlan,
     UnsafeSingleTranslateError,
+    derived_token_budget,
     file_segment_hazards,
     file_sha256,
     inline_subtree_root,
@@ -71,8 +82,19 @@ from .plan import (
     is_simple_owner,
     load_plan_overrides,
     partition_file,
+    plan_budget_notice,
     planning_settings,
 )
+from ..session_context import compact_budget_notice
+from .markers import (
+    MARKER_OPEN,
+    MARKER_RE,
+    find_markers,
+    marker_report,
+    reconcile_markers,
+    split_on_markers,
+)
+from ..translator.base_translator import BatchMismatch
 from .classify import (
     PlanClassifyError,
     PlanUnresolvedError,
@@ -171,6 +193,19 @@ _KEEP_WHEN_EMPTY = frozenset(
     ["img", "br", "hr", "svg", "input", "video", "audio", "object", "iframe"]
 )
 
+# `_numeric_slot_shift`'s two constants; both measured, see that docstring.
+# A one-digit run is in every book on every page ("chapter 1", "note 1"), so
+# it says nothing about which slot a translation came from. Two digits up is
+# the shortest run that names something: a verse number, a year, a page.
+_SHIFT_DIGIT_RUN = re.compile(r"\d{2,}")
+# Cross-slot numbers needed before the batch is charged through the ladder.
+# Measured over the 36-cell 260906 weak-model sweep: the one shifted cell
+# (`ds-waste-u96-b4800`) has four, all one slot earlier; the busiest clean
+# cell (`o4m-waste-u256-b1600`) has exactly one. Every other cell has none,
+# so 2 is the only value the evidence separates on — 1 would have cost a
+# clean 256-unit batch its whole halving ladder.
+_SHIFT_MIN_WITNESSES = 2
+
 
 @dataclass(frozen=True)
 class TranslationJob:
@@ -231,59 +266,6 @@ def check_file_filters_against(book, only_filelist, exclude_filelist):
         raise SystemExit(1)
 
 
-# ebooklib's own spine writer, captured before the class attribute is
-# replaced. Read through `_bbm_wraps` so the capture survives a reload of
-# this module: after the wrapper is installed, the class attribute *is* the
-# wrapper, and capturing that would make it call itself until RecursionError.
-_INSTALLED_WRITE_OPF_SPINE = epub.EpubWriter._write_opf_spine
-_EBOOKLIB_WRITE_OPF_SPINE = getattr(
-    _INSTALLED_WRITE_OPF_SPINE, "_bbm_wraps", _INSTALLED_WRITE_OPF_SPINE
-)
-
-
-def _write_opf_spine_patch(obj, root, ncx_id):
-    """ebooklib's spine, plus the `properties` it has no way to write.
-
-    A spine property is how EPUB 3 says one document is not laid out like
-    the rest of the book, and the translation note needs exactly that: in a
-    fixed-layout book every spine document must declare page dimensions, and
-    a note about the translation has none to declare. See
-    `disclosure.REFLOWABLE_PROPERTY`.
-
-    Written as a wrapper rather than a copy of ebooklib's loop: `linear`,
-    the tuple form of a spine entry and the bare-idref form are all its
-    business, and duplicating them here would mean maintaining them here.
-    """
-    _EBOOKLIB_WRITE_OPF_SPINE(obj, root, ncx_id)
-
-    wanted = {}
-    for entry in obj.book.spine:
-        item = entry[0] if isinstance(entry, tuple) else entry
-        properties = getattr(item, "spine_properties", None)
-        if properties:
-            wanted[item.get_id()] = " ".join(properties)
-    if not wanted:
-        return
-
-    spine = root.find("spine")
-    if spine is None:
-        return
-    for itemref in spine.findall("itemref"):
-        value = wanted.get(itemref.get("idref"))
-        if value:
-            itemref.set("properties", value)
-
-
-_write_opf_spine_patch._bbm_wraps = _EBOOKLIB_WRITE_OPF_SPINE
-
-# Installed on import, not from `EPUBBookLoader.__init__`. `stamp_disclosure`
-# marks the note with `spine_properties`, and whether that reaches the file
-# must not depend on whether something else happened to build a loader first
-# in this process — anything that stamps a book and calls `write_epub` gets
-# the same OPF.
-epub.EpubWriter._write_opf_spine = _write_opf_spine_patch
-
-
 class EPUBBookLoader(BaseBookLoader):
     # what `lang=` may carry for the target language; None stamps nothing
     language_tag = None
@@ -308,10 +290,14 @@ class EPUBBookLoader(BaseBookLoader):
         context_mode="window",
         context_compact_at=None,
         no_context_compact=False,
+        glossary=None,
+        glossary_auto=None,
         temperature=1.0,
         source_lang="auto",
         parallel_workers=1,
         disclose=True,
+        translation_metadata=False,
+        language_tag=None,
     ):
         # Before the translator is built and before a byte of the book is
         # read: a protected book is refused, and there is no flag that opens
@@ -327,8 +313,16 @@ class EPUBBookLoader(BaseBookLoader):
         # calibre's record of its own file is not covered by this: that is
         # a false statement about the file, not a disclosure.
         self.disclose = disclose
-        # what `lang=` may carry for that language, or None when nothing may
-        self.language_tag = language_tag(language)
+        # --translation-metadata: the record (model, date, the glossary the
+        # run was pinned to) as a manifest item. Only the opt-in half — a
+        # plan or session run writes it whether or not this was passed. See
+        # `_wants_translation_metadata`.
+        self.translation_metadata = translation_metadata
+        # What `lang=` may carry for that language, or None when nothing may.
+        # `--language TAG:NAME` states the tag itself, and then it is the one
+        # that is stamped: deriving one from prose the tables do not know is
+        # exactly the guess that flag exists to replace.
+        self.language_tag = language_tag or language_code(language)
         self.new_epub = epub.EpubBook()
         self.translate_model = model(
             key,
@@ -339,6 +333,8 @@ class EPUBBookLoader(BaseBookLoader):
             context_mode=context_mode,
             context_compact_at=context_compact_at,
             no_context_compact=no_context_compact,
+            glossary=glossary,
+            glossary_auto=glossary_auto,
             handoff_path=handoff_path(epub_name),
             temperature=temperature,
             source_lang=source_lang,
@@ -350,6 +346,14 @@ class EPUBBookLoader(BaseBookLoader):
         self.exclude_translate_tags = "sup,code"
         self.allow_navigable_strings = False
         self.accumulated_num = 1
+        # Whether `--accumulated_num` was typed at all. 1 is both "the user
+        # asked for no grouping" and "the user said nothing", and plan mode's
+        # session default (below) has to tell those apart.
+        self.accumulated_num_given = False
+        # session mode's history is re-read at the endpoint's cache rate, so
+        # requests are what a run pays for; the loader needs to know which
+        # mode it is in to default the plan budget accordingly.
+        self.context_mode = context_mode
         self.translation_style = ""
         self.context_flag = context_flag
         self.helper = EPUBBookLoaderHelper(
@@ -357,7 +361,7 @@ class EPUBBookLoader(BaseBookLoader):
             self.accumulated_num,
             self.translation_style,
             self.context_flag,
-            language=self.language,
+            language=self.language_tag,
         )
         self.retranslate = None
         self.exclude_filelist = ""
@@ -377,6 +381,10 @@ class EPUBBookLoader(BaseBookLoader):
         self.plan_fallback_tags = "p"
         self.plan_min_coverage = 0.5
         self.poetry_group_size = 8
+        # `--max-batch-units`: units one plan request may carry at the strict
+        # degree. Below strict it is halved (see `_plan_request_cap`).
+        self.batch_units = GENERAL_GROUP_MAX_UNITS
+        self._misalign_recoveries = 0
         # "none" = no plan mode, the CLI's default. A caller that turns plan
         # mode on must pick all | model | agent (see .classify): there is no
         # mode where nobody decides and the code translates whatever it could
@@ -386,8 +394,22 @@ class EPUBBookLoader(BaseBookLoader):
         self._plan_css = None
         self._plan_overrides = None
         self._plan_partitions = {}  # file_name -> (soup, FilePlan), see _plan_partition
+        # once per run, not once per document — see _narrate_session_compact_budget
+        self._compact_budget_narrated = False
+        # same, for the derived grouping budget — see _narrate_plan_budget
+        self._plan_budget_narrated = False
         self._plan_fingerprint = None
         self._resume_plan_fingerprint = None
+        # What the loaded checkpoint's translations were produced by — see
+        # `_run_fingerprint`. None means a checkpoint written before runs
+        # recorded it, which is warned about rather than refused.
+        self._resume_run_fingerprint = None
+        self._run_fingerprint_checked = False
+        # Snapshotted at run start (see `_run_fingerprint`), never recomputed.
+        self._run_fingerprint_value = None
+        # kept for the fingerprint: the prompt is half of what a slot's
+        # translation is, and the translator does not hand it back
+        self._prompt_config = prompt_config
         self.single_translate = single_translate
         self.block_size = 1  # Default to 1 for better translation quality with delimiter-based batching
         self.sentence_mode = False
@@ -493,6 +515,24 @@ class EPUBBookLoader(BaseBookLoader):
 
     def _make_new_book(self, book):
         new_book = epub.EpubBook()
+        # The one place every route passes through with the *source* in
+        # hand, and the only moment a previous run's credit line can be
+        # removed: after this the documents go to the planner, and a line
+        # left in is translated like any other paragraph and can no longer
+        # be told from the book's own text. Unconditional — what a previous
+        # run said about itself is this tool's to remove whatever
+        # --no_disclosure says about what this run will say.
+        try:
+            strip_prior_credit(book)
+        except Exception as e:
+            # A book whose documents cannot be read at all is about to fail
+            # louder than this, but a stale credit line is a wrong claim
+            # about who translated the file, so it is said out loud.
+            print(
+                "[bold yellow]Warning: an earlier translation credit could "
+                f"not be removed ({type(e).__name__}: {escape(str(e))}); this "
+                "book may end up naming two translators.[/bold yellow]"
+            )
         # ebooklib always writes <spine toc="ncx">, so a book without an NCX
         # item leaves that reference dangling (epubcheck OPF-049). Adding the
         # item — uid "ncx", which is what the attribute names — both resolves
@@ -529,9 +569,15 @@ class EPUBBookLoader(BaseBookLoader):
         # What a previous run of this tool stamped is this tool's to rewrite:
         # stripped here and, when disclosure is on, written again from *this*
         # run's facts at write time. Left in place, a book translated twice
-        # would claim both models and carry two colophons.
+        # would claim both models and carry two credit lines.
         try:
             prior_ids = tool_contributor_ids(book)
+            # Which embedded glossary — if any — a previous run vouched for.
+            # Captured here, before the copy loop strips the metas an older
+            # build said it in, because the item loops that drop the files
+            # run afterwards. The record needs no such capture: it says whose
+            # it is from the inside.
+            self._prior_glossary_shas = prior_glossary_shas(book)
         except Exception as e:
             # Reads the same metadata the loop below does, and fails the same
             # way on the same malformed entry — but before the loop, where
@@ -546,6 +592,7 @@ class EPUBBookLoader(BaseBookLoader):
                 "[/bold yellow]"
             )
             prior_ids = set()
+            self._prior_glossary_shas = set()
         # Entries the copy could not carry, reported once at the end rather
         # than once each: a book with a systematically odd metadata block
         # would otherwise bury its own translation under warnings.
@@ -652,7 +699,7 @@ class EPUBBookLoader(BaseBookLoader):
         # system takes the first dc:language as the book's own. A single
         # translation is only in that language; a bilingual one keeps the
         # source's languages behind it.
-        tag = language_tag(self.language)
+        tag = self.language_tag
         if tag:
             dc_namespace = epub.NAMESPACES["DC"]
             source_languages = (
@@ -699,8 +746,12 @@ class EPUBBookLoader(BaseBookLoader):
         # run used, and with --model_list that is not settled until the last
         # paragraph is translated — so it is stamped on the finished book,
         # just before each write. See _stamp_disclosure.
-        self._disclosure_language = tag or self.language
-        self._disclosure_source = source_uid
+        #
+        # The source's guide travels with it, unwritten: ebooklib parses the
+        # EPUB 2 `<guide>` when it reads a book but the rebuilt book is
+        # never given one, and it is what says which document is the title
+        # page — where the credit line goes.
+        self._disclosure_guide = list(getattr(book, "guide", None) or ())
         return new_book
 
     def _copy_metadata_entry(
@@ -744,36 +795,115 @@ class EPUBBookLoader(BaseBookLoader):
         else:
             new_book.add_metadata(namespace, name, value)
 
+    def _is_prior_glossary(self, item):
+        """Whether this item is the glossary a previous run of this tool embedded.
+
+        Dropped rather than carried, for the reason the previous run's note
+        is: a book translated again, with a different glossary or none at
+        all, must not ship the last run's instructions as though they were
+        this run's.
+        """
+        return is_prior_glossary(item, getattr(self, "_prior_glossary_shas", set()))
+
+    def _is_prior_record(self, item):
+        """Whether this item is the machine record a previous run wrote."""
+        return is_prior_translation_metadata(item)
+
+    def _is_prior_evidence(self, item):
+        """Whether this item is either file a previous run left about itself.
+
+        Both are dropped here and written again from this run's facts, for
+        the reason the previous run's note is: a file that says how it was
+        made must say how *this* run made it, once.
+        """
+        return self._is_prior_glossary(item) or self._is_prior_record(item)
+
+    def _wants_translation_metadata(self):
+        """Whether this run writes the machine record into the package.
+
+        A plan or session run writes it by default. Both are the deliberate,
+        expensive, resumable shape of this tool — a run someone will come
+        back to, hand to a reviewer, or repeat — and the questions the record
+        answers ("which build, which model, which endpoint, which command")
+        are exactly the ones that come up about such a run days later.
+
+        The legacy tag-mode path does not, unless `--translation-metadata` says so: it
+        is the quick pass, the record is the same size as the book's real
+        metadata, and turning it on for every casual run would be deciding
+        for the user that their command line belongs in the file.
+        """
+        if getattr(self, "translation_metadata", False):
+            return True
+        # Not only an explicit `--use_context session`: the codex route
+        # keeps a session without being asked, and its runs earn the record
+        # the same way. (`getattr` throughout — the stamp must survive a
+        # loader a test built bare, the same as every fact above.)
+        return (
+            bool(getattr(self, "plan_mode", False))
+            or getattr(self, "context_mode", None) == "session"
+            or getattr(
+                getattr(self, "translate_model", None),
+                "SESSION_CONTEXT_ALWAYS_ON",
+                False,
+            )
+        )
+
+    def _run_translation_metadata(self):
+        """This run's facts, or None when nothing is to be recorded.
+
+        Total by construction: every field falls back to "not known" rather
+        than raising, because the stamp's failure mode is losing the whole
+        disclosure, and the record is not worth that.
+
+        Two facts and no more, by the 260906 ruling: the model, and the
+        glossary the run was pinned to. What is deliberately *not* here is
+        everything that identified the operator rather than the translation
+        — the command line, the build, the endpoint host, the route.
+        """
+        if not self._wants_translation_metadata():
+            return None
+        translator = getattr(self, "translate_model", None)
+        # The user's glossary, never a derived one: the loader carries the
+        # path only when a file was named on the command line. `getattr`
+        # because the glossary itself is a separate piece of work — this
+        # records it when it is there and says nothing when it is not.
+        glossary_path = getattr(self, "glossary_path", None) or getattr(
+            translator, "glossary_path", None
+        )
+        return tmeta.TranslationMetadata(
+            model=model_id(translator),
+            glossary_bytes=tmeta.read_glossary(glossary_path),
+        )
+
     def _stamp_disclosure(self, new_book):
         """Say the file is a machine translation, on the book about to be written.
 
         Every write route calls this immediately before `write_epub`, which
         is the only moment the model is finally known. Doing nothing twice
-        is safe: the second call finds the colophon already there.
+        is safe: the second call finds the credit line already there.
         """
         if not getattr(self, "disclose", True):
             return
         try:
             stamp_disclosure(
                 new_book,
-                model_id(getattr(self, "translate_model", None)),
-                getattr(self, "_disclosure_language", None) or self.language,
-                source_identifier=getattr(self, "_disclosure_source", None),
-                label=translation_label(getattr(self, "translate_model", None)),
+                credit_name(getattr(self, "translate_model", None)),
+                guide=getattr(self, "_disclosure_guide", None),
+                translation_metadata=self._run_translation_metadata(),
             )
         except Exception as e:
             # A book that took hours and real money to translate is not
-            # worth losing over the note at the end of it, so the write goes
-            # ahead without it. Said out loud rather than logged quietly:
-            # what is missing is the file's own statement that a machine
-            # wrote it, and only the person running this can decide whether
-            # that is acceptable to ship.
+            # worth losing over the line at the front of it, so the write
+            # goes ahead without it. Said out loud rather than logged
+            # quietly: what is missing is the file's own statement that a
+            # machine wrote it, and only the person running this can decide
+            # whether that is acceptable to ship.
             print(
                 "[bold yellow]Warning: this book could not be marked as a "
                 f"machine translation ({type(e).__name__}: {escape(str(e))}). "
-                "It is written without the translator credit, the description "
-                "line and the closing translation note — nothing in the file "
-                "will say it was translated by a machine.[/bold yellow]"
+                "It is written without the translation credit line — nothing "
+                "in the file will say it was translated by a machine."
+                "[/bold yellow]"
             )
 
     def _reobfuscate_written(self, path):
@@ -899,6 +1029,202 @@ class EPUBBookLoader(BaseBookLoader):
     def _exclude_tags_tuple(self):
         return tuple(t for t in self.exclude_translate_tags.split(",") if t)
 
+    @property
+    def _session_run(self):
+        """Whether this run's context is one growing history.
+
+        `--use_context session` says so outright. The codex route is one
+        without being asked: its thread is the history, and there is no
+        windowed shape to fall back to — so a codex run is billed the way a
+        session run is billed, by request count against a conversation the
+        endpoint re-reads. The grouping budget below therefore has to be
+        derived here too; without this the flagless codex run left grouping
+        off and paid per paragraph. (The compaction budget is not derived at
+        all any more — it is pinned, see `_narrate_session_compact_budget`.)
+        """
+        if self.context_mode == "session":
+            return True
+        return getattr(self.translate_model, "SESSION_CONTEXT_ALWAYS_ON", False)
+
+    @property
+    def _plan_token_budget(self):
+        """`--accumulated_num` as plan mode's grouping budget.
+
+        Same meaning as in tag mode — tokens a request may carry — counted
+        the same way. A typed value wins outright, `1` included: that is the
+        way to turn grouping off, and it has to keep working in every mode.
+
+        With the flag untyped, every plan run derives one (260906). It used
+        to be session runs only, and everywhere else the default was None —
+        which read as "the short-run-only grouping plan mode does on its
+        own" and meant, in practice, a request per paragraph: the corpus
+        sweep counted 45,010 of them over the 45 sample books' 209,021
+        units, where this budget asks for 8,689 on a schema-verified route
+        and 21,065 below strict decoding. Nothing about that bill is
+        specific to session mode; session mode is only where it was noticed,
+        because there the history is re-read at the endpoint's cache rate.
+
+        The value is the schema-verified derivation, always. How far *this
+        endpoint* can be trusted with one request is not a property of the
+        book and is not knowable here — the partition runs before anything
+        has asked the model a question, and `--plan-classify agent` writes a
+        plan and stops without ever asking one. So the margin below strict
+        decoding is taken later, in `_plan_request_budget`, exactly where
+        `_plan_request_cap` takes the matching margin off the unit cap.
+
+        Plan mode only: tag mode reads `accumulated_num` directly and never
+        sees this.
+        """
+        if self.accumulated_num > 1:
+            return self.accumulated_num
+        if self.accumulated_num_given:
+            # An explicit `--accumulated_num 1`: grouping off, as asked —
+            # ALL of it. 0 is the budget nothing fits, so even the short-run
+            # rule stands down and every unit is its own request; None here
+            # would quietly re-enable that rule and make "off" still group.
+            return 0
+        return derived_token_budget(self._prompt_overhead(), self._partition_route())
+
+    def _partition_route(self):
+        """The route class the *partition* groups by: never a probed one.
+
+        A session run is knowable from the flags, and keeps the budget it
+        has shipped with — see the note beside `BUDGET_ROUTES`. Everything
+        else is grouped as if the endpoint verified a schema, because at
+        partition time nothing has asked it.
+        """
+        return "session" if self._session_run else "schema"
+
+    def _plan_request_budget(self):
+        """Tokens one plan request may carry, or None for "as partitioned".
+
+        The token half of `_plan_request_cap`, off the same verdict and with
+        the same margin: everything below strict decoding carries half a
+        request, per the 260905 eval. Answered here rather than in the
+        partition for the reason that method gives — the plan describes the
+        book and must stay the same file whichever endpoint runs it, while
+        how much one request may carry is a fact about the endpoint. Asking
+        is what triggers the probe, so it is asked once, at request time,
+        and never on a run that stops before making one.
+
+        None where there is nothing to take: a typed `--accumulated_num` is
+        the operator's own number and wins outright, and a session run keeps
+        its measured budget whatever the endpoint decodes.
+        """
+        if self.accumulated_num_given or self.accumulated_num > 1:
+            return None
+        if self._session_run or self._plan_schema_verified():
+            return None
+        return derived_token_budget(self._prompt_overhead(), "substrict")
+
+    def _prompt_overhead(self):
+        """This run's measured prompt tokens, or None.
+
+        The prompts are user-customisable, so the overhead a request pays
+        before it carries any book is a property of the run, not a constant.
+        A translator that cannot measure it answers None and the floor
+        stands.
+        """
+        fn = getattr(self.translate_model, "prompt_overhead_tokens", None)
+        return fn() if callable(fn) else None
+
+    def _structured_degree(self):
+        """The endpoint's graded schema support, or None if it has none.
+
+        One accessor, so the two places that split by route class — the
+        request cap and the grouping budget — cannot end up asking different
+        questions. Asking is what triggers the probe; the verdict is cached
+        per model, so the first caller pays and the rest read it.
+        """
+        verdict = getattr(self.translate_model, "_structured_enabled", None)
+        if verdict is None:
+            return None
+        try:
+            return verdict()
+        except Exception:
+            # a probe that cannot answer is not a reason to stop; the real
+            # request behind it reports its own failure
+            return None
+
+    def _plan_schema_verified(self):
+        """Whether this endpoint verifies a strict schema.
+
+        The one bit both margins are taken against. A translator with no
+        verdict to offer (an MT engine, a test double) is not being asked to
+        hold a schema together and counts as unverified.
+        """
+        return self._structured_degree() == "strict"
+
+    def _narrate_plan_budget(self, request_budget):
+        """Say once which grouping budget this plan run derived, and why.
+
+        Only for the derived default: a typed `--accumulated_num` is the
+        operator's own number and needs no explaining, and there is no
+        budget at all outside plan mode. Said where the requests are sized,
+        so a `--plan-classify auto` run that fell back to tag mode never
+        reaches it, and neither does an agent handoff that makes no request
+        at all.
+
+        `request_budget` is `_plan_request_budget`'s answer: None means the
+        run sends what the partition grouped, so the route is the one the
+        partition used.
+        """
+        if self._plan_budget_narrated:
+            return
+        self._plan_budget_narrated = True
+        if self.accumulated_num_given or self.accumulated_num > 1:
+            return
+        route = "substrict" if request_budget is not None else self._partition_route()
+        print(plan_budget_notice(self._prompt_overhead(), route))
+
+    def _narrate_session_compact_budget(self):
+        """Say once what window this session run compacts at.
+
+        Nothing is decided here: the budget is pinned at
+        `DEFAULT_COMPACT_BUDGET` for every session run — grouped or not,
+        codex included — and the translator already falls back to it when
+        `--context-compact-at` is unset. This only tells the operator which
+        number is in force, because the compaction seams in the output are
+        otherwise the first place they would find out.
+
+        Silent where there is nothing to say: a run that is not a session,
+        and `--no-context-compact`, which never compacts at all.
+        """
+        if self._compact_budget_narrated:
+            return
+        self._compact_budget_narrated = True
+        if not self._session_run:
+            return
+        model = self.translate_model
+        if getattr(model, "no_context_compact", False):
+            return
+        if not hasattr(model, "context_compact_at"):
+            return
+        print(compact_budget_notice(model.context_compact_at))
+
+    def _plan_request_cap(self):
+        """Units one plan request may carry, given the endpoint's degree.
+
+        The partition caps a general group at `--max-batch-units` because that
+        is a property of the book; how far an *endpoint* can be
+        trusted with one is not, and is not knowable when the partition is
+        built (only `--plan-classify auto` probes before the loader runs; an
+        explicit plan mode probes later, and `--model_list` rotates across
+        models of differing capability). So the split happens here, where
+        the verdict is in hand: everything below strict decoding carries
+        half a request, per the 260905 eval — both of its content
+        regressions were large batches, and neither endpoint could be told
+        apart by its probe verdict in advance.
+
+        A translator with no verdict to offer (an MT engine, a test double)
+        is not being asked to hold a schema together, and takes the tighter
+        cap.
+        """
+        if self._plan_schema_verified():
+            return self.batch_units
+        # half, floored, but never zero: a request has to carry something
+        return max(1, self.batch_units // 2)
+
     def _plan_mode_conflict(self):
         """The flags whose meaning the plan would contradict, if any."""
         incompatible = {
@@ -920,6 +1246,168 @@ class EPUBBookLoader(BaseBookLoader):
         return bool(
             self.resume and self.p_to_save and self._resume_plan_fingerprint is None
         )
+
+    def _report_test_slice_requests(self, chapter_plans, unit_count):
+        """Say how many requests `--test` will actually make.
+
+        `--test_num` counts units, not requests, and grouping puts many
+        units in one — so the default `--test` on a grouped run can be a
+        single request, which exercises neither group rollover nor session
+        compaction nor batch misalignment. The number is only knowable once
+        the jobs are cut, so it is printed here rather than at the CLI.
+        Silent when nothing is grouped: there the two counts are the same
+        and there is nothing to say.
+        """
+        if not self.is_test or not unit_count:
+            return
+        requests = len(
+            {
+                (job.document_index, job.batch_index)
+                for p in chapter_plans
+                for job in p.jobs
+            }
+        )
+        if requests >= unit_count:
+            return
+        print(
+            f"[bold yellow]Warning:[/bold yellow] --test_num counts units, "
+            f"not requests: this slice is {unit_count} unit(s) in "
+            f"{requests} request(s). A slice this small may never reach a "
+            f"group rollover or a session compaction, which is where a "
+            f"grouped run goes wrong. Raise --test_num to exercise them."
+        )
+
+    def _resolved_prompt(self):
+        """The prompt the run sends, not the one the command typed.
+
+        `--prompt` is only one of the places a prompt comes from: the
+        environment (`$OPENAI_API_SYS_MSG`, `$BBM_CHATGPTAPI_*_MSG`), the
+        route's own default and the `--source_lang` note all settle
+        into it. Hashing the raw `--prompt` config missed every one of
+        them, so exporting a different system message and resuming spliced
+        two sets of instructions into one book without a word.
+
+        A route that cannot answer (a fixed MT engine, a test double built
+        without the base's `__init__`) falls back to the raw config, which
+        is what the fingerprint had before and still binds `--prompt`.
+        """
+        model = self.translate_model
+        try:
+            return model.resolved_prompt_parts()
+        except Exception:
+            return self._prompt_config or {}
+
+    def _configured_models(self):
+        """Every model this command may translate through, in order.
+
+        `--model_list` rotates, so "the model in hand" is whichever request
+        happened to be last: hashing it made the same command's checkpoint
+        accept or reject by luck. The configured list is the fact that does
+        not move — `_configured_model_names`, recorded when the list is
+        set and untouched by `_ensure_models_routable`, which narrows
+        `_model_names` to what the endpoint serves (and may have already
+        run, via the CLI's plan probe, before the snapshot here is taken).
+        The snapshot still happens once per run, and `_model_names` is
+        only the fallback for doubles that never set a configured list.
+        """
+        model = self.translate_model
+        names = [
+            n
+            for n in (
+                getattr(model, "_configured_model_names", None)
+                or getattr(model, "_model_names", None)
+                or ()
+            )
+            if n
+        ]
+        if names:
+            return names
+        return [getattr(model, "model_name", None) or ""]
+
+    def _pinned_glossary_lines(self):
+        """The `--glossary` file this run pins, as canonical lines.
+
+        The pinned half only. What a run *learns* changes from window to
+        window by design, so folding it in would make every resume look like
+        a different run — and it is not something the operator chose.
+        """
+        pinned = getattr(self.translate_model, "pinned", None)
+        return pinned.to_lines() if pinned else ""
+
+    def _run_fingerprint(self):
+        """What a checkpoint's translations were written by.
+
+        A slot's *position* is bound by its job id (the source text) and, in
+        plan mode, by the plan fingerprint. Its *content* is bound by
+        nothing at all: the same paragraph translated into Spanish and into
+        Chinese produces the same job id, so `--resume --language es` used
+        to splice two languages into one book and call it finished. The
+        prompt and the model are the same kind of fact — the checkpoint
+        holds translations, and a translation is of a language, under a
+        prompt, by a model. A pinned glossary is the fourth: it is a
+        substitution the run must make, so a resume under a different
+        `--glossary` would splice two vocabularies into one book.
+
+        The first two are taken as the run *resolved* them, not as the command
+        spelled them: see `_resolved_prompt` and `_configured_models`.
+
+        Deliberately not the whole flag set: only what changes the words in
+        the slots already written.
+
+        Computed once and remembered. A run's identity must not depend on
+        when it was asked for — the resumed run asks before its first
+        request and the writing run asks after several, and a model list the
+        endpoint narrowed in between would otherwise answer differently.
+        """
+        if self._run_fingerprint_value is None:
+            self._run_fingerprint_value = hashlib.sha256(
+                json.dumps(
+                    {
+                        "language": self.language,
+                        "prompt": self._resolved_prompt(),
+                        "model": self._configured_models(),
+                        "glossary": self._pinned_glossary_lines(),
+                    },
+                    sort_keys=True,
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+        return self._run_fingerprint_value
+
+    def _check_resume_run_fingerprint(self):
+        """Refuse a checkpoint written by a different language/prompt/model.
+
+        Once, before anything is translated. A checkpoint from before this
+        record existed carries no fingerprint: it is warned about and used,
+        because refusing it would strand every run interrupted until today.
+        """
+        if self._run_fingerprint_checked:
+            return
+        self._run_fingerprint_checked = True
+        # Snapshotted here on *every* run, resumed or not: this is the one
+        # moment both kinds of run share, before a request has been made and
+        # so before anything the endpoint says can move the answer.
+        self._run_fingerprint()
+        if not self.resume or not self.p_to_save:
+            return
+        if self._resume_run_fingerprint is None:
+            print(
+                f"[bold yellow]Warning:[/bold yellow] the resume cache "
+                f"{self.bin_path} was written before runs recorded their "
+                f"language, prompt and model, so none of them can be "
+                f"checked. If this command differs from the one that wrote "
+                f"it, delete the cache instead of resuming."
+            )
+            return
+        if self._resume_run_fingerprint != self._run_fingerprint():
+            print(
+                f"[bold red]The resume cache {self.bin_path} was written by a "
+                f"run with a different language, prompt or model; continuing "
+                f"it would splice two translations into one book. Delete "
+                f"{self.bin_path} to start over, or rerun with the original "
+                f"--language / --prompt / --model.[/bold red]"
+            )
+            raise SystemExit(1)
 
     def _skip_plan_mode(self, reason):
         """Give up the plan and translate the tag selection instead.
@@ -958,12 +1446,6 @@ class EPUBBookLoader(BaseBookLoader):
             print(
                 "note: --allow_navigable_strings is redundant in plan mode "
                 "(every text node is already accounted for); ignoring it"
-            )
-        if self.accumulated_num > 1:
-            print(
-                "note: plan mode batches short units itself; "
-                "--accumulated_num is ignored here — pass --plan-classify none "
-                "for tag-mode batching"
             )
         # The plan would refuse this cache anyway (see _prepare_translation_plan),
         # but only after the classifier has been paid for and a plan JSON
@@ -1009,7 +1491,6 @@ class EPUBBookLoader(BaseBookLoader):
             exclude = {f for f in self.exclude_filelist.split(",") if f}
             expected_settings = planning_settings(
                 self._exclude_tags_tuple(),
-                self.poetry_group_size,
                 only,
                 exclude,
             )
@@ -1075,6 +1556,18 @@ class EPUBBookLoader(BaseBookLoader):
         # the source of truth (user edits win, resume fingerprints stay
         # stable). Delete it to reclassify from scratch.
         if self.plan_classify == "model" and ledger.undecided_keys():
+            if self.is_test:
+                # --test truncates the units translated, never the plan: the
+                # partition is of the whole book, so classification is of the
+                # whole book too, and it is paid for in full by a run the
+                # operator asked to be small.
+                print(
+                    f"[bold yellow]Warning:[/bold yellow] plan classification "
+                    f"covers the whole book "
+                    f"({len(ledger.undecided_keys())} signatures), not just "
+                    f"the --test slice; the plan file is cached and reused by "
+                    f"the full run."
+                )
             decisions = self._classify_plan(ledger, plan, plan_path)
             for key, (verdict, content_type) in decisions.items():
                 ledger.decide(key, verdict, "llm", content_type)
@@ -1290,7 +1783,12 @@ class EPUBBookLoader(BaseBookLoader):
         generic example would have to be translated back by hand. The one
         thing not reproduced verbatim is a secret: a key becomes its env
         variable (see KEY_FLAG_ENV) and every `--extra_headers` value is
-        masked, since any of them may be a credential.
+        masked, since any of them may be a credential. Run-control flags
+        (`--test`, `--test_num`, `--quiet`, `--resume`) are dropped too:
+        the handoff text appends its own smoke flags to this command and
+        spells out the full-run variant, so reprinting the caller's would
+        state them twice — argparse takes the last, which happens to be
+        the right one, but the printed line reads as a contradiction.
         """
         parts = []
         # Set once a bare key flag is seen, so the value that follows it in
@@ -1299,7 +1797,12 @@ class EPUBBookLoader(BaseBookLoader):
         # The same, for a bare `--extra_headers`: the JSON in the next entry
         # is masked, since any of its values may be a credential.
         pending_header_mask = False
+        # And for a bare `--test_num`: the count in the next entry goes too.
+        pending_drop = False
         for arg in sys.argv:
+            if pending_drop:
+                pending_drop = False
+                continue
             if pending_env is not None:
                 parts.append(f'"${pending_env}"')
                 pending_env = None
@@ -1309,6 +1812,13 @@ class EPUBBookLoader(BaseBookLoader):
                 pending_header_mask = False
                 continue
             flag, joined, value = arg.partition("=")
+            if flag in ("--test", "--quiet", "--resume"):
+                continue
+            if flag != "--test" and flag.startswith("--test_n"):
+                # `--test_num` or an unambiguous argparse prefix of it;
+                # a bare form carries its count in the next entry
+                pending_drop = not joined
+                continue
             if _is_extra_headers_flag(flag):
                 if joined:
                     # `--extra_headers={…}`: value never becomes its own entry
@@ -1373,6 +1883,8 @@ class EPUBBookLoader(BaseBookLoader):
             self.poetry_group_size,
             only_files=only,
             exclude_files=exclude,
+            token_budget=self._plan_token_budget,
+            batch_units=self.batch_units,
         )
 
     def _classify_plan(self, ledger, plan, plan_path):
@@ -1456,6 +1968,9 @@ class EPUBBookLoader(BaseBookLoader):
             exclude_tags=self._exclude_tags_tuple(),
             overrides=self._plan_overrides,
             poetry_group_size=self.poetry_group_size,
+            token_budget=self._plan_token_budget,
+            max_units=self.batch_units,
+            keep_classes=self._plan_css.keep_classes,
         )
         return fp
 
@@ -1535,6 +2050,30 @@ class EPUBBookLoader(BaseBookLoader):
             and t_text == self.translate_model.TRANSLATION_ERROR_MARKER
         ):
             return
+        if unit.markers or MARKER_OPEN in t_text:
+            # Lenient by decision: a lost marker is reconciled and reported,
+            # never a failed unit and never a retry. Marker placement is not
+            # worth re-paying a request for.
+            #
+            # `unit.markers` is passed as the issued set on purpose: a token
+            # the *source* prints verbatim looks the same and belongs to the
+            # book, so it must survive reconciliation untouched.
+            #
+            # A unit that owns *no* markers is reconciled too, whenever its
+            # translation carries a marker-shaped token anyway. That is the
+            # neighbour a model sprayed a copy into: the token stands for a
+            # node this unit does not have, so it is invented here and would
+            # otherwise be written into reader-visible prose (the batch is
+            # not shifted, so `_marker_slot_mismatch` deliberately lets it
+            # through — see there). The empty issued list keeps the book's
+            # own verbatim tokens literal, as always.
+            issued = list(unit.markers)
+            note = marker_report(
+                f"{unit.file_name}#{unit.ordinal}", unit.text, t_text, issued
+            )
+            if note:
+                print(f"[yellow]{note}[/yellow]")
+            t_text = reconcile_markers(unit.text, t_text, issued)
         if single_translate and unit.nodes:
             # Ruby annotations of text that is about to disappear would
             # survive as orphaned furigana next to non-Japanese text. The
@@ -1560,11 +2099,11 @@ class EPUBBookLoader(BaseBookLoader):
                     ruby.name = "span"
                 else:
                     ruby.unwrap()
-            self._write_single_translation(
+            inserted = self._write_single_translation(
                 unit, t_text, translation_style, language=self.language_tag
             )
         elif has_restricted_content_model(unit.element):
-            self._append_inline_translation(
+            inserted = self._append_inline_translation(
                 unit, t_text, translation_style, language=self.language_tag
             )
         elif unit.resolver is not None and (
@@ -1577,13 +2116,77 @@ class EPUBBookLoader(BaseBookLoader):
             unit.owner_runs > 1
             or not is_simple_owner(unit.element, unit.resolver)
         ):
-            self._insert_anchored_translation(
+            inserted = self._insert_anchored_translation(
                 unit, t_text, translation_style, language=self.language_tag
             )
         else:
-            self._insert_trans_preserving_tags(
+            inserted = self._insert_trans_preserving_tags(
                 unit.element, t_text, translation_style, False
             )
+        if unit.markers:
+            self._restore_markers(unit, single_translate, inserted)
+
+    @staticmethod
+    def _restore_markers(unit, single_translate=False, inserted=None):
+        """Put each marker's source node back where its token landed.
+
+        `inserted` is what the insertion path just wrote — the bilingual
+        clone, or the rewritten owner in single-translate mode. Only that is
+        searched. Scanning the owner and its next sibling instead was wrong
+        in both directions: in single-translate mode the next sibling is
+        another *source* element, so a book whose next paragraph prints
+        ``⟦code1⟧`` as literal text had the node moved out of the
+        translation and into that paragraph; and nothing guarantees the
+        clone is the immediately following tag.
+
+        Bilingual mode *clones* the node — the original is still standing in
+        the source paragraph beside the translation, so the copy is a second
+        rendering and must not be a second anchor (its ids go). Single
+        translate *moves* it: the source text it sat in has been replaced, so
+        there is nothing left to duplicate, and the node keeps its
+        attributes, its id among them — that id is a link target the rest of
+        the book points at.
+
+        A token the reply lost is not a problem here: reconciliation already
+        appended it, so it is somewhere in the text and gets its node.
+        """
+        tokens = list(unit.markers)
+        roots = inserted if isinstance(inserted, list) else [inserted]
+        for root in roots:
+            if isinstance(root, NavigableString):
+                # `_write_single_translation` writes a bare string when no
+                # --translation_style was asked for
+                text_nodes = [root]
+            elif isinstance(root, Tag):
+                text_nodes = [
+                    n for n in list(root.descendants) if isinstance(n, NavigableString)
+                ]
+            else:
+                continue
+            for text_node in text_nodes:
+                raw = str(text_node)
+                if not any(token in raw for token in tokens):
+                    continue
+                pieces = []
+                for kind, value in split_on_markers(raw, tokens):
+                    if kind == "text":
+                        pieces.append(NavigableString(value))
+                        continue
+                    source = unit.markers[value]
+                    if single_translate:
+                        source.extract()
+                        node = source
+                    else:
+                        node = copy(source)
+                        strip_duplicate_ids(node)
+                    pieces.append(node)
+                if not pieces:
+                    continue
+                text_node.replace_with(pieces[0])
+                anchor = pieces[0]
+                for piece in pieces[1:]:
+                    anchor.insert_after(piece)
+                    anchor = piece
 
     @staticmethod
     def _append_inline_translation(unit, t_text, translation_style="", language=None):
@@ -1604,6 +2207,7 @@ class EPUBBookLoader(BaseBookLoader):
         span.string = f" {t_text}"
         stamp_translation(span, unit.element, language)
         unit.nodes[-1].insert_after(span)
+        return span
 
     @staticmethod
     def _markup_covers_run(markup, owned):
@@ -1656,6 +2260,7 @@ class EPUBBookLoader(BaseBookLoader):
         line_break = make_tag("br")
         tail.insert_after(line_break)
         line_break.insert_after(span)
+        return span
 
     @staticmethod
     def _write_single_translation(unit, t_text, translation_style="", language=None):
@@ -1688,7 +2293,7 @@ class EPUBBookLoader(BaseBookLoader):
             for node in unit.nodes[1:]:
                 node.extract()
             EPUBBookLoader._remove_emptied_wrappers(emptied)
-            return
+            return translation
 
         anchor = container if isinstance(container, Tag) else unit.nodes[0]
         # only wrappers *we* empty are ours to remove: an already-empty
@@ -1698,6 +2303,7 @@ class EPUBBookLoader(BaseBookLoader):
         for node in unit.nodes:
             node.extract()
         EPUBBookLoader._remove_emptied_wrappers(emptied)
+        return translation
 
     @staticmethod
     def _styled_translation(t_text, translation_style=""):
@@ -1757,19 +2363,48 @@ class EPUBBookLoader(BaseBookLoader):
             # hold references into this subtree
             element.extract()
 
-    def _translate_texts_aligned(self, texts, translator=None):
+    def _translate_texts_aligned(self, texts, translator=None, units=None):
         """translate_list with an alignment ladder: group -> halves -> singles.
 
-        A response with the wrong item count must never desync originals and
-        translations; instead we split and retry until counts match.
+        The one fallback in the system. Every LLM route's `translate_list`
+        returns exactly `len(texts)` aligned items or raises `BatchMismatch`;
+        none of them repairs a bad reply itself any more, and none retries
+        the same group (a model that miscounted once usually miscounts
+        again, and each retry re-pays the whole group). Halving costs about
+        twice the batch — 8 + 4 + 2 + 1 + 1 — where a per-line fallback paid
+        8 singles on top of the batch.
+
         `translator` defaults to the shared model; parallel chapters pass
         their own clone so --use_context stays chapter-local.
+
+        `units` (plan mode) is the Unit behind each text, in the same order.
+        It is what lets a reply whose *count* is right but whose slots are
+        shifted be caught — see `_marker_slot_mismatch`. `_numeric_slot_shift`
+        catches the same fault from the numbers alone, so it needs no units
+        and covers tag mode and every reply shape (schema, delimiter, plain)
+        that comes back through this ladder.
         """
         if not texts:
             return []
         translator = translator or self.translate_model
         try:
-            result = translator.translate_list(texts)
+            # A chunk of one is not a batch: it goes through `translate`,
+            # which is the bottom of the ladder and the only rung with
+            # nothing left to divide.
+            result = (
+                [translator.translate(texts[0])]
+                if len(texts) == 1
+                else translator.translate_list(texts)
+            )
+        except BatchMismatch as e:
+            # Not an error: the contract working. Say what happened once,
+            # then divide.
+            print(
+                f"[yellow]batch of {len(texts)} came back misaligned "
+                f"({e}); splitting[/yellow]"
+            )
+            self._note_misalign_recovery()
+            return self._divide_and_translate(texts, translator, units)
         except Exception as e:
             if translator._fatal_error_detected:
                 # a clone's fatal flag must reach the shared model, or the
@@ -1789,11 +2424,188 @@ class EPUBBookLoader(BaseBookLoader):
             # model, or a clone's death stays invisible to other workers
             self.translate_model._fatal_error_detected = True
         if len(result) == len(texts):
-            return result
+            evidence = self._marker_slot_mismatch(
+                texts, result, units
+            ) or self._numeric_slot_shift(texts, result)
+            if evidence is None:
+                return result
+            # The count agreed and every slot holds fluent target text, so
+            # nothing else in the run would have noticed.
+            print(
+                f"[bold red]batch of {len(texts)} came back shifted "
+                f"({evidence}) — splitting for realignment[/bold red]"
+            )
+            self._note_misalign_recovery()
+            return self._divide_and_translate(texts, translator, units)
+        # A belt for routes that still answer with the wrong count instead of
+        # raising — the MT engines translate one by one and cannot, but a
+        # gateway wrapper might.
         print(
             f"[bold red]alignment mismatch: sent {len(texts)} paragraphs, "
             f"received {len(result)} — splitting for realignment[/bold red]"
         )
+        self._note_misalign_recovery()
+        return self._divide_and_translate(texts, translator, units)
+
+    @staticmethod
+    def _marker_slot_mismatch(texts, result, units):
+        """One slot's marker token found in another slot's reply, or None.
+
+        The only cheap evidence there is that a reply of the *right length*
+        is nonetheless shifted against the units it answers. A shift is
+        otherwise silent: the counts agree, every slot holds fluent target
+        text, and no id or link is lost. What it costs is measured (260905
+        emergence sweep, cell `s-child-u48`): marker reconciliation and
+        restoration are keyed on `unit.markers`, so the reply that *carries*
+        `⟦span3⟧` is handed to a neighbour that owns no markers, the whole
+        marker block is skipped for it, and the literal token is written into
+        reader-visible prose — three of them in that one cell, under a log
+        line that said "— reconciled".
+
+        Only **wrong-slot** evidence counts, and that is the point of keying
+        on ownership rather than on any marker anomaly. A model that simply
+        dropped a marker — the token missing from its own slot and appearing
+        in no other — is still reconciled, reported and never retried; that
+        leniency is a pinned decision, and `reconcile_markers` does real
+        repair work behind it.
+
+        A marker-shaped token the book prints itself is not ours: collision
+        avoidance is per unit, so a token issued to one unit can be literal
+        text in another. Anything already present in the source that slot was
+        sent is therefore left alone, whoever else it was issued to.
+
+        And a token in the wrong slot is only evidence of a shift when its
+        *owner's* slot has lost it. A reply that keeps `⟦code2⟧` where it
+        belongs and also sprays a copy into the neighbour is not shifted —
+        every unit still faces its own translation — and `reconcile_markers`
+        drops that copy as invented before anything is written. Charging the
+        whole batch through the halving ladder for it repays a request that
+        was already correct.
+        """
+        if not units or len(units) != len(texts) or len(result) != len(texts):
+            return None
+        owned = [set(getattr(unit, "markers", None) or ()) for unit in units]
+        issued = set().union(*owned)
+        if not issued:
+            return None
+        # Every slot a token was issued to: collision avoidance is per unit,
+        # so one token can have more than one owner, and any owner that kept
+        # it is enough to say the reply is not shifted.
+        owners = {}
+        for index, own in enumerate(owned):
+            for token in own:
+                owners.setdefault(token, []).append(index)
+        for index, reply in enumerate(result):
+            if not reply or MARKER_OPEN not in reply:
+                continue
+            for token in find_markers(reply):
+                if (
+                    token in issued
+                    and token not in owned[index]
+                    and token not in texts[index]
+                    and not any(
+                        token in (result[owner] or "") for owner in owners[token]
+                    )
+                ):
+                    return (
+                        f"{token} came back in slot {index + 1} of "
+                        f"{len(result)}, which does not own it, and is gone "
+                        f"from the slot that does"
+                    )
+        return None
+
+    @staticmethod
+    def _numeric_slot_shift(texts, result):
+        """A shift the numbers give away, or None. Needs no markers, no units.
+
+        The fault `_marker_slot_mismatch` was written for has a second,
+        commoner shape, measured 260906 in sweep cell `ds-waste-u96-b4800`
+        (DeepSeek, strict schema, 96 units a batch): the model merged two
+        adjacent source lines into one slot and then kept the reply *count*
+        right by inventing a filler item — a meta-comment, 「（此处应有一个空行
+        表示节段间隔）」, which was duly written into the book. Everything the
+        run checks agreed: the count, the echoed ids, the per-slot fluency.
+        Forty-two slots downstream of the merge nevertheless faced the wrong
+        original, straight through an `<h2>`. No marker was anywhere near it.
+
+        Digits are the evidence because they are language-invariant. A
+        translation carries its source's numbers with it, so a translation
+        sitting in the wrong slot drags them into the neighbour: The Waste
+        Land's verse number `170` belongs to source slot 176 and came back
+        inside slot 175's Chinese.
+
+        Three non-rules, each one a false positive this would otherwise have:
+
+        * **Absence alone is never evidence.** A number missing from its own
+          slot is routine — on the clean cell `ds-waste-u64-b4800` six of
+          twenty-four verse numbers were simply dropped, and DeepSeek also
+          renders them as CJK numerals in place (`171` → 「一七一」). Only a
+          number that turns up *next door* counts.
+        * **One witness is not enough.** Cell `o4m-waste-u256-b1600` has
+          exactly one cross-slot number and is not shifted; the shifted cell
+          has four. Hence `_SHIFT_MIN_WITNESSES`.
+        * **The witnesses must agree which way.** A shift moves every slot the
+          same direction, so contradictory witnesses are noise, not a shift.
+
+        A number the neighbour's own source already carried explains itself
+        without a shift (repeated verse lines, a date on both sides of a
+        paragraph break), so it is not a witness either. Marker tokens are
+        stripped first: `⟦code12⟧` is ours, not the book's, and a stray one is
+        `_marker_slot_mismatch`'s business under its own pinned leniency.
+        """
+        if len(result) != len(texts) or len(texts) < 2:
+            return None
+
+        def digits(text):
+            return set(_SHIFT_DIGIT_RUN.findall(MARKER_RE.sub(" ", text or "")))
+
+        sources = [digits(text) for text in texts]
+        replies = [digits(reply) for reply in result]
+        witnesses = {-1: [], 1: []}
+        for index, tokens in enumerate(sources):
+            for token in sorted(tokens - replies[index]):
+                moved = [
+                    step
+                    for step in (-1, 1)
+                    if 0 <= index + step < len(texts)
+                    and token in replies[index + step]
+                    and token not in sources[index + step]
+                ]
+                if len(moved) == 1:  # both neighbours: says nothing about way
+                    witnesses[moved[0]].append((index, token))
+        for step, found in witnesses.items():
+            if len(found) < _SHIFT_MIN_WITNESSES:
+                continue
+            if len(found) <= len(witnesses[-step]):
+                continue
+            index, token = found[0]
+            others = len(found) - 1
+            return (
+                f"{token} belongs to slot {index + 1} of {len(result)} and "
+                f"came back in slot {index + 1 + step}, with {others} more "
+                f"number{'' if others == 1 else 's'} moved the same way"
+            )
+        return None
+
+    def _note_misalign_recovery(self):
+        """Every split retries; a run that splits often is telling the
+        operator its batches are too big for this model."""
+        count = getattr(self, "_misalign_recoveries", 0) + 1
+        self._misalign_recoveries = count
+        if count >= 3:
+            print(
+                f"[yellow]{count} misaligned batches this run — if this "
+                f"keeps happening, a lower --max-batch-units or "
+                f"--accumulated_num may fit this model better[/yellow]"
+            )
+
+    def _divide_and_translate(self, texts, translator, units=None):
+        """Halve a chunk that came back misaligned; a chunk of 1 translates alone.
+
+        `units` rides along so each half is checked for a shift the same way
+        the whole chunk was — the ladder's own retry misaligned in the
+        measured case, which is how the fault reached the book.
+        """
         if len(texts) == 1:
             t = translator.translate(texts[0])
             if t is None:
@@ -1802,9 +2614,11 @@ class EPUBBookLoader(BaseBookLoader):
                 )
             return [t]
         mid = len(texts) // 2
+        left = units[:mid] if units else None
+        right = units[mid:] if units else None
         return self._translate_texts_aligned(
-            texts[:mid], translator
-        ) + self._translate_texts_aligned(texts[mid:], translator)
+            texts[:mid], translator, left
+        ) + self._translate_texts_aligned(texts[mid:], translator, right)
 
     def _insert_trans_preserving_tags(
         self, p, translated_text, translation_style="", single_translate=False
@@ -1830,10 +2644,9 @@ class EPUBBookLoader(BaseBookLoader):
 
         if not has_code_tags:
             # Simple case: no code tags, use standard insert_trans
-            self.helper.insert_trans(
+            return self.helper.insert_trans(
                 p, translated_text, translation_style, single_translate
             )
-            return
 
         # For paragraphs with code tags
         if single_translate:
@@ -1860,13 +2673,14 @@ class EPUBBookLoader(BaseBookLoader):
             for content in temp_p.contents:
                 p.append(copy(content))
             restamp_language(p, self.language_tag)
+            # the element itself now holds nothing but the translation
+            return p
         else:
             # Bilingual mode: keep original paragraph with code, add translation after
             if has_restricted_content_model(p):
-                append_inline_translation(
+                return append_inline_translation(
                     p, translated_text, translation_style, self.language_tag
                 )
-                return
             new_p = copy(p)
             # Remove code tags from translation
             for tag_name in exclude_tags_list:
@@ -1879,6 +2693,7 @@ class EPUBBookLoader(BaseBookLoader):
             if translation_style != "":
                 new_p["style"] = translation_style
             p.insert_after(new_p)
+            return new_p
 
     def _show_usage(self, pbar):
         """Pin in/out/cached tokens on the bar, once a request reported them.
@@ -1999,7 +2814,13 @@ class EPUBBookLoader(BaseBookLoader):
 
         # Translate only the non-resumed paragraphs
         new_texts = [text for _, _, text, _ in entries if text is not None]
-        translated_text_list = self._translate_texts_aligned(new_texts)
+        # the same filter, so slot i of the reply is unit i of this list
+        new_units = (
+            [plan_units[k] for k, _, text, _ in entries if text is not None]
+            if plan_units is not None
+            else None
+        )
+        translated_text_list = self._translate_texts_aligned(new_texts, units=new_units)
 
         translate_iter = iter(translated_text_list)
         for k, p, text, cached in entries:
@@ -2113,8 +2934,8 @@ class EPUBBookLoader(BaseBookLoader):
         if not wait_p_list:
             return
 
-        result_txt_list = self.translate_model.translate_list(
-            [p.text for p in wait_p_list]
+        result_txt_list = translate_list_or_singles(
+            self.translate_model, [p.text for p in wait_p_list]
         )
 
         for i in range(len(wait_p_list)):
@@ -2280,10 +3101,14 @@ class EPUBBookLoader(BaseBookLoader):
                 target = t
 
         for item in complete_book.get_items():
-            # A previous output's translation note is replaced by this run's,
-            # not carried alongside it — two would be two ids and two members
-            # of the same zip.
-            if item.file_name != fixname and not is_our_colophon(item):
+            # A closing page an older build wrote is dropped rather than
+            # carried beside this run's credit line — two would be two ids
+            # and two members of the same zip.
+            if (
+                item.file_name != fixname
+                and not is_our_colophon(item)
+                and not self._is_prior_evidence(item)
+            ):
                 new_book.add_item(item)
         if soup_complete:
             complete_item.content = soup_complete.encode()
@@ -2301,6 +3126,9 @@ class EPUBBookLoader(BaseBookLoader):
         self._stamp_disclosure(new_book)
         epub.write_epub(f"{name_fix}", new_book, {})
         self._reobfuscate_written(f"{name_fix}")
+        # --retranslate leaves by `exit(0)` right after this, so this is the
+        # end of that run and the file it produced.
+        self.announce_saved_book(f"{name_fix}")
 
     def has_nest_child(self, element, trans_taglist):
         if isinstance(element, Tag):
@@ -2349,12 +3177,22 @@ class EPUBBookLoader(BaseBookLoader):
         return [index // self.block_size for index in range(len(source_texts))]
 
     @staticmethod
-    def _plan_batch_indexes(units):
-        """Batch identity for plan units: one window per poetry group.
+    def _plan_batch_indexes(units, max_units=None, max_tokens=None):
+        """Batch identity for plan units: one request per group.
 
         Grouped units are contiguous by construction, so numbering them in
         first-seen order keeps batch indexes monotonic — the same property
         _assign_batch_indexes gives tag mode.
+
+        `max_units` cuts a group that is larger than this endpoint should be
+        handed at once (see `_plan_request_cap`), and `max_tokens` cuts one
+        that carries more content than it should (see
+        `_plan_request_budget`). Both splits are here rather than in the
+        partition on purpose: the plan describes the book and must stay the
+        same file whichever endpoint runs it, while how much one request may
+        carry is a fact about the endpoint. Nothing else moves — resume
+        slots are positions in the unit list, which the split does not
+        touch.
         """
         indexes = []
         by_group = {}
@@ -2364,10 +3202,23 @@ class EPUBBookLoader(BaseBookLoader):
                 indexes.append(next_free)
                 next_free += 1
                 continue
-            if unit.group_id not in by_group:
-                by_group[unit.group_id] = next_free
+            batch, carried, tokens = by_group.get(unit.group_id, (None, 0, 0))
+            # a unit that is over budget on its own still travels alone
+            # rather than not at all — the same rule the partition applies
+            unit_tokens = unit.token_count or 0
+            if (
+                batch is None
+                or (max_units is not None and carried >= max_units)
+                or (
+                    max_tokens is not None
+                    and carried
+                    and tokens + unit_tokens > max_tokens
+                )
+            ):
+                batch, carried, tokens = next_free, 0, 0
                 next_free += 1
-            indexes.append(by_group[unit.group_id])
+            by_group[unit.group_id] = (batch, carried + 1, tokens + unit_tokens)
+            indexes.append(batch)
         return indexes
 
     def _build_translation_plan(self, document_items, trans_taglist):
@@ -2379,6 +3230,15 @@ class EPUBBookLoader(BaseBookLoader):
         """
         plans = []
         global_index = 0
+        # asked once per run, not once per document: the answer is a
+        # property of the endpoint, and asking is what triggers its probe
+        request_cap = self._plan_request_cap() if self._plan_mode else None
+        request_budget = self._plan_request_budget() if self._plan_mode else None
+        if self._plan_mode:
+            # here rather than beside the plan build: this is the first
+            # moment the endpoint's verdict is in hand, and it is the number
+            # the requests below will actually be sized by
+            self._narrate_plan_budget(request_budget)
 
         for document_index, item in enumerate(document_items):
             should_translate = True
@@ -2415,7 +3275,9 @@ class EPUBBookLoader(BaseBookLoader):
                         nodes.append(unit.element)
                         source_texts.append(unit.text)
                         global_index += 1
-                batch_indexes = self._plan_batch_indexes(units)
+                batch_indexes = self._plan_batch_indexes(
+                    units, request_cap, request_budget
+                )
             else:
                 soup = bs(item.content, "html.parser")
                 if should_translate:
@@ -2695,7 +3557,9 @@ class EPUBBookLoader(BaseBookLoader):
                             fresh.append(job)
                     if fresh:
                         translated = self._translate_texts_aligned(
-                            [job.source_text for job in fresh], plan_translator
+                            [job.source_text for job in fresh],
+                            plan_translator,
+                            [job.unit for job in fresh],
                         )
                         for job, t_text in zip(fresh, translated):
                             self._record_translation_result(job.global_index, t_text)
@@ -2877,8 +3741,8 @@ class EPUBBookLoader(BaseBookLoader):
                     )
 
                     # Call translate_list for consistent batch translation logic
-                    result_txt_list = self.translator.translate_list(
-                        [p.text for p in wait_p_list]
+                    result_txt_list = translate_list_or_singles(
+                        self.translator, [p.text for p in wait_p_list]
                     )
 
                     # Update chapter context from translator
@@ -2984,12 +3848,16 @@ class EPUBBookLoader(BaseBookLoader):
                         raise Exception("Batch translation timed out after 5 minutes")
 
     def make_bilingual_book(self):
+        # Before the plan is built and before anything is translated: a
+        # checkpoint written into another language (or under another prompt,
+        # or by another model) is not this run's to continue.
+        self._check_resume_run_fingerprint()
         self.helper = EPUBBookLoaderHelper(
             self.translate_model,
             self.accumulated_num,
             self.translation_style,
             self.context_flag,
-            language=self.language,
+            language=self.language_tag,
         )
 
         # Check for fatal errors before starting
@@ -2999,6 +3867,11 @@ class EPUBBookLoader(BaseBookLoader):
             )
             return
 
+        # Before plan mode, not behind it: the budget is pinned for grouped
+        # and ungrouped session runs alike, so a run that never enters plan
+        # mode (or falls back out of it) is owed the same line.
+        self._narrate_session_compact_budget()
+
         if self._plan_mode:
             self._enter_plan_mode()
 
@@ -3006,8 +3879,8 @@ class EPUBBookLoader(BaseBookLoader):
         new_book = self._make_new_book(self.origin_book)
         trans_taglist = self.translate_tags.split(",")
         # A book being run through the tool a second time already carries a
-        # colophon. It is replaced, not translated and kept beside the new
-        # one — two of them would be two manifest entries under one id.
+        # closing page from an older build. It is dropped, not translated
+        # and kept beside this run's credit line.
         document_items = [
             item
             for item in self.origin_book.get_items_of_type(ITEM_DOCUMENT)
@@ -3029,6 +3902,7 @@ class EPUBBookLoader(BaseBookLoader):
 
         # The plan is the single source of truth for progress and execution.
         all_p_length = sum(len(plan.jobs) for plan in chapter_plans)
+        self._report_test_slice_requests(chapter_plans, all_p_length)
 
         # Use leave=False in test mode to prevent duplicate progress bar display
         pbar = tqdm(
@@ -3049,7 +3923,9 @@ class EPUBBookLoader(BaseBookLoader):
                 exit(0)
             # Add the things that don't need to be translated first, so that you can see the img after the interruption
             for item in self.origin_book.get_items():
-                if item.get_type() != ITEM_DOCUMENT:
+                if item.get_type() != ITEM_DOCUMENT and not self._is_prior_evidence(
+                    item
+                ):
                     new_book.add_item(item)
 
             # A document with no jobs — filtered out by --only_filelist or
@@ -3203,9 +4079,14 @@ class EPUBBookLoader(BaseBookLoader):
                 self._stamp_disclosure(new_book)
                 epub.write_epub(f"{name}_bilingual.epub", new_book, {})
                 self._reobfuscate_written(f"{name}_bilingual.epub")
+                self.announce_saved_book(f"{name}_bilingual.epub")
         except KeyboardInterrupt as e:
             print(e)
-            if self.accumulated_num == 1:
+            # The accumulated_num guard is tag-mode-shaped: its positional
+            # slots are unreliable mid-batch. Plan-mode checkpoints are
+            # unit-keyed and only record finished units, so a batched plan
+            # run is exactly as resumable as an unbatched one.
+            if self.accumulated_num == 1 or self.plan_mode:
                 print("you can resume it next time")
                 self._save_progress()
                 self._save_temp_book()
@@ -3227,7 +4108,7 @@ class EPUBBookLoader(BaseBookLoader):
                 print("Please check your network connection or API server status.")
             else:
                 traceback.print_exc()
-            if self.accumulated_num == 1:
+            if self.accumulated_num == 1 or self.plan_mode:
                 print("Saving progress...")
                 try:
                     self._save_progress()
@@ -3271,6 +4152,10 @@ class EPUBBookLoader(BaseBookLoader):
             # tag-mode checkpoints, and the fingerprint check that consumes
             # it only runs in plan mode.
             self._resume_plan_fingerprint = state.get("plan_fingerprint")
+            # language/prompt/model (see _run_fingerprint). Absent from
+            # checkpoints written before this was recorded: those warn and
+            # continue rather than being refused.
+            self._resume_run_fingerprint = state.get("run_fingerprint")
         except ValueError:
             raise
         except Exception:
@@ -3303,7 +4188,7 @@ class EPUBBookLoader(BaseBookLoader):
                 # the stamp below thinking the book was already stamped —
                 # so the recovery book kept the *last* run's claim, and
                 # --no_disclosure kept it too.
-                if is_our_colophon(item):
+                if is_our_colophon(item) or self._is_prior_evidence(item):
                     continue
                 if item.get_type() == ITEM_DOCUMENT:
                     # one plan per document, consumed in document order: the
@@ -3363,6 +4248,9 @@ class EPUBBookLoader(BaseBookLoader):
                 "order": self.CHECKPOINT_ORDER,
                 "job_ids": completed_job_ids,
                 "translations": self.p_to_save,
+                # job ids bind a slot to its source text; this binds its
+                # contents to the language, prompt and model that wrote them
+                "run_fingerprint": self._run_fingerprint(),
             }
             if self._plan_mode and self._plan_fingerprint:
                 # job ids bind the slots to the book's text; the plan

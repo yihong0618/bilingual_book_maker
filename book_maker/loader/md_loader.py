@@ -15,6 +15,7 @@ from book_maker.session_context import handoff_path
 from book_maker.utils import prompt_config_to_kwargs
 
 from .base_loader import BaseBookLoader
+from .helper import translate_list_or_singles
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,8 @@ class MarkdownBookLoader(BaseBookLoader):
         context_mode="window",
         context_compact_at=None,
         no_context_compact=False,
+        glossary=None,
+        glossary_auto=None,
         temperature=1.0,
         source_lang="auto",
         parallel_workers=1,
@@ -63,6 +66,8 @@ class MarkdownBookLoader(BaseBookLoader):
             context_mode=context_mode,
             context_compact_at=context_compact_at,
             no_context_compact=no_context_compact,
+            glossary=glossary,
+            glossary_auto=glossary_auto,
             handoff_path=handoff_path(md_name),
             **prompt_config_to_kwargs(prompt_config),
         )
@@ -222,10 +227,12 @@ class MarkdownBookLoader(BaseBookLoader):
                 translate_missing=True
             )
 
-            self.save_file(
-                f"{Path(self.md_name).parent}/{Path(self.md_name).stem}_bilingual.md",
-                self.bilingual_result,
+            out_path = (
+                f"{Path(self.md_name).parent}/"
+                f"{Path(self.md_name).stem}_bilingual.md"
             )
+            self.save_file(out_path, self.bilingual_result)
+            self.announce_saved_book(out_path)
 
         except KeyboardInterrupt:
             print("Interrupted. Saving progress so you can resume later.")
@@ -610,9 +617,7 @@ class MarkdownBookLoader(BaseBookLoader):
 
     def _translate_list(self, texts, translator=None):
         translator = translator if translator is not None else self.translate_model
-        if hasattr(translator, "translate_list"):
-            return translator.translate_list(texts)
-        return [translator.translate(text) for text in texts]
+        return translate_list_or_singles(translator, texts)
 
     def _coerce_saved_batch(self, saved_batch, batch_texts):
         if isinstance(saved_batch, list):

@@ -69,10 +69,12 @@ class TXTBookLoader(BaseBookLoader):
                 translate_missing=True
             )
 
-            self.save_file(
-                f"{Path(self.txt_name).parent}/{Path(self.txt_name).stem}_bilingual.txt",
-                self.bilingual_result,
+            out_path = (
+                f"{Path(self.txt_name).parent}/"
+                f"{Path(self.txt_name).stem}_bilingual.txt"
             )
+            self.save_file(out_path, self.bilingual_result)
+            self.announce_saved_book(out_path)
 
         except KeyboardInterrupt:
             print("Interrupted. Saving progress so you can resume later.")

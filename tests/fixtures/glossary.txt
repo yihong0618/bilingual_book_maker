@@ -1,0 +1,3 @@
+# A tiny pinned vocabulary, used by the flag-compatibility fixtures.
+Winston → 温斯顿
+Big Brother → 老大哥  # keep the irony

@@ -383,6 +383,15 @@ class PDFBookLoader(BaseBookLoader):
                     "epub creation skipped or failed; bilingual text saved to txt fallback"
                 )
             self._try_create_pdfs()
+            # A pdf run leaves a txt always and an epub when it can. The book
+            # is the epub where there is one; the txt is what the operator has
+            # otherwise, and naming the fallback beats naming nothing.
+            self.announce_saved_book(
+                f"{Path(self.pdf_name).parent}/"
+                f"{Path(self.pdf_name).stem}_bilingual.epub"
+                if epub_ok
+                else txt_out
+            )
 
         except (KeyboardInterrupt, Exception) as e:
             print(e)

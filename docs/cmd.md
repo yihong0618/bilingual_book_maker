@@ -11,10 +11,11 @@ sections after it provide additional notes for selected workflows.
 | Option | Purpose |
 |---|---|
 | `--book_name PATH` | Input EPUB, TXT, Markdown, SRT, or PDF path (required). |
-| `--language LANGUAGE` | Target language; default `zh-hans`. |
-| `--source_lang LANGUAGE` | Source language for models such as Qwen; default `auto`. |
+| `--language LANGUAGE` | Target language: a tag (`zh-hant`), a name (`"Traditional Chinese"`), or `TAG:NAME` to pin both when the tables miss the language — tag → output stamps and field names, name → the prompt. Default `zh-hans`; list in `docs/languages.md`. |
+| `--source_lang LANGUAGE` | Source language. Stated, it reaches every LLM route's prompt, and the request body on `qwen`/`customapi`; default `auto` (states nothing). |
 | `--single_translate` | Output translation only instead of bilingual text. |
-| `--no_disclosure` | Do not mark the epub as an AI translation, or a machine translation on the engine formats (translator credit, description line, closing note). |
+| `--no_disclosure` | Do not mark the epub as an AI translation: leaves out the one-line credit ("Translated by \<model\>, \<year\>.") below the book intro. Turns off `--translation-metadata` too. |
+| `--translation-metadata` | Write a small `bbm_translation_metadata.json` into the book: the model, the date, and the sha256 of a `--glossary` file (whose text is embedded alongside; terms a run learned by itself are not). Nothing else — no command line, endpoint, languages or paths, and no package metas: what could have shaped the translation is recorded, who ran it is not. Format conversions keep manifest files, so the record survives them. Plan-mode and session runs write it by themselves; this flag adds it to a plain tag-mode run. `--no_disclosure` turns it off too. |
 | `--translate-tags TAGS` | Comma-separated EPUB tags; default `p`, ignored in plan mode. |
 | `--exclude-translate-tags TAGS` | EPUB ancestor tags to exclude; default `sup,code`; `""` clears it. |
 | `--allow_navigable_strings` | Include otherwise untagged EPUB strings; redundant in plan mode. |
@@ -23,17 +24,17 @@ sections after it provide additional notes for selected workflows.
 | `--translation_style CSS` | CSS applied to translated EPUB entries. |
 | `--translation_color COLOR` | Color-only shorthand; `--translation_style` takes precedence. |
 | `--pdf_layout MODE` | Additional PDF output: `none`, `top-bottom`, `side-by-side`, or `all`. |
-| `--retranslate OUT FILE START END` | Retranslate an EPUB range in an existing output. |
+| `--retranslate OUT FILE START END` | Retranslate an EPUB range in an existing output. EPUB only — refused elsewhere. |
 
 ### EPUB plan mode
 
 | Option | Purpose |
 |---|---|
 | `--plan-dry-run` | Build and print the EPUB plan, write `<book>_plan.json` with every `action` still `null`, and exit. No credentials needed. |
-| `--plan-classify {auto,none,all,model,agent}` | No plan, the whole partition, model triage, or coding-agent triage. Default `auto`: model triage on an epub whose endpoint is verified to apply a strict JSON schema, tag mode otherwise. |
+| `--plan-classify {auto,none,all,model,agent}` | No plan, the whole partition, model triage, or coding-agent triage. Default `auto`: model triage on any epub endpoint that can answer — over structured output where a strict JSON schema is verified, over a plain conversation (exact `skip`/`translate` replies; anything else translates) elsewhere, codex included; tag mode only where no conversation exists. |
 | `--plan-classify-model MODEL` | Classification model; implies model mode and conflicts with `all`/`agent`. |
-| `--plan-min-coverage FRACTION` | Fail if selected planned text is below this fraction; default `0.5`. |
-| `--poetry-group-size N` | Maximum verse lines per planned translation request; default `8`. |
+| `--plan-min-coverage FRACTION` | Fail if selected planned text is below this fraction; default `0.5`, must be between 0 and 1 (`0` disables the guard, values above `0.9` usually abort — both warn). |
+| `--poetry-group-size N` | Deprecated — general grouping and the session handoff give short lines their neighbours now, and the units cap is `--max-batch-units`. Still works (default `8`, minimum `1`) but warns. |
 
 ### Translation and execution
 
@@ -41,20 +42,23 @@ sections after it provide additional notes for selected workflows.
 |---|---|
 | `--test` | Translate only a preview sample. |
 | `--test_num N` | Number of test units; default `10`. |
-| `--resume` | Continue from the loader's saved checkpoint. |
-| `--prompt VALUE_OR_FILE` | Prompt config: `user` (must contain `{text}`), `system`, and `style`. A `style` goes into every request and verbatim into each handoff report. On the `codex` format `system` is appended to the built-in instructions. |
+| `--resume` | Continue from the loader's saved checkpoint. An EPUB checkpoint records the run's language, prompt and model; a mismatch stops the resume (older checkpoints warn once and continue). Refused together with `--parallel-workers` and `--accumulated_num` above 1, where no checkpoint is ever written. |
+| `--prompt VALUE_OR_FILE` | Prompt config: `user` (must contain `{text}`), `system`, and `style`. A `style` goes into every request and verbatim into each handoff report. A section with no native slot on a route (`style` everywhere, `system` on the `codex` format) is appended to the user message instead of dropped; a run with `--prompt` prints which sections it adopted and where. Samples: `prompt_sections_sample.json`, `prompt_session_sample.json`. |
 | `--temperature FLOAT` | Sampling temperature; default `1.0`. |
 | `--use_context [window\|session]` | Send earlier paragraphs as context. Bare or `window`: re-send the last few source/translation pairs (the long-standing behaviour). `session`: one append-only history, re-read at the endpoint's prompt-cache rate. |
 | `--context_paragraph_limit N` | Window mode only: context history limit. Parser default `0` means the translator default (3 paragraphs for ChatGPT), not zero history. |
-| `--context-compact-at N` | Session mode only: estimated-token budget before the history is compacted into a handoff report. Default `8000`, minimum `500`; `2500` is the cheapest setting. |
+| `--context-compact-at N` | Estimated-token budget for a rolling history. In session mode the history is compacted into a handoff report at this size; minimum `500`. When unset, every session run — grouped or not, the `codex` format included — compacts at `8000`, printed at start (pinned on measurement: the cost optimum sits at 1500–4000, 8000 runs 9–25% above it — noise — and it is where a typical run compacts 0–1 times, so continuity costs the least; 20000 cost up to 56% more and drifted). Also bounds the plan classifier's conversation on endpoints that classify over a plain session (restart there, no handoff), with or without `--use_context`. An explicit value always wins. |
 | `--no-context-compact` | Session mode only: skip the handoff report. The window still rolls over at the budget, but the next one starts empty. |
-| `--accumulated_num N` | EPUB token/character accumulation and SRT subtitle-block character batching (capped at 512 for SRT); ignored in EPUB plan mode. |
+| `--glossary FILE` / `--terminology FILE` | A file of `term → translation` lines (one per line; `#` starts a note or a comment) this run must render that way. Two names for one flag. Only the terms that occur in a request are sent with it. A missing file stops the run at parse time. Read by the openai- and codex-shaped routes for EPUB and Markdown books; other routes warn and ignore it. |
+| `--glossary-auto on\|off` | Whether a session run also keeps the renderings its own handoff reports establish. On by default wherever a session runs (`--use_context session`, and the `codex` format's one thread); `off` asks the compact turn for a summary only. Learned terms stay in this run and in `<book>_handoff.md`, and nowhere else. |
+| `--accumulated_num N` | EPUB token/character accumulation and SRT subtitle-block character batching (capped at 512 for SRT). In EPUB plan mode it is a per-request token budget: consecutive units of any length share one request up to `N` tokens (at most `--max-batch-units` units per request; half that when the endpoint verifies JSON mode but not a strict schema). Untyped, every plan run derives a default from the run's own prompt overhead — `2400` with the stock prompts, up to `3200` under a fat custom `--prompt` — halved per request (floor `1200`) on an endpoint without a strict-schema verdict, the same margin that halves the unit cap there; session runs (`codex` included) keep the un-halved value. The run narrates the number and the route class. Pass `1` to turn grouping off. Minimum `1`. |
+| `--max-batch-units N` | EPUB plan mode only: the most units `--accumulated_num`'s token budget may put in one request. Default `32` — half the measured fault-emergence level (first content faults at 64 effective units, September 2026, 923 requests over four books). An endpoint that verifies JSON mode but not a strict schema carries half this many (16), where reply miscounts actually live. Lower it if the run keeps printing misalignment recoveries. |
 | `--batch_size N` | Aggregated unit count for loaders that support it. |
 | `--block_size N` | Merge paragraphs into delimiter-translated blocks. |
 | `--sentence_mode` | Translate EPUB paragraphs sentence by sentence; incompatible with plan mode. |
 | `--parallel-workers N` | Parallel EPUB chapters or Markdown batches/sections; default `1`. Refused with `--use_context session` (one history) and on the `codex` format (one thread). |
-| `--batch` | Submit an EPUB ChatGPT Batch API job; incompatible with plan mode, and refused on a route that does not implement the Batch API. |
-| `--batch-use` | Consume a previously submitted batch job; incompatible with plan mode. |
+| `--batch` | Submit a ChatGPT Batch API job. Refused on EPUB (the queue path is unreachable there: the run would translate live at full price and submit an empty job instead of writing the book) and on routes without the Batch API. |
+| `--batch-use` | Consume a previously submitted batch job. Refused on EPUB, like `--batch`. |
 | `--extra_body JSON` | Extra fields on every request body, for the routes that build one (`openai`, `groq`, `xai`, `litellm`, `--model orcarouter`, `anthropic`); the others ignore it and say so. Reaches the capability probe and the JSON rungs too, so the endpoint is graded on the request the run makes. Merged over the named parameters, so a field here beats the flag for it. |
 | `--extra_headers JSON` | Extra HTTP headers on every request, same routes. Set on the client, so the capability probe, the model check and the model listing carry them. Values must be strings. |
 | `--quiet` | Suppress EPUB progress bars and paragraph echoes, not reports/errors. |
@@ -74,8 +78,8 @@ A route is an endpoint, not a model name.
 | `--api_format groq` \| `xai` \| `litellm` | The OpenAI shape at Groq, xAI and a LiteLLM proxy (`http://localhost:4000`). Each carries its address, so the format and a key are the whole route. `--model` is required: those catalogues turn over, so none is assumed. |
 | `--model codex` | The Codex CLI sidecar on a ChatGPT plan, the same as `--api_format codex`. It runs `gpt-5.6-luna`; `--api_format codex --model <id>` names another (the sidecar also offers `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.5`, `gpt-5.2`). |
 | `--model orcarouter` | The OrcaRouter gateway and its smart-routing model `orcarouter/auto`. Needs no `--api_base`; one you pass wins. The key comes from `BBM_ORCAROUTER_API_KEY`. Not a legacy alias: nothing is rewritten. |
-| `--model_list IDS` | Several model ids to rotate across, comma-separated. A single model belongs in `--model`; naming a model in both flags is an error. |
-| `--source_lang LANG` | Source language, for the routes that want it stated (`qwen`, `customapi`); default `auto`. |
+| `--model_list IDS` | Several model ids to rotate across, comma-separated. A single model belongs in `--model`; naming a model in both flags is an error. Refused with `--use_context session`: rotation makes every request a full-price cache miss and mixes models in one conversation. |
+| `--source_lang LANG` | Source language. Stated, it reaches every LLM route's prompt as evidence, and the request itself on `qwen`/`customapi`; default `auto`. |
 | `--interval SECONDS` | Pause between requests, default `0.01`. Only the `gemini` route paces itself with it. |
 | `--provider NAME` | A named endpoint from `bbm_providers.json` (this directory) or `~/.bbm/providers.json`; the project file wins on a shared name, and a name in neither falls back to the shipped `bbm_providers.example.json`, with a warning naming the address and key variable it used (its `FILL-ME` templates excluded). Its `base_url`, `api_style` (`openai`, `anthropic`, `gemini`, `qwen`, `groq`, `xai` or `litellm`), `default_models` and `env_key` stand in for `--api_base`, `--api_format`, `--model`/`--model_list` and the key. Flags you pass yourself win. |
 

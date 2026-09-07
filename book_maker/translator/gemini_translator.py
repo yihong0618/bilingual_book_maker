@@ -16,7 +16,7 @@ from tenacity import (
     RetryCallState,
 )
 
-from .base_translator import Base
+from .base_translator import Base, BatchMismatch
 from ..structured import RungRejected, extract_json_object, unwrap_schema_echo
 
 
@@ -75,6 +75,11 @@ def _should_retry(exception: Exception) -> bool:
     """Determine if we should retry based on exception type."""
     # Never retry on user interrupt
     if isinstance(exception, KeyboardInterrupt):
+        return False
+    # A miscounted batch is not a transient failure: the same group asked
+    # again usually comes back miscounted again, and each attempt re-pays
+    # the whole group. The loader's ladder halves it instead.
+    if isinstance(exception, BatchMismatch):
         return False
     # Don't retry geo-restriction errors
     if isinstance(exception, errors.APIError):
@@ -160,6 +165,10 @@ class Gemini(Base):
     # Regex patterns
     TAG_PATTERN = r"<step3_refined_translation>(.*?)</step3_refined_translation>"
 
+    # `--prompt`'s style section. Class-level so an instance built without
+    # __init__ — a subclass, a test double — still answers.
+    style_note = None
+
     def __init__(
         self,
         key,
@@ -169,6 +178,7 @@ class Gemini(Base):
         prompt_sys_msg=None,
         context_flag=False,
         temperature=1.0,
+        style_note=None,
         **kwargs,
     ) -> None:
         super().__init__(key, language)
@@ -187,6 +197,9 @@ class Gemini(Base):
             or environ.get(PROMPT_ENV_MAP["system"])
             or None  # Allow None, but not empty string
         )
+        # `--prompt`'s style section. It used to fall into **kwargs and be
+        # discarded here, so a style this route was given was never sent.
+        self.style_note = style_note
         self.interval = self.DEFAULT_INTERVAL
         self.client = self._new_client()
         generation_config.temperature = temperature
@@ -196,6 +209,18 @@ class Gemini(Base):
             types.HttpOptions(base_url=self.api_base) if self.api_base else None
         )
         return genai.Client(api_key=next(self.keys), http_options=http_options)
+
+    def _system_instruction(self):
+        """The system slot's value, or None.
+
+        `--prompt`'s system section fills it, with `{language}`/`{crlf}`
+        resolved the way the other routes resolve them. None rather than "":
+        this SDK takes an absent instruction, and an empty one is not the same
+        request.
+        """
+        return self._augment_system_content(
+            self.fill_optional(self.prompt_sys_msg) or None
+        )
 
     def _build_config_kwargs(
         self, response_mime_type: str | None = None, response_schema: type | None = None
@@ -207,7 +232,9 @@ class Gemini(Base):
             "top_k": generation_config.top_k,
             "max_output_tokens": generation_config.max_output_tokens,
             "safety_settings": safety_settings,
-            "system_instruction": self.prompt_sys_msg,
+            # `--source_lang` names the source; the note is fixed for a
+            # run, so it belongs with the run's standing instructions.
+            "system_instruction": self._system_instruction(),
         }
 
         if response_mime_type:
@@ -236,6 +263,19 @@ class Gemini(Base):
             # a classification request may name --plan-classify-model, and
             # pricing it as the translation model would be wrong
             model=model or getattr(self, "model", None),
+        )
+
+    def _user_content(self, text: str) -> str:
+        """The turn's text: the user template, then the style section.
+
+        Gemini's system slot is `system_instruction`, so `system` is native
+        here. There is no style slot, so `--prompt`'s style rides at the end
+        of the turn, in the wording every other route uses. `{crlf}` is filled
+        too — it is documented for `--prompt` and used to raise KeyError here.
+        """
+        return (
+            self.prompt.format(text=text, language=self.language, crlf="\n")
+            + self.style_suffix()
         )
 
     def _extract_translation_text(self, response_text: str) -> str:
@@ -293,9 +333,7 @@ class Gemini(Base):
     def _translate_with_retry(self, text: str, paragraph_num: str | None) -> str:
         """Internal translation method with tenacity retry logic."""
         try:
-            response = self.convo.send_message(
-                self.prompt.format(text=text, language=self.language)
-            )
+            response = self.convo.send_message(self._user_content(text))
             self._note_usage(response)
             t_text = self._extract_translation_text(response.text)
 
@@ -426,6 +464,9 @@ class Gemini(Base):
             )
         print(f"Using model list {model_list}")
         self._model_names = tuple(model_list)
+        # The configured fact is the alias's full expansion, before the
+        # endpoint's availability filter above pared it down.
+        self._configured_model_names = tuple(dict.fromkeys(allowed_models))
         self.model_list = cycle(model_list)
         self.rotate_model()
 
@@ -438,6 +479,7 @@ class Gemini(Base):
         # copy it reads, and a rotation mid-book means every name here may
         # have translated part of the book.
         self._model_names = tuple(model_list)
+        self._configured_model_names = tuple(model_list)
         self.model_list = cycle(model_list)
         self.rotate_model()
 
@@ -488,7 +530,7 @@ class Gemini(Base):
                     response_mime_type="application/json",
                     response_schema=TranslationResponse,
                     temperature=generation_config.temperature,
-                    system_instruction=self.prompt_sys_msg,
+                    system_instruction=self._system_instruction(),
                 ),
             )
 
@@ -510,6 +552,10 @@ class Gemini(Base):
                 self.rotate_model()
             else:
                 self.rotate_key()
+            raise
+        except BatchMismatch:
+            # Not retried and not repaired here: the loader divides. Rotating
+            # the key would blame the credential for a counting mistake.
             raise
         except ValueError:
             # Parsing/response mismatch - retry without rotating key
@@ -538,7 +584,7 @@ class Gemini(Base):
         expected_count = len(non_empty_texts)
         batch_text = "\n\n".join(non_empty_texts)
 
-        prompt = self.prompt.format(text=batch_text, language=self.language)
+        prompt = self._user_content(batch_text)
         if "translated_paragraphs" not in prompt.lower():
             prompt += (
                 f"\n\nReturn the translations as a JSON object with a 'translated_paragraphs' "
@@ -557,6 +603,9 @@ class Gemini(Base):
             merged = list(text_list)
             for idx, value in zip(non_empty_indices, result):
                 merged[idx] = value
+            # count is not alignment — an empty slot for a non-empty source
+            # is the one symptom of a shifted batch
+            self._check_batch(text_list, merged)
             return merged
 
         # Fallback to one-by-one translation (only for non-fatal errors)
@@ -581,17 +630,20 @@ class Gemini(Base):
     def _parse_batch_response(
         self, response_text: str, expected_count: int
     ) -> list[str] | None:
-        """Parse and validate batch translation response."""
+        """Parse and validate batch translation response.
+
+        Raises `BatchMismatch` when the reply cannot be aligned — not a
+        retry, and not a per-line fallback: the loader's ladder halves the
+        chunk, which costs about twice the batch instead of N singles.
+        """
         try:
             result = json.loads(response_text)
             translated = result.get("translated_paragraphs", [])
 
             if len(translated) != expected_count:
-                print(
-                    f"Warning: Expected {expected_count} translations, got {len(translated)}. "
-                    f"Retrying..."
+                raise BatchMismatch(
+                    f"expected {expected_count} translations, " f"got {len(translated)}"
                 )
-                return None
 
             return [str(t) for t in translated]
 

@@ -4,6 +4,7 @@ import os
 import shutil
 from os import environ
 from itertools import cycle
+from types import SimpleNamespace
 import json
 from functools import lru_cache
 from pathlib import Path
@@ -34,6 +35,7 @@ from tenacity import (
 from .base_translator import (
     AsyncTranslationUnsupported,
     Base,
+    BatchMismatch,
     TranslationContext,
     TranslationResult,
 )
@@ -54,14 +56,17 @@ from ..structured import (
     RungRejected,
     extract_json_object,
     prompt_with_schema,
+    schema_required_keys,
     unwrap_schema_echo,
 )
 from ..config import config
+from ..glossary import Glossary
 from ..session_context import (
     HandoffReport,
     SessionHistory,
     compact_budget_for,
     handoff_prompt,
+    strip_handoff_glossary,
 )
 
 CHATGPT_CONFIG = config["translator"]["chatgptapi"]
@@ -103,13 +108,51 @@ def batch_field_name(language):
 # The schema name is sent to the model, which never has to tell the single
 # schema from the batch one -- a request carries exactly one. So name each
 # schema after the field it wraps rather than after our own call sites.
-@lru_cache(maxsize=None)
-def single_translation_model(language):
+def single_translation_model(language, source_language=None, field_language=None):
     """Structured single translation output, pinned to `language`."""
-    field = single_field_name(language)
+    # The cache is keyed positionally, so the default has to be filled in
+    # here: `f(lang)` and `f(lang, None)` are two entries otherwise, and two
+    # entries mean two distinct classes for one schema — an identity check
+    # on `response_format` then fails for no visible reason.
+    return _single_translation_model(language, source_language, field_language)
+
+
+@lru_cache(maxsize=None)
+def _single_translation_model(language, source_language, field_language):
+    field = single_field_name(field_language or language)
     return create_model(
         field,
         __config__=ConfigDict(extra="forbid"),
+        **{
+            field: (
+                str,
+                Field(description=_single_field_description(language, source_language)),
+            )
+        },
+    )
+
+
+@lru_cache(maxsize=None)
+def batch_item_model(language, field_language=None):
+    """One reply item: the id that was sent back, and its translation.
+
+    Nothing else — no notes, no confidence, no echo of the source. Every
+    extra property is a place for the model to spend output tokens, and
+    strict mode forbids adding one later without a schema change anyway.
+    """
+    field = single_field_name(field_language or language)
+    return create_model(
+        f"{field}_item",
+        __config__=ConfigDict(extra="forbid"),
+        id=(
+            int,
+            Field(
+                description=(
+                    "The id of the input paragraph this translates, copied "
+                    "exactly from the request."
+                )
+            ),
+        ),
         **{
             field: (
                 str,
@@ -119,43 +162,66 @@ def single_translation_model(language):
     )
 
 
+def batch_translation_model(language, n, source_language=None, field_language=None):
+    """Structured batch translation output for `n` paragraphs.
+
+    Per-(language, n) because the count is part of what the model is being
+    told: the prose tail says EXACTLY n, and the schema name carries it too.
+    Strict mode does not honour `minItems`/`maxItems`, so the count is *not*
+    a decode-time constraint — it is checked client-side, and a miscount
+    raises `BatchMismatch` for the loader's ladder to divide.
+
+    Items echo the id they were sent with. Alignment is by id, never by
+    array position: a model that reorders its answers, or drops one and
+    keeps the rest, is silently misaligned under positional reading.
+    """
+    # positional cache key; see `single_translation_model`
+    return _batch_translation_model(language, n, source_language, field_language)
+
+
 @lru_cache(maxsize=None)
-def batch_translation_model(language):
-    """Structured batch translation output, pinned to `language`."""
-    field = batch_field_name(language)
+def _batch_translation_model(language, n, source_language, field_language):
+    field = batch_field_name(field_language or language)
     return create_model(
         field,
         __config__=ConfigDict(extra="forbid"),
         **{
             field: (
-                list[str],
-                Field(description=_batch_field_description(language)),
+                list[batch_item_model(language, field_language)],
+                Field(
+                    description=_batch_field_description(language, n, source_language)
+                ),
             )
         },
     )
 
 
-def _single_field_description(language):
+def _single_field_description(language, source_language=None):
     target = language or "the target language"
+    if source_language:
+        return f"The source text translated from {source_language} into {target}."
     return f"The source text translated into {target}."
 
 
-def _batch_field_description(language):
+def _batch_field_description(language, n=None, source_language=None):
     target = language or "the target language"
+    count = f"exactly {n}" if n is not None else "one"
+    source = f" from {source_language}" if source_language else ""
     return (
-        f"The source paragraphs translated into {target}, one per input "
-        f"paragraph and in the same order."
+        f"The source paragraphs translated{source} into {target}: {count} "
+        f"item(s), one per input paragraph, each carrying back the id it "
+        f"was given."
     )
 
 
 @lru_cache(maxsize=None)
-def single_translation_schema(language):
+def single_translation_schema(language, field_language=None):
     """Mirror of `single_translation_model` for the Batch API.
 
     Batch JSONL bodies are built by hand and so cannot use the SDK's Pydantic
     support; both sides take their field name from `single_field_name`.
     """
-    field = single_field_name(language)
+    field = single_field_name(field_language or language)
     return {
         "name": field,
         "strict": True,
@@ -173,10 +239,158 @@ def single_translation_schema(language):
     }
 
 
+@lru_cache(maxsize=None)
+def batch_translation_schema(language, n, source_language=None, field_language=None):
+    """Mirror of `batch_translation_model` as a plain JSON Schema dict.
+
+    The json_object degree cannot be handed a schema at all — the endpoint
+    guarantees only that *some* JSON comes back — so the shape is described
+    in the prompt instead (`prompt_with_schema`). This is the dict that
+    description is rendered from, and the source of the one top-level key
+    the reply is checked for before anything is read out of it.
+    """
+    field = batch_field_name(field_language or language)
+    item_field = single_field_name(field_language or language)
+    return {
+        "name": field,
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                field: {
+                    "type": "array",
+                    "description": _batch_field_description(
+                        language, n, source_language
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "integer",
+                                "description": (
+                                    "The id of the input paragraph this "
+                                    "translates, copied exactly from the "
+                                    "request."
+                                ),
+                            },
+                            item_field: {
+                                "type": "string",
+                                "description": _single_field_description(
+                                    language, source_language
+                                ),
+                            },
+                        },
+                        "required": ["id", item_field],
+                        "additionalProperties": False,
+                    },
+                }
+            },
+            "required": [field],
+            "additionalProperties": False,
+        },
+    }
+
+
+# Probe verdicts the id-echo batch contract may run at. "strict" and "shape"
+# are sent a `json_schema` request: the batch schema pins no *values* (the
+# target language rides in the field name and in the prose tail), so an
+# endpoint that honours shape honours all of it. "json" is sent
+# `json_object` plus the schema described in the prompt, and its reply is
+# read out of whatever prose or fences came with it.
+SCHEMA_BATCH_DEGREES = ("strict", "shape")
+BATCH_STRUCTURED_DEGREES = SCHEMA_BATCH_DEGREES + ("json",)
+
+
+def _echoed_id(value):
+    """An id from an unconstrained reply, as the integer it was sent as.
+
+    Nothing constrained the type here, and an id echoed as "3" is the id 3.
+    A boolean is not an id at all, and is deliberately taken out of the
+    integer space it would otherwise share (`True == 1`) so that a reply
+    carrying one fails alignment instead of passing it.
+    """
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, str) and value.strip().lstrip("+-").isdigit():
+        return int(value)
+    return value
+
+
 # Per-request timeout and SDK retries. The SDK defaults (600 s, 3 tries) let
 # a gateway that accepts a request and never answers hold a run for half an
 # hour with nothing printed.
 REQUEST_LIMITS = {"timeout": 300.0, "max_retries": 1}
+
+
+class ClassifierSession:
+    """Plan classification over one append-only message list.
+
+    The same prefix discipline `session_context` keeps for translation, for
+    the same reason: every turn is the previous request plus its reply plus
+    the new signatures, so an endpoint with prompt caching re-reads the
+    trunk at its cache rate instead of buying it again three signatures at
+    a time. Nothing already sent is ever rewritten — the classifier
+    restarts a session rather than editing one.
+
+    Kept apart from `self.session`, which is the *translation* history:
+    `--use_context` decides whether that exists, and this one is planning
+    machinery that runs before the first paragraph either way.
+    """
+
+    def __init__(self, translator, model=None):
+        self.translator = translator
+        self.model = model or translator.model
+        self._messages = []
+
+    def budget(self):
+        """The window the classifier works to: `--context-compact-at`, else
+        this session's *own* model's default.
+
+        `--plan-classify-model` is exactly the case where those differ: the
+        classifier's conversation is held with that model and rolls over
+        against that model's window, so deriving the budget from whatever
+        the translation runs on described a different session.
+        """
+        if self.translator.context_compact_at is None:
+            return compact_budget_for(self.model)
+        return self.translator.context_compact_at
+
+    def start(self, trunk):
+        """Open a fresh conversation. The trunk rides in the system message,
+        where it is the stable head of every later request in this session.
+
+        Behind it, one demonstrated exchange: the example turn as a user
+        message and the reply it should have got as an assistant one. The
+        first *real* turn is then never the first turn of the conversation,
+        which is what a weak endpoint needs to answer it in the format rather
+        than in prose about it. The seeded reply is text this side wrote; it
+        is never read back as a verdict, because `ask` returns only what the
+        endpoint says.
+
+        Every restart re-seeds it: the classifier restarts rather than
+        compacts, and a fresh session with no demonstration is a fresh
+        first-turn problem.
+        """
+        # Imported here, not at module scope: the loader package imports this
+        # one back, and the classifier text is wanted only once a session
+        # actually opens.
+        from ..loader.classify.session import EXAMPLE_REPLY, build_example_turn
+
+        self._messages = [
+            {"role": "system", "content": trunk},
+            {"role": "user", "content": build_example_turn()},
+            {"role": "assistant", "content": EXAMPLE_REPLY},
+        ]
+
+    def ask(self, text):
+        messages = [*self._messages, {"role": "user", "content": text}]
+        reply = self.translator._classify_turn(messages, self.model)
+        self._messages = [*messages, {"role": "assistant", "content": reply or ""}]
+        return reply
+
+    def messages(self):
+        """What the next request will replay. Callers must not mutate it."""
+        return list(self._messages)
 
 
 class ChatGPTAPI(Base):
@@ -196,11 +410,22 @@ class ChatGPTAPI(Base):
     SUPPORTS_PARALLEL_CONTEXT = True
     SUPPORTS_BATCH_API = True
     SUPPORTS_REQUEST_EXTRAS = True
+    SUPPORTS_GLOSSARY = True
     # Session-mode state, declared here so the window-mode path is well
     # defined on any instance — including the subclasses and test fixtures
     # that build one without running __init__. `session is None` means window
     # mode everywhere in this class.
     session = None
+    # `pinned` is the operator's --glossary file, `learned` what this run's
+    # compacts established, `glossary` the two combined. None here rather than
+    # an empty Glossary so an instance built without __init__ still answers
+    # "no glossary" without constructing one.
+    glossary = None
+    pinned = None
+    learned = None
+    # Tri-state, from `--glossary-auto {on,off}`: None is "unsaid", and
+    # `glossary_auto_on` below turns that into the default for this run.
+    glossary_auto = None
     handoff_path = None
     context_compact_at = None
     no_context_compact = False
@@ -211,6 +436,13 @@ class ChatGPTAPI(Base):
     # and a shared dict settles the question for all of them at once.
     _route_state = None
     context_mode = "window"
+    # Units one request may carry when the endpoint is below strict decoding.
+    # Mirrors `book_maker.loader.plan.SUBSTRICT_GROUP_MAX_UNITS` (pinned by a
+    # test) but is spelled here as a plain class attribute: importing the
+    # loader from the translator only works lazily, and an instance built
+    # without __init__ — a subclass, a test double — still needs the value.
+    # The CLI lowers it alongside `--max-batch-units`.
+    substrict_batch_cap = 16
 
     # Set by the CLI from --quiet. Suppresses this class's own echoes.
     quiet = False
@@ -229,6 +461,8 @@ class ChatGPTAPI(Base):
         context_mode="window",
         context_compact_at=None,
         no_context_compact=False,
+        glossary=None,
+        glossary_auto=None,
         style_note=None,
         handoff_path=None,
         extra_body=None,
@@ -271,6 +505,15 @@ class ChatGPTAPI(Base):
         )
         self.context_compact_at = context_compact_at
         self.no_context_compact = no_context_compact
+        # `pinned` is the operator's --glossary file and never changes.
+        # `learned` accumulates what compacts establish. `glossary` is the two
+        # combined, pins on top, and is what gets injected per unit. Keeping
+        # `pinned` separate is what lets anything downstream record the pinned
+        # file alone: nothing merges back into it.
+        self.pinned = glossary or Glossary()
+        self.learned = Glossary()
+        self.glossary = self.pinned
+        self.glossary_auto = glossary_auto
         self.style_note = style_note
         self.handoff_path = Path(handoff_path) if handoff_path else None
         self._compact_failures = 0
@@ -382,8 +625,22 @@ class ChatGPTAPI(Base):
         """
         return self._probe_verdict(model) == "strict"
 
-    def _structured_enabled(self):
-        return self.capabilities.verdicts.get(self.model, False) == "strict"
+    def _structured_enabled(self, model=None):
+        """The degree the id-echo batch contract may run at, or False.
+
+        Batching asks a different question from single-paragraph
+        translation. A single translation is pinned to its target language
+        by a schema *value* (#544), which only a "strict" endpoint applies —
+        but a batch's schema pins no values at all, and the thing batching
+        actually needs is that ids come back attached to their translations.
+        The 260905 off-OpenAI eval measured that contract holding at the
+        json_object degree on every endpoint tried, so "shape" and "json"
+        batch too; they are simply carried on a looser wire format, and the
+        alignment checks that catch a bad strict reply catch a bad loose one
+        the same way.
+        """
+        verdict = self._probe_verdict(model)
+        return verdict if verdict in BATCH_STRUCTURED_DEGREES else False
 
     def _note_structured_success(self):
         """A working structured call clears the model's failure streak."""
@@ -441,7 +698,9 @@ class ChatGPTAPI(Base):
             prompt,
             response_format={"type": "json_schema", "json_schema": schema},
         )
-        return unwrap_schema_echo(extract_json_object(text))
+        return unwrap_schema_echo(
+            extract_json_object(text, schema_required_keys(schema))
+        )
 
     def _json_object_rung(self, prompt, schema, model):
         text = self._completion_text(
@@ -449,10 +708,35 @@ class ChatGPTAPI(Base):
             prompt_with_schema(prompt, schema),
             response_format={"type": "json_object"},
         )
-        return unwrap_schema_echo(extract_json_object(text))
+        return unwrap_schema_echo(
+            extract_json_object(text, schema_required_keys(schema))
+        )
 
     def _chat_completion(self, prompt, model=None):
         return self._completion_text(model or self.model, prompt)
+
+    def classify_session(self, model=None):
+        """See `Base.classify_session`. One conversation, held in messages."""
+        return ClassifierSession(self, model)
+
+    def _classify_turn(self, messages, model):
+        """One turn of a classifier session: the whole history, one reply.
+
+        Not `_completion_text`, which sends a single user message — the
+        point here is that the prefix is re-sent byte for byte. Billed like
+        any other request, so the meter is told about it.
+        """
+        completion = self._request(
+            lambda sampling: self.openai_client.chat.completions.create(
+                model=model,
+                messages=messages,
+                extra_body=self.extra_body if self.extra_body else None,
+                **sampling,
+            ),
+            model=model,
+        )
+        self._note_usage(completion, model)
+        return completion.choices[0].message.content or ""
 
     def set_request_extras(self, extra_body=None, extra_headers=None):
         """See `Base.set_request_extras`.
@@ -481,18 +765,78 @@ class ChatGPTAPI(Base):
             if self.model_list:
                 self.model = next(self.model_list)
 
+    # Both of these turn off exactly what session mode cannot afford, and both
+    # are the same question — is a byte-stable prefix being maintained? — so
+    # they answer it the same way, as they do on `Claude`. Window mode is
+    # untouched by either.
+
+    @property
+    def BATCH_SYS_MSG_PER_REQUEST(self):
+        """False while a session is open: the system message is part of the prefix.
+
+        Borrowing it for the length of one grouped request moves the prefix
+        for that request and leaves the next one no longer extending it —
+        one full-price re-read of the accumulated history per batch, which is
+        the one expense session mode exists to avoid. The batch contract is
+        not lost: `_build_batch_prompt` also puts it at the head of the user
+        prompt, and that rides with the request.
+        """
+        return self.session is None
+
+    @property
+    def BATCH_CONTEXT_PER_LINE(self):
+        """False while a session is open: the history replays what was sent.
+
+        A window keeps paragraphs, so it wants one pair per line. A session
+        keeps requests, and a grouped request was a single exchange — split
+        into per-line pairs, the history stops matching what the endpoint
+        saw.
+        """
+        return self.session is None
+
+    @property
+    def glossary_auto_on(self):
+        """Whether this run learns renderings from its own handoff reports.
+
+        The derived glossary is a by-product of session compaction, so it can
+        only exist where a session does. The default is therefore "on wherever
+        a session runs": `--glossary-auto off` is the way to decline it, and
+        `--glossary-auto on` cannot conjure one on the windowed path, where
+        there is no compact turn to learn from (the CLI says so).
+        """
+        if self.session is None:
+            return False
+        return self.glossary_auto is not False
+
     def _user_content(self, text):
         """The user message for one unit.
 
-        Deterministic for a given text, which is what lets session mode store
-        exactly what it sent without threading the string around.
+        Deterministic for a given (text, glossary), which is what lets session
+        mode store exactly what it sent without threading the string around —
+        the marker preamble included, since it is a function of the text too.
+
+        Pinned terms belong to *this* unit, so they go in the fresh tail
+        message rather than the system prompt: a block that varies per unit
+        sitting in a fixed position would invalidate the cached prefix on
+        every request. Once this message is frozen into the history it stops
+        varying, so it is stable there.
         """
-        return self.prompt_template.format(text=text, language=self.language, crlf="\n")
+        content = (
+            self._marker_preamble(text)
+            + self.prompt_template.format(text=text, language=self.language, crlf="\n")
+            # No endpoint has a slot for `--prompt`'s style section, so it
+            # rides here. Last, after the user's own template: it is the
+            # standing instruction the run must not lose, and a fixed string
+            # keeps every request's tail comparable.
+            + self.style_suffix()
+        )
+        block = self.glossary.prompt_block(text) if self.glossary else ""
+        return f"{block}\n\n{content}" if block else content
 
     def create_messages(self, text, intermediate_messages=None):
         content = self._user_content(text)
 
-        sys_content = self.system_content or self.prompt_sys_msg.format(crlf="\n")
+        sys_content = self._augment_system_content(self._system_message())
         messages = [
             {"role": "system", "content": sys_content},
         ]
@@ -661,14 +1005,16 @@ class ChatGPTAPI(Base):
         when the model declined this text.
         """
         messages = self.create_messages(text, self.create_context_messages())
-        field = single_field_name(self.language)
+        field = single_field_name(self.field_language)
 
         try:
             completion = self._request(
                 lambda sampling: self.openai_client.chat.completions.parse(
                     model=self.model,
                     messages=messages,
-                    response_format=single_translation_model(self.language),
+                    response_format=single_translation_model(
+                        self.language, field_language=self.language_field_tag
+                    ),
                     extra_body=self.extra_body if self.extra_body else None,
                     **sampling,
                 )
@@ -745,7 +1091,9 @@ class ChatGPTAPI(Base):
         being condensed into what replaces it.
         """
         budget = self._session_budget()
-        prompt = handoff_prompt(with_style=not self.style_note)
+        prompt = handoff_prompt(
+            with_glossary=self.glossary_auto_on, with_style=not self.style_note
+        )
         messages = [
             *self.session.messages(),
             {"role": "user", "content": prompt},
@@ -759,6 +1107,12 @@ class ChatGPTAPI(Base):
                     **sampling,
                 )
             )
+            # The handoff turn is billed like any other request — it carries
+            # the whole window and answers with a report. Without this line
+            # the meter understates a session run's cost worst exactly where
+            # it looks best: at a short compact budget, where compaction is
+            # frequent (up to 38% of real cost invisible, 260905 eval).
+            self._note_usage(completion)
             report_text = completion.choices[0].message.content or ""
         except Exception as e:
             # Keep the window. One rate-limited or dropped request is not a
@@ -790,12 +1144,21 @@ class ChatGPTAPI(Base):
             return
         self._compact_failures = 0
 
+        glossary_lines = self._learn_from_handoff(report_text)
+
         report = HandoffReport(
             window=self.session.windows,
             # A style the user fixed is handed on verbatim, so it cannot be
             # eroded window by window by a model re-describing it.
             style_note=self.style_note,
-            summary=report_text.strip(),
+            # The renderings block is parsed into `glossary_lines`, so it is
+            # stripped from the prose rather than stored and re-seeded twice.
+            summary=(
+                strip_handoff_glossary(report_text)
+                if self.glossary_auto_on
+                else report_text.strip()
+            ),
+            glossary_lines=glossary_lines,
         )
         self._show_handoff(report)
         if self.handoff_path:
@@ -832,7 +1195,18 @@ class ChatGPTAPI(Base):
         # this message verbatim, so any difference — the prompt template, say —
         # would make the newest pair a cache miss, and the run would re-read a
         # paragraph at full input price every request.
-        self.session.append(self._user_content(text), t_text)
+        self._record_session_exchange(self._user_content(text), t_text)
+
+    def _record_session_exchange(self, user_content, reply_text):
+        """Append one exchange, given the strings the wire actually carried.
+
+        The structured batch path builds its user message itself, so it
+        cannot go through `_save_session_context` — and a batch recorded as N
+        synthetic pairs is a history that no longer matches what the endpoint
+        cached, which costs a full-price re-read of the whole prefix every
+        request.
+        """
+        self.session.append(user_content, reply_text)
         if not self.session.should_compact(self._session_budget()):
             return
         if self.no_context_compact:
@@ -997,46 +1371,127 @@ class ChatGPTAPI(Base):
     def translate_list(self, text_list):
         """
         Translate multiple texts using the best available method.
-        Priority: 1. Structured Outputs (strict) -> 2. Delimiter-based
+        Priority: 1. id-echo JSON (strict, shape or json) -> 2. Delimiter-based
         Returns a list of translated texts.
         """
         # Use structured outputs if available (probed once per model)
-        if self._ensure_structured_support():
+        if self._structured_enabled():
             return self._do_structured_batch_translate(text_list)
 
-        # Fallback to delimiter-based method
+        # Fallback to delimiter-based method. The *effective* system message,
+        # not `system_content`: that attribute only ever holds
+        # `$OPENAI_API_SYS_MSG`, so passing it dropped a `--prompt` system
+        # message for the whole group — `_build_batch_prompt` then wrapped the
+        # empty string and installed "Professional translator. …" over the top
+        # of it, and the operator's own instruction never left the process.
         return self._do_batch_translate(
             text_list,
             self.prompt_template,
-            self.system_content,
+            self._system_message(),
             self.DEFAULT_PROMPT,
             lambda text: self.translate(text, False),
         )
 
-    def _create_structured_batch_messages(self, text_list):
-        """Create messages for structured batch translation"""
+    # A short, unremarkable stand-in for a paragraph: the overhead wanted is
+    # everything a request carries *besides* the text, so what the text says
+    # must not matter.
+    _OVERHEAD_PROBE_TEXT = "The quick brown fox jumps over the lazy dog."
+
+    def prompt_overhead_tokens(self):
+        """Tokens one request spends on the prompt rather than on the book.
+
+        Assembled from the real batch messages, because the prompts are
+        user-customisable: a fat `BBM_CHATGPTAPI_USER_MSG_TEMPLATE` is paid
+        for on every request, and the grouping budget has to know about it
+        (see `session_token_budget`). The JSON wrapper counts too — it is
+        per-request overhead like the rest of it.
+
+        A sizing hint, never a gate: anything that goes wrong here answers
+        None and the caller falls back to its floor.
+        """
+        try:
+            from ..utils import num_tokens_from_text
+
+            # `num_tokens_from_text` adds 7 tokens of chat framing per call;
+            # subtract it per message so only the content is counted.
+            def content_tokens(text):
+                return num_tokens_from_text(text) - 7
+
+            messages = self._create_structured_batch_messages(
+                [self._OVERHEAD_PROBE_TEXT]
+            )
+            total = sum(content_tokens(m.get("content") or "") for m in messages)
+            return max(0, total - content_tokens(self._OVERHEAD_PROBE_TEXT))
+        except Exception:
+            return None
+
+    def _create_structured_batch_messages(self, text_list, degree="strict"):
+        """Create messages for structured batch translation.
+
+        The source travels as `{"paragraphs": [{"id": n, "text": ...}, ...]}`
+        and the reply carries the same ids back. Ids rather than positions,
+        because position is not something a reply can be *checked* against:
+        a model that answers two paragraphs in the other order, or drops one
+        and keeps the count by merging, is silently misaligned under
+        positional reading and obvious under id reading.
+        """
         plist_len = len(text_list)
 
-        # Build the user message with all texts, incorporating user's prompt template
-        texts_json = json.dumps(text_list, ensure_ascii=False)
+        payload = {
+            "paragraphs": [
+                {"id": i, "text": str(text)} for i, text in enumerate(text_list)
+            ]
+        }
+        texts_json = json.dumps(payload, ensure_ascii=False)
 
-        # Format user's prompt template with the JSON array as {text}
-        user_prompt = self.prompt_template.format(
-            text=texts_json, language=self.language, crlf="\n"
+        # Format user's prompt template with the JSON payload as {text}.
+        # `--prompt`'s style section has no slot of its own anywhere, so it is
+        # appended here — before the shape instruction below, which has to
+        # stay the last thing the model reads.
+        user_prompt = (
+            self.prompt_template.format(
+                text=texts_json, language=self.language, crlf="\n"
+            )
+            + self.style_suffix()
         )
 
         # Add structured format instruction. The target language goes last: this
         # is the final thing the model reads before decoding, and a shape-only
         # tail leaves `{language}` buried behind the source JSON blob above.
-        field = batch_field_name(self.language)
-        content = (
-            f"{user_prompt}\n\n"
+        field = batch_field_name(self.field_language)
+        item_field = single_field_name(self.field_language)
+        # Pinned terms for this group, on the same rule as a single unit: only
+        # the ones that occur in the batch, and first, so the shape and the
+        # target language stay the last thing the model reads.
+        glossary_block = self.glossary.prompt_block(texts_json) if self.glossary else ""
+        content = (f"{glossary_block}\n\n" if glossary_block else "") + (
+            f"{self._marker_preamble(texts_json)}{user_prompt}\n\n"
             f"Return a JSON object whose '{field}' array contains EXACTLY "
-            f"{plist_len} strings, one per input paragraph and in the same "
-            f"order, each written in {self.language}."
+            f"{plist_len} objects, one per input paragraph. Each object has "
+            f"exactly two fields: 'id', copied unchanged from the paragraph "
+            f"it translates — use every id once and invent none — and "
+            f"'{item_field}', holding that paragraph's translation. Return "
+            f"the {plist_len} translations, each written in {self.language}."
         )
 
-        sys_content = self.system_content or self.prompt_sys_msg.format(crlf="\n")
+        if degree == "json":
+            # No schema reaches this endpoint, so the shape has to be said
+            # out loud. The language sentence is repeated after it for the
+            # reason the tail exists at all: the last thing the model reads
+            # before decoding must be what language to write in, and
+            # `prompt_with_schema` appends its description after the prompt.
+            schema = batch_translation_schema(
+                self.language,
+                plist_len,
+                self.source_language,
+                self.language_field_tag,
+            )
+            content = (
+                f"{prompt_with_schema(content, schema)}\n\n"
+                f"Every translation must be written in {self.language}."
+            )
+
+        sys_content = self._augment_system_content(self._system_message())
 
         messages = [
             {"role": "system", "content": sys_content},
@@ -1058,48 +1513,155 @@ class ChatGPTAPI(Base):
         if plist_len == 1:
             return [self.get_translation(text_list[0])]
 
+        degree = self._structured_enabled()
+        if degree and degree not in SCHEMA_BATCH_DEGREES:
+            cap = self.substrict_batch_cap
+            if plist_len > cap:
+                # Tag mode sizes batches by characters and plan mode may have
+                # sized this one for a schema-degree model before rotation.
+                # Either way the json-degree cap is a per-*request* bound, so
+                # it is honoured by making more requests — refusing instead
+                # would send tag mode's fallback into an N-singles sweep.
+                out = []
+                for i in range(0, plist_len, cap):
+                    out.extend(
+                        self._do_structured_batch_translate(text_list[i : i + cap])
+                    )
+                return out
+
         try:
-            result = self._execute_structured_batch_translate(text_list, plist_len)
-            return result
+            items, user_content, raw_reply = self._execute_structured_batch_translate(
+                text_list, plist_len
+            )
         except StructuredOutputUnsupported as e:
             # Capability answer, not a transient failure: stop paying for it.
             self._demote_structured_outputs(e)
             return [self.translate(t, False) for t in text_list]
+        except BatchMismatch:
+            # The reply arrived and did not answer the request. That is the
+            # loader's ladder's business — it halves the chunk — so it must
+            # not be swallowed into a per-paragraph sweep here. Raised from
+            # inside the request only at the json degree, where the parse is
+            # ours rather than the SDK's.
+            raise
         except Exception as e:
+            # A refusal, or a transport failure that outlived its retries.
+            # Neither says the batch came back misaligned, so this is not the
+            # loader's ladder's business: translate the paragraphs one by one
+            # and let the run continue.
             print(
                 f"[yellow]Structured batch translation failed after retries: {e}. "
                 f"Falling back to one-by-one translation.[/yellow]"
             )
             return [self.translate(t, False) for t in text_list]
 
+        # Outside the retry on purpose. tenacity re-sends transport failures;
+        # a miscounted or misaligned answer is a model error, and asking the
+        # same model the same question again mostly buys the same answer at
+        # the same price. The loader's ladder halves the chunk instead.
+        paragraphs = self._align_batch_items(text_list, items)
+
+        if self.context_flag:
+            if self.session is not None:
+                # One exchange, exactly what the endpoint saw: N synthetic
+                # pairs that were never sent make the next request's prefix
+                # diverge from the cached one.
+                self._record_session_exchange(user_content, raw_reply)
+            else:
+                for orig, trans in zip(text_list, paragraphs):
+                    self.save_context(orig, trans)
+        return paragraphs
+
+    def _align_batch_items(self, text_list, items):
+        """Reply items in source order, or `BatchMismatch`.
+
+        By id, never by position. The id set has to match the request's
+        exactly — no duplicate, no stranger, none missing — and no non-empty
+        source may come back empty (see `Base._check_batch`).
+        """
+        field = single_field_name(self.field_language)
+        if len(items) != len(text_list):
+            raise BatchMismatch(
+                f"expected {len(text_list)} translations, got {len(items)}"
+            )
+        by_id = {}
+        for item in items:
+            item_id = getattr(item, "id", None)
+            if item_id in by_id:
+                raise BatchMismatch(f"duplicate id {item_id!r} in the reply")
+            by_id[item_id] = getattr(item, field, "")
+        expected = set(range(len(text_list)))
+        if set(by_id) != expected:
+            raise BatchMismatch(
+                f"reply ids {sorted(map(str, by_id))} do not match the "
+                f"{len(text_list)} ids that were sent"
+            )
+        paragraphs = [by_id[i] for i in range(len(text_list))]
+        self._check_batch(text_list, paragraphs)
+        self._note_structured_success()
+        return paragraphs
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=60),
         retry=retry_if_not_exception_type(
-            (StructuredOutputUnsupported, StructuredRefusal)
+            (StructuredOutputUnsupported, StructuredRefusal, BatchMismatch)
         ),
         reraise=True,
     )
     def _execute_structured_batch_translate(self, text_list, plist_len):
-        """Execute the actual structured batch translation with tenacity retry"""
+        """One structured batch request, retried on transport failures only.
+
+        Returns `(items, user_content, raw_reply)`: the parsed reply items,
+        the user message exactly as it was sent, and the raw assistant text.
+        The last two are what session mode records — and only after the
+        caller has found the items usable.
+
+        A reply that came back and did not answer the request is a
+        `BatchMismatch`, never a retry: re-asking the same model the same
+        question buys the same answer at the same price, and the loader
+        halves the chunk instead.
+        """
         self.rotate_key()
         self.rotate_model()
-        if not self._ensure_structured_support():
+        degree = self._structured_enabled()
+        if not degree:
             # eligibility was decided for the model current at call time, but
             # rotation may have moved us to a different one: a model that
             # never passed the probe must not be handed a schema
             raise StructuredOutputUnsupported(
-                f"'{self.model}' has no strict structured-output support"
+                f"'{self.model}' has no structured-output support"
             )
 
-        messages = self._create_structured_batch_messages(text_list)
+        if degree not in SCHEMA_BATCH_DEGREES:
+            # Backstop for the rotation race: the caller chunked to this cap
+            # against the degree it saw, but `rotate_model()` above may have
+            # just moved execution to a json-degree model. Refusing before
+            # the request costs nothing — the loader's ladder divides the
+            # batch — where sending it re-opens the oversized-batch
+            # corruption the cap bounds.
+            cap = self.substrict_batch_cap
+            if plist_len > cap:
+                raise BatchMismatch(
+                    f"batch of {plist_len} exceeds the json-degree cap of "
+                    f"{cap} units for '{self.model}'"
+                )
+
+        messages = self._create_structured_batch_messages(text_list, degree=degree)
+        if degree not in SCHEMA_BATCH_DEGREES:
+            return self._execute_json_object_batch(messages, plist_len)
 
         try:
             completion = self._request(
                 lambda sampling: self.openai_client.chat.completions.parse(
                     model=self.model,
                     messages=messages,
-                    response_format=batch_translation_model(self.language),
+                    response_format=batch_translation_model(
+                        self.language,
+                        plist_len,
+                        self.source_language,
+                        self.language_field_tag,
+                    ),
                     extra_body=self.extra_body if self.extra_body else None,
                     **sampling,
                 )
@@ -1119,37 +1681,96 @@ class ChatGPTAPI(Base):
         if message.parsed is None:
             raise StructuredOutputUnsupported("no parsed content in response")
 
-        paragraphs = getattr(message.parsed, batch_field_name(self.language))
-
-        # A wrong count is a model error, not a capability answer: retry it.
-        if len(paragraphs) != plist_len:
-            raise ValueError(
-                f"Expected {plist_len} translations, got {len(paragraphs)}"
+        items = getattr(message.parsed, batch_field_name(self.field_language))
+        raw_reply = getattr(message, "content", None)
+        if not raw_reply:
+            # Some gateways return only the parsed object. A history has to
+            # hold *something* the next request can extend, and the parsed
+            # form is what the endpoint produced.
+            raw_reply = json.dumps(
+                {batch_field_name(self.field_language): [str(i) for i in items]},
+                ensure_ascii=False,
             )
+        return items, messages[-1]["content"], raw_reply
 
-        # Count is not alignment. A model that merges two source lines into
-        # one slot (routine on verse: one sentence spans two pādas) keeps
-        # the count by shifting the rest and padding a slot with "" — the
-        # only unambiguous symptom of the shift. An empty slot for a
-        # non-empty input is therefore a misaligned window, never a valid
-        # translation: retry it.
-        empty_slots = [
-            i
-            for i, (src, out) in enumerate(zip(text_list, paragraphs))
-            if not out.strip() and src.strip()
-        ]
-        if empty_slots:
-            raise ValueError(
-                f"Empty translation for non-empty paragraph(s) {empty_slots}: "
-                f"batch alignment lost"
+    def _execute_json_object_batch(self, messages, plist_len):
+        """One id-echo batch at the json_object degree.
+
+        The endpoint guarantees only that *some* JSON comes back, so
+        everything the SDK's parse mode would have guaranteed is checked
+        here instead: the object is dug out of whatever fences or prose came
+        with it, it must carry the batch key, and every row must be an
+        object. Each failure is a `BatchMismatch` — the same signal a
+        misaligned strict reply raises, and the loader answers it the same
+        way, by halving the chunk.
+        """
+        try:
+            completion = self._request(
+                lambda sampling: self.openai_client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    response_format={"type": "json_object"},
+                    extra_body=self.extra_body if self.extra_body else None,
+                    **sampling,
+                )
             )
+        except BadRequestError as e:
+            if self._classify_bad_request(e) != "schema":
+                raise  # not a capability answer — do not blame the schema
+            raise StructuredOutputUnsupported(str(e)) from e
 
-        if self.context_flag:
-            for orig, trans in zip(text_list, paragraphs):
-                self.save_context(orig, trans)
+        self._note_usage(completion)
 
-        self._note_structured_success()
-        return paragraphs
+        message = completion.choices[0].message
+        if getattr(message, "refusal", None):
+            raise StructuredRefusal(message.refusal)
+        raw_reply = getattr(message, "content", None) or ""
+        return (
+            self._parse_json_object_batch(raw_reply),
+            messages[-1]["content"],
+            raw_reply,
+        )
+
+    def _parse_json_object_batch(self, raw_reply):
+        """The reply's items, or `BatchMismatch` saying what was wrong.
+
+        The required top key is the whole point (260905 amendment 1):
+        `extract_json_object` on its own hands back the first object it can
+        parse, which on a reply with one unescaped quote is a fragment of
+        the answer rather than the answer. A missing key is a mismatch, not
+        a fall-through.
+        """
+        field = batch_field_name(self.field_language)
+        item_field = single_field_name(self.field_language)
+        obj = extract_json_object(raw_reply, (field,))
+        if isinstance(obj, dict):
+            obj = unwrap_schema_echo(obj)
+        if not isinstance(obj, dict) or field not in obj:
+            raise BatchMismatch(f"no JSON object carrying '{field}' in the reply")
+        rows = obj[field]
+        if not isinstance(rows, list):
+            raise BatchMismatch(f"the reply's '{field}' is not a list")
+        items = []
+        for row in rows:
+            if not isinstance(row, dict):
+                raise BatchMismatch(f"a '{field}' entry is not an object")
+            text = row.get(item_field)
+            items.append(
+                SimpleNamespace(
+                    **{
+                        # An id echoed as "3" is the same id as 3: nothing
+                        # constrained its type here, and the alignment check
+                        # below compares against the integers we sent.
+                        "id": _echoed_id(row.get("id")),
+                        # Anything that is not a string is not a translation.
+                        # Left empty on purpose: an empty slot for a
+                        # non-empty source is exactly what `_check_batch`
+                        # exists to catch.
+                        item_field: text if isinstance(text, str) else "",
+                    }
+                )
+            )
+        return items
 
     def set_model_list(self, model_list):
         """The only way models get set: whatever the user named, in that order.
@@ -1179,6 +1800,10 @@ class ChatGPTAPI(Base):
         # budget has to size the shared history for the smallest window among
         # *all* of them, not just whichever is current.
         self._model_names = model_list
+        # What the command configured, as distinct from `_model_names`,
+        # which `_ensure_models_routable` narrows to what the endpoint
+        # serves — availability must not move a checkpoint fingerprint.
+        self._configured_model_names = tuple(model_list)
         self.model_list = cycle(model_list)
         # Set the initial model so it is available before rotate_model() runs.
         self.model = model_list[0]
@@ -1258,7 +1883,7 @@ class ChatGPTAPI(Base):
                     return self._read_batch_choice(
                         result["response"]["body"]["choices"][0],
                         custom_id,
-                        self.language,
+                        self.field_language,
                     )
 
         raise ValueError(f"No result found for custom_id {custom_id}")
@@ -1352,7 +1977,9 @@ class ChatGPTAPI(Base):
         if self._ensure_structured_support(self.batch_model):
             batch_body["response_format"] = {
                 "type": "json_schema",
-                "json_schema": single_translation_schema(self.language),
+                "json_schema": single_translation_schema(
+                    self.language, self.language_field_tag
+                ),
             }
 
         return {

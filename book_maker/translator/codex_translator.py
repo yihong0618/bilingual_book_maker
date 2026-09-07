@@ -31,11 +31,13 @@ from ..codex_client import (
     CodexQuotaExhausted,
     CodexTurnFailed,
 )
+from ..glossary import Glossary
 from ..session_context import (
     HandoffReport,
     compact_budget_for,
     estimate_tokens,
     handoff_prompt,
+    strip_handoff_glossary,
 )
 from .base_translator import Base
 
@@ -77,6 +79,73 @@ MAX_WAIT_SECONDS = 6 * 60 * 60
 MAX_WAITS_PER_TURN = 3
 
 
+class ClassifierThread:
+    """Plan classification on a thread of its own.
+
+    The thread *is* the append-only history here, so the trunk goes into its
+    base instructions and a turn carries nothing but the next signatures —
+    which is the shape this route wants anyway: a fresh thread costs ~16.9k
+    input tokens of Codex's own preamble, and the classifier asks a book's
+    worth of questions.
+
+    Separate from the translation thread (a question in it would pollute the
+    context the next paragraph inherits) and from the `_question_threads`
+    cache, whose turns are self-contained prompts rather than a conversation
+    with a trunk.
+    """
+
+    def __init__(self, translator, model=None):
+        self.translator = translator
+        self.model = model or translator.model
+        self._trunk = ""
+        self._thread_id = None
+
+    def budget(self):
+        """`--context-compact-at`, else this thread's *own* model's default.
+
+        Its own, not the translation thread's: `--plan-classify-model` puts
+        a different model on this thread, and the window it rolls over
+        against is that model's.
+        """
+        if self.translator.context_compact_at is None:
+            return compact_budget_for(self.model)
+        return self.translator.context_compact_at
+
+    def start(self, trunk):
+        """Open a fresh conversation. The thread is created on the first
+        turn, so a session nobody asks anything of costs nothing.
+
+        The demonstration the openai-shaped route seeds as a real message
+        pair is folded into the instructions here instead: a thread's turns
+        are the model's own, and there is no way to hand it a reply nobody
+        made. It degrades to text rather than being dropped — the same rule
+        the prompt sectioning follows when a route has no system channel.
+        """
+        from ..loader.classify.session import trunk_with_inline_example
+
+        self._trunk = trunk_with_inline_example(trunk)
+        self._thread_id = None
+
+    def _open(self):
+        self._thread_id = self.translator._ensure_server().start_thread(
+            model=self.model,
+            base_instructions=self._trunk,
+        )
+
+    def ask(self, text):
+        if self._thread_id is None:
+            self._open()
+        try:
+            return self.translator._run_turn(self._thread_id, text)
+        except CodexTurnFailed:
+            # The sidecar dropped the thread: the cached id is dead and no
+            # retry on it can work. Opening a new one re-sends the trunk as
+            # its instructions, and a verdict depends on nothing that was
+            # said earlier, so the lost turns cost nothing but themselves.
+            self._open()
+            return self.translator._run_turn(self._thread_id, text)
+
+
 class Codex(Base):
     """A translator backed by the Codex app-server."""
 
@@ -88,9 +157,29 @@ class Codex(Base):
     # rolls over into a handoff turn like any other session route.
     SUPPORTS_SESSION_CONTEXT = True
 
+    # And it is one whether or not `--use_context session` was passed: there
+    # is no windowed shape to fall back to here. A run on this route is
+    # billed like a session run, so it derives a session run's budgets.
+    SESSION_CONTEXT_ALWAYS_ON = True
+
+    # A turn carries whatever we put in it, so a pinned block rides with the
+    # unit here exactly as it does on the API path.
+    SUPPORTS_GLOSSARY = True
+
     # A turn carries no system message of its own; `prompt_sys_msg` is read
     # once, when a thread opens, and the thread outlives any one window.
     BATCH_SYS_MSG_PER_REQUEST = False
+
+    # A thread has no system slot, so `--prompt`'s system section is appended
+    # to the thread instructions rather than replacing them: those base
+    # instructions are what keep a turn behaving like a completion instead of
+    # an agent turn (see `_instructions`). Style joins it there.
+    PROMPT_SECTION_SLOTS = {
+        "user": "native",
+        "system": "appended",
+        "style": "appended",
+    }
+    PROMPT_APPEND_TARGET = "the thread instructions"
 
     # Set by the CLI from --quiet. Suppresses this class's own echoes.
     quiet = False
@@ -104,6 +193,8 @@ class Codex(Base):
         binary="codex",
         context_compact_at=None,
         no_context_compact=False,
+        glossary=None,
+        glossary_auto=None,
         style_note=None,
         handoff_path=None,
         prompt_template=None,
@@ -119,6 +210,13 @@ class Codex(Base):
         self.model_list = None
         self.context_compact_at = context_compact_at
         self.no_context_compact = no_context_compact
+        # `pinned` is the operator's --glossary file and never changes.
+        # `learned` accumulates what compacts establish. `glossary` is the two
+        # combined, pins on top, and is what rides with each unit.
+        self.pinned = glossary or Glossary()
+        self.learned = Glossary()
+        self.glossary = self.pinned
+        self.glossary_auto = glossary_auto
         self.handoff_path = Path(handoff_path) if handoff_path else None
         self.prompt_sys_msg = prompt_sys_msg
         self.prompt_template = prompt_template
@@ -286,10 +384,17 @@ class Codex(Base):
         both speak to.
         """
         parts = [BASE_INSTRUCTIONS.format(language=self.language, crlf="\n")]
+        # `--source_lang`: fixed for the run, so it rides with the
+        # thread's standing instructions rather than each turn's text.
+        note = self._source_language_note()
+        if note:
+            parts.append(note)
         if self.prompt_sys_msg:
-            parts.append(self.prompt_sys_msg.format(language=self.language, crlf="\n"))
+            parts.append(self.fill_optional(self.prompt_sys_msg))
         if self.style_note:
-            parts.append(f"Style to follow: {self.style_note}")
+            # Same wording as the suffix every API route appends, so a style
+            # reads identically whichever route carries it.
+            parts.append(f"{self.STYLE_HEADING} {self.fill_optional(self.style_note)}")
         if seed:
             parts.append(seed)
         return "\n\n".join(parts)
@@ -301,6 +406,15 @@ class Codex(Base):
                 base_instructions=self._instructions(seed),
             )
         return self._thread_id
+
+    @property
+    def glossary_auto_on(self):
+        """Whether this run learns renderings from its own handoff reports.
+
+        The thread is always the history here, so there is always a compact
+        turn to learn from: this route is on unless `--glossary-auto off`.
+        """
+        return self.glossary_auto is not False
 
     def _budget(self):
         """How many estimated tokens a thread may carry before it rolls over."""
@@ -318,7 +432,10 @@ class Codex(Base):
         try:
             report_text = self._run_turn(
                 self._thread_id,
-                handoff_prompt(with_style=not self.style_note),
+                handoff_prompt(
+                    with_glossary=self.glossary_auto_on,
+                    with_style=not self.style_note,
+                ),
             )
         except CodexTurnFailed as e:
             print(
@@ -327,10 +444,20 @@ class Codex(Base):
             )
             report_text = ""
 
+        glossary_lines = self._learn_from_handoff(report_text)
+
         report = HandoffReport(
             window=self._window,
             style_note=self.style_note,
-            summary=report_text.strip(),
+            # Same as the API path: the renderings block is parsed into
+            # `glossary_lines`, so keeping it in the prose too would write
+            # every term twice.
+            summary=(
+                strip_handoff_glossary(report_text)
+                if self.glossary_auto_on
+                else report_text.strip()
+            ),
+            glossary_lines=glossary_lines,
         )
         if report_text:
             self._show_handoff(report)
@@ -402,7 +529,12 @@ class Codex(Base):
         with self._turn_lock:
             thread_id = self._ensure_thread()
 
+            # Pinned terms belong to this unit, so they ride with it rather
+            # than with the thread instructions, which every later turn would
+            # re-read.
+            block = self.glossary.prompt_block(text) if self.glossary else ""
             payload = self._unit_text(text)
+            payload = f"{block}\n\n{payload}" if block else payload
 
             translated = self._run_turn(thread_id, payload)
             self._report_quota()
@@ -422,17 +554,17 @@ class Codex(Base):
     def translate_list(self, text_list):
         """Translate a group of paragraphs in one turn.
 
-        Plan mode hands whole poetry windows here, and the window is the
-        point: verse only survives if the lines are translated together, with
-        their neighbours in view. The inherited default loops over `translate`
-        and dissolves the group into isolated lines, which is the one thing
-        `--poetry-group-size` exists to prevent — and on a metered
+        Plan mode hands whole batches of short units here, and the batch is
+        the point: short lines only survive if they are translated together,
+        with their neighbours in view. The inherited default loops over
+        `translate` and dissolves the group into isolated lines, which is the
+        one thing `--poetry-group-size` exists to prevent — and on a metered
         subscription it also pays for a turn per line instead of per stanza.
 
-        The delimiter contract, the count check and the line-by-line retry all
-        come from the base, so this route and the openai one agree on what a
-        batch looks like and on what happens when the reply does not come back
-        in the right number of pieces. `BATCH_PROMPT` is the carrier the base
+        The delimiter contract and the count check come from the base, so
+        this route and the openai one agree on what a batch looks like — and
+        on raising `BatchMismatch` instead of repairing a bad reply here; the
+        loader's ladder owns the repair. `BATCH_PROMPT` is the carrier the base
         needs and nothing more: the thread instructions already say to
         translate whatever arrives, so the only thing worth adding on top of
         the source is the base's own segment count.
@@ -480,6 +612,15 @@ class Codex(Base):
         except CodexTurnFailed:
             self._question_threads.pop(model or self.model, None)
             return self._ask(prompt, model)
+
+    def classify_session(self, model=None):
+        """See `Base.classify_session`. One thread, held open for the plan.
+
+        This route has no schema verdict to offer at all — it reaches a
+        sidecar, not an endpoint the capability probe can grade — so the
+        session entry is how plan mode classifies here.
+        """
+        return ClassifierThread(self, model)
 
     def _ask(self, prompt, model=None):
         """One question on the (possibly newly opened) question thread."""

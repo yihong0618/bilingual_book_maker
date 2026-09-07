@@ -18,6 +18,7 @@ from openai import (
 )
 
 from book_maker.structured import StructuredJSONFailed
+from book_maker.translator.base_translator import BatchMismatch
 from book_maker.translator.capabilities import (
     ROUTE_PROBE_PROMPT,
     CapabilityLedger,
@@ -46,9 +47,18 @@ def _single(text):
     return SimpleNamespace(**{SINGLE_FIELD: text})
 
 
-def _batch(paragraphs):
-    """`.parsed` for a batch translation in the fixture's language."""
-    return SimpleNamespace(**{BATCH_FIELD: paragraphs})
+def _batch(paragraphs, ids=None):
+    """`.parsed` for a batch translation in the fixture's language.
+
+    Items echo the id they were sent with; `ids` overrides the natural
+    0..n-1 run for the tests that pin a bad reply.
+    """
+    ids = range(len(paragraphs)) if ids is None else ids
+    items = [
+        SimpleNamespace(**{"id": i, SINGLE_FIELD: text})
+        for i, text in zip(ids, paragraphs)
+    ]
+    return SimpleNamespace(**{BATCH_FIELD: items})
 
 
 def _completion(content, finish_reason="stop"):
@@ -201,24 +211,28 @@ def test_the_verdict_only_picks_where_classification_starts(verdict, entry):
     assert rungs[0][0] == entry
 
 
-def test_shape_endpoint_translates_via_delimiter_but_classifies_structured():
+def test_shape_endpoint_batches_with_a_schema_and_classifies_structured():
+    # The batch schema pins no *values* — the target language rides in the
+    # field name and the prose tail — so shape-only decoding is enough for
+    # it, unlike the single-translation schema (#544).
     create = Mock(
         side_effect=[
             _completion('{"probe":"ignored"}'),  # shape verdict
-            _completion("一\n\n@@\n\n二"),  # delimiter translation
             _completion('{"p.header": {"verdict": "skip"}}'),  # classification
         ]
     )
-    translator = _translator(create=create)
+    parse = Mock(return_value=_parsed_completion(parsed=_batch(["一", "二"])))
+    translator = _translator(create=create, parse=parse)
 
     assert translator.translate_list(["one", "two"]) == ["一", "二"]
     assert translator.structured_json("classify", {"schema": {}}) == {
         "p.header": {"verdict": "skip"}
     }
 
-    translate_call = create.call_args_list[1].kwargs
-    classify_call = create.call_args_list[2].kwargs
-    assert "response_format" not in translate_call
+    assert parse.call_args.kwargs["response_format"] is batch_translation_model(
+        LANGUAGE, 2
+    )
+    classify_call = create.call_args_list[1].kwargs
     assert classify_call["response_format"]["type"] == "json_schema"
 
 
@@ -496,7 +510,7 @@ def test_batch_refusal_is_not_retried_before_falling_back():
 
     assert translator._do_structured_batch_translate(["a", "b"]) == ["plain"] * 2
 
-    batch_model = batch_translation_model(LANGUAGE)
+    batch_model = batch_translation_model(LANGUAGE, 2)
     batch_calls = [
         c for c in parse.call_args_list if c.kwargs["response_format"] is batch_model
     ]
@@ -558,21 +572,25 @@ def test_batch_path_demotes_without_burning_retries():
     assert translator.capabilities.verdicts["test-model"] is False
 
 
-def test_batch_length_mismatch_is_retried_then_falls_back_one_by_one():
+def test_batch_length_mismatch_raises_for_the_loader_to_divide():
     parse = Mock(return_value=_parsed_completion(parsed=_batch(["only one"])))
     translator = _translator(parse=parse)
     translator.capabilities.verdicts["test-model"] = "strict"
     translator.translate = Mock(side_effect=lambda text, _=True: f"t:{text}")
 
-    result = translator._do_structured_batch_translate(["a", "b"])
+    with pytest.raises(BatchMismatch):
+        translator._do_structured_batch_translate(["a", "b"])
 
-    assert result == ["t:a", "t:b"]
-    assert parse.call_count == 3  # a model error, not a capability answer
+    # one attempt: the reply is well-formed JSON that answers the wrong
+    # question, so neither a retry nor a per-item sweep here — the loader's
+    # ladder halves the chunk, at about twice the batch instead of n singles
+    assert parse.call_count == 1
+    assert translator.translate.call_count == 0
     # A count mismatch says nothing about schema support.
     assert translator.capabilities.verdicts["test-model"] == "strict"
 
 
-def test_batch_empty_slot_for_nonempty_input_is_retried_then_falls_back():
+def test_batch_empty_slot_for_nonempty_input_raises():
     # Count is not alignment: a model that merges two verse lines into one
     # slot keeps the count by padding another slot with "". The strict path
     # must treat that pad as the model error it is, not accept the window.
@@ -581,10 +599,10 @@ def test_batch_empty_slot_for_nonempty_input_is_retried_then_falls_back():
     translator.capabilities.verdicts["test-model"] = "strict"
     translator.translate = Mock(side_effect=lambda text, _=True: f"t:{text}")
 
-    result = translator._do_structured_batch_translate(["5a", "5b"])
+    with pytest.raises(BatchMismatch):
+        translator._do_structured_batch_translate(["5a", "5b"])
 
-    assert result == ["t:5a", "t:5b"]
-    assert parse.call_count == 3  # a model error, not a capability answer
+    assert parse.call_count == 1
     assert translator.capabilities.verdicts["test-model"] == "strict"
 
 
@@ -606,7 +624,7 @@ def test_batch_success_returns_paragraphs():
 
     assert translator._do_structured_batch_translate(["a", "b"]) == ["一", "二"]
     request = parse.call_args.kwargs
-    assert request["response_format"] is batch_translation_model(LANGUAGE)
+    assert request["response_format"] is batch_translation_model(LANGUAGE, 2)
     assert json.loads  # payload is built by the SDK, not hand-rolled
 
 
@@ -888,7 +906,7 @@ def test_models_expose_the_language_named_field_and_say_so():
     assert "simplified chinese" in field["description"]
     assert model.model_config["extra"] == "forbid"
 
-    batch = batch_translation_model("simplified chinese").model_json_schema()
+    batch = batch_translation_model("simplified chinese", 2).model_json_schema()
     assert "simplified chinese" in (
         batch["properties"]["simplified_chinese_paragraphs"]["description"]
     )
@@ -911,7 +929,9 @@ def test_hand_built_batch_schema_matches_the_sdk_model():
         # transports must land on the same one.
         assert schema["name"] == field
         assert single_translation_model(language).__name__ == field
-        assert batch_translation_model(language).__name__ == batch_field_name(language)
+        assert batch_translation_model(language, 2).__name__ == batch_field_name(
+            language
+        )
         assert schema["schema"]["required"] == [field]
         assert schema["schema"]["additionalProperties"] is False
         assert list(schema["schema"]["properties"]) == [field]
@@ -1040,18 +1060,22 @@ def test_delimiter_batch_never_stores_the_joined_blob():
     assert not any("@@" in c for c in translator.context_translated_list)
 
 
-def test_delimiter_batch_context_survives_the_one_by_one_fallback():
-    # a short response forces the per-item fallback; each single translate
-    # saves its own context, and the blob must still not be stored
+def test_delimiter_batch_context_is_untouched_by_a_misaligned_reply():
+    # a short response is a mismatch now: the route raises for the loader's
+    # ladder to divide, and nothing about the discarded exchange — least of
+    # all the joined blob — may be left in the context window
     create = Mock(
         side_effect=[_completion("只有一段"), _completion("一"), _completion("二")]
     )
     translator = _delimiter_translator("unused")
     translator.openai_client.chat.completions.create = create
 
-    assert translator.translate_list(["one", "two"]) == ["一", "二"]
-    assert translator.context_list == ["one", "two"]
-    assert translator.context_translated_list == ["一", "二"]
+    with pytest.raises(BatchMismatch):
+        translator.translate_list(["one", "two"])
+
+    assert create.call_count == 1  # no per-item self-repair
+    assert translator.context_list == []
+    assert translator.context_translated_list == []
 
 
 def test_context_flag_is_restored_when_the_batch_call_raises():

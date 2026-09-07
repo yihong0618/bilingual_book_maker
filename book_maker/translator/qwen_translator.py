@@ -3,7 +3,7 @@ import time
 from rich import print
 from openai import OpenAI
 
-from .base_translator import Base
+from .base_translator import Base, NO_PROMPT_SECTIONS
 
 QWEN_MODELS = ("qwen-mt-turbo", "qwen-mt-plus")
 
@@ -20,6 +20,11 @@ class QwenTranslator(Base):
     # The window lives in `context_list` / `context_translated_list`, which
     # `_clone_translator_for_context` gives each parallel worker fresh.
     SUPPORTS_PARALLEL_CONTEXT = True
+
+    # Qwen-MT is a translation model, not a chat model: the request carries
+    # the source text, the language pair and a translation memory, and there
+    # is no turn a prompt could ride in. --prompt has no slot here.
+    PROMPT_SECTION_SLOTS = NO_PROMPT_SECTIONS
 
     # The window a request carries as `tm_list` when the command names none.
     DEFAULT_CONTEXT_PARAGRAPH_LIMIT = 5

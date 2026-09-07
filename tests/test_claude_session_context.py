@@ -19,7 +19,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from book_maker.session_context import handoff_prompt
-from book_maker.translator.claude_translator import Claude
+from book_maker.translator.claude_translator import Claude, _strip_outer_fence
 
 # A phrase unique to the compact turn, taken from the real prompt so the tests
 # cannot drift from it.
@@ -675,3 +675,139 @@ class TestRequestExtras:
 
     def test_the_route_answers_that_it_takes_them(self):
         assert Claude.SUPPORTS_REQUEST_EXTRAS is True
+
+
+class TestOuterFenceStripping:
+    """The route's own prompt teaches the model to fence its reply.
+
+    DEFAULT_PROMPT hands the source "within triple backticks", and models
+    mirror the delimiter back around the translation. Nothing removed it, so a
+    default anthropic run wrote the fences into the book — every paragraph
+    arriving as `<p class="calibre_">```动物庄园```</p>` (seen live 260905,
+    plain and `--use_context session` alike). The prompt is upstream's
+    contract, so the repair is on the reply; only a symmetric outer wrap goes.
+    """
+
+    def test_a_fenced_reply_is_unwrapped(self):
+        assert _strip_outer_fence("```\n动物庄园\n```") == "动物庄园"
+
+    def test_a_fenced_source_keeps_its_fenced_reply(self):
+        # codex review 260905: a passage that IS one code block translates
+        # to one code block — that reply is faithful, not a mirrored
+        # delimiter, and unwrapping it would strip real markup.
+        src = "```python\nprint('hello')\n```"
+        reply = "```python\nprint('你好')\n```"
+        assert _strip_outer_fence(reply, source=src) == reply
+
+    def test_an_unfenced_source_still_unwraps(self):
+        assert (
+            _strip_outer_fence("```\n动物庄园\n```", source="Animal Farm") == "动物庄园"
+        )
+
+    def test_a_custom_prompt_keeps_its_fenced_reply(self):
+        # The mirrored wrapper is DEFAULT_PROMPT's own fencing instruction
+        # coming back; a --prompt that asks for fenced Markdown owns its
+        # reply format and must receive it verbatim.
+        t = _translator(
+            ["```md\n译文\n```"],
+            context_flag=False,
+            prompt_template="Render {text} as fenced markdown in {language}.",
+        )
+        assert t.translate("plain source") == "```md\n译文\n```"
+
+    def test_the_stock_prompt_still_unwraps_through_translate(self):
+        t = _translator(["```\n译文\n```"], context_flag=False)
+        assert t.translate("plain source") == "译文"
+
+    def test_an_inline_wrap_is_unwrapped(self):
+        # what the live run actually produced
+        assert (
+            _strip_outer_fence("```动物庄园：一个童话故事```")
+            == "动物庄园：一个童话故事"
+        )
+
+    def test_a_language_tag_is_dropped_with_the_fence(self):
+        assert _strip_outer_fence("```zh\n动物庄园\n```") == "动物庄园"
+
+    def test_surrounding_whitespace_does_not_hide_the_wrap(self):
+        assert _strip_outer_fence("\n  ```\n动物庄园\n```  \n") == "动物庄园"
+
+    def test_an_unfenced_reply_comes_back_byte_identical(self):
+        for reply in ("动物庄园", "  动物庄园\n", "第一行\n第二行", ""):
+            assert _strip_outer_fence(reply) == reply
+
+    def test_backticks_inside_the_translation_survive(self):
+        assert _strip_outer_fence("```\n用 `code` 表示\n```") == "用 `code` 表示"
+        assert _strip_outer_fence("用 ``code`` 表示") == "用 ``code`` 表示"
+
+    def test_multi_line_content_is_preserved_exactly(self):
+        body = "第一行\n\n  第二行\n第三行"
+        assert _strip_outer_fence(f"```\n{body}\n```") == body
+
+    def test_an_opening_fence_alone_is_left_alone(self):
+        """Half a wrap is a damaged reply; repairing half of it hides that."""
+        assert _strip_outer_fence("```\n动物庄园") == "```\n动物庄园"
+        assert _strip_outer_fence("动物庄园\n```") == "动物庄园\n```"
+        assert _strip_outer_fence("```") == "```"
+
+    def test_an_inline_wrap_keeps_the_first_word(self):
+        """The info string is only a tag when the fence owns its line."""
+        assert _strip_outer_fence("```Animal Farm```") == "Animal Farm"
+
+    def test_a_reply_with_inner_fences_is_left_alone(self):
+        """Two code blocks, not one wrapped translation."""
+        reply = "```\n甲\n```\n\n乙\n\n```\n丙\n```"
+        assert _strip_outer_fence(reply) == reply
+
+    def test_a_wrap_around_nothing_is_left_alone(self):
+        """Better a visibly empty reply than a manufactured empty translation."""
+        assert _strip_outer_fence("```\n```") == "```\n```"
+
+
+class TestFencedRepliesNeverReachTheBook:
+    """The same reply, through every path a translation takes on this route."""
+
+    FENCED = "```\n动物庄园\n```"
+
+    def test_the_plain_path_unwraps_it(self):
+        t = _translator([self.FENCED], context_flag=False)
+        assert t.translate("Animal Farm") == "动物庄园"
+
+    def test_the_session_path_unwraps_it(self):
+        t = _translator([self.FENCED])
+        assert t.translate("Animal Farm") == "动物庄园"
+
+    def test_the_window_path_unwraps_it(self):
+        t = _translator([self.FENCED], context_mode="window")
+        assert t.translate("Animal Farm") == "动物庄园"
+
+    def test_the_session_history_keeps_the_clean_text(self):
+        """A fenced pair in the prefix teaches the next reply to fence too."""
+        t = _translator([self.FENCED, "第二段"])
+        t.translate("Animal Farm")
+        t.translate("Chapter one")
+        replayed = [m["content"] for m in t.sent[1]["messages"] if m["role"] != "user"]
+        assert replayed == ["动物庄园"]
+
+    def test_the_window_history_keeps_the_clean_text(self):
+        t = _translator([self.FENCED, "第二段"], context_mode="window")
+        t.translate("Animal Farm")
+        assert t.context_translated_list == ["动物庄园"]
+
+    def test_a_wrap_split_across_two_text_blocks_is_unwrapped(self):
+        """Blocks are joined first, so the strip sees the whole reply."""
+        t = _translator(context_flag=False)
+        reply = _message("unused")
+        reply.content = [
+            SimpleNamespace(type="text", text="```\n"),
+            SimpleNamespace(type="text", text="动物庄园\n```"),
+        ]
+        t.client.messages.create = Mock(return_value=reply)
+        assert t.translate("Animal Farm") == "动物庄园"
+
+    def test_a_fenced_batch_reply_leaves_no_fence_in_any_segment(self):
+        t = _translator(["```\n动物庄园\n\n@@\n\n第一章\n```"], context_flag=False)
+        assert t.translate_list(["Animal Farm", "Chapter One"]) == [
+            "动物庄园",
+            "第一章",
+        ]

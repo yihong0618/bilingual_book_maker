@@ -12,14 +12,13 @@ Two rules follow from that and are load-bearing everywhere below:
 
 1. Nothing already sent may be rewritten. Editing an earlier message shifts
    the prefix and the cache misses, which is strictly worse than window mode.
-2. Anything that varies per unit rides in the fresh tail message, never in
-   the prefix.
+2. Anything that varies per unit (the glossary block) rides in the fresh tail
+   message, never in the prefix.
 
 When the history reaches `--context-compact-at`, we ask the model for a
 translator handoff report, start a new window seeded with it, and keep going.
-The default budget is the point where session mode spends about what window
-mode spent while carrying several times the context; see DEFAULT_COMPACT_BUDGET
-below for the measured figures.
+The budget is one pinned number for every session run — see
+DEFAULT_COMPACT_BUDGET below for what was measured and why it is pinned.
 """
 
 from __future__ import annotations
@@ -28,6 +27,9 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import NamedTuple
+
+from book_maker.glossary import Glossary
 
 # Estimated, never billed. A chars-based estimate is what the budget table was
 # derived from, so the knob and the math agree by construction; reading
@@ -36,21 +38,37 @@ _CJK = re.compile(r"[぀-ヿ㐀-䶿一-鿿豈-﫿가-힯]")
 _LATIN_CHARS_PER_TOKEN = 4.0
 _CJK_CHARS_PER_TOKEN = 1.7
 
-# One budget for every model. The per-model table this replaces optimised for
-# cost, and at current prices that is optimising the wrong thing: a novel's
-# whole context bill is cents either way, while a shorter window means more
-# handoff seams, and a seam is where names and register drift.
+# One budget for every session run, grouped or not, on every route. Measured
+# on an ungrouped run at 0.53x window mode on a cheap-cache endpoint and 1.10x
+# on a dearer one, for several times the context; on a *grouped* run the same
+# 260905 eval put it +9-25% over that book's own cost optimum, which is the
+# short edge of the band where a run compacts between zero and one times.
 #
-# 8000 costs about 0.53x window mode on a cheap-cache endpoint (0.10x) and
-# about 1.10x on a dearer one (0.233x) — so the worst case is roughly what
-# the mode it replaces already cost, for several times the context. Anyone
-# who wants the cheapest setting can pass --context-compact-at 2500, which
-# measures at ~0.4-0.5x on both tiers.
-#
-# The figures come from measured handoff reports: 333/362/313 tokens of prose
-# over three windows, so a report costs about a third of a paragraph and the
-# budget is what decides how often one is paid for.
+# It is pinned there by owner ruling: a derived per-run budget is a moving
+# target for a difference under 30%, and one number an operator can predict —
+# and override with --context-compact-at — is worth more than the last
+# fraction of a bill. The same eval retired the old worry that a shorter
+# window trades cost for drift: across 44 handoff seams every recurring name
+# held, because the report re-states the terminology each window — the only
+# register drift observed was in the *longest*-window run.
 DEFAULT_COMPACT_BUDGET = 8000
+
+
+def compact_budget_notice(explicit: int | None) -> str:
+    """The one line a session run prints about the window it compacts at.
+
+    Shared so the dry-run preview and the run itself cannot drift apart:
+    the preview's whole job is to say what the run will do.
+    """
+    if explicit is not None:
+        return (
+            f"session: compacting at {explicit} estimated tokens "
+            f"(--context-compact-at)"
+        )
+    return (
+        f"session: compacting at {DEFAULT_COMPACT_BUDGET} estimated tokens "
+        f"(the default; --context-compact-at overrides)"
+    )
 
 
 def estimate_tokens(text: str) -> int:
@@ -121,27 +139,197 @@ _SUMMARY_REQUEST = (
 # Capped, and scoped to deviations only. Both clauses earn their place:
 # uncapped, this section grew past twenty bullets; unscoped, it restates
 # defaults the model would follow anyway ("使用简体中文"), which costs a line of
-# the cap and tells the next window nothing.
+# the cap and tells the next window nothing. One wording for both paths — a
+# variant that dropped the scope clause without a glossary used to exist, on
+# the reasoning that the glossary section is what keeps term equivalences out
+# of here. But that is what "this is the only place term equivalences belong"
+# does, over in the renderings section; the clause dropped was the scope cap,
+# which nothing else supplies. The result was that the *default* path, with no
+# glossary, was the one running unscoped.
 _STYLE_REQUEST = (
     "Style — up to 3 lines of what translation style is used so far. "
     "Only note down what's different from general translation."
 )
 
+# Only *new* renderings are requested. The accumulated set is already held on
+# this side and merged, and it is replayed to the model in the seed, so asking
+# for the whole list again is output paid twice — and it compounds: a shorter
+# budget means more compacts, each re-emitting a longer list, so the cost of
+# re-listing grows with the square of the compact count. Asking only for what
+# is new keeps the report flat for the length of the book.
+_GLOSSARY_REQUEST = (
+    "Established renderings — nouns we need to keep unified that are **not "
+    "already listed above**. If none are new, emit an empty block. One per "
+    "line as `term → translation # note` (the note is optional). Wrap the "
+    "list in <renderings> and </renderings> tags so its start and end are "
+    "unambiguous. This is the only place term equivalences belong."
+)
 
-def handoff_prompt(with_style: bool = True) -> str:
+
+def handoff_prompt(with_glossary: bool = False, with_style: bool = True) -> str:
     """The compact turn's request, built from the sections in play.
 
     Each section costs output tokens and invites the model to spend attention
     on it, so one is only asked for when something downstream consumes it —
+    the renderings only when this run learns a glossary (`--glossary-auto`),
     the style only when the user has not fixed one via `--prompt`'s `style`
     field. Numbering follows what is actually included, so a fixed style does
-    not leave the summary alone under a "1." it does not need.
+    not leave the renderings labelled "3." in a two-section request.
     """
     sections = [_SUMMARY_REQUEST]
     if with_style:
         sections.append(_STYLE_REQUEST)
+    if with_glossary:
+        sections.append(_GLOSSARY_REQUEST)
     numbered = [f"{n}. {body}" for n, body in enumerate(sections, start=1)]
     return "\n\n".join([_PREAMBLE, *numbered])
+
+
+# The block the report is asked to emit. Tolerant of a missing closing tag:
+# a truncated answer should still yield the terms it managed to write.
+_RENDERINGS = re.compile(
+    r"<renderings>(.*?)(?:</renderings>|\Z)", re.DOTALL | re.IGNORECASE
+)
+
+# Fallback only. A glossary line is short and is not a sentence, which is what
+# separates it from prose that happens to contain an arrow.
+_MAX_TERM_LEN = 60
+_SENTENCE_END = ("。", ".", "！", "!", "？", "?", "；", ";")
+
+
+class HandoffGlossary(NamedTuple):
+    """What a handoff report yielded, and how it had to be recovered.
+
+    `source` is reported so a run can say out loud that the model skipped the
+    block — with the derived glossary on, silently learning nothing looks
+    identical to a book with no recurring terms.
+    """
+
+    glossary: Glossary
+    source: str  # "tagged" | "scanned" | "missing"
+
+
+def _line_entries(raw, strict):
+    """The entries one line yields, or None if it is not an entry line.
+
+    One line, one verdict — so the stripper can ask exactly the question the
+    parse asked and remove precisely the lines the parse read.
+    """
+    line = raw.strip().lstrip("-*•").strip()
+    if not line or line.startswith("#") or line.startswith("<"):
+        return None
+    if not strict:
+        # Outside the tags, only accept things shaped like an entry.
+        head = re.split(r"→|->", line)[0].strip()
+        if len(head) > _MAX_TERM_LEN or line.endswith(_SENTENCE_END):
+            return None
+    try:
+        return Glossary.parse(line).entries or None
+    except ValueError:
+        return None  # model output; one bad line must not lose the rest
+
+
+def _entries_from_lines(lines, strict):
+    entries = []
+    for raw in lines:
+        found = _line_entries(raw, strict)
+        if found:
+            entries.extend(found)
+    return entries
+
+
+def parse_handoff_glossary(text: str) -> HandoffGlossary:
+    """Read the renderings the handoff report established.
+
+    Preferred shape is the tagged block the prompt asks for. Models drop it,
+    so there is a fallback: scan loose `term → translation` lines, guarded so
+    ordinary prose containing an arrow is not mistaken for an entry.
+    """
+    if not text:
+        return HandoffGlossary(Glossary(), "missing")
+
+    match = _RENDERINGS.search(text)
+    if match:
+        entries = _entries_from_lines(match.group(1).splitlines(), strict=True)
+        if entries:
+            return HandoffGlossary(Glossary(entries), "tagged")
+
+    entries = _entries_from_lines(text.splitlines(), strict=False)
+    if entries:
+        return HandoffGlossary(Glossary(entries), "scanned")
+    return HandoffGlossary(Glossary(), "missing")
+
+
+# Any markdown heading. The model writes the renderings heading in the target
+# language, so it can only be recognised by where it sits, never by its words.
+_HEADING = re.compile(r"^\s{0,3}#{1,6}(\s|$)")
+
+
+def _drop_introducing_heading(before: str) -> str:
+    """`before` without a heading left dangling at its end.
+
+    `before` is the prose that ran up to a block being removed, so a heading
+    sitting at the end of it — blank lines aside — is that block's own
+    heading and goes with it. A heading anywhere else is the report's.
+    """
+    lines = before.split("\n")
+    end = len(lines)
+    while end and not lines[end - 1].strip():
+        end -= 1
+    if end and _HEADING.match(lines[end - 1]):
+        del lines[end - 1]
+    return "\n".join(lines)
+
+
+def _drop_loose_entry_lines(text: str) -> str:
+    """`text` without the loose lines the fallback parse read as entries."""
+    lines = text.split("\n")
+    dropped = {i for i, raw in enumerate(lines) if _line_entries(raw, strict=False)}
+    for i in sorted(dropped):
+        if i - 1 in dropped:
+            continue  # same run; its heading was already considered
+        above = i - 1
+        while above >= 0 and not lines[above].strip():
+            above -= 1
+        if above >= 0 and _HEADING.match(lines[above]):
+            dropped.add(above)
+    return "\n".join(line for i, line in enumerate(lines) if i not in dropped)
+
+
+def strip_handoff_glossary(text: str) -> str:
+    """The report's prose, without the renderings the parse recovered.
+
+    Those entries are re-rendered canonically into the report, so any copy
+    left in the prose is written twice into `<book>_handoff.md` and sent
+    twice in the next window's seed. Whatever the parse recovered therefore
+    has to come out here: the tagged block when the model emitted one, and
+    the loose lines the parse fell back to when it did not — the fallback
+    used to be stripped by neither, so a report without tags duplicated
+    every term it established.
+
+    A report that established nothing is returned as written. Deleting its
+    last heading anyway — which this did, on the guess that a heading in
+    that position introduced the block — took a genuine section title off a
+    report that never had a renderings block at all.
+    """
+    if not text:
+        return text
+    blocks = list(_RENDERINGS.finditer(text))
+    # An empty or unparseable block still sends the parse to the loose lines,
+    # so "there were tags" is not the same question as "which lines were read".
+    scanned = parse_handoff_glossary(text).source == "scanned"
+    if not blocks and not scanned:
+        return text.strip()
+
+    parts, cursor = [], 0
+    for block in blocks:
+        parts.append(_drop_introducing_heading(text[cursor : block.start()]))
+        cursor = block.end()
+    parts.append(text[cursor:])
+    without = "".join(parts)
+    if scanned:
+        without = _drop_loose_entry_lines(without)
+    return re.sub(r"\n{3,}", "\n\n", without).strip()
 
 
 @dataclass
@@ -150,6 +338,12 @@ class HandoffReport:
 
     window: int
     summary: str
+    # The renderings this run has established so far, pins included, rendered
+    # canonically. Written to the handoff file and replayed in the seed so the
+    # next window keeps the same names — and so an operator can read back what
+    # the run taught itself. It never reaches the book: the translation metadata stamp
+    # records the `--glossary` file the operator wrote, nothing derived.
+    glossary_lines: str = ""
     # A style the user fixed via --prompt's `style` field. It is not asked of
     # the model, so it is written in here instead — otherwise the next window
     # would inherit a report with no style at all.
@@ -164,6 +358,8 @@ class HandoffReport:
             "terminology and register consistent with it.\n\n"
             f"{self.summary}"
         )
+        if self.glossary_lines:
+            seed += f"\n\nEstablished renderings:\n{self.glossary_lines}"
         return seed
 
     def render(self) -> str:
@@ -171,6 +367,8 @@ class HandoffReport:
         body = self.summary
         if self.style_note:
             body += f"\n\n### Style\n\n{self.style_note}"
+        if self.glossary_lines:
+            body += f"\n\n### Established renderings\n\n{self.glossary_lines}"
         return body
 
     def append_to(self, path) -> None:

@@ -13,10 +13,12 @@ nav:
     - QuickStart: quickstart.md
   - Usage:
     - Model and languages: model_lang.md
+    - Language tags and names: languages.md
     - Command line options: cmd.md
     - Migrating from the old flags: migration.md
     - Translate from different source: book_source.md
     - Environment setting: env_settings.md
     - Tweak the prompt: prompt.md
+    - Session grouping evaluation: session_grouping_eval.md
   - Disclaimer: disclaimer.md
     

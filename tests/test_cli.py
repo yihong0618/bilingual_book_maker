@@ -8,6 +8,7 @@ def test_get_book_type_uses_final_suffix_and_lowercases():
 
 import json
 import os
+import re
 
 import pytest
 import subprocess
@@ -236,12 +237,19 @@ def test_classify_model_flag_implies_model_mode(tmp_path):
         "--test_num",
         "1",
     )
-    # google translator has no structured_json, and a classifier that cannot
-    # run must block rather than degrade into translating undecided rows
+    # google translates through one fixed engine with no model to ask, and a
+    # classifier that cannot run must block rather than degrade into
+    # translating undecided rows. Refused at the CLI now (audit row A10):
+    # the run used to parse the whole book and write a plan file nothing had
+    # decided before dying in the classifier.
     assert proc.returncode == 1
-    assert "no structured-output support" in " ".join(proc.stdout.split())
+    flat = " ".join(proc.stdout.split())
+    assert "--plan-classify-model" in flat
+    assert "no model to ask" in flat
     # and it must say what to do instead, not just what failed
-    assert "--plan-classify agent" in " ".join(proc.stdout.split())
+    assert "--plan-classify agent" in flat
+    # nothing was parsed or written on the way to the refusal
+    assert not plan.exists()
 
 
 def test_naming_a_model_for_a_fixed_engine_fails_loud(tmp_path):
@@ -1616,3 +1624,398 @@ def test_the_written_epub_carries_each_translation_beside_its_source(tmp_path):
             assert source.get("class") == paragraph.get("class"), name
             placed += 1
     assert placed == 2, f"{placed} translations placed, 2 requested"
+
+
+# --------------------------------------------------------------------------
+# --max-batch-units, and the session-mode grouping default
+# --------------------------------------------------------------------------
+
+
+def test_a_batch_of_zero_units_is_refused():
+    # a request has to carry something; `--accumulated_num 1` is the flag
+    # that turns grouping off, and this one must not become a second spelling
+    import argparse
+
+    from book_maker.cli import batch_unit_cap
+
+    with pytest.raises(argparse.ArgumentTypeError):
+        batch_unit_cap("0")
+
+
+def test_a_zero_batch_units_run_stops_at_the_parser(tmp_path):
+    proc, _ = _run(tmp_path, "--max-batch-units", "0", "--plan-dry-run")
+    # argparse's own refusal: exit 2, one line, nothing translated
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "--max-batch-units" in proc.stderr
+    assert not list(tmp_path.glob("*_plan.json"))
+    assert "Traceback" not in proc.stdout + proc.stderr
+
+
+def test_a_negative_batch_units_is_refused_the_same_way(tmp_path):
+    proc, _ = _run(tmp_path, "--max-batch-units", "-4", "--plan-dry-run")
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+
+
+def test_batch_units_is_recorded_in_the_plan(tmp_path):
+    proc, plan = _run(tmp_path, "--max-batch-units", "4", "--plan-dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert json.loads(plan.read_text())["batch_units"] == 4
+
+
+# ------------------------------------- --batch_units, the old spelling
+
+
+def test_the_old_spelling_still_reaches_the_same_dest():
+    from book_maker.cli import parse_args
+
+    old = parse_args(["--book_name", "b.epub", "--batch_units", "4"])
+    new = parse_args(["--book_name", "b.epub", "--max-batch-units", "4"])
+    assert old.batch_units == new.batch_units == 4
+    # only the old one records that it was the spelling typed
+    assert old.batch_units_deprecated_flag == "--batch_units"
+    assert new.batch_units_deprecated_flag is None
+
+
+def test_the_old_spelling_plans_exactly_as_the_new_one_does(tmp_path):
+    proc, plan = _run(tmp_path, "--batch_units", "4", "--plan-dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert json.loads(plan.read_text())["batch_units"] == 4
+
+
+def test_the_old_spelling_earns_one_notice_naming_the_new_one(tmp_path):
+    proc, _ = _run(tmp_path, "--batch_units", "4", "--plan-dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    flat = " ".join(proc.stdout.split())
+    assert flat.count("--batch_units is now --max-batch-units") == 1
+
+
+def test_the_new_spelling_earns_no_notice(tmp_path):
+    proc, _ = _run(tmp_path, "--max-batch-units", "4", "--plan-dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "deprecated" not in proc.stdout
+
+
+def test_help_advertises_only_the_new_spelling():
+    proc = _cli("--help")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "--max-batch-units" in proc.stdout
+    assert "--batch_units" not in proc.stdout
+
+
+def test_batch_units_defaults_to_the_measured_cap(tmp_path):
+    # half the level the 260905 fault-emergence sweep measured faults at
+    from book_maker.loader.plan import GENERAL_GROUP_MAX_UNITS
+
+    proc, plan = _run(tmp_path, "--plan-dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert json.loads(plan.read_text())["batch_units"] == GENERAL_GROUP_MAX_UNITS
+
+
+def test_an_untyped_accumulated_num_reaches_the_parser_as_none():
+    # the explicitness is the whole mechanism: plan mode defaults the budget
+    # by context mode only when the flag was not typed, and `1` has to stay
+    # distinguishable from silence
+    from book_maker.cli import parse_args
+
+    assert parse_args(["--book_name", "b.epub"]).accumulated_num is None
+    assert (
+        parse_args(["--book_name", "b.epub", "--accumulated_num", "1"]).accumulated_num
+        == 1
+    )
+
+
+def test_a_session_dry_run_previews_the_default_budget(tmp_path):
+    # --plan-dry-run must group the way the run will: session mode defaults
+    # the token budget, so the preview's plan carries it too
+    from book_maker.loader.plan import session_token_budget
+
+    proc, plan = _run(tmp_path, "--plan-dry-run", "--use_context", "session")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    # a dry run has no translator to measure a prompt overhead against, so
+    # the preview carries the floor
+    assert json.loads(plan.read_text())["token_budget"] == session_token_budget(None)
+
+
+def test_a_plain_dry_run_previews_the_derived_budget_and_names_both_routes(tmp_path):
+    # 260906: the derived default is no longer session-only, so a dry run
+    # without --use_context session previews one too. It cannot know the
+    # endpoint's schema verdict — there is no endpoint — so it groups at the
+    # schema-verified derivation and says both numbers out loud.
+    from book_maker.loader.plan import derived_token_budget
+
+    proc, plan = _run(tmp_path, "--plan-dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert json.loads(plan.read_text())["token_budget"] == derived_token_budget(
+        None, "schema"
+    )
+    # rich wraps the line to the terminal width
+    out = " ".join(proc.stdout.split())
+    assert "plan grouping: budget 2400 tokens per request" in out
+    assert "1200 below strict decoding" in out
+
+
+def test_a_google_plan_run_derives_and_narrates_the_substrict_budget(tmp_path):
+    # the parity half: --api_format google holds no schema at all, so the
+    # real run takes the sub-strict derivation — and the number it lands on
+    # is one of the two the dry run above printed. Nothing was typed, so the
+    # budget in the run's own batches line is the derived one.
+    from book_maker.loader.plan import derived_token_budget
+
+    proc, _ = _run(tmp_path, "--plan-classify", "all", "--test", "--test_num", "2")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    budget = derived_token_budget(None, "substrict")
+    out = " ".join(proc.stdout.split())
+    assert (
+        f"plan grouping: budget {budget} tokens per request "
+        f"(endpoint below strict decoding" in out
+    )
+    # the partition stays endpoint-independent, so the plan's own line
+    # carries the schema-verified budget; the halving happens per request
+    assert f"/ {derived_token_budget(None, 'schema')} tokens per request)" in out
+    # and it actually grouped: far fewer requests than units
+    units, requests = re.search(
+        r"batches: (\d+) unit\(s\) in (\d+) request\(s\)", out
+    ).groups()
+    assert int(requests) < int(units)
+
+
+def test_a_typed_budget_narrates_nothing(tmp_path):
+    # the operator's own number needs no explaining; the line is only for
+    # the derived default
+    proc, _ = _run(
+        tmp_path,
+        "--plan-classify",
+        "all",
+        "--accumulated_num",
+        "900",
+        "--test",
+        "--test_num",
+        "2",
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "plan grouping: budget" not in " ".join(proc.stdout.split())
+
+
+def test_an_explicit_one_keeps_the_session_dry_run_ungrouped(tmp_path):
+    proc, plan = _run(
+        tmp_path,
+        "--plan-dry-run",
+        "--use_context",
+        "session",
+        "--accumulated_num",
+        "1",
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    # 0, the off switch: None would preview the short-run grouping the run
+    # won't do (the zero-budget behavior itself is pinned at the
+    # assign_batches level: a 0 budget groups nothing at all)
+    assert json.loads(plan.read_text())["token_budget"] == 0
+
+
+# --------------------------------------------------------------------------
+# --poetry-group-size: deprecated, still honoured
+# --------------------------------------------------------------------------
+
+
+def test_poetry_group_size_still_shapes_the_plan(tmp_path):
+    # deprecated is not removed: the flag reaches the plan exactly as before
+    proc, plan = _run(tmp_path, "--poetry-group-size", "5", "--plan-dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert json.loads(plan.read_text())["poetry_group_size"] == 5
+
+
+def test_poetry_group_size_warns_and_points_at_the_units_cap(tmp_path):
+    proc, _ = _run(tmp_path, "--poetry-group-size", "5", "--plan-dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    flat = " ".join(proc.stdout.split())
+    assert flat.count("--poetry-group-size:") == 1
+    assert "general grouping" in flat
+    assert "--max-batch-units" in flat
+
+
+def test_an_untyped_poetry_group_size_says_nothing(tmp_path):
+    proc, plan = _run(tmp_path, "--plan-dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "--poetry-group-size" not in proc.stdout
+    # and the default is unchanged
+    assert json.loads(plan.read_text())["poetry_group_size"] == 8
+
+
+# --------------------------------------------------------------------------
+# the compaction budget is pinned, and the preview says the same thing
+# --------------------------------------------------------------------------
+
+
+def _compact_line(text):
+    """The compaction sentence, however rich wrapped it.
+
+    `rich.print` wraps at the 80 columns it assumes for a pipe, so the
+    sentence can arrive split across lines. What is being pinned is the
+    wording, not the wrapping.
+    """
+    import re
+
+    flat = " ".join(text.split())
+    found = re.search(r"session: compacting at [^)]*\)", flat)
+    return found.group(0) if found else None
+
+
+def test_the_session_dry_run_previews_the_pinned_budget(tmp_path):
+    from book_maker.session_context import DEFAULT_COMPACT_BUDGET
+
+    proc, _ = _run(tmp_path, "--plan-dry-run", "--use_context", "session")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _compact_line(proc.stdout) == (
+        f"session: compacting at {DEFAULT_COMPACT_BUDGET} estimated tokens "
+        f"(the default; --context-compact-at overrides)"
+    )
+
+
+def test_the_session_dry_run_previews_an_explicit_budget(tmp_path):
+    proc, _ = _run(
+        tmp_path,
+        "--plan-dry-run",
+        "--use_context",
+        "session",
+        "--context-compact-at",
+        "2000",
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _compact_line(proc.stdout) == (
+        "session: compacting at 2000 estimated tokens (--context-compact-at)"
+    )
+
+
+def test_a_windowed_dry_run_previews_no_compaction_at_all(tmp_path):
+    proc, _ = _run(tmp_path, "--plan-dry-run", "--use_context")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _compact_line(proc.stdout) is None
+
+
+def test_the_preview_and_the_run_print_the_same_line(tmp_path):
+    # the preview's whole job is to say what the run will do; these two
+    # lines come from one function so they cannot drift
+    from book_maker.session_context import DEFAULT_COMPACT_BUDGET
+
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    preview, _ = _run(tmp_path / "a", "--plan-dry-run", "--use_context", "session")
+    real, _ = _run(
+        tmp_path / "b",
+        "--use_context",
+        "session",
+        "--test",
+        "--test_num",
+        "1",
+    )
+    assert preview.returncode == 0, preview.stdout + preview.stderr
+    assert real.returncode == 0, real.stdout + real.stderr
+    assert _compact_line(preview.stdout) == _compact_line(real.stdout)
+    assert str(DEFAULT_COMPACT_BUDGET) in _compact_line(real.stdout)
+
+
+def test_the_run_narrates_an_explicit_budget_as_the_flag(tmp_path):
+    proc, _ = _run(
+        tmp_path,
+        "--use_context",
+        "session",
+        "--context-compact-at",
+        "2000",
+        "--test",
+        "--test_num",
+        "1",
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _compact_line(proc.stdout) == (
+        "session: compacting at 2000 estimated tokens (--context-compact-at)"
+    )
+
+
+def test_a_run_with_no_session_narrates_no_compaction(tmp_path):
+    proc, _ = _run(tmp_path, "--test", "--test_num", "1")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _compact_line(proc.stdout) is None
+
+
+def test_no_code_path_reaches_for_the_deleted_derivation():
+    import book_maker.session_context as session_context
+    from book_maker.loader import epub_loader
+
+    assert not hasattr(session_context, "derived_compact_budget")
+    assert not hasattr(session_context, "DERIVED_COMPACT_FLOOR")
+    assert not hasattr(session_context, "DERIVED_COMPACT_CEILING")
+    assert not hasattr(epub_loader, "derived_compact_budget")
+    assert not hasattr(epub_loader.EPUBBookLoader, "_derive_session_compact_budget")
+
+
+# --------------------------------------------------------------------------
+# a finished run says where the book landed
+# --------------------------------------------------------------------------
+
+
+def test_a_finished_epub_run_ends_with_the_absolute_path(tmp_path):
+    proc, _ = _run(tmp_path, "--test", "--test_num", "1")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+    output = tmp_path / "animal_farm_bilingual.epub"
+    assert output.exists()
+    lines = [line for line in proc.stdout.splitlines() if line.strip()]
+    assert lines[-1].strip() == f"Bilingual book saved: {output.resolve()}"
+
+
+def test_the_saved_line_is_printed_exactly_once(tmp_path):
+    proc, _ = _run(tmp_path, "--test", "--test_num", "1")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert proc.stdout.count("Bilingual book saved:") == 1
+
+
+def test_a_long_path_arrives_on_one_line(tmp_path):
+    # rich wraps at the 80 columns it assumes for a pipe; a path broken in
+    # half is exactly what this line exists to prevent, so it is not rich's
+    deep = tmp_path / ("d" * 40) / ("e" * 40)
+    deep.mkdir(parents=True)
+    proc, _ = _run(deep, "--test", "--test_num", "1")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+    output = deep / "animal_farm_bilingual.epub"
+    assert len(str(output)) > 80
+    assert f"Bilingual book saved: {output.resolve()}\n" in proc.stdout
+
+
+def test_a_failed_run_says_nothing_about_a_saved_book(tmp_path):
+    # no book at that path at all: the run cannot get as far as writing one
+    proc = _cli(
+        "--book_name",
+        str(tmp_path / "not_a_book.epub"),
+        "--api_format",
+        "google",
+    )
+    assert proc.returncode != 0
+    assert "Bilingual book saved:" not in proc.stdout
+
+
+def test_a_txt_run_names_the_txt_it_wrote(tmp_path):
+    source = tmp_path / "book.txt"
+    source.write_text("Hello there.\n\nSecond paragraph.\n", encoding="utf-8")
+    proc = _cli("--book_name", str(source), "--api_format", "google")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+    output = tmp_path / "book_bilingual.txt"
+    assert output.exists(), proc.stdout
+    assert f"Bilingual book saved: {output.resolve()}" in proc.stdout
+    assert proc.stdout.count("Bilingual book saved:") == 1
+
+
+def test_a_srt_run_names_the_srt_it_wrote(tmp_path):
+    source = tmp_path / "subs.srt"
+    source.write_text(
+        "1\n00:00:01,000 --> 00:00:02,000\nHello there.\n\n"
+        "2\n00:00:03,000 --> 00:00:04,000\nAnd again.\n",
+        encoding="utf-8",
+    )
+    proc = _cli("--book_name", str(source), "--api_format", "google")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+    output = tmp_path / "subs_bilingual.srt"
+    assert output.exists(), proc.stdout
+    assert f"Bilingual book saved: {output.resolve()}" in proc.stdout

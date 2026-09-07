@@ -8,17 +8,39 @@ from dataclasses import dataclass
 from rich import print
 from rich.markup import escape
 
+from ..glossary import Glossary
 from ..redaction import redact, remember
+from ..session_context import parse_handoff_glossary
 
 from ..structured import (
     extract_json_object,
     prompt_with_schema,
     run_rungs,
+    schema_required_keys,
     unwrap_schema_echo,
 )
 
 # Special delimiter for batch translation - UUID-based token unlikely to appear in any text
 BATCH_DELIMITER = "\n\n@@\n\n"
+
+# `PROMPT_SECTION_SLOTS` for a route that builds no prompt at all: the fixed
+# MT engines, the translation-only models, and the custom endpoint, which are
+# handed text and nothing else. `--prompt` has nowhere to go on these, and the
+# CLI says so at run start rather than accepting the flag in silence.
+NO_PROMPT_SECTIONS = {"user": "none", "system": "none", "style": "none"}
+
+
+class BatchMismatch(Exception):
+    """A batch reply cannot be aligned with the texts that were sent.
+
+    The one contract every LLM route's `translate_list` keeps: exactly
+    `len(texts)` aligned items, or this. Nobody repairs it where it is
+    raised — the loader's `_translate_texts_aligned` ladder halves the chunk
+    and asks again, which costs about twice the batch instead of the N
+    single requests a per-route fallback used to pay. Retrying the same
+    group is not among the options either: a model that miscounted once
+    usually miscounts again, and each retry re-pays the whole group.
+    """
 
 
 def short_count(n):
@@ -234,6 +256,13 @@ class Base(ABC):
     # and translating as if it had never been passed.
     SUPPORTS_SESSION_CONTEXT = False
 
+    # Is this format a session whether or not anyone asked for one? True
+    # where the route has no other shape: the codex sidecar's thread IS the
+    # history, so a run on it is billed the way a session run is billed —
+    # by request count against a growing conversation — and the budgets a
+    # session run derives have to be derived there too.
+    SESSION_CONTEXT_ALWAYS_ON = False
+
     # Does this format survive `--parallel-workers` with `--use_context`?
     # Each worker is handed a clone carrying its own chapter context, which
     # a format that keeps no re-sendable window cannot provide.
@@ -269,6 +298,69 @@ class Base(ABC):
     # printing success and dropping the fields.
     SUPPORTS_REQUEST_EXTRAS = False
 
+    # Does this route inject a `--glossary` / `--terminology` block next to the
+    # unit it is translating? True where the request is built here out of a
+    # prompt we control. The fixed-endpoint MT services take a string and give
+    # one back, with nowhere to say "render this term that way" — they get the
+    # flag warned about rather than accepting a pin that reaches nothing.
+    SUPPORTS_GLOSSARY = False
+
+    # Glossary state, declared here so every route answers it — including the
+    # ones that carry no glossary at all and the instances a test builds
+    # without __init__. `pinned` is the operator's file, `learned` what this
+    # run's compact turns established, `glossary` the two merged with the pins
+    # on top. Nothing ever merges back into `pinned`: it stays exactly the
+    # file, which is what lets the run record its translation metadata without ever
+    # naming a derived term.
+    glossary = None
+    pinned = None
+    learned = None
+    glossary_auto = None
+
+    # Whether this run learns renderings from its own handoff reports. False
+    # on any route without a session to compact; the session routes decide it
+    # from `--glossary-auto` and whether a session is actually open.
+    glossary_auto_on = False
+
+    def _learn_from_handoff(self, report_text):
+        """Fold a handoff report's renderings into this run's glossary.
+
+        Returns the lines to record in the report — "" when this run is not
+        learning, so a route that never asked for the section cannot acquire
+        terms from prose that happens to contain an arrow.
+        """
+        if not self.glossary_auto_on or not report_text:
+            return ""
+        learned, source = parse_handoff_glossary(report_text)
+        if source == "scanned":
+            # The block is what makes this parseable; say so rather than let a
+            # quietly degraded recovery look like a clean one.
+            print(
+                f"[yellow]ℹ the handoff report left out its <renderings> "
+                f"block; recovered {len(learned)} terms from loose "
+                f"lines[/yellow]"
+            )
+        elif source == "missing":
+            print(
+                "[yellow]ℹ the handoff report established no new "
+                "renderings; this window adds no learned terms[/yellow]"
+            )
+        if not learned:
+            # Nothing new this window. The vocabulary earlier windows
+            # established still holds — an empty block means "no additions",
+            # so the merged glossary keeps riding the seed instead of
+            # vanishing from it.
+            return self.glossary.to_lines() if self.glossary else ""
+        # This window's reading wins over earlier ones: the model has seen
+        # more of the book than it had last time. Then the operator's pins are
+        # laid over the top, so a term they chose never drifts, while
+        # everything else keeps improving.
+        self.learned, _ = learned.merge(self.learned or Glossary())
+        self.glossary, conflicts = (self.pinned or Glossary()).merge(self.learned)
+        for conflict in conflicts:
+            print(f"[yellow]ℹ glossary conflict — {conflict.describe()}[/yellow]")
+        return self.glossary.to_lines()
+
     def set_request_extras(self, extra_body=None, extra_headers=None):
         """Fields and headers to add to every request this route makes.
 
@@ -285,6 +377,183 @@ class Base(ABC):
     # still answers, and so the default is stated once.
     extra_body = {}
     extra_headers = {}
+
+    # What `--source_lang` stated, when it stated anything. Class-level so
+    # every route answers, including the ones a test builds without
+    # __init__; None means "the model works it out from the text", which is
+    # what `--source_lang auto`, the default, asks for.
+    source_language = None
+
+    # The tag half of `--language TAG:NAME`, when the operator wrote one.
+    # Only the structured field names read it, and only then: a bare
+    # `--language` leaves it None so the field name keeps being derived from
+    # the prose, exactly as every earlier run derived it.
+    language_field_tag = None
+
+    # Said only to requests that carry markers. A model told to preserve
+    # tokens in a text that has none is being taught to invent them.
+    MARKER_INSTRUCTION = (
+        "The text contains placeholder tokens written like ⟦code1⟧. Reproduce "
+        "every one of them exactly as written, each in the place the content "
+        "it stands for belongs in your translation. Never translate a token, "
+        "never change its spelling, and never invent one."
+    )
+
+    # Where each `--prompt` section lands on this route:
+    #   "native"   — the request has a slot of its own for it
+    #   "appended" — no slot, so the text rides in what the route does send
+    #                (`PROMPT_APPEND_TARGET` names where)
+    #   "none"     — the route builds no prompt at all, so nothing carries it
+    # The CLI reads this to say at run start what became of each section, and
+    # the routes read it for nothing: each one appends what it has to append
+    # at the single place it assembles a user turn. Keeping the two in step is
+    # what `tests/test_prompt_sections.py` is for.
+    #
+    # The default describes an LLM route with a system slot. No endpoint has a
+    # *style* slot, so style is "appended" everywhere; the routes differ only
+    # in what it is appended to.
+    PROMPT_SECTION_SLOTS = {
+        "user": "native",
+        "system": "native",
+        "style": "appended",
+    }
+    PROMPT_APPEND_TARGET = "the user message"
+
+    # One wording for the style section wherever it is appended, so a run does
+    # not describe its style two ways depending on the route.
+    STYLE_HEADING = "Style to follow:"
+
+    def fill_optional(self, template):
+        """A template with this run's values in it, or the template as typed.
+
+        For the sections that have no required placeholder — `system` and
+        `style`. `{language}` and `{crlf}` are filled where they appear;
+        anything else in braces is the operator's own text (a JSON example, a
+        regex, a `{` they meant literally) and is sent as written rather than
+        killing a run mid-book over a formatting detail nobody documented.
+
+        The `user` template is deliberately not filled through here: it must
+        carry `{text}`, the CLI refuses one that does not, and a silent
+        pass-through would send an unfilled placeholder to the model.
+        """
+        if not template:
+            return ""
+        try:
+            return template.format(language=self.language, crlf="\n")
+        except (KeyError, IndexError, ValueError):
+            return template
+
+    def _system_message(self):
+        """The system message this route sends, before the run-wide note.
+
+        The two attribute spellings are the ones already in use — ChatGPT
+        keeps an `$OPENAI_API_SYS_MSG` value in `system_content` and the
+        `--prompt` one in `prompt_sys_msg`; Claude, Gemini and codex keep only
+        the latter. A route with neither answers "", which is the honest
+        description of what it sends.
+        """
+        system = getattr(self, "system_content", None) or getattr(
+            self, "prompt_sys_msg", None
+        )
+        return self.fill_optional(system)
+
+    def style_suffix(self):
+        """The style section as a suffix for the turn, or "".
+
+        Appended rather than slotted because no endpoint has a place for it:
+        the style is a standing instruction about *how* to translate, and the
+        only channel every route has for that is the text it is already
+        sending. Fixed for a run, so it never destabilises a cached prefix.
+        """
+        note = (getattr(self, "style_note", None) or "").strip()
+        if not note:
+            return ""
+        return f"\n\n{self.STYLE_HEADING} {self.fill_optional(note)}"
+
+    @property
+    def field_language(self):
+        """The string the structured field names are slugged from.
+
+        The pinned tag when `--language TAG:NAME` gave one, the prose
+        otherwise: `zh-hant:Traditional Chinese` yields
+        `zh_hant_translation`, while a bare `zh-hant` keeps producing the
+        `traditional_chinese_translation` every earlier run produced. Only
+        field names read this — the prompt, the descriptions and everything
+        the operator sees stay on `language`.
+        """
+        return self.language_field_tag or self.language
+
+    def _source_language_note(self):
+        """The sentence that names the source language, or ""."""
+        if not self.source_language:
+            return ""
+        return (
+            f"Translate from {self.source_language} into "
+            f"{self.language or 'the target language'}."
+        )
+
+    @staticmethod
+    def _carries_markers(text):
+        # Imported here: `book_maker.loader` pulls in the loaders, which
+        # import this module.
+        from ..loader.markers import MARKER_RE
+
+        return bool(MARKER_RE.search(text or ""))
+
+    def _augment_system_content(self, sys_content):
+        """The system message plus what is true for the whole run.
+
+        Only the source-language note, which `--source_lang` fixes once
+        and every request then repeats verbatim. Nothing per-request may go
+        here: a system message that changes between requests moves the
+        prefix session mode caches, and every later request re-reads the
+        whole accumulated history at full input price. The marker contract
+        is exactly such a per-request thing — it rides in the user message,
+        see `_marker_preamble`.
+        """
+        note = self._source_language_note()
+        if not note:
+            return sys_content
+        return " ".join([(sys_content or "").strip(), note]).strip()
+
+    def resolved_prompt_parts(self):
+        """The prompt this run sends, as ``{"user", "system", "style"}``.
+
+        Not what the command typed: a run's prompt is settled from the flag,
+        then the environment (`$OPENAI_API_SYS_MSG` and the
+        `BBM_*_MSG` variables), then the route's own default, and
+        `--source_lang` appends its note to the system message on top
+        of that. Two commands that read identically can therefore translate
+        under different instructions, which is exactly what the resume
+        checkpoint's fingerprint has to notice.
+
+        The two attribute spellings are the ones already in use: ChatGPT and
+        Claude keep `prompt_template`/`system_content`, Gemini `prompt`/
+        `prompt_sys_msg` (see `_do_batch_translate_with_fallback`). A route
+        with neither — the fixed MT engines, which take no prompt at all —
+        answers empty strings, which is the honest description of what it
+        sends.
+        """
+        user = getattr(self, "prompt_template", None) or getattr(self, "prompt", None)
+        return {
+            "user": user or "",
+            "system": self._augment_system_content(self._system_message()) or "",
+            # A fixed --prompt style rides in every request (and replaces
+            # the handoff's observed style), so a style-only change writes
+            # a different book and must move the fingerprint with it.
+            "style": getattr(self, "style_note", None) or "",
+        }
+
+    def _marker_preamble(self, request_text):
+        """The marker contract as a user-message prefix, or "".
+
+        Said only to requests that carry markers, and said in the user turn
+        so the system message stays byte-identical across a run that mixes
+        marker-bearing and plain units.
+        """
+        if not self._carries_markers(request_text):
+            return ""
+        return f"{self.MARKER_INSTRUCTION}\n\n"
 
     def warn_if_extras_refused(self, error):
         """Say so when a request carrying the run's extras was refused.
@@ -374,6 +643,31 @@ class Base(ABC):
             f"{type(self).__name__} has no arbitrary-prompt channel"
         )
 
+    def classify_session(self, model=None):
+        """A fresh conversation for plan classification, or None.
+
+        The session entry (`loader/classify/session.py`) asks for verdicts
+        over an append-only conversation instead of asking for JSON, which
+        is the only way to classify on a route that produces none. It needs
+        three things a single-turn prompt channel cannot give it: a place to
+        put the instruction trunk once, turns that extend that prefix rather
+        than replacing it, and the budget at which the history is worth
+        starting over.
+
+        A route that has no such conversation answers None and keeps the
+        JSON path. Overriding this method is also what advertises the
+        capability — `can_session_classify` compares the attribute with this
+        one rather than calling it, because opening a session can cost a
+        request and the question is asked before plan mode spends anything.
+
+        The returned object implements:
+
+            start(trunk)  begin a new conversation carrying `trunk`
+            ask(text)     one turn; returns the reply text
+            budget()      estimated tokens a session may carry
+        """
+        return None
+
     def supports_structured_json(self):
         """Whether this translator can be asked a question at all.
 
@@ -399,7 +693,9 @@ class Base(ABC):
     def _prompt_rung(self, prompt, schema, model=None):
         """Schema described in the prompt, answer recovered from free text."""
         text = self._chat_completion(prompt_with_schema(prompt, schema), model=model)
-        return unwrap_schema_echo(extract_json_object(text))
+        return unwrap_schema_echo(
+            extract_json_object(text, schema_required_keys(schema))
+        )
 
     def structured_json(self, prompt, schema, model=None, accept=None):
         """One structured question, over whatever rungs this provider has.
@@ -460,6 +756,39 @@ class Base(ABC):
         Subclasses can override for batch efficiency.
         """
         return [self.translate(t) for t in text_list]
+
+    @staticmethod
+    def _check_batch(texts, replies):
+        """Raise `BatchMismatch` unless `replies` aligns with `texts`.
+
+        Two symptoms, one check, used by every carrier:
+
+        *Wrong count* — the reply cannot be zipped with the source at all.
+
+        *An empty slot for a non-empty source* — count is not alignment. A
+        model that merges two source lines into one slot (routine on verse:
+        one sentence spans two pādas) keeps the count by shifting the rest
+        and padding with "", and that empty slot is the only unambiguous
+        symptom of the shift.
+
+        A wrong alignment at the right count with no empty slot is not
+        detected, by design: there is no signal to detect it by.
+        """
+        if len(replies) != len(texts):
+            raise BatchMismatch(
+                f"expected {len(texts)} translations, got {len(replies)}"
+            )
+        empty = [
+            i
+            for i, (src, out) in enumerate(zip(texts, replies))
+            if not str(out).strip() and str(src).strip()
+        ]
+        if empty:
+            raise BatchMismatch(
+                f"empty translation for non-empty paragraph(s) {empty}: "
+                f"batch alignment lost"
+            )
+        return None
 
     async def translate_async(
         self, text: str, *, context: TranslationContext | None = None
@@ -575,18 +904,19 @@ class Base(ABC):
             # Filter out empty strings
             result_list = [p.strip() for p in parts if p.strip()]
 
-        # Final fallback: split by double newlines if still not matching
-        if len(result_list) != paragraph_count:
-            lines = text.splitlines()
-            result_list = [line.strip() for line in lines if line.strip() != ""]
-
+        # There used to be a last rung here: split on every non-blank line.
+        # It manufactured a plausible *wrong* count out of a perfectly correct
+        # multi-line reply — a four-line stanza answered as one paragraph of
+        # four lines came back as four "translations", each a fragment of the
+        # first source line. A reply carrying no delimiter now yields one
+        # item, which is a mismatch, which the loader's ladder divides.
         return result_list
 
     def _do_batch_translate(
         self, text_list, prompt_template, system_content, default_prompt, translate_func
     ):
         """
-        Perform batch translation with fallback to one-by-one translation.
+        Send one delimiter-separated request for a whole group.
 
         Args:
             text_list: List of texts to translate
@@ -596,7 +926,14 @@ class Base(ABC):
             translate_func: Function to call for actual translation (single or batch)
 
         Returns:
-            List of translated texts
+            List of exactly `len(text_list)` translations.
+
+        Raises:
+            BatchMismatch: the reply did not come back in `len(text_list)`
+                aligned pieces. Nothing is repaired here — the loader's
+                ladder halves the chunk and asks again, which is one place
+                instead of one per route, and costs ~2x the batch rather
+                than N singles.
         """
         plist_len = len(text_list)
 
@@ -611,10 +948,6 @@ class Base(ABC):
             text_list, prompt_template, system_content, default_prompt
         )
 
-        # Store original values
-        original_prompt = prompt_template
-        original_sys_msg = system_content
-
         # Detect which attribute names this translator uses
         # ChatGPT uses prompt_template/system_content, Gemini uses prompt/prompt_sys_msg
         prompt_attr = (
@@ -623,6 +956,16 @@ class Base(ABC):
         sys_msg_attr = (
             "system_content" if hasattr(self, "system_content") else "prompt_sys_msg"
         )
+
+        # Store original values — read off the instance, not off the arguments.
+        # The two are the same wherever a caller hands its own attribute
+        # straight in, and differ where it hands the *effective* value it
+        # assembled (the openai route's system message is `system_content` or
+        # `prompt_sys_msg`, and only the assembled form carries a `--prompt`
+        # system message onto this rung). Restoring the argument there would
+        # write the assembled string back over the attribute it came from.
+        original_prompt = getattr(self, prompt_attr, prompt_template)
+        original_sys_msg = getattr(self, sys_msg_attr, system_content)
 
         # --use_context must see one pair per paragraph. translate() saves
         # whatever it was handed, so letting it run on the joined batch would
@@ -636,6 +979,19 @@ class Base(ABC):
         # saving and nothing is suppressed.
         context_flag = getattr(self, "context_flag", False)
         per_line = context_flag and self.BATCH_CONTEXT_PER_LINE
+        # A replayed history records the batch as the one exchange it was —
+        # but only once the reply is known to be usable. A misaligned
+        # exchange left in the prefix is worse than the cache miss its
+        # absence costs, so the recording happens here, after the check,
+        # while the batch prompt is still installed: `_save_session_context`
+        # re-derives the user content from it and must derive exactly what
+        # was sent.
+        session_batch = (
+            context_flag
+            and not self.BATCH_CONTEXT_PER_LINE
+            and getattr(self, "session", None) is not None
+        )
+        translated_paragraphs = None
 
         try:
             # Set batch values
@@ -646,10 +1002,17 @@ class Base(ABC):
                 and hasattr(self, sys_msg_attr)
             ):
                 setattr(self, sys_msg_attr, batch_sys_msg)
-            if per_line:
+            if per_line or session_batch:
                 self.context_flag = False
 
             translated_text = translate_func(batch_text)
+            if translated_text:
+                translated_paragraphs = self._extract_paragraphs(
+                    translated_text, plist_len
+                )
+                self._check_batch(text_list, translated_paragraphs)
+                if session_batch:
+                    self._save_session_context(batch_text, translated_text)
         finally:
             # Restore original values
             setattr(self, prompt_attr, original_prompt)
@@ -659,7 +1022,7 @@ class Base(ABC):
             # describe "@@"-separated segments to every later request.
             if hasattr(self, sys_msg_attr):
                 setattr(self, sys_msg_attr, original_sys_msg)
-            if per_line:
+            if per_line or session_batch:
                 self.context_flag = True
 
         # Handle None or empty response
@@ -668,27 +1031,6 @@ class Base(ABC):
                 f"[bold red]Error: Translation API returned empty response for batch request.[/bold red]"
             )
             raise Exception("Translation API returned empty response")
-
-        translated_paragraphs = self._extract_paragraphs(translated_text, plist_len)
-
-        # Fallback to one-by-one translation if paragraph count doesn't match
-        if len(translated_paragraphs) != plist_len:
-            print(
-                f"Warning: Expected {plist_len} translations, got {len(translated_paragraphs)}. Falling back to one-by-one translation."
-            )
-            print(f"\n[Debug] Input text_list ({plist_len} items):")
-            stripped_texts = [str(t).strip() for t in text_list]
-            for i, t in enumerate(stripped_texts, 1):
-                print(f"  [{i}] {t!r}")
-            print(f"\n[Debug] Model response ({len(translated_text)} chars):")
-            print(translated_text)
-            print(f"\n[Debug] Split result ({len(translated_paragraphs)} items):")
-            for i, p in enumerate(translated_paragraphs, 1):
-                print(f"  [{i}] {p!r}")
-            print()
-            # context_flag is restored here, so each single call saves its own
-            # pair — no extra bookkeeping needed on this path
-            return [translate_func(t) for t in stripped_texts]
 
         if per_line:
             for original, translated in zip(text_list, translated_paragraphs):
