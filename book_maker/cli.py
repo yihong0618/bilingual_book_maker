@@ -1342,9 +1342,9 @@ COMPAT_RULES = (
         "warn",
         lambda f: f.options.translation_metadata and f.book_type != "epub",
         lambda f: (
-            f"--translation-metadata records the run in the package document, and only "
-            f"an epub has one; on a {f.book_type} book it is accepted and "
-            f"records nothing."
+            f"--translation-metadata writes a record file into the book, and "
+            f"only the epub format carries one; on a {f.book_type} book it is "
+            f"accepted and --translation-metadata records nothing."
         ),
     ),
     CompatRule(
@@ -1924,13 +1924,13 @@ off. Minimum 1.
         "--no_disclosure",
         dest="disclosure",
         action="store_false",
-        help="do not mark the epub as a machine translation (translator credit, description line and the closing translation note); the model id is recorded verbatim",
+        help='do not mark the epub as a machine translation: leaves out the one-line credit ("Translated by <model>, <year>.") below the book intro, and turns off --translation-metadata too',
     )
     parser.add_argument(
         "--translation-metadata",
         dest="translation_metadata",
         action="store_true",
-        help="write translation metadata into the book: a bbm_translation_metadata.json (build, model, endpoint host, command line, languages, date) plus three bbm: package metas. API keys and the --prompt text are never included. Plan-mode and session runs write it by themselves; this flag adds it to a plain tag-mode run. --no_disclosure turns it off too",
+        help="write a small bbm_translation_metadata.json into the book: the model, the date, and the checksum of a --glossary file (whose text is embedded alongside). Nothing else — no command line, endpoint or paths, and no package metas. Plan-mode and session runs write it by themselves; this flag adds it to a plain tag-mode run. --no_disclosure turns it off too",
     )
     parser.add_argument(
         "--use_context",
@@ -2019,8 +2019,8 @@ off. Minimum 1.
         default="auto",
         help="source language, stated rather than detected. Named in the "
         "prompt on every LLM route, sent as a request field on the "
-        f"{' and '.join(SOURCE_LANG_FORMATS)} routes, and recorded by "
-        "--translation-metadata (default: auto-detect, which states nothing)",
+        f"{' and '.join(SOURCE_LANG_FORMATS)} routes "
+        "(default: auto-detect)",
     )
     parser.add_argument(
         "--block_size",

@@ -1112,5 +1112,5 @@ def test_the_flag_says_so_when_the_book_has_nowhere_to_record_it(tmp_path):
     )
 
     said = " ".join(proc.stdout.split())
-    assert "--translation-metadata records the run in the package document" in said
-    assert "only an epub has one" in said
+    assert "--translation-metadata writes a record file into the book" in said
+    assert "only the epub format carries one" in said

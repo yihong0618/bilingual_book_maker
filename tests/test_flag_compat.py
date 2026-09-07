@@ -539,11 +539,11 @@ WARN_FIXTURES = [
         "forwarded by the epub and markdown loaders only",
     ),
     (
-        # C22: only an epub has a package document to record the run in
+        # C22: only the epub format carries the record file
         "C22",
         ["--translation-metadata"],
         {"book_type": "txt"},
-        "only an epub has one",
+        "only the epub format carries one",
     ),
     (
         # C23: --no_disclosure silences the machine record too

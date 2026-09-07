@@ -459,7 +459,7 @@ so you can honour a request without guessing at legal values.
 | `--single_translate` | on/off | **off** | **only** when the user asked for a translated-only book in so many words. Naming a target language is not that request. The original is replaced, so there is nothing to compare against afterwards; `--translation_style` still applies |
 | `--translation_style` | CSS declarations | *unset* | the translation should be visually separated, e.g. `"color:#808080;font-style:italic"`. It is the whole declaration block, so it replaces `--translation_color` rather than merging with it (the run says so) |
 | `--translation_color` | a colour | *unset* | the user wants only a colour and no other CSS. Passing both: `--translation_style` wins, and the run says the colour was lost |
-| `--no_disclosure` | on/off | **off — the epub says it is an AI translation** (a machine translation on the engine formats): the tool is credited as a translator, a description line names the model, and a closing note ends the book | the user asks for the note gone in so many words. Say what they lose: a reader can no longer tell the translation from a human one, and the model that made it is no longer recorded. Ignored on non-epub output, which carries no note |
+| `--no_disclosure` | on/off | **off — the epub says it is an AI translation**: one small line below the book intro, "Translated by \<model\>, \<year\>." | the user asks for the marking gone in so many words. Say what they lose: a reader can no longer tell the translation from a human one, and the model that made it is no longer recorded (it turns off `--translation-metadata` too). Ignored on non-epub output, which carries no credit |
 
 ### Scope and run control
 
