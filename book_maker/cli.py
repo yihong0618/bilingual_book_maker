@@ -2460,7 +2460,7 @@ def main():
     elif not options.disclosure:
         print(
             "[bold yellow]Warning:[/bold yellow] --no_disclosure is ignored for "
-            f"{book_type} books; only epub output carries the translation note."
+            f"{book_type} books; only epub output carries the translation credit."
         )
 
     # Parsed once, here, so the run can say what it adopted before it spends

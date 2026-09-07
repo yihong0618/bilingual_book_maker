@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 from ebooklib import epub
 
-from book_maker.loader.disclosure import COLOPHON_FILE, COLOPHON_ID
+from book_maker.loader.disclosure import CREDIT_CLASS
 from book_maker.loader.epub_loader import EPUBBookLoader
 
 REPO = Path(__file__).resolve().parent.parent
@@ -29,7 +29,7 @@ REPO = Path(__file__).resolve().parent.parent
 # What a translated animal_farm.epub scores: 6 distinct ERROR messages (8
 # occurrences), 0 warnings. Measured 260903 both at the parent commit and
 # with this slice applied — the same six either way, so neither the calibre
-# drop nor the colophon changes the number. All six are the source's own
+# drop nor the disclosure changes the number. All six are the source's own
 # EPUB 2 shape surviving into an EPUB 3 package: four RSC-005 over
 # `opf:scheme` / `opf:role` / `opf:file-as` attributes, one RSC-005 for the
 # missing `nav` property, one OPF-014 for an undeclared `svg` property.
@@ -333,20 +333,26 @@ def fixed_layout_book(tmp_path):
 
 
 def test_a_fixed_layout_book_validates(epubcheck, fixed_layout_book):
-    """The note is the one page of a fixed-layout book with no page size to
-    declare, so it declares itself reflowable instead. Without that,
-    epubcheck rejects it with HTM-046 — measured on nine of the 45 books in
-    `epub-sample`, every one of them pre-paginated.
+    """A pre-paginated package requires page dimensions of every spine
+    document (epubcheck HTM-046), and a page appended for the translation
+    had none to give — nine of the 45 books in `epub-sample` are
+    pre-paginated, so this was a real refusal, not a hypothetical one.
+
+    Since the 260906 slim there is no appended page: the credit line goes
+    inside a document the book already laid out, so it inherits that
+    document's declaration and the whole question goes away. Pinned here
+    because the fixture is the only pre-paginated book in the suite.
     """
     _assert_valid(epubcheck, fixed_layout_book, "the fixed-layout book")
 
+    marker = CREDIT_CLASS.encode("utf-8")
     with zipfile.ZipFile(fixed_layout_book) as archive:
         opf_name = next(n for n in archive.namelist() if n.endswith(".opf"))
         opf = archive.read(opf_name).decode("utf-8")
-    assert (
-        f'<itemref idref="{COLOPHON_ID}" properties="rendition:layout-reflowable"/>'
-        in opf
-    )
+        carrying = [name for name in archive.namelist() if marker in archive.read(name)]
+    assert carrying == ["EPUB/chapter.xhtml"]
+    # no page was added, so nothing new is in the spine
+    assert opf.count("<itemref") == 1
 
 
 def test_a_carried_prefix_declaration_validates(epubcheck, tdm_book):
@@ -409,7 +415,10 @@ def test_the_machine_record_validates(epubcheck, translation_metadata_book):
         names = archive.namelist()
         opf_name = next(n for n in names if n.endswith(".opf"))
         opf = archive.read(opf_name).decode("utf-8")
-    assert '<meta name="bbm:bilingual_book_maker"' in opf
+    # nothing of ours in the package document any more (owner ruling,
+    # 260906): the record is a manifest item and the reader gets one line
+    assert "bbm:" not in opf
+    assert "<dc:contributor" not in opf
     assert "EPUB/bbm_glossary.txt" in names
     assert "EPUB/bbm_translation_metadata.json" in names
     # in the manifest, never in the spine
@@ -418,16 +427,20 @@ def test_the_machine_record_validates(epubcheck, translation_metadata_book):
 
 
 @pytest.mark.parametrize("fixture", ["tdm_book", "font_book", "rights_book"])
-def test_every_output_carries_the_colophon(request, fixture):
-    """The disclosure page ships in every book, and ships valid — the three
-    fixtures above are checked by epubcheck with it in place."""
+def test_every_output_carries_the_credit_line(request, fixture):
+    """The one visible mark ships in every book, and ships valid — the three
+    fixtures above are checked by epubcheck with it in place. Exactly one
+    document carries it: a second would be a book claiming two translations.
+    """
     output = request.getfixturevalue(fixture)
+    marker = CREDIT_CLASS.encode("utf-8")
     with zipfile.ZipFile(output) as archive:
-        assert f"EPUB/{COLOPHON_FILE}" in archive.namelist()
-        opf_name = next(n for n in archive.namelist() if n.endswith(".opf"))
-        opf = archive.read(opf_name).decode("utf-8")
-    assert opf.count(f'href="{COLOPHON_FILE}"') == 1
-    assert opf.index(f'idref="{COLOPHON_ID}"') > opf.rindex("<spine")
+        carrying = [name for name in archive.namelist() if marker in archive.read(name)]
+        occurrences = sum(
+            archive.read(name).count(marker) for name in archive.namelist()
+        )
+    assert len(carrying) == 1, carrying
+    assert occurrences == 1
 
 
 @pytest.fixture

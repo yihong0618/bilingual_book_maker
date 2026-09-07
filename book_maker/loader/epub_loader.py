@@ -53,6 +53,7 @@ from .helper import (
     translate_list_or_singles,
 )
 from .disclosure import (
+    credit_name,
     entry_is_our_colophon,
     is_calibre_metadata,
     is_our_colophon,
@@ -62,8 +63,8 @@ from .disclosure import (
     model_id,
     prior_glossary_shas,
     stamp_disclosure,
+    strip_prior_credit,
     tool_contributor_ids,
-    translation_label,
 )
 from .font_obfuscation import deobfuscate_fonts, reobfuscate_written_epub
 from .rights import DRM_MESSAGE, check_epub
@@ -93,7 +94,7 @@ from .markers import (
     reconcile_markers,
     split_on_markers,
 )
-from ..translator.base_translator import BatchMismatch, service_name
+from ..translator.base_translator import BatchMismatch
 from .classify import (
     PlanClassifyError,
     PlanUnresolvedError,
@@ -265,59 +266,6 @@ def check_file_filters_against(book, only_filelist, exclude_filelist):
         raise SystemExit(1)
 
 
-# ebooklib's own spine writer, captured before the class attribute is
-# replaced. Read through `_bbm_wraps` so the capture survives a reload of
-# this module: after the wrapper is installed, the class attribute *is* the
-# wrapper, and capturing that would make it call itself until RecursionError.
-_INSTALLED_WRITE_OPF_SPINE = epub.EpubWriter._write_opf_spine
-_EBOOKLIB_WRITE_OPF_SPINE = getattr(
-    _INSTALLED_WRITE_OPF_SPINE, "_bbm_wraps", _INSTALLED_WRITE_OPF_SPINE
-)
-
-
-def _write_opf_spine_patch(obj, root, ncx_id):
-    """ebooklib's spine, plus the `properties` it has no way to write.
-
-    A spine property is how EPUB 3 says one document is not laid out like
-    the rest of the book, and the translation note needs exactly that: in a
-    fixed-layout book every spine document must declare page dimensions, and
-    a note about the translation has none to declare. See
-    `disclosure.REFLOWABLE_PROPERTY`.
-
-    Written as a wrapper rather than a copy of ebooklib's loop: `linear`,
-    the tuple form of a spine entry and the bare-idref form are all its
-    business, and duplicating them here would mean maintaining them here.
-    """
-    _EBOOKLIB_WRITE_OPF_SPINE(obj, root, ncx_id)
-
-    wanted = {}
-    for entry in obj.book.spine:
-        item = entry[0] if isinstance(entry, tuple) else entry
-        properties = getattr(item, "spine_properties", None)
-        if properties:
-            wanted[item.get_id()] = " ".join(properties)
-    if not wanted:
-        return
-
-    spine = root.find("spine")
-    if spine is None:
-        return
-    for itemref in spine.findall("itemref"):
-        value = wanted.get(itemref.get("idref"))
-        if value:
-            itemref.set("properties", value)
-
-
-_write_opf_spine_patch._bbm_wraps = _EBOOKLIB_WRITE_OPF_SPINE
-
-# Installed on import, not from `EPUBBookLoader.__init__`. `stamp_disclosure`
-# marks the note with `spine_properties`, and whether that reaches the file
-# must not depend on whether something else happened to build a loader first
-# in this process — anything that stamps a book and calls `write_epub` gets
-# the same OPF.
-epub.EpubWriter._write_opf_spine = _write_opf_spine_patch
-
-
 class EPUBBookLoader(BaseBookLoader):
     # what `lang=` may carry for the target language; None stamps nothing
     language_tag = None
@@ -365,17 +313,11 @@ class EPUBBookLoader(BaseBookLoader):
         # calibre's record of its own file is not covered by this: that is
         # a false statement about the file, not a disclosure.
         self.disclose = disclose
-        # --translation-metadata: the record (build, model, endpoint host,
-        # command line) in the package document. Only the opt-in half —
-        # a plan or session run writes it whether or not this was passed. See
+        # --translation-metadata: the record (model, date, the glossary the
+        # run was pinned to) as a manifest item. Only the opt-in half — a
+        # plan or session run writes it whether or not this was passed. See
         # `_wants_translation_metadata`.
         self.translation_metadata = translation_metadata
-        # Kept for that record: which host the run talked to, and which
-        # source language it was told about. Neither is stored anywhere else
-        # on the loader, and both are facts about the run rather than about
-        # the book.
-        self._api_base = model_api_base
-        self._source_lang = source_lang
         # What `lang=` may carry for that language, or None when nothing may.
         # `--language TAG:NAME` states the tag itself, and then it is the one
         # that is stamped: deriving one from prose the tables do not know is
@@ -573,6 +515,24 @@ class EPUBBookLoader(BaseBookLoader):
 
     def _make_new_book(self, book):
         new_book = epub.EpubBook()
+        # The one place every route passes through with the *source* in
+        # hand, and the only moment a previous run's credit line can be
+        # removed: after this the documents go to the planner, and a line
+        # left in is translated like any other paragraph and can no longer
+        # be told from the book's own text. Unconditional — what a previous
+        # run said about itself is this tool's to remove whatever
+        # --no_disclosure says about what this run will say.
+        try:
+            strip_prior_credit(book)
+        except Exception as e:
+            # A book whose documents cannot be read at all is about to fail
+            # louder than this, but a stale credit line is a wrong claim
+            # about who translated the file, so it is said out loud.
+            print(
+                "[bold yellow]Warning: an earlier translation credit could "
+                f"not be removed ({type(e).__name__}: {escape(str(e))}); this "
+                "book may end up naming two translators.[/bold yellow]"
+            )
         # ebooklib always writes <spine toc="ncx">, so a book without an NCX
         # item leaves that reference dangling (epubcheck OPF-049). Adding the
         # item — uid "ncx", which is what the attribute names — both resolves
@@ -609,7 +569,7 @@ class EPUBBookLoader(BaseBookLoader):
         # What a previous run of this tool stamped is this tool's to rewrite:
         # stripped here and, when disclosure is on, written again from *this*
         # run's facts at write time. Left in place, a book translated twice
-        # would claim both models and carry two colophons.
+        # would claim both models and carry two credit lines.
         try:
             prior_ids = tool_contributor_ids(book)
             # Which embedded glossary — if any — a previous run vouched for.
@@ -786,8 +746,12 @@ class EPUBBookLoader(BaseBookLoader):
         # run used, and with --model_list that is not settled until the last
         # paragraph is translated — so it is stamped on the finished book,
         # just before each write. See _stamp_disclosure.
-        self._disclosure_language = tag or self.language
-        self._disclosure_source = source_uid
+        #
+        # The source's guide travels with it, unwritten: ebooklib parses the
+        # EPUB 2 `<guide>` when it reads a book but the rebuilt book is
+        # never given one, and it is what says which document is the title
+        # page — where the credit line goes.
+        self._disclosure_guide = list(getattr(book, "guide", None) or ())
         return new_book
 
     def _copy_metadata_entry(
@@ -884,54 +848,21 @@ class EPUBBookLoader(BaseBookLoader):
             )
         )
 
-    def _declared_source_language(self):
-        """What the source book says its own language is, or None.
-
-        The last resort for the record's `source-lang`, and the only one
-        that is not a statement by the user. A book that declares nothing
-        gets no key at all: recording "auto" would say the run detected a
-        language, which is a claim about a detection that never happened.
-        """
-        try:
-            declared = self.origin_book.get_metadata("DC", "language")
-        except Exception:
-            return None
-        for entry in declared or []:
-            value = entry[0] if isinstance(entry, tuple) else entry
-            if value:
-                return str(value)
-        return None
-
     def _run_translation_metadata(self):
         """This run's facts, or None when nothing is to be recorded.
 
         Total by construction: every field falls back to "not known" rather
         than raising, because the stamp's failure mode is losing the whole
-        disclosure, and a missing endpoint host is not worth that.
+        disclosure, and the record is not worth that.
+
+        Two facts and no more, by the 260906 ruling: the model, and the
+        glossary the run was pinned to. What is deliberately *not* here is
+        everything that identified the operator rather than the translation
+        — the command line, the build, the endpoint host, the route.
         """
         if not self._wants_translation_metadata():
             return None
         translator = getattr(self, "translate_model", None)
-        # The translator's own base is preferred over the flag: it is the
-        # address requests actually went to, including the SDK default the
-        # route filled in when the flag was absent.
-        api_base = (
-            getattr(translator, "api_base", None)
-            or getattr(translator, "api_url", None)
-            or getattr(self, "_api_base", None)
-        )
-        # `--source_lang` reaches both the translator (as the sentence the
-        # prompt carries) and the loader; "auto" is the default and states
-        # nothing. Last resort
-        # is what the source book says about itself, which is a fact about
-        # the book rather than a guess.
-        source_language = getattr(translator, "source_language", None) or (
-            self._source_lang
-            if str(getattr(self, "_source_lang", "") or "").lower() != "auto"
-            else None
-        )
-        if not source_language:
-            source_language = self._declared_source_language()
         # The user's glossary, never a derived one: the loader carries the
         # path only when a file was named on the command line. `getattr`
         # because the glossary itself is a separate piece of work — this
@@ -940,14 +871,7 @@ class EPUBBookLoader(BaseBookLoader):
             translator, "glossary_path", None
         )
         return tmeta.TranslationMetadata(
-            commit=tmeta.tool_commit(),
             model=model_id(translator),
-            endpoint=tmeta.endpoint_host(api_base),
-            route=service_name(translator) if translator is not None else None,
-            args=tmeta.sanitize_args(),
-            source_language=source_language,
-            target_language=getattr(self, "_disclosure_language", None)
-            or self.language,
             glossary_bytes=tmeta.read_glossary(glossary_path),
         )
 
@@ -956,32 +880,30 @@ class EPUBBookLoader(BaseBookLoader):
 
         Every write route calls this immediately before `write_epub`, which
         is the only moment the model is finally known. Doing nothing twice
-        is safe: the second call finds the colophon already there.
+        is safe: the second call finds the credit line already there.
         """
         if not getattr(self, "disclose", True):
             return
         try:
             stamp_disclosure(
                 new_book,
-                model_id(getattr(self, "translate_model", None)),
-                getattr(self, "_disclosure_language", None) or self.language,
-                source_identifier=getattr(self, "_disclosure_source", None),
-                label=translation_label(getattr(self, "translate_model", None)),
+                credit_name(getattr(self, "translate_model", None)),
+                guide=getattr(self, "_disclosure_guide", None),
                 translation_metadata=self._run_translation_metadata(),
             )
         except Exception as e:
             # A book that took hours and real money to translate is not
-            # worth losing over the note at the end of it, so the write goes
-            # ahead without it. Said out loud rather than logged quietly:
-            # what is missing is the file's own statement that a machine
-            # wrote it, and only the person running this can decide whether
-            # that is acceptable to ship.
+            # worth losing over the line at the front of it, so the write
+            # goes ahead without it. Said out loud rather than logged
+            # quietly: what is missing is the file's own statement that a
+            # machine wrote it, and only the person running this can decide
+            # whether that is acceptable to ship.
             print(
                 "[bold yellow]Warning: this book could not be marked as a "
                 f"machine translation ({type(e).__name__}: {escape(str(e))}). "
-                "It is written without the translator credit, the description "
-                "line and the closing translation note — nothing in the file "
-                "will say it was translated by a machine.[/bold yellow]"
+                "It is written without the translation credit line — nothing "
+                "in the file will say it was translated by a machine."
+                "[/bold yellow]"
             )
 
     def _reobfuscate_written(self, path):
@@ -3179,9 +3101,9 @@ class EPUBBookLoader(BaseBookLoader):
                 target = t
 
         for item in complete_book.get_items():
-            # A previous output's translation note is replaced by this run's,
-            # not carried alongside it — two would be two ids and two members
-            # of the same zip.
+            # A closing page an older build wrote is dropped rather than
+            # carried beside this run's credit line — two would be two ids
+            # and two members of the same zip.
             if (
                 item.file_name != fixname
                 and not is_our_colophon(item)
@@ -3957,8 +3879,8 @@ class EPUBBookLoader(BaseBookLoader):
         new_book = self._make_new_book(self.origin_book)
         trans_taglist = self.translate_tags.split(",")
         # A book being run through the tool a second time already carries a
-        # colophon. It is replaced, not translated and kept beside the new
-        # one — two of them would be two manifest entries under one id.
+        # closing page from an older build. It is dropped, not translated
+        # and kept beside this run's credit line.
         document_items = [
             item
             for item in self.origin_book.get_items_of_type(ITEM_DOCUMENT)

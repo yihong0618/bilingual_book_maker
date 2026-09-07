@@ -274,8 +274,8 @@ def test_spine_comment_survives_the_rebuild_instead_of_crashing_it(
 
     rebuilt = loader._make_new_book(loader.origin_book)
     assert (None, None) not in rebuilt.spine
-    # Every real entry survives. Compared over the tuples only: the
-    # disclosure colophon is appended as an item object, not an idref.
+    # Every real entry survives. Compared over the tuples only, because a
+    # spine entry may also arrive as an item object rather than an idref.
     assert [entry for entry in rebuilt.spine if isinstance(entry, tuple)] == [
         entry for entry in loader.origin_book.spine if entry[0]
     ]
