@@ -280,18 +280,29 @@ the request budget from its own prompt overhead, and pins the rest.
   grouping fault:
 
   ![per-cell median zh/en ratio and heavily-compressed slot counts](img/compression_ratio.png)
-- **`--accumulated_num`**: leave unset (the derived 2400–3200 band).
+- **`--accumulated_num`**: leave unset (the derived band — see the
+  superseding note below for the shipped numbers).
   The whole 1600–4800 range measured fault-free at the 32-unit cap —
-  on the weak-model rerun too — so the default floor sits at half the
-  measured-clean ceiling, the same margin the unit cap takes below its
-  emergence point. Raising it toward 4800 produced no faults but spends
-  that margin for flattening per-content savings.
-- **`--context-compact-at`**: leave unset; every session run compacts
-  at the pinned 8000 (§5, §8). Set it lower (toward 2000–4000) only if
+  on the weak-model rerun too — and raising it toward 4800 produced no
+  faults but spends margin for flattening per-content savings.
+- **`--context-compact-at`**: leave unset (§5, §8). Set it lower only if
   squeezing the last ~10–25% of session cost matters more to you than
   having the fewest window seams; set it higher never — past 16000 the
   cost wall is steep and the only drift we ever observed lived in the
   long-window cell.
+
+> **Superseded, 260907.** The shipped defaults below were lowered by
+> owner ruling after this eval: unit cap 32 → 16 (sub-strict 16 → 8),
+> B floor/ceiling 2400/3200 → 1200/1600 (sub-strict floor 1200 → a typed
+> 800), C 8000 → 4096. Nothing in this report's *measurements* changed —
+> the new numbers sit below the range measured here, on purpose. The
+> ruling traded the per-content-token savings this section recommends for
+> margin, on the grounds that schema support is an endpoint property and
+> says nothing about whether the model behind it can hold a long
+> enumeration together, and that a faulted slot is a wrong book rather
+> than an expensive one. Read the constants in
+> `book_maker/loader/plan.py` and `book_maker/session_context.py` for
+> which numbers are measured and which are chosen.
 
 ## 8. The shipped defaults
 
@@ -300,14 +311,19 @@ equations, not constants, because prompt overhead is user-customizable
 (`--prompt`) and measured at run start:
 
 ```
-B_default = clamp( 3·F, 2400, 3200 )          # F = measured prompt overhead
-C_default = 8000                              # pinned, every session run
+B_default = clamp( 3·F, 1200, 1600 )          # F = measured prompt overhead
+C_default = 4096                              # pinned, every session run
 ```
 
-The floor is half the largest B measured fault-free (4800, at the
-32-unit cap, weak models included); the ceiling is a directly measured
-clean rung, 1.5× under that edge. With the stock prompts F ≈ 104–111,
-so B defaults to the floor 2400. F
+(As shipped since the 260907 ruling. What this eval measured, and what
+the defaults were when it was written, was `clamp(3·F, 2400, 3200)` and
+`C = 8000`; the paragraphs below argue for those. They are kept as the
+record of the measurement, not as a description of the current defaults.)
+
+The old floor was half the largest B measured fault-free (4800, at the
+32-unit cap, weak models included); the old ceiling was a directly
+measured clean rung, 1.5× under that edge. With the stock prompts
+F ≈ 104–111, so B defaults to the floor either way. F
 does not appear in a compaction optimum (it drops out of the
 derivative); prompt growth reaches C only through B.
 
@@ -337,5 +353,5 @@ python make_book.py --book_name childrens-literature.epub \
 
 Leave `--context-compact-at` and `--accumulated_num` unset to get the
 defaults; the run narrates them
-(`session: compacting at 8000 estimated tokens (the default;
---context-compact-at overrides)`).
+(`session: compacting at 4096 estimated tokens (the default;
+--context-compact-at overrides)` — it said 8000 when this eval ran).

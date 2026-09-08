@@ -1420,22 +1420,49 @@ SHORT_UNIT_CHARS = 70
 # ones, and only the character cap tells them apart.
 GROUP_MAX_CHARS = 500
 
-# Units one *general* (token-budget) group may carry. This one is measured,
-# not assumed: the 260905 fault-emergence sweep (923 requests, four books,
-# two models, every cell read back out of the produced EPUB) found the first
+# ---------------------------------------------------------------------------
+# The four numbers below are OWNER-SET SAFETY MARGINS (260907), not measured
+# optima, and the comments must keep saying so. What is measured is written
+# out beside each of them; what the owner chose over that measurement is
+# written out too. Do not re-tune any of them into "what the eval said" — the
+# eval is the price tag on this decision, not the argument for it.
+#
+# The ruling, in the owner's terms: a fault means the model could not hold
+# the request together, and a translation that came back shifted against its
+# source is not a cost problem, it is a wrong book. Schema support is an
+# *endpoint* property — a gateway either verifies a schema or does not — and
+# says nothing about whether the model behind it follows instructions well
+# enough to enumerate 32 segments in order. So the margins are sized for the
+# model that cannot, and every route pays for that, including the ones that
+# would have been fine. The price is real and is recorded in the branch's
+# eval; the owner made the trade knowing it.
+# ---------------------------------------------------------------------------
+
+# Units one *general* (token-budget) group may carry.
+#
+# Measured: the 260905 fault-emergence sweep (923 requests, four books, two
+# models, every cell read back out of the produced EPUB) found the first
 # content fault at **64 effective units in one request** — 9.4% of the slots
 # of a prose-dense book came back shifted against their sources — and none at
-# any lower cap on any book. 32 is half of that, which is where a default
-# belongs.
+# any lower cap on any book. That measurement put the default at 32, half of
+# the onset.
 #
-# What the sweep also showed is that the unit count is only half the story:
-# 4705 tokens in 48 units was clean, 3563 tokens in 64 units faulted, and 64
-# units of short verse lines were clean on three books. The risk tracks
-# *segments x output length* — how long an enumeration the model has to hold
-# across its own generation — so `--accumulated_num`'s token budget is what
-# actually caps the content of a request, and this is the safety net behind
-# it rather than the primary limit.
-GENERAL_GROUP_MAX_UNITS = 32
+# Chosen: 16, a quarter of the onset. Not because 32 was measured faulty —
+# it was not — but because the sweep's arms cannot speak for the models this
+# default has to survive, and a shifted slot is a wrong book rather than an
+# expensive one. Half of a single observed onset is a thin margin to hang
+# every route's correctness on.
+#
+# What the sweep also showed, and what is unchanged: the unit count is only
+# half the story. 4705 tokens in 48 units was clean, 3563 tokens in 64 units
+# faulted, and 64 units of short verse lines were clean on three books. The
+# risk tracks *segments x output length* — how long an enumeration the model
+# has to hold across its own generation — so `--accumulated_num`'s token
+# budget is what actually caps the content of a request, and this is the
+# safety net behind it rather than the primary limit. Which is why the token
+# budgets below moved by the same factor: halving one axis alone would have
+# left the other where it was.
+GENERAL_GROUP_MAX_UNITS = 16
 # What a request carries when the endpoint is below strict decoding. Half,
 # because both content regressions the 260905 json_object eval found were
 # large batches, and a probe verdict cannot tell such an endpoint apart in
@@ -1447,6 +1474,10 @@ GENERAL_GROUP_MAX_UNITS = 32
 # margin, not a competence one. Applied where the verdict is known — at
 # request time, in the loader — not to the partition, which has to describe
 # the book rather than the endpoint that happens to run it.
+#
+# The halving is measured in its *reason* and unmeasured in its *size*; it
+# now lands on 8 because the cap above moved, which is the point of leaving
+# it derived.
 SUBSTRICT_GROUP_MAX_UNITS = GENERAL_GROUP_MAX_UNITS // 2
 
 # The grouping budget plan mode assumes when `--accumulated_num` was not
@@ -1459,36 +1490,62 @@ SUBSTRICT_GROUP_MAX_UNITS = GENERAL_GROUP_MAX_UNITS // 2
 # simply where the bill is most obviously wrong — the history is re-read at
 # the endpoint's cache rate there, so the run pays by request count.
 #
-# The floor is half the largest budget measured fault-free: the 260906
-# weak-model B sweep (gpt-4o-mini and deepseek-chat, prose and verse, every
-# cell read back from the produced epub) ran 1600–4800 clean at the 32-unit
-# cap, so 2400 takes the same half-margin the unit cap takes below its
-# emergence point. Honesty about the asymmetry: 64 units is a *measured*
-# fault onset, 4800 is merely the largest B measured clean — no fault onset
-# was found on the B axis at all — so this margin guards an unobserved edge.
-# Cost only helps: the measured per-content-token cost falls monotonically
-# with request size (15.5 input-equivalents at 800, 12.3 at 1600; 260905
-# session-cost eval), so a bigger floor is never the expensive direction.
-SESSION_BUDGET_FLOOR = 2400
-# The ceiling caps the fat-prompt growth term below, at a rung the 260906
-# sweep measured clean directly — 1.5x under the measured 4800, rather than
-# riding the edge of what was evaluated. (The old 2000 ceiling came from the
-# 260904 char-denominated degradation eval, run before the unit cap and the
-# marker guards existed; the 260906 sweep supersedes it on the shipped
-# pipeline.)
-SESSION_BUDGET_CEILING = 3200
-# What a request carries when the endpoint is below strict decoding, exactly
-# as `SUBSTRICT_GROUP_MAX_UNITS` halves the unit cap, for exactly the same
-# reason and off the same verdict: both content regressions the 260905
-# json_object eval found were large batches, and a probe verdict cannot tell
-# such an endpoint apart in advance. Derived rather than typed so the halving
-# survives a change to the floor above.
+# Measured: the 260906 weak-model B sweep (gpt-4o-mini and deepseek-chat,
+# prose and verse, every cell read back from the produced epub) ran
+# 1600–4800 **clean** at the then-32-unit cap. No fault onset was found on
+# the B axis at all — 4800 is only the largest value anyone tried, not an
+# edge — so unlike the unit cap there is no measured number to take a
+# fraction of. The old 2400 took a half-margin off 4800 anyway, which
+# borrowed a shape from a measurement that did not exist here.
 #
-# Honesty about what is measured here: the *floor* and the *ceiling* are
-# measured, the halving is not. It is the same margin the unit cap already
-# takes, applied to the other half of what makes a request big — a batch is
-# risky by segments x output length, and the unit cap only bounds segments.
-SUBSTRICT_BUDGET_FLOOR = SESSION_BUDGET_FLOOR // 2
+# Also measured, and pointing the other way: per-content-token cost falls
+# monotonically with request size — 15.5 input-equivalents at 800 against
+# 12.3 at 1600 (260905 session-cost eval). A *smaller* budget is the
+# expensive direction, and this change picks it deliberately.
+#
+# Chosen: 1200, owner ruling 260907. Below everything the sweep exercised,
+# and below the cost knee the 260905 eval measured. The reasoning is the
+# ruling's: the sweep's clean range says those two models held together
+# there, not that the models this default meets will, and paying ~26% more
+# per content token is the cheaper mistake of the two available. A run that
+# wants the measured-cheap end can still type `--accumulated_num`; a run
+# that gets a shifted slot cannot untype it.
+#
+# The other reason it is 1200 rather than something in between: the unit cap
+# above halved, and a request is risky by segments x output length. Moving
+# one axis without the other would have left the budget as the binding
+# constraint at the old size and the change would have bought less than it
+# cost. These two numbers are one decision.
+SESSION_BUDGET_FLOOR = 1200
+# The ceiling caps the fat-prompt growth term below. Proportional to the
+# floor, at the same 4:3 ratio it has always had — 1600, where the old pair
+# was 2400/3200. It is a clamp on how far a fat custom `--prompt` may push
+# the budget up, so it inherits the floor's margin rather than carrying an
+# argument of its own; 1600 is also inside the 260906 sweep's measured-clean
+# range, for whatever that is worth at the smaller unit cap. (The 2000
+# ceiling before that pair came from the 260904 char-denominated degradation
+# eval, run before the unit cap and the marker guards existed.)
+SESSION_BUDGET_CEILING = 1600
+# What a request carries when the endpoint is below strict decoding, for the
+# same reason and off the same verdict `SUBSTRICT_GROUP_MAX_UNITS` reads:
+# both content regressions the 260905 json_object eval found were large
+# batches, and a probe verdict cannot tell such an endpoint apart in advance.
+#
+# **Typed, not derived, and this is the one place the arithmetic is broken on
+# purpose.** `SESSION_BUDGET_FLOOR // 2` would give 600; the owner set 800
+# (260907) instead, so the halving no longer holds here and must not be
+# restored. The floor above already absorbed the conservative move — going
+# from 2400 to 1200 — and halving a floor that has itself just halved would
+# have compounded two margins into one number and left the sub-strict path
+# paying for the same caution twice. 800 is where the owner stopped: still a
+# real margin under the floor, still the bottom of the 260905 cost curve's
+# measured range (15.5 input-equivalents per content token at 800 — the most
+# expensive rung anyone measured), and no further.
+#
+# Nothing here is measured except that cost: no B-axis fault onset was ever
+# found, on this tier or any other. It is a chosen margin over an unobserved
+# edge, sized by judgement.
+SUBSTRICT_BUDGET_FLOOR = 800
 
 
 def session_token_budget(prompt_overhead=None):
@@ -1516,11 +1573,13 @@ def session_token_budget(prompt_overhead=None):
 def substrict_token_budget(prompt_overhead=None):
     """The same budget, for an endpoint below strict decoding.
 
-    Half, floored: `SESSION_BUDGET_FLOOR // 2` is what the halving of the
-    floor comes to, and stating it as a floor of its own keeps the clamp
-    readable if the ceiling ever moves. Clamping to the *unhalved* floor
-    would make the two route classes identical for the stock prompt, which
-    is the one case the split exists for.
+    Half, then floored at `SUBSTRICT_BUDGET_FLOOR`. Since the 260907 ruling
+    that floor is a typed 800 rather than half of `SESSION_BUDGET_FLOOR`
+    (which would be 600), so for the stock prompts the *floor* is what binds
+    here, not the halving — see the constant for why the owner stopped
+    short of compounding the two margins. Clamping to the unhalved floor
+    instead would make the two route classes identical for the stock prompt,
+    which is the one case the split exists for.
     """
     return max(SUBSTRICT_BUDGET_FLOOR, session_token_budget(prompt_overhead) // 2)
 

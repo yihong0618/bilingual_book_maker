@@ -378,14 +378,15 @@ class TestSessionModeDefaultsTheBudget:
     """`--use_context session` groups by default; every other run does not."""
 
     def test_session_default_budget_is_the_margin_floor(self, tmp_path):
-        # 2400 is half the largest budget the 260906 weak-model B sweep
-        # measured fault-free (4800, at the 32-unit cap) — the same half
-        # margin the unit cap takes. A model that cannot measure its prompt
-        # overhead (and one whose overhead is small) both land on the floor.
+        # 1200 since the 260907 owner ruling: a chosen margin under the
+        # 260906 weak-model B sweep's measured-clean 1600-4800 range, not a
+        # fraction of a measured fault onset (none was ever found on the B
+        # axis). A model that cannot measure its prompt overhead (and one
+        # whose overhead is small) both land on the floor.
         from book_maker.loader.plan import SESSION_BUDGET_FLOOR
 
         bare, _ = _plan_loader(tmp_path / "bare", _StrictModel, context_mode="session")
-        assert bare._plan_token_budget == SESSION_BUDGET_FLOOR == 2400
+        assert bare._plan_token_budget == SESSION_BUDGET_FLOOR == 1200
 
         lean, _ = _plan_loader(
             tmp_path / "lean",
@@ -393,7 +394,7 @@ class TestSessionModeDefaultsTheBudget:
             context_mode="session",
         )
         # 3 * 104 = 312, well under the floor
-        assert lean._plan_token_budget == 2400
+        assert lean._plan_token_budget == 1200
 
         # and tag mode is untouched: the default lives in the plan property,
         # not in the attribute every tag-mode path reads
@@ -405,15 +406,16 @@ class TestSessionModeDefaultsTheBudget:
         from book_maker.loader.plan import SESSION_BUDGET_CEILING
 
         fat, _ = _plan_loader(
-            tmp_path / "fat", _OverheadModel(900), context_mode="session"
+            tmp_path / "fat", _OverheadModel(500), context_mode="session"
         )
-        assert fat._plan_token_budget == 2700
+        # 3 * 500 = 1500: above the floor, still under the ceiling
+        assert fat._plan_token_budget == 1500
 
         huge, _ = _plan_loader(
             tmp_path / "huge", _OverheadModel(1200), context_mode="session"
         )
-        # 3 * 1200 = 3600, above the measured-clean ceiling rung
-        assert huge._plan_token_budget == SESSION_BUDGET_CEILING == 3200
+        # 3 * 1200 = 3600, far above the clamp
+        assert huge._plan_token_budget == SESSION_BUDGET_CEILING == 1600
 
     def test_an_explicit_one_turns_grouping_off_in_session_mode_too(self, tmp_path):
         # `--accumulated_num 1` is the documented way to say "no grouping";
@@ -461,7 +463,7 @@ class TestSessionModeDefaultsTheBudget:
 
         loader, _ = _plan_loader(tmp_path, _StrictModel, context_mode=mode)
 
-        assert loader._plan_token_budget == session_token_budget(None) == 2400
+        assert loader._plan_token_budget == session_token_budget(None) == 1200
         assert loader._partition_route() == "schema"
         # a strict endpoint sends what the partition grouped, unsplit
         assert loader._plan_request_budget() is None
@@ -482,8 +484,8 @@ class TestSessionModeDefaultsTheBudget:
 
         loader, _ = _plan_loader(tmp_path, _RecordingModel, context_mode=mode)
 
-        assert loader._plan_token_budget == session_token_budget(None) == 2400
-        assert loader._plan_request_budget() == substrict_token_budget(None) == 1200
+        assert loader._plan_token_budget == session_token_budget(None) == 1200
+        assert loader._plan_request_budget() == substrict_token_budget(None) == 800
         assert loader._plan_request_budget() == SUBSTRICT_BUDGET_FLOOR
 
         strict, _ = _plan_loader(tmp_path / "strict", _StrictModel, context_mode=mode)
@@ -511,18 +513,40 @@ class TestSessionModeDefaultsTheBudget:
 
     def test_a_fat_prompt_raises_both_route_classes_together(self, tmp_path):
         # the halving rides on top of the overhead derivation, it does not
-        # replace it: 3 * 900 = 2700, and half of that is 1350
-        Fat = _OverheadModel(900)
+        # replace it: 3 * 500 = 1500, and half of that is 750 — which the
+        # sub-strict floor then lifts to 800
+        Fat = _OverheadModel(500)
         FatSub = type(
-            "FatSub", (_RecordingModel,), {"prompt_overhead_tokens": lambda s: 900}
+            "FatSub", (_RecordingModel,), {"prompt_overhead_tokens": lambda s: 500}
         )
 
         strict, _ = _plan_loader(tmp_path / "s", Fat)
         sub, _ = _plan_loader(tmp_path / "j", FatSub)
 
-        assert strict._plan_token_budget == 2700
-        assert sub._plan_token_budget == 2700
-        assert sub._plan_request_budget() == 1350
+        assert strict._plan_token_budget == 1500
+        assert sub._plan_token_budget == 1500
+        assert sub._plan_request_budget() == 800
+
+    def test_the_substrict_budget_is_pinned_at_its_floor_by_the_new_ceiling(
+        self, tmp_path
+    ):
+        # A consequence of the 260907 numbers worth stating out loud: the
+        # ceiling is 1600 and the sub-strict floor is a typed 800, so half of
+        # the *largest* budget any prompt can derive is exactly the floor.
+        # The sub-strict per-request budget is therefore constant — a fat
+        # `--prompt` raises the partition's budget but never the sub-strict
+        # request's. That is the owner's margin doing its job, not a bug; if
+        # it should track the prompt again, the floor is the thing to move.
+        from book_maker.loader.plan import SUBSTRICT_BUDGET_FLOOR
+
+        for overhead in (0, 104, 500, 900, 5000):
+            Sub = type(
+                "Sub",
+                (_RecordingModel,),
+                {"prompt_overhead_tokens": lambda s, o=overhead: o},
+            )
+            loader, _ = _plan_loader(tmp_path / f"o{overhead}", Sub)
+            assert loader._plan_request_budget() == SUBSTRICT_BUDGET_FLOOR == 800
 
     def test_an_explicit_one_turns_grouping_off_outside_session_mode_too(
         self, tmp_path
@@ -579,7 +603,7 @@ class TestSessionModeDefaultsTheBudget:
 
         out = " ".join(capsys.readouterr().out.split())
         assert out == (
-            "plan grouping: budget 1200 tokens per request (endpoint below "
+            "plan grouping: budget 800 tokens per request (endpoint below "
             "strict decoding; derived, --accumulated_num overrides)"
         )
 
@@ -590,7 +614,7 @@ class TestSessionModeDefaultsTheBudget:
 
         out = " ".join(capsys.readouterr().out.split())
         assert out == (
-            "plan grouping: budget 2400 tokens per request (schema-verified "
+            "plan grouping: budget 1200 tokens per request (schema-verified "
             "endpoint; derived, --accumulated_num overrides)"
         )
 
@@ -609,7 +633,7 @@ class TestSessionModeDefaultsTheBudget:
         loader, _ = _plan_loader(tmp_path, _StrictModel, context_mode="session")
         loader.make_bilingual_book()
 
-        # the 2400-token budget is big enough that the chapter heading rides
+        # the 1200-token budget is big enough that the chapter heading rides
         # along with the prose, so "grouped" means a multi-text call carrying
         # at least two real paragraphs — not a call of nothing but prose
         assert any(
@@ -622,7 +646,7 @@ class TestSessionModeDefaultsTheBudget:
         loader.make_bilingual_book()
 
         out = capsys.readouterr().out
-        assert "2400 tokens" in out
+        assert "1200 tokens" in out
 
 
 class TestTheCompactBudgetIsPinned:

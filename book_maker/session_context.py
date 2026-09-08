@@ -38,20 +38,44 @@ _CJK = re.compile(r"[぀-ヿ㐀-䶿一-鿿豈-﫿가-힯]")
 _LATIN_CHARS_PER_TOKEN = 4.0
 _CJK_CHARS_PER_TOKEN = 1.7
 
-# One budget for every session run, grouped or not, on every route. Measured
-# on an ungrouped run at 0.53x window mode on a cheap-cache endpoint and 1.10x
-# on a dearer one, for several times the context; on a *grouped* run the same
-# 260905 eval put it +9-25% over that book's own cost optimum, which is the
-# short edge of the band where a run compacts between zero and one times.
+# One budget for every session run, grouped or not, on every route. An
+# OWNER-SET number (260907), like the grouping constants in
+# `book_maker/loader/plan.py`; what follows separates what was measured from
+# what was chosen, and must keep doing so.
 #
-# It is pinned there by owner ruling: a derived per-run budget is a moving
-# target for a difference under 30%, and one number an operator can predict —
-# and override with --context-compact-at — is worth more than the last
-# fraction of a bill. The same eval retired the old worry that a shorter
-# window trades cost for drift: across 44 handoff seams every recurring name
-# held, because the report re-states the terminology each window — the only
-# register drift observed was in the *longest*-window run.
-DEFAULT_COMPACT_BUDGET = 8000
+# Measured (260905 grouped session-cost eval, C in {1500, 4000, 8000, 20000}
+# over three books): the cost curve is **flat** across [1500, 4000] — the
+# spread inside it is single-run noise, that region held the cheapest cell on
+# two of the three books, and all three solved optima C* landed in it, at
+# 1580, 2183 and 2512. The old 8000 sat +9-25% above each book's own optimum,
+# which is also noise-adjacent, and it was chosen for predictability rather
+# than for price. The one place the curve stops being flat is the top: C=20000
+# cost up to 56% more *and* was the only cell where register drift was
+# observed — a shift consistent with instruction dilution across a very long
+# window, not with the handoff seams. Across 44 seams at the shorter budgets
+# every recurring name held, because the report re-states the terminology
+# each window.
+#
+# Chosen: 4096. Inside the measured-flat region and above every solved C*, so
+# it buys margin against the only observed failure mode without leaving the
+# range anything was measured in. 4096 rather than 4000 is owner preference,
+# not a measurement — the two are indistinguishable in the data.
+#
+# What it costs, knowingly: a smaller window compacts more often, and each
+# handoff is a real request. The eval's model prices that as the
+# (g/C)(F_h + pi_o*K) term — seams per unit of work times the cost of a seam —
+# so halving C roughly doubles it. Two things make that bearable. The term is
+# small next to the history re-read it replaces, and this change ships beside
+# a halved grouping budget (`SESSION_BUDGET_FLOOR`, 2400 -> 1200): per-request
+# history growth g falls with it, so 4096 holds about as many *requests* of
+# history as 8000 did before the halving. The window shrank in tokens far
+# more than it shrank in conversation.
+#
+# Still one pinned number for every run rather than a derived one, for the
+# reason that has not changed: a moving target is not worth chasing for a
+# difference this size, and an operator who wants another value types
+# --context-compact-at.
+DEFAULT_COMPACT_BUDGET = 4096
 
 
 def compact_budget_notice(explicit: int | None) -> str:

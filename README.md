@@ -387,7 +387,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   - `<book>_plan.json`: the translation plan; delete it to classify again.
   - `--plan-min-coverage` (default 0.5, range 0–1): plan mode aborts if the plan covers less than this fraction of the text. `0` disables the guard and values above `0.9` usually abort after classification is already paid for — both warn.
 
-  - `--max-batch-units`: the most units one grouped request may carry (default `32`). On a weaker model, move both this and `--accumulated_num` lower — especially once the run prints degradation warnings such as the misalignment-recovery hint (try `16` and `1200` first, then halve again). Content is also bounded by the token budget (`--accumulated_num`). Replaces the deprecated `--poetry-group-size`.
+  - `--max-batch-units`: the most units one grouped request may carry (default `16`; an endpoint that verifies JSON mode but not a strict schema carries `8`). The defaults are deliberately conservative — a quarter of the level a fault-emergence eval measured content faults at, chosen as a safety margin rather than read off the measurement — so a strong model will run happily above them: raise both this and `--accumulated_num` if you want fewer, larger requests. Move them lower once the run prints degradation warnings such as the misalignment-recovery hint. Content is also bounded by the token budget (`--accumulated_num`). Replaces the deprecated `--poetry-group-size`.
 
   ```shell
   # let the model judge which tags need translating
@@ -448,7 +448,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   Wait for how many tokens have been accumulated before starting the translation. gpt3.5 limits the total_token to 4090. For example, if you use `--accumulated_num 1600`, maybe openai will output 2200 tokens and maybe 200 tokens for other messages in the system messages user messages, 1600+2200+200=4000, So you are close to reaching the limit. You have to choose your own
   value, there is no way to know if the limit is reached before sending.
-  In EPUB plan mode this is a per-request token budget: consecutive units of any length share one request up to `N` tokens. Untyped, every plan run derives a default from the run's own prompt overhead — `2400` with the stock prompts, up to `3200` under a fat custom `--prompt` — and an endpoint without a strict-schema verdict carries half that per request (floor `1200`), the same margin that halves the unit cap there — except session runs (codex included), which keep the un-halved value. The run narrates the number and the route class it chose; pass `1` to turn grouping off. Minimum `1`.
+  In EPUB plan mode this is a per-request token budget: consecutive units of any length share one request up to `N` tokens. Untyped, every plan run derives a default from the run's own prompt overhead — `1200` with the stock prompts, up to `1600` under a fat custom `--prompt` — and an endpoint without a strict-schema verdict carries half that per request, floored at `800`, the same margin that halves the unit cap there — except session runs (codex included), which keep the un-halved value. These are owner-set safety margins, below the range any eval measured fault-free; raise them with an explicit value if your model handles bigger requests. The run narrates the number and the route class it chose; pass `1` to turn grouping off. Minimum `1`.
 
 - `--use_context`:
 
@@ -471,7 +471,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   - `--context-compact-at`:
 
-    Session mode only. The estimated-token budget the history may reach before it is compacted into a handoff report. Default `8000`, minimum `500`.
+    Session mode only. The estimated-token budget the history may reach before it is compacted into a handoff report. Default `4096`, minimum `500`. The default sits inside the region a cost eval measured flat (1500–4000) and away from the long windows where register drift appeared; a smaller window compacts more often, which is the price paid for that margin.
 
   - `--no-context-compact`:
 
