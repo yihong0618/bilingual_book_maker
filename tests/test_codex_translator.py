@@ -407,13 +407,15 @@ class TestUserPrompt:
         instructions = t.server.threads[0]["base_instructions"]
         assert "Render dialogue as spoken British English." in instructions
         # The base instructions are what keep a turn from acting like an agent.
-        assert "translation engine" in instructions
+        assert "professional book translator" in instructions
 
     def test_the_user_message_comes_after_ours(self):
         t = _codex(["一"], prompt_sys_msg="MY RULE")
         t.translate("one", needprint=False)
         instructions = t.server.threads[0]["base_instructions"]
-        assert instructions.index("translation engine") < instructions.index("MY RULE")
+        assert instructions.index("professional book translator") < instructions.index(
+            "MY RULE"
+        )
 
     def test_a_user_template_is_applied_to_the_turn(self):
         t = _codex(["一"], prompt_template="Translate to {language}: {text}")

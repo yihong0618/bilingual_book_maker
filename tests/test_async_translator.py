@@ -59,7 +59,6 @@ def _chatgpt_for_async_test():
     translator.context_list = ["legacy source"]
     translator.context_translated_list = ["legacy translation"]
     translator.context_paragraph_limit = 3
-    translator.system_content = ""
     translator.prompt_sys_msg = ""
     translator.prompt_template = ChatGPTAPI.DEFAULT_PROMPT
     translator.language = "Chinese"

@@ -190,6 +190,12 @@ def _example_value(spec):
     return _placeholder(spec)
 
 
+# The head of the prompt rung — the floor every provider can be asked on, and
+# the one an endpoint that honours no schema field actually reads. Named so
+# it can be pinned next to the other wire strings.
+JSON_ONLY_INSTRUCTION = "Answer with a single JSON object, return JSON object only."
+
+
 def render_schema_for_prompt(schema, example_properties=2):
     """Describe `schema` to a model that cannot be handed one.
 
@@ -206,10 +212,7 @@ def render_schema_for_prompt(schema, example_properties=2):
         name: _example_value(spec)
         for name, spec in list(props.items())[:example_properties]
     }
-    lines = [
-        "Answer with a single JSON object — no prose, no markdown fences, "
-        "no explanation.",
-    ]
+    lines = [JSON_ONLY_INSTRUCTION]
     if required:
         keys = ", ".join(json.dumps(k, ensure_ascii=False) for k in required)
         lines.append(

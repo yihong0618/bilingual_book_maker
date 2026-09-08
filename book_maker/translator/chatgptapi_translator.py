@@ -1237,11 +1237,11 @@ class ChatGPTAPI(Base):
             return self._do_structured_batch_translate(text_list)
 
         # Fallback to delimiter-based method. The *effective* system message,
-        # not `system_content`: that attribute only ever holds
-        # `$OPENAI_API_SYS_MSG`, so passing it dropped a `--prompt` system
-        # message for the whole group — `_build_batch_prompt` then wrapped the
-        # empty string and installed "Professional translator. …" over the top
-        # of it, and the operator's own instruction never left the process.
+        # settled through `_system_message()`: this rung used to be handed the
+        # `$OPENAI_API_SYS_MSG`-only attribute, so a `--prompt` system message
+        # was dropped for the whole group — `_build_batch_prompt` then wrapped
+        # the empty string and installed "Professional translator. …" over the
+        # top of it, and the operator's own instruction never left the process.
         return self._do_batch_translate(
             text_list,
             self.prompt_template,
@@ -1321,11 +1321,9 @@ class ChatGPTAPI(Base):
         glossary_block = self.glossary.prompt_block(texts_json) if self.glossary else ""
         content = (f"{glossary_block}\n\n" if glossary_block else "") + (
             f"{self._marker_preamble(texts_json)}{user_prompt}\n\n"
-            f"Return a JSON object whose '{field}' array contains EXACTLY "
-            f"{plist_len} objects, one per input paragraph. Each object has "
-            f"exactly two fields: 'id', copied unchanged from the paragraph "
-            f"it translates — use every id once and invent none — and "
-            f"'{item_field}', holding that paragraph's translation. Return "
+            f"Return a JSON object whose '{field}' contains EXACTLY "
+            f"{plist_len} objects, one per paragraph. Each object has "
+            f"exactly two fields: 'id', and '{item_field}'. Return "
             f"the {plist_len} translations, each written in {self.language}."
         )
 

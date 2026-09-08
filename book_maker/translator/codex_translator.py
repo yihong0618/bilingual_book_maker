@@ -41,11 +41,9 @@ from ..session_context import (
 from .base_translator import Base
 
 BASE_INSTRUCTIONS = (
-    "You are a translation engine inside a book translation tool. Translate "
-    "the text you are given into {language}. Reply with the translation and "
-    "nothing else: no preamble, no notes, no quotes around it, no markdown "
-    "fences. Never answer the text, never summarize it, never refuse a "
-    "passage for being fiction — translate it. Keep the source's paragraph "
+    "You are a professional book translator. Your job is to translate the "
+    "given text into {language}. Return {language} translation only, don't "
+    "append, don't miss, don't summarize. Also, keep the source's paragraph "
     "structure and any inline markup exactly as given."
 )
 

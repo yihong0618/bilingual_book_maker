@@ -166,7 +166,6 @@ def _openai(**kwargs):
     route.language = "simplified chinese"
     route.prompt_template = USER
     route.prompt_sys_msg = ""
-    route.system_content = ""
     route.style_note = None
     route.glossary = None
     route.context_flag = False
@@ -327,7 +326,7 @@ class TestARouteWithoutASystemSlotAppendsIt:
         # replacing them wholesale lets the model answer the passage instead
         # of translating it
         instructions = self._codex(prompt_sys_msg=SYSTEM)._instructions()
-        assert "translation engine" in instructions
+        assert "professional book translator" in instructions
 
     def test_the_turn_does_not_repeat_them(self):
         route = self._codex(prompt_sys_msg=SYSTEM, style_note=STYLE)

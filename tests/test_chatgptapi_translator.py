@@ -94,7 +94,6 @@ def _translator(create=None, parse=None, cls=ChatGPTAPI):
     translator.context_list = []
     translator.context_translated_list = []
     translator.context_paragraph_limit = 0
-    translator.system_content = ""
     translator.prompt_sys_msg = ""
     translator.prompt_template = ChatGPTAPI.DEFAULT_PROMPT
     translator.language = "Chinese"
@@ -1132,7 +1131,7 @@ def test_ladder_falls_to_a_plain_completion_when_json_object_is_rejected():
     }
     bottom = create.call_args_list[2].kwargs
     assert "response_format" not in bottom
-    assert "no markdown fences" in bottom["messages"][0]["content"]
+    assert "return JSON object only" in bottom["messages"][0]["content"]
 
 
 def test_any_refusal_descends_a_rung_not_just_a_response_format_one():

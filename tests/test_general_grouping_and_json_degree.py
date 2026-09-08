@@ -80,7 +80,6 @@ def _translator(create=None, parse=None):
     translator.context_list = []
     translator.context_translated_list = []
     translator.context_paragraph_limit = 0
-    translator.system_content = ""
     translator.prompt_sys_msg = ""
     translator.prompt_template = ChatGPTAPI.DEFAULT_PROMPT
     translator.language = LANGUAGE

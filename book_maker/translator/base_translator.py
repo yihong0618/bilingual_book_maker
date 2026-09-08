@@ -458,10 +458,9 @@ class Base(ABC):
     # Said only to requests that carry markers. A model told to preserve
     # tokens in a text that has none is being taught to invent them.
     MARKER_INSTRUCTION = (
-        "The text contains placeholder tokens written like ⟦code1⟧. Reproduce "
-        "every one of them exactly as written, each in the place the content "
-        "it stands for belongs in your translation. Never translate a token, "
-        "never change its spelling, and never invent one."
+        "The text contains placeholders formatting as ⟦code1⟧. Reproduce "
+        "every one of them exactly as given, at the place it belongs in your "
+        "translation. Never translate a token, and never change its spelling."
     )
 
     # Where each `--prompt` section lands on this route:
