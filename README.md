@@ -471,7 +471,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   - `--context-compact-at`:
 
-    Session mode only. The estimated-token budget the history may reach before it is compacted into a handoff report. Default `4096`, minimum `500`. The default sits inside the region a cost eval measured flat (1500–4000) and away from the long windows where register drift appeared; a smaller window compacts more often, which is the price paid for that margin.
+    Session mode only. The estimated-token budget the history may reach before it is compacted into a handoff report. Default `8192`, minimum `500`. This is the fewest-seams edge of the band a cost eval measured. Unlike the grouping caps it was deliberately *not* lowered, and the reason is continuity rather than price: session runs cost more at this setting, not less, because the smaller grouping budget means many more requests and every one of them re-reads the carried history. If session cost matters more to you than the fewest window seams, a lower `--context-compact-at` is the cheaper direction.
 
   - `--no-context-compact`:
 

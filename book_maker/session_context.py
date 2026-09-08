@@ -56,26 +56,55 @@ _CJK_CHARS_PER_TOKEN = 1.7
 # every recurring name held, because the report re-states the terminology
 # each window.
 #
-# Chosen: 4096. Inside the measured-flat region and above every solved C*, so
-# it buys margin against the only observed failure mode without leaving the
-# range anything was measured in. 4096 rather than 4000 is owner preference,
-# not a measurement — the two are indistinguishable in the data.
+# Chosen: 8192 — a hair above the old 8000, and for the same reason it was
+# 8000. This is the fewest-seams edge of the measured band, and it was the
+# cheapest budget outright in every measured-band model; the 9-25% it sits
+# over each book's own optimum is inside the don't-care zone. 8192 rather
+# than 8000 is owner preference, not a measurement — nothing in the data
+# separates them.
 #
-# What it costs, knowingly: a smaller window compacts more often, and each
-# handoff is a real request. The eval's model prices that as the
-# (g/C)(F_h + pi_o*K) term — seams per unit of work times the cost of a seam —
-# so halving C roughly doubles it. Two things make that bearable. The term is
-# small next to the history re-read it replaces, and this change ships beside
-# a halved grouping budget (`SESSION_BUDGET_FLOOR`, 2400 -> 1200): per-request
-# history growth g falls with it, so 4096 holds about as many *requests* of
-# history as 8000 did before the halving. The window shrank in tokens far
-# more than it shrank in conversation.
+# **Why this is a raise, and what the raise did not buy.** The 260907 ruling
+# first set C to 4096, reasoning that the halved grouping budget shipping
+# beside it (`SESSION_BUDGET_FLOOR`, 2400 -> 1200) would shrink per-request
+# history growth by about as much, so 4096 would hold roughly as many
+# *requests* of history as 8000 did before. The branch's price-tag eval
+# measured that and it did not hold: on animal_farm through gpt-5.6-luna,
+# 300 units, compactions went 8 -> 19 and the session bill +27.3% against
+# the old defaults. C was raised here in response.
+#
+# The raise was then measured too, and the honest record is that it did not
+# work as intended (animal_farm / gpt-5.6-luna / 300 units, against the same
+# old-defaults baseline of 33 requests and 283k tokens):
+#
+#     C=4096   63 requests   361k tokens (+27.3%)   19 compactions
+#     C=8192   52 requests   396k tokens (+39.8%)    9 compactions
+#
+# The compaction count came back to roughly the old 8, exactly as intended.
+# The bill did not: 8192 measured ~10% *dearer* than 4096, not cheaper. The
+# seams were never the dominant cost. What the halved B actually does is
+# multiply the request count (33 -> ~52-63), and every one of those requests
+# re-reads the whole carried history — so a longer window is paid for far
+# more often than it used to be. Per-request prompt load tells the story:
+# 7007 tokens at the old defaults, 4690 at C=4096, 6537 at C=8192. The
+# (g/C)(F_h + pi_o*K) seam term is real but small next to it.
+#
+# 8192 stands anyway, by owner ruling and with that price known. The case is
+# not cost: it is the local-device model the owner named, where losing
+# context at a seam is worse than paying to carry it, and where the eval's
+# cost curve — measured on a hosted endpoint with prompt caching — is not
+# the curve those users are on. Note the cache barely helps here either way
+# (9-21k cached against 340k prompt in these cells).
+#
+# If a future ruling revisits this: lowering C is the *cheaper* direction
+# under the current B, not the dearer one, and the +27.3% that prompted the
+# raise was mostly B's doing rather than C's. Re-run the two session cells
+# before moving either number.
 #
 # Still one pinned number for every run rather than a derived one, for the
 # reason that has not changed: a moving target is not worth chasing for a
 # difference this size, and an operator who wants another value types
 # --context-compact-at.
-DEFAULT_COMPACT_BUDGET = 4096
+DEFAULT_COMPACT_BUDGET = 8192
 
 
 def compact_budget_notice(explicit: int | None) -> str:

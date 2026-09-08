@@ -294,7 +294,13 @@ the request budget from its own prompt overhead, and pins the rest.
 > **Superseded, 260907.** The shipped defaults below were lowered by
 > owner ruling after this eval: unit cap 32 → 16 (sub-strict 16 → 8),
 > B floor/ceiling 2400/3200 → 1200/1600 (sub-strict floor 1200 → a typed
-> 800), C 8000 → 4096. Nothing in this report's *measurements* changed —
+> 800). C went 8000 → 8192 — unchanged in substance: it was briefly set to
+> 4096 and put back after this branch's price-tag eval measured +27.3%
+> session cost at 300 units. The raise restored the compaction count (19 →
+> 9, against 8 at the old defaults) but not the bill, which measured +39.8%
+> — the cost is the halved B multiplying requests, each re-reading the
+> carried history, not the seams. C is held high for continuity, knowing
+> that. Nothing in this report's *measurements* changed —
 > the new numbers sit below the range measured here, on purpose. The
 > ruling traded the per-content-token savings this section recommends for
 > margin, on the grounds that schema support is an endpoint property and
@@ -312,7 +318,7 @@ equations, not constants, because prompt overhead is user-customizable
 
 ```
 B_default = clamp( 3·F, 1200, 1600 )          # F = measured prompt overhead
-C_default = 4096                              # pinned, every session run
+C_default = 8192                              # pinned, every session run
 ```
 
 (As shipped since the 260907 ruling. What this eval measured, and what
@@ -353,5 +359,5 @@ python make_book.py --book_name childrens-literature.epub \
 
 Leave `--context-compact-at` and `--accumulated_num` unset to get the
 defaults; the run narrates them
-(`session: compacting at 4096 estimated tokens (the default;
+(`session: compacting at 8192 estimated tokens (the default;
 --context-compact-at overrides)` — it said 8000 when this eval ran).
