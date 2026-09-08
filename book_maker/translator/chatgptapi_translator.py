@@ -415,16 +415,9 @@ class ChatGPTAPI(Base):
     # that build one without running __init__. `session is None` means window
     # mode everywhere in this class.
     session = None
-    # `pinned` is the operator's --glossary file, `learned` what this run's
-    # compacts established, `glossary` the two combined. None here rather than
-    # an empty Glossary so an instance built without __init__ still answers
-    # "no glossary" without constructing one.
-    glossary = None
-    pinned = None
-    learned = None
-    # Tri-state, from `--glossary-auto {on,off}`: None is "unsaid", and
-    # `glossary_auto_on` below turns that into the default for this run.
-    glossary_auto = None
+    # `glossary` / `pinned` / `learned` / `glossary_auto` are declared on
+    # `Base` for the same reason, and `glossary_auto_on` below turns the
+    # tri-state `--glossary-auto` into this run's default.
     handoff_path = None
     context_compact_at = None
     no_context_compact = False
@@ -515,12 +508,13 @@ class ChatGPTAPI(Base):
         self.style_note = style_note
         self.handoff_path = Path(handoff_path) if handoff_path else None
         self._compact_failures = 0
-        if context_paragraph_limit > 0:
-            # not set by user, use default
-            self.context_paragraph_limit = context_paragraph_limit
-        else:
-            # set by user, use user's value
-            self.context_paragraph_limit = CHATGPT_CONFIG["context_paragraph_limit"]
+        # A positive limit is the operator's; anything else takes the default.
+        # (The comments here used to say the opposite of what the branches do.)
+        self.context_paragraph_limit = (
+            context_paragraph_limit
+            if context_paragraph_limit > 0
+            else CHATGPT_CONFIG["context_paragraph_limit"]
+        )
         self.batch_text_list = []
         self.batch_info_cache = None
         self.result_content_cache = {}
@@ -1513,7 +1507,7 @@ class ChatGPTAPI(Base):
 
         messages = self._create_structured_batch_messages(text_list, degree=degree)
         if degree not in SCHEMA_BATCH_DEGREES:
-            return self._execute_json_object_batch(messages, plist_len)
+            return self._execute_json_object_batch(messages)
 
         try:
             completion = self._request(
@@ -1557,7 +1551,7 @@ class ChatGPTAPI(Base):
             )
         return items, messages[-1]["content"], raw_reply
 
-    def _execute_json_object_batch(self, messages, plist_len):
+    def _execute_json_object_batch(self, messages):
         """One id-echo batch at the json_object degree.
 
         The endpoint guarantees only that *some* JSON comes back, so
@@ -1703,7 +1697,7 @@ class ChatGPTAPI(Base):
             print("Batch result file does not exist")
             raise Exception("Batch result file does not exist")
 
-        with open(batch_metadata_file_path, "r", encoding="utf-8") as f:
+        with open(batch_metadata_file_path, encoding="utf-8") as f:
             batch_info = json.load(f)
 
         for batch_file in batch_info["batch_files"]:
@@ -1716,7 +1710,7 @@ class ChatGPTAPI(Base):
     def batch_translate(self, book_index):
         if self.batch_info_cache is None:
             batch_metadata_file_path = self.batch_metadata_file_path()
-            with open(batch_metadata_file_path, "r", encoding="utf-8") as f:
+            with open(batch_metadata_file_path, encoding="utf-8") as f:
                 self.batch_info_cache = json.load(f)
 
         batch_info = self.batch_info_cache

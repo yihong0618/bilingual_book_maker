@@ -182,7 +182,7 @@ def _mask_header_values(raw):
     except (json.JSONDecodeError, TypeError):
         parsed = None
     if isinstance(parsed, dict):
-        return json.dumps({name: "<redacted>" for name in parsed})
+        return json.dumps(dict.fromkeys(parsed, "<redacted>"))
     return "<redacted>"
 
 
@@ -1888,7 +1888,7 @@ class EPUBBookLoader(BaseBookLoader):
                 f"[yellow]{len(e.resolved)} decided verdict(s) were saved to "
                 f"{plan_path}"
                 + (f", plus {named} named-but-undecided row(s)" if named else "")
-                + f"; the undecided rows are listed below.[/yellow]"
+                + "; the undecided rows are listed below.[/yellow]"
             )
             builtins.print(
                 build_agent_prompt(
@@ -1920,10 +1920,10 @@ class EPUBBookLoader(BaseBookLoader):
                     if named
                     else ""
                 )
-                + f"[yellow]Nothing was decided, so nothing will be "
-                f"translated. Use --plan-classify agent to decide the rows "
-                f"yourself, or --plan-classify all to translate the whole "
-                f"partition deliberately.[/yellow]"
+                + "[yellow]Nothing was decided, so nothing will be "
+                "translated. Use --plan-classify agent to decide the rows "
+                "yourself, or --plan-classify all to translate the whole "
+                "partition deliberately.[/yellow]"
             )
             raise SystemExit(1)
         return decisions
@@ -2379,8 +2379,8 @@ class EPUBBookLoader(BaseBookLoader):
                 # other workers keep firing at an endpoint already known dead
                 self.translate_model._fatal_error_detected = True
                 print(
-                    f"[bold red]Fatal translation error detected. "
-                    f"Aborting translation.[/bold red]"
+                    "[bold red]Fatal translation error detected. "
+                    "Aborting translation.[/bold red]"
                 )
                 print(f"[bold red]Error: {str(e)}[/bold red]")
                 return [translator.TRANSLATION_ERROR_MARKER] * len(texts)
@@ -2821,7 +2821,7 @@ class EPUBBookLoader(BaseBookLoader):
                     # an error is a signal, not an echo: it prints even in
                     # quiet mode
                     print(
-                        f"[bold red][Translation failed for this paragraph][/bold red]"
+                        "[bold red][Translation failed for this paragraph][/bold red]"
                     )
                 elif not self.quiet:
                     print(f"[bold green]{t}[/bold green]")
@@ -3913,7 +3913,7 @@ class EPUBBookLoader(BaseBookLoader):
                         f"🔗 Context enabled: each chapter maintains independent context (limit={self.translate_model.context_paragraph_limit})"
                     )
                 else:
-                    print(f"🚫 Context disabled for this translation")
+                    print("🚫 Context disabled for this translation")
 
                 # Create a simpler progress bar for parallel processing
                 pbar.close()  # Close the original progress bar
@@ -3985,7 +3985,7 @@ class EPUBBookLoader(BaseBookLoader):
             else:
                 # Sequential processing (original behavior or single chapter)
                 if len(output_plans) == 1 and self.enable_parallel:
-                    print(f"📄 Single chapter detected - using sequential processing")
+                    print("📄 Single chapter detected - using sequential processing")
 
                 for chapter_plan in output_plans:
                     item = chapter_plan.item

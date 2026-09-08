@@ -545,7 +545,7 @@ class Gemini(Base):
 
         # Check again after retry attempt (error may have been detected during retries)
         if self._fatal_error_detected:
-            print(f"Batch translation aborted: fatal error detected.")
+            print("Batch translation aborted: fatal error detected.")
             return [self.TRANSLATION_ERROR_MARKER] * batch_size
 
         if result:
@@ -560,8 +560,8 @@ class Gemini(Base):
 
         # Fallback to one-by-one translation (only for non-fatal errors)
         print(
-            f"Batch translation failed after all retry attempts. "
-            f"Falling back to one-by-one translation."
+            "Batch translation failed after all retry attempts. "
+            "Falling back to one-by-one translation."
         )
 
         # Always return the expected number of items

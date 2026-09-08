@@ -72,23 +72,12 @@ class Google(Base):
         pass
 
     def translate(self, text):
-        """r = self.session.post(
-            self.api_url,
-            headers=self.headers,
-            data=f"q={requests.utils.quote(text)}",
-        )
-        if not r.ok:
-            return text
-        t_text = "".join(
-            [sentence.get("trans", "") for sentence in r.json()["sentences"]],
-        )"""
-        t_text = self._retry_translate(text)
-        return t_text
+        return self._retry_translate(text)
 
     def _retry_translate(self, text, timeout=3):
-        time = 0
-        while time <= timeout:
-            time += 1
+        attempt = 0
+        while attempt <= timeout:
+            attempt += 1
             r = self.session.post(
                 self.api_url,
                 headers=self.headers,

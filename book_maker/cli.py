@@ -350,8 +350,11 @@ def resolve_endpoint(options):
     # `--model_list` is not, so a bare `codex` here came from --model_list and
     # names the route, not a model to rotate to. Say what to type instead of
     # sending `codex` on as a model id the endpoint will refuse.
-    listed = [n.strip() for n in (options.model_list or "").split(",") if n.strip()]
-    if len(listed) == 1 and listed[0].lower() == "codex":
+    if (
+        options.model_list
+        and len(model_names) == 1
+        and model_names[0].lower() == "codex"
+    ):
         raise SystemExit(
             "--model_list codex names the codex route, not a model. Use "
             "--api_format codex instead, and --model only to name a model on it."
@@ -2516,7 +2519,7 @@ def main():
     # Setting an arbitrary attribute on the others used to print success and
     # then silently drop the fields.
     if options.extra_body or options.extra_headers:
-        given = [
+        extras_given = [
             flag
             for flag, value in (
                 ("--extra_body", options.extra_body),
@@ -2530,8 +2533,8 @@ def main():
             # and naming the format would have told those runs otherwise.
             print(
                 f"[bold yellow]Warning:[/bold yellow] "
-                f"{' and '.join(given)} "
-                f"{'is' if len(given) == 1 else 'are'} ignored by the "
+                f"{' and '.join(extras_given)} "
+                f"{'is' if len(extras_given) == 1 else 'are'} ignored by the "
                 f"{api_format} route, which builds no request they could "
                 f"join; the run continues without them."
             )

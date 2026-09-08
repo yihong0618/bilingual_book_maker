@@ -504,10 +504,7 @@ def is_text_figure(text, num=80):
 
 
 def is_text_digit_and_space(s):
-    for c in s:
-        if not c.isdigit() and not c.isspace():
-            return False
-    return True
+    return all(c.isdigit() or c.isspace() for c in s)
 
 
 def is_text_isbn(s):

@@ -1089,7 +1089,7 @@ class Base(ABC):
         # Handle None or empty response
         if not translated_text:
             print(
-                f"[bold red]Error: Translation API returned empty response for batch request.[/bold red]"
+                "[bold red]Error: Translation API returned empty response for batch request.[/bold red]"
             )
             raise Exception("Translation API returned empty response")
 

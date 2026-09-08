@@ -57,7 +57,7 @@ class TencentTranSmart(Base):
 
     def text_analysis(self, text):
         client_key = self.get_client_key()
-        self.header.update({"Cookie": "TSMT_CLIENT_KEY={}".format(client_key)})
+        self.header.update({"Cookie": f"TSMT_CLIENT_KEY={client_key}"})
         analysis_request_data = {
             "header": {
                 "fn": "text_analysis",
@@ -80,6 +80,4 @@ class TencentTranSmart(Base):
         return language, text_list
 
     def get_client_key(self):
-        return "browser-chrome-121.0.0-Windows_10-{}-{}".format(
-            self.uuid, int(time.time() * 1e3)
-        )
+        return f"browser-chrome-121.0.0-Windows_10-{self.uuid}-{int(time.time() * 1e3)}"
