@@ -42,6 +42,7 @@ from .helper import (
     append_inline_translation,
     backfill_toc_hrefs,
     derive_translation_identity,
+    flush_waiting,
     has_restricted_content_model,
     is_text_link,
     make_tag,
@@ -182,7 +183,7 @@ def _mask_header_values(raw):
     except (json.JSONDecodeError, TypeError):
         parsed = None
     if isinstance(parsed, dict):
-        return json.dumps({name: "<redacted>" for name in parsed})
+        return json.dumps(dict.fromkeys(parsed, "<redacted>"))
     return "<redacted>"
 
 
@@ -323,7 +324,6 @@ class EPUBBookLoader(BaseBookLoader):
         # that is stamped: deriving one from prose the tables do not know is
         # exactly the guess that flag exists to replace.
         self.language_tag = language_tag or language_code(language)
-        self.new_epub = epub.EpubBook()
         self.translate_model = model(
             key,
             language,
@@ -906,6 +906,18 @@ class EPUBBookLoader(BaseBookLoader):
                 "[/bold yellow]"
             )
 
+    def _write_book(self, path, book):
+        """Write one epub, credited and with its fonts as the source had them.
+
+        The three steps always travel together, and the order matters: the
+        credit is stamped into the book before it is serialized, and the
+        obfuscation is put back on the bytes afterwards. `_stamp_disclosure`
+        is idempotent, so a book written twice is credited once.
+        """
+        self._stamp_disclosure(book)
+        epub.write_epub(path, book, {})
+        self._reobfuscate_written(path)
+
     def _reobfuscate_written(self, path):
         """Put back the obfuscation the source shipped, on the file just written.
 
@@ -946,18 +958,12 @@ class EPUBBookLoader(BaseBookLoader):
         return fixed_toc
 
     def _extract_paragraph(self, p):
-        for p_exclude in self.exclude_translate_tags.split(","):
+        # Exclude content within specified tags from translation (e.g., code, pre)
+        for p_exclude in self._exclude_tags_tuple():
             # for issue #280
             if type(p) is NavigableString:
                 continue
             for pt in p.find_all(p_exclude):
-                pt.extract()
-        # Exclude content within specified tags from translation (e.g., code, pre)
-        exclude_tags_list = [t for t in self.exclude_translate_tags.split(",") if t]
-        for tag_name in exclude_tags_list:
-            if type(p) is NavigableString:
-                continue
-            for pt in p.find_all(tag_name):
                 pt.extract()
         return p
 
@@ -972,50 +978,13 @@ class EPUBBookLoader(BaseBookLoader):
         # Check if paragraph contains only excluded content tags
         temp_p = copy(p)
         # Remove excluded tags
-        exclude_tags_list = [t for t in self.exclude_translate_tags.split(",") if t]
-        for tag_name in exclude_tags_list:
-            for pt in temp_p.find_all(tag_name):
-                pt.extract()
-        # Also remove excluded translate tags
-        for tag_name in self.exclude_translate_tags.split(","):
+        for tag_name in self._exclude_tags_tuple():
             for pt in temp_p.find_all(tag_name):
                 pt.extract()
 
         # If nothing meaningful remains, paragraph contains only excluded tags
         remaining_text = temp_p.get_text().strip()
         return not remaining_text or self._is_special_text(remaining_text)
-
-    def _count_translatable_paragraphs(self, items, trans_taglist):
-        """Count paragraphs that actually need translation (excluding special content)."""
-        count = 0
-        for i in items:
-            if i.get_type() != ITEM_DOCUMENT:
-                continue
-            if i.file_name in self.exclude_filelist.split(","):
-                continue
-            if self.only_filelist and i.file_name not in self.only_filelist.split(","):
-                continue
-
-            if self._plan_mode:
-                count += len(self._plan_partition(i)[1].units)
-                continue
-
-            content = i.content
-            soup = bs(content, "html.parser")
-            p_list = soup.findAll(trans_taglist)
-
-            if self.allow_navigable_strings:
-                p_list.extend(soup.findAll(text=True))
-
-            for p in p_list:
-                if not p.text or self._is_special_text(p.text):
-                    continue
-                # Skip paragraphs that only contain excluded tags
-                if self._is_content_only_excluded_tags(p):
-                    continue
-                count += 1
-
-        return count
 
     # ------------------------------------------------------------ plan mode
 
@@ -1920,7 +1889,7 @@ class EPUBBookLoader(BaseBookLoader):
                 f"[yellow]{len(e.resolved)} decided verdict(s) were saved to "
                 f"{plan_path}"
                 + (f", plus {named} named-but-undecided row(s)" if named else "")
-                + f"; the undecided rows are listed below.[/yellow]"
+                + "; the undecided rows are listed below.[/yellow]"
             )
             builtins.print(
                 build_agent_prompt(
@@ -1952,10 +1921,10 @@ class EPUBBookLoader(BaseBookLoader):
                     if named
                     else ""
                 )
-                + f"[yellow]Nothing was decided, so nothing will be "
-                f"translated. Use --plan-classify agent to decide the rows "
-                f"yourself, or --plan-classify all to translate the whole "
-                f"partition deliberately.[/yellow]"
+                + "[yellow]Nothing was decided, so nothing will be "
+                "translated. Use --plan-classify agent to decide the rows "
+                "yourself, or --plan-classify all to translate the whole "
+                "partition deliberately.[/yellow]"
             )
             raise SystemExit(1)
         return decisions
@@ -2411,8 +2380,8 @@ class EPUBBookLoader(BaseBookLoader):
                 # other workers keep firing at an endpoint already known dead
                 self.translate_model._fatal_error_detected = True
                 print(
-                    f"[bold red]Fatal translation error detected. "
-                    f"Aborting translation.[/bold red]"
+                    "[bold red]Fatal translation error detected. "
+                    "Aborting translation.[/bold red]"
                 )
                 print(f"[bold red]Error: {str(e)}[/bold red]")
                 return [translator.TRANSLATION_ERROR_MARKER] * len(texts)
@@ -2639,7 +2608,7 @@ class EPUBBookLoader(BaseBookLoader):
             return
 
         # Check if paragraph has excluded content tags
-        exclude_tags_list = [t for t in self.exclude_translate_tags.split(",") if t]
+        exclude_tags_list = self._exclude_tags_tuple()
         has_code_tags = any(p.find(tag) for tag in exclude_tags_list)
 
         if not has_code_tags:
@@ -2822,6 +2791,22 @@ class EPUBBookLoader(BaseBookLoader):
         )
         translated_text_list = self._translate_texts_aligned(new_texts, units=new_units)
 
+        def insert(k, p, translation):
+            # Same choice for a fresh translation and a resumed one: a plan
+            # run inserts against the unit it planned, a tag run against the
+            # paragraph it found.
+            if plan_units is not None:
+                self._insert_plan_translation(
+                    plan_units[k],
+                    translation,
+                    self.translation_style,
+                    self.single_translate,
+                )
+            else:
+                self._insert_trans_preserving_tags(
+                    p, translation, self.translation_style, self.single_translate
+                )
+
         translate_iter = iter(translated_text_list)
         for k, p, text, cached in entries:
             # Check for fatal error and stop immediately
@@ -2834,14 +2819,7 @@ class EPUBBookLoader(BaseBookLoader):
             if text is not None:
                 # Fresh translation
                 t = next(translate_iter)
-                if plan_units is not None:
-                    self._insert_plan_translation(
-                        plan_units[k], t, self.translation_style, self.single_translate
-                    )
-                else:
-                    self._insert_trans_preserving_tags(
-                        p, t, self.translation_style, self.single_translate
-                    )
+                insert(k, p, t)
                 self.p_to_save.append(t)
                 if not self.quiet:
                     print(text)
@@ -2853,7 +2831,7 @@ class EPUBBookLoader(BaseBookLoader):
                     # an error is a signal, not an echo: it prints even in
                     # quiet mode
                     print(
-                        f"[bold red][Translation failed for this paragraph][/bold red]"
+                        "[bold red][Translation failed for this paragraph][/bold red]"
                     )
                 elif not self.quiet:
                     print(f"[bold green]{t}[/bold green]")
@@ -2861,17 +2839,7 @@ class EPUBBookLoader(BaseBookLoader):
                     print()
             else:
                 # Resumed from cache
-                if plan_units is not None:
-                    self._insert_plan_translation(
-                        plan_units[k],
-                        cached,
-                        self.translation_style,
-                        self.single_translate,
-                    )
-                else:
-                    self._insert_trans_preserving_tags(
-                        p, cached, self.translation_style, self.single_translate
-                    )
+                insert(k, p, cached)
 
         if thread_safe:
             with self._progress_lock:
@@ -2889,19 +2857,12 @@ class EPUBBookLoader(BaseBookLoader):
                 print(f"translating {i}/{len(p_list)}")
             temp_p = copy(p)
 
-            for p_exclude in self.exclude_translate_tags.split(","):
+            # Exclude content tags (code, pre, etc.) from translation
+            for p_exclude in self._exclude_tags_tuple():
                 # for issue #280
                 if type(p) is NavigableString:
                     continue
                 for pt in temp_p.find_all(p_exclude):
-                    pt.extract()
-
-            # Also exclude content tags (code, pre, etc.)
-            exclude_tags_list = [t for t in self.exclude_translate_tags.split(",") if t]
-            for tag_name in exclude_tags_list:
-                if type(p) is NavigableString:
-                    continue
-                for pt in temp_p.find_all(tag_name):
                     pt.extract()
 
             if any(
@@ -2931,24 +2892,13 @@ class EPUBBookLoader(BaseBookLoader):
 
     def _deal_old_acc(self, wait_p_list, single_translate):
         """Helper for translate_paragraphs_acc - process accumulated paragraphs."""
-        if not wait_p_list:
-            return
-
-        result_txt_list = translate_list_or_singles(
-            self.translate_model, [p.text for p in wait_p_list]
+        flush_waiting(
+            self.translate_model,
+            wait_p_list,
+            self._insert_trans_preserving_tags,
+            self.translation_style,
+            single_translate,
         )
-
-        for i in range(len(wait_p_list)):
-            if i < len(result_txt_list):
-                p = wait_p_list[i]
-                self._insert_trans_preserving_tags(
-                    p,
-                    shorter_result_link(result_txt_list[i]),
-                    self.translation_style,
-                    single_translate,
-                )
-
-        wait_p_list.clear()
 
     def _deal_new_acc(self, p, wait_p_list, single_translate):
         """Helper for translate_paragraphs_acc - process single paragraph."""
@@ -3123,9 +3073,7 @@ class EPUBBookLoader(BaseBookLoader):
             fixstart,
             fixend,
         )
-        self._stamp_disclosure(new_book)
-        epub.write_epub(f"{name_fix}", new_book, {})
-        self._reobfuscate_written(f"{name_fix}")
+        self._write_book(f"{name_fix}", new_book)
         # --retranslate leaves by `exit(0)` right after this, so this is the
         # end of that run and the file it produced.
         self.announce_saved_book(f"{name_fix}")
@@ -3140,8 +3088,7 @@ class EPUBBookLoader(BaseBookLoader):
         return False
 
     def filter_nest_list(self, p_list, trans_taglist):
-        filtered_list = [p for p in p_list if not self.has_nest_child(p, trans_taglist)]
-        return filtered_list
+        return [p for p in p_list if not self.has_nest_child(p, trans_taglist)]
 
     def _translation_source_text(self, node):
         if isinstance(node, NavigableString):
@@ -3413,7 +3360,6 @@ class EPUBBookLoader(BaseBookLoader):
         else:
             is_test_done = self.is_test and index >= self.test_num
             p_block = []
-            block_len = 0
             for p in p_list:
                 if is_test_done:
                     break
@@ -3793,18 +3739,11 @@ class EPUBBookLoader(BaseBookLoader):
 
             temp_p = copy(p)
 
-            for p_exclude in self.exclude_translate_tags.split(","):
+            # Exclude content within specified tags from translation (e.g., code, pre)
+            for p_exclude in self._exclude_tags_tuple():
                 if isinstance(p, NavigableString):
                     continue
                 for pt in temp_p.find_all(p_exclude):
-                    pt.extract()
-
-            # Exclude content within specified tags from translation (e.g., code, pre)
-            exclude_tags_list = [t for t in self.exclude_translate_tags.split(",") if t]
-            for tag_name in exclude_tags_list:
-                if isinstance(p, NavigableString):
-                    continue
-                for pt in temp_p.find_all(tag_name):
                     pt.extract()
 
             if any(
@@ -3962,7 +3901,7 @@ class EPUBBookLoader(BaseBookLoader):
                         f"🔗 Context enabled: each chapter maintains independent context (limit={self.translate_model.context_paragraph_limit})"
                     )
                 else:
-                    print(f"🚫 Context disabled for this translation")
+                    print("🚫 Context disabled for this translation")
 
                 # Create a simpler progress bar for parallel processing
                 pbar.close()  # Close the original progress bar
@@ -4034,7 +3973,7 @@ class EPUBBookLoader(BaseBookLoader):
             else:
                 # Sequential processing (original behavior or single chapter)
                 if len(output_plans) == 1 and self.enable_parallel:
-                    print(f"📄 Single chapter detected - using sequential processing")
+                    print("📄 Single chapter detected - using sequential processing")
 
                 for chapter_plan in output_plans:
                     item = chapter_plan.item
@@ -4069,16 +4008,12 @@ class EPUBBookLoader(BaseBookLoader):
 
                 if self.accumulated_num > 1:
                     name, _ = os.path.splitext(self.epub_name)
-                    self._stamp_disclosure(new_book)
-                    epub.write_epub(f"{name}_bilingual.epub", new_book, {})
-                    self._reobfuscate_written(f"{name}_bilingual.epub")
+                    self._write_book(f"{name}_bilingual.epub", new_book)
             name, _ = os.path.splitext(self.epub_name)
             if self.batch_flag:
                 self.translate_model.batch()
             else:
-                self._stamp_disclosure(new_book)
-                epub.write_epub(f"{name}_bilingual.epub", new_book, {})
-                self._reobfuscate_written(f"{name}_bilingual.epub")
+                self._write_book(f"{name}_bilingual.epub", new_book)
                 self.announce_saved_book(f"{name}_bilingual.epub")
         except KeyboardInterrupt as e:
             print(e)
@@ -4223,9 +4158,7 @@ class EPUBBookLoader(BaseBookLoader):
                             )
                     item.content = chapter_plan.soup.encode()
                 new_temp_book.add_item(item)
-            self._stamp_disclosure(new_temp_book)
-            epub.write_epub(temp_path, new_temp_book, {})
-            self._reobfuscate_written(temp_path)
+            self._write_book(temp_path, new_temp_book)
         except Exception as e:
             # The recovery book is the only artifact a crashed run leaves
             # behind. Swallowing this told the user nothing and they found

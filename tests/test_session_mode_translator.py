@@ -604,3 +604,58 @@ class TestCompactionDisabled:
         assert any(
             HANDOFF_MARKER in call["messages"][-1]["content"] for call in t.sent
         ), "a positive budget must still ask for the handoff report"
+
+
+class TestAFixedStyleRidesTheWindowStart:
+    """Decision 8: a style is a standing instruction, so it belongs where a
+    window starts and nowhere else. On this route the standing channel is the
+    system message — message 0, the head of the cached prefix — so it is
+    still there after a rollover, and it is in no user turn at all."""
+
+    STYLE = "Clipped, unsentimental, no adverbs."
+
+    def test_it_is_in_the_system_message_and_no_user_turn(self):
+        t = _translator(style_note=self.STYLE)
+        t.translate("one", False)
+        call = t.sent[0]
+        assert self.STYLE in call["messages"][0]["content"]
+        assert all(self.STYLE not in m["content"] for m in call["messages"][1:])
+
+    def test_the_next_window_still_carries_it(self):
+        t = _translator(
+            replies=["译一", "Summary of window one.", "译二"],
+            context_compact_at=500,
+            style_note=self.STYLE,
+        )
+        t.translate("a" * 4000, False)
+        t.translate("b" * 10, False)
+        assert t.session.windows == 2
+        # the request after the rollover: its history is the seed, and the
+        # style is where it always was
+        assert self.STYLE in t.sent[-1]["messages"][0]["content"]
+        assert all(self.STYLE not in m["content"] for m in t.sent[-1]["messages"][1:])
+
+    def test_the_model_is_not_asked_for_a_style_it_was_given(self):
+        t = _translator(
+            replies=["译一", "Summary of window one.", "译二"],
+            context_compact_at=500,
+            style_note=self.STYLE,
+        )
+        t.translate("a" * 4000, False)
+        t.translate("b" * 10, False)
+        compact = _tail_containing(t, HANDOFF_MARKER)
+        assert "style" not in compact.lower()
+
+    def test_the_report_shows_the_users_style_verbatim(self, tmp_path, capsys):
+        path = tmp_path / "h.md"
+        t = _translator(
+            replies=["译一", "Summary of window one.", "译二"],
+            context_compact_at=500,
+            style_note=self.STYLE,
+            handoff_path=str(path),
+        )
+        t.translate("a" * 4000, False)
+        t.translate("b" * 10, False)
+        # the model was never asked to describe a style, so the section the
+        # report shows is the operator's own words, unedited
+        assert f"### Style\n\n{self.STYLE}" in path.read_text(encoding="utf-8")

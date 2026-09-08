@@ -219,7 +219,7 @@ story at `https://dashscope.aliyuncs.com/compatible-mode/v1`.
 | model name starts with | try first | then |
 |---|---|---|
 | `claude-` | OpenAI if a gateway base is set; else anthropic | the other one |
-| anything else (`gpt-`, `o1`, `o3`, `gemini-`, `grok-`, `llama`, `qwen`, `deepseek`, …) | OpenAI | — |
+| anything else (`gpt-`, `o1`, `o3`, `gemini-`, `grok-`, `llama`, `qwen`, …) | OpenAI | — |
 
 OpenAI first at a gateway because aggregators serve Claude and Gemini
 models on `/chat/completions` too. Go native only when the endpoint is

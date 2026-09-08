@@ -415,7 +415,7 @@ class TestEachSectionReachesTheRequest:
         assert systems
         assert all(CUSTOM_SYSTEM in text for text in systems)
 
-    def test_a_style_section_reaches_the_user_message(self, endpoint, tmp_path, mode):
+    def test_a_style_section_rides_the_system_message(self, endpoint, tmp_path, mode):
         _run(
             endpoint,
             tmp_path,
@@ -423,11 +423,12 @@ class TestEachSectionReachesTheRequest:
             _prompt(tmp_path, user=CUSTOM_USER, style=CUSTOM_STYLE),
             *self._flags(mode),
         )
-        sent = endpoint.user_messages()
-        assert sent
-        for text in sent:
-            # appended, because no endpoint has a slot for it
-            assert f"{ChatGPTAPI.STYLE_HEADING} {CUSTOM_STYLE}" in text
+        systems = endpoint.system_messages()
+        assert systems
+        # no endpoint has a style slot, and a style is not a per-request
+        # thing to say: it stands with the run's other standing instructions
+        assert all(f"{ChatGPTAPI.STYLE_HEADING} {CUSTOM_STYLE}" in t for t in systems)
+        assert all(CUSTOM_STYLE not in text for text in endpoint.user_messages())
 
     def test_all_three_sections_travel_together(self, endpoint, tmp_path, mode):
         _run(
@@ -444,8 +445,9 @@ class TestEachSectionReachesTheRequest:
         )
         for text in endpoint.user_messages():
             assert "Render this into" in text
-            assert CUSTOM_STYLE in text
-        assert all(CUSTOM_SYSTEM in t for t in endpoint.system_messages())
+            assert CUSTOM_STYLE not in text
+        systems = endpoint.system_messages()
+        assert all(CUSTOM_SYSTEM in t and CUSTOM_STYLE in t for t in systems)
 
 
 # ------------------------------------------------------------- the glossary
@@ -524,8 +526,11 @@ class TestSessionMode:
         sent = endpoint.translation_requests()
         assert sent
         first = sent[0]
+        # both standing sections in the very first request's system message:
+        # session mode's prefix is the history, and nothing later can add
+        # them without moving the cached prefix
         assert CUSTOM_SYSTEM in first["messages"][0]["content"]
-        assert CUSTOM_STYLE in _user_text(first)
+        assert CUSTOM_STYLE in first["messages"][0]["content"]
         assert "Render this into" in _user_text(first)
 
 
@@ -576,10 +581,11 @@ class TestTheDelimiterRung:
             _prompt(tmp_path, user=CUSTOM_USER, style=CUSTOM_STYLE),
             *self.FLAGS,
         )
-        sent = prose_endpoint.user_messages()
-        assert sent
-        for text in sent:
-            assert f"{ChatGPTAPI.STYLE_HEADING} {CUSTOM_STYLE}" in text
+        systems = prose_endpoint.system_messages()
+        assert systems
+        # this rung borrows the system message for the length of one group;
+        # the style has to survive that, not be replaced by the batch contract
+        assert all(f"{ChatGPTAPI.STYLE_HEADING} {CUSTOM_STYLE}" in t for t in systems)
 
 
 # ----------------------------------------------------------- what the run says
@@ -605,7 +611,8 @@ class TestTheRunAnnouncesWhatItAdopted:
         out = " ".join(proc.stdout.split())
         assert (
             "prompt: user+system+style from --prompt "
-            "(style appended to the user message on this route)" in out
+            "(style appended to the system message on this route; "
+            "your `{text}` carries the batch JSON on a grouped request)" in out
         ), proc.stdout
 
     def test_a_run_without_the_flag_says_nothing_about_prompts(

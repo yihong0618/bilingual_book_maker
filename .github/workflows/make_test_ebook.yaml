@@ -88,7 +88,7 @@ jobs:
         run: |
             python3 make_book.py --book_name "test_books/lemo.epub" --test --test_num 5 --language zh-hans --model gpt-4o-mini
             python3 make_book.py --book_name "test_books/animal_farm.epub" --test --test_num 5 --language ja --model gpt-4o-mini --prompt prompt_template_sample.txt
-            python3 make_book.py --book_name "test_books/animal_farm.epub" --test --test_num 5 --language ja --model gpt-4o-mini --prompt prompt_template_sample.json
+            python3 make_book.py --book_name "test_books/animal_farm.epub" --test --test_num 5 --language ja --model gpt-4o-mini --prompt prompt_template.json
             python3 make_book.py --book_name test_books/Lex_Fridman_episode_322.srt --test --test_num 20 --model gpt-4o-mini
             
       - name: Rename and Upload ePub

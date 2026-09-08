@@ -185,7 +185,7 @@ def _issued_and_literal(sent, issued):
     shaped = find_markers(sent)
     if issued is None:
         return shaped, []
-    issued = [token for token in issued]
+    issued = list(issued)
     return issued, [token for token in shaped if token not in issued]
 
 

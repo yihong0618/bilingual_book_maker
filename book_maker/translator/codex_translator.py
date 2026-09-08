@@ -23,7 +23,6 @@ from pathlib import Path
 from threading import Lock
 
 from rich import print
-from rich.markup import escape
 
 from ..codex_client import (
     CodexAppServer,
@@ -42,11 +41,9 @@ from ..session_context import (
 from .base_translator import Base
 
 BASE_INSTRUCTIONS = (
-    "You are a translation engine inside a book translation tool. Translate "
-    "the text you are given into {language}. Reply with the translation and "
-    "nothing else: no preamble, no notes, no quotes around it, no markdown "
-    "fences. Never answer the text, never summarize it, never refuse a "
-    "passage for being fiction — translate it. Keep the source's paragraph "
+    "You are a professional book translator. Your job is to translate the "
+    "given text into {language}. Return {language} translation only, don't "
+    "append, don't miss, don't summarize. Also, keep the source's paragraph "
     "structure and any inline markup exactly as given."
 )
 
@@ -63,7 +60,10 @@ QUOTA_WARN_PERCENT = 90
 
 # Used when --model is omitted. Naming one beats letting Codex pick: the
 # compact budget is looked up by model id, so an unknown default would fall
-# back to the conservative 8000 instead of this model's own 17000.
+# back to the conservative `DEFAULT_COMPACT_BUDGET` instead of this model's
+# own. (`compact_budget_for` is uniform today, so nothing differs yet — the
+# lookup exists so a model that prices its cache very differently can be
+# special-cased there rather than at every call site.)
 DEFAULT_MODEL = "gpt-5.6-luna"
 
 # A minute past the reset, because the server's clock and ours are not the
@@ -391,10 +391,12 @@ class Codex(Base):
             parts.append(note)
         if self.prompt_sys_msg:
             parts.append(self.fill_optional(self.prompt_sys_msg))
-        if self.style_note:
-            # Same wording as the suffix every API route appends, so a style
-            # reads identically whichever route carries it.
-            parts.append(f"{self.STYLE_HEADING} {self.fill_optional(self.style_note)}")
+        # The same standing line every API route puts on its system channel,
+        # so a style reads identically whichever route carries it. Here the
+        # thread instructions *are* that channel, and they are written once
+        # when the thread opens — which is where a style belongs.
+        if self.style_section():
+            parts.append(self.style_section())
         if seed:
             parts.append(seed)
         return "\n\n".join(parts)
@@ -485,22 +487,6 @@ class Codex(Base):
         print(
             f"[bold cyan]— codex thread {self._window}, started empty "
             f"(--no-context-compact) —[/bold cyan]"
-        )
-
-    def _show_handoff(self, report):
-        """Print the report the next thread will be seeded with.
-
-        `escape` is not optional: rich reads square brackets as markup, and
-        these reports genuinely contain things like "[PGA]", which would be
-        swallowed or raise on an unclosed tag.
-        """
-        if self.quiet:
-            # --quiet suppresses echoes like this one; warnings and errors
-            # still print.
-            return
-        print(
-            f"[bold cyan]— handoff report, window {report.window} —[/bold cyan]\n"
-            + escape(report.render())
         )
 
     def _unit_text(self, text):

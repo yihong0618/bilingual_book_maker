@@ -119,21 +119,6 @@ PROMPT_ENV_MAP = {
     "system": "BBM_GEMINIAPI_SYS_MSG",
 }
 
-GEMINIPRO_MODEL_LIST = [
-    "gemini-pro-latest",
-    "gemini-2.5-pro",
-    "gemini-3-pro-preview",
-]
-
-GEMINIFLASH_MODEL_LIST = [
-    "gemini-flash-latest",
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-2.0-flash-001",
-    "gemini-flash-lite-latest",
-]
-
 
 class TranslationResponse(typing.TypedDict):
     """Schema for batch translation response."""
@@ -213,14 +198,12 @@ class Gemini(Base):
     def _system_instruction(self):
         """The system slot's value, or None.
 
-        `--prompt`'s system section fills it, with `{language}`/`{crlf}`
-        resolved the way the other routes resolve them. None rather than "":
-        this SDK takes an absent instruction, and an empty one is not the same
-        request.
+        `--prompt`'s system section and its style section fill it, with
+        `{language}`/`{crlf}` resolved the way the other routes resolve them.
+        None rather than "": this SDK takes an absent instruction, and an
+        empty one is not the same request.
         """
-        return self._augment_system_content(
-            self.fill_optional(self.prompt_sys_msg) or None
-        )
+        return self.standing_instructions() or None
 
     def _build_config_kwargs(
         self, response_mime_type: str | None = None, response_schema: type | None = None
@@ -266,16 +249,16 @@ class Gemini(Base):
         )
 
     def _user_content(self, text: str) -> str:
-        """The turn's text: the user template, then the style section.
+        """The turn's text: the user template, and nothing standing.
 
-        Gemini's system slot is `system_instruction`, so `system` is native
-        here. There is no style slot, so `--prompt`'s style rides at the end
-        of the turn, in the wording every other route uses. `{crlf}` is filled
-        too — it is documented for `--prompt` and used to raise KeyError here.
+        Gemini's system slot is `system_instruction`, and `--prompt`'s system
+        and style sections both go there — style is a standing instruction, so
+        it is said once per window rather than with every paragraph. `{crlf}`
+        is filled too: it is documented for `--prompt` and used to raise
+        KeyError here.
         """
-        return (
+        return self._fold_standing_instructions(
             self.prompt.format(text=text, language=self.language, crlf="\n")
-            + self.style_suffix()
         )
 
     def _extract_translation_text(self, response_text: str) -> str:
@@ -353,7 +336,7 @@ class Gemini(Base):
             else:
                 self.rotate_key()
             raise
-        except Exception as e:
+        except Exception:
             self.rotate_key()
             raise
 
@@ -433,42 +416,8 @@ class Gemini(Base):
             ("prompt", lambda: self._prompt_rung(prompt, schema, target)),
         ]
 
-    _available_models_cache = None
-
     def set_interval(self, interval):
         self.interval = interval
-
-    def set_geminipro_models(self):
-        self.set_models(GEMINIPRO_MODEL_LIST)
-
-    def set_geminiflash_models(self):
-        self.set_models(GEMINIFLASH_MODEL_LIST)
-
-    def set_models(self, allowed_models):
-        if Gemini._available_models_cache is None:
-            available_models = [
-                re.sub(r"^models/", "", m.name) for m in self.client.models.list()
-            ]
-            Gemini._available_models_cache = available_models
-        else:
-            available_models = Gemini._available_models_cache
-
-        model_list = sorted(
-            list(set(available_models) & set(allowed_models)),
-            key=allowed_models.index,
-        )
-        if not model_list:
-            raise ValueError(
-                f"None of the expected models {allowed_models} are available "
-                f"for this API key. Available models: {available_models}"
-            )
-        print(f"Using model list {model_list}")
-        self._model_names = tuple(model_list)
-        # The configured fact is the alias's full expansion, before the
-        # endpoint's availability filter above pared it down.
-        self._configured_model_names = tuple(dict.fromkeys(allowed_models))
-        self.model_list = cycle(model_list)
-        self.rotate_model()
 
     def set_model_list(self, model_list):
         # keep the order of input
@@ -560,7 +509,7 @@ class Gemini(Base):
         except ValueError:
             # Parsing/response mismatch - retry without rotating key
             raise
-        except Exception as e:
+        except Exception:
             self.rotate_key()
             raise
 
@@ -595,7 +544,7 @@ class Gemini(Base):
 
         # Check again after retry attempt (error may have been detected during retries)
         if self._fatal_error_detected:
-            print(f"Batch translation aborted: fatal error detected.")
+            print("Batch translation aborted: fatal error detected.")
             return [self.TRANSLATION_ERROR_MARKER] * batch_size
 
         if result:
@@ -610,8 +559,8 @@ class Gemini(Base):
 
         # Fallback to one-by-one translation (only for non-fatal errors)
         print(
-            f"Batch translation failed after all retry attempts. "
-            f"Falling back to one-by-one translation."
+            "Batch translation failed after all retry attempts. "
+            "Falling back to one-by-one translation."
         )
 
         # Always return the expected number of items

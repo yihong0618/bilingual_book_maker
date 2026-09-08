@@ -310,7 +310,7 @@ def test_openai_translate_epub_ja_prompt_json(test_book_dir, tmpdir):
             "--language",
             "ja",
             "--prompt",
-            "prompt_template_sample.json",
+            "prompt_template.json",
             "--model_list",
             "gpt-4o-mini",
         ],
