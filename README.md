@@ -97,9 +97,18 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   OpenAI's own API, and `--model` for `gpt-5.6-luna`.
 - Or translate through `--provider`: `bbm_providers.example.json` has an
   entry for each vendor below (Gemini, Qwen, xAI, Groq, OrcaRouter, Ollama,
-  LiteLLM, DeepSeek, SiliconFlow, OpenRouter). Copy it to
+  LiteLLM, DeepSeek, SiliconFlow, OpenRouter, Atlas Cloud). Copy it to
   `bbm_providers.json`, set the key in it, and `--provider gemini` uses the
   Gemini API from it.
+
+  Atlas Cloud uses its OpenAI-compatible endpoint and a dedicated environment
+  variable, so it does not affect the default provider:
+
+  ```shell
+  export ATLASCLOUD_API_KEY=your-key
+  python3 make_book.py --book_name test_books/animal_farm.epub \
+    --provider atlascloud --test
+  ```
 - `--use_context session` translates in session mode; the history compacts
   at 8k by default (`--context-compact-at` overrides).
 - The old preset names and key flags still work, see

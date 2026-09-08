@@ -62,6 +62,15 @@
       "default_models": ["anthropic/claude-haiku-4.5"],
       "env_key": "OPENROUTER_API_KEY"
     },
+    "atlascloud": {
+      "api_style": "openai",
+      "base_url": "https://api.atlascloud.ai/v1",
+      "default_models": ["openai/gpt-5.6-luna"],
+      "env_key": "ATLASCLOUD_API_KEY",
+      "prices": {
+        "openai/gpt-5.6-luna": {"input": 0.2, "output": 1.2, "cached_input": 0.02}
+      }
+    },
     "ollama": {
       "api_style": "openai",
       "base_url": "http://localhost:11434/v1",
