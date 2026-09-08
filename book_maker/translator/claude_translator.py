@@ -326,11 +326,12 @@ class Claude(Base):
         """The user message for one unit.
 
         Deterministic for a given text, which is what lets session mode store
-        exactly what it sent without threading the string around — the marker
-        preamble included, since it is a function of the text too.
+        exactly what it sent without threading the string around — the
+        functional preambles included, since they are a function of the text
+        too.
         """
         return self._fold_standing_instructions(
-            self._marker_preamble(text)
+            self._functional_preamble(text)
             + self.prompt_template.format(
                 # `{crlf}` is documented for `--prompt` and was filled on the
                 # openai and codex routes only; here the same template raised

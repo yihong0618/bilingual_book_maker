@@ -812,7 +812,8 @@ class ChatGPTAPI(Base):
 
         Deterministic for a given (text, glossary), which is what lets session
         mode store exactly what it sent without threading the string around —
-        the marker preamble included, since it is a function of the text too.
+        the functional preambles included, since they are a function of the
+        text too.
 
         Pinned terms belong to *this* unit, so they go in the fresh tail
         message rather than the system prompt: a block that varies per unit
@@ -820,7 +821,7 @@ class ChatGPTAPI(Base):
         every request. Once this message is frozen into the history it stops
         varying, so it is stable there.
         """
-        content = self._marker_preamble(text) + self.prompt_template.format(
+        content = self._functional_preamble(text) + self.prompt_template.format(
             text=text, language=self.language, crlf="\n"
         )
         block = self.glossary.prompt_block(text) if self.glossary else ""
@@ -1320,7 +1321,7 @@ class ChatGPTAPI(Base):
         # target language stay the last thing the model reads.
         glossary_block = self.glossary.prompt_block(texts_json) if self.glossary else ""
         content = (f"{glossary_block}\n\n" if glossary_block else "") + (
-            f"{self._marker_preamble(texts_json)}{user_prompt}\n\n"
+            f"{self._functional_preamble(texts_json, batched=True)}{user_prompt}\n\n"
             f"Return a JSON object whose '{field}' contains EXACTLY "
             f"{plist_len} objects, one per paragraph. Each object has "
             f"exactly two fields: 'id', and '{item_field}'. Return "

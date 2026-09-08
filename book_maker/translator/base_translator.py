@@ -23,6 +23,20 @@ from ..structured import (
 # Special delimiter for batch translation - UUID-based token unlikely to appear in any text
 BATCH_DELIMITER = "\n\n@@\n\n"
 
+# Inline markup a single-line unit can carry: an html/xml tag, and the
+# markdown forms the markdown loader hands over verbatim. Deliberately the
+# unambiguous ones — a bare `*` or `_` is punctuation as often as it is
+# emphasis, and the cost of guessing wrong is a functional instruction on a
+# request that has nothing to apply it to. Anything with a line break in it
+# is caught by `_carries_structure` before this is consulted.
+INLINE_MARKUP_RE = re.compile(
+    r"<[A-Za-z/!?][^>]*>"  # an html/xml tag
+    r"|\[[^\]\n]+\]\([^)\n]*\)"  # a markdown link
+    r"|`[^`\n]+`"  # a code span
+    r"|\*\*[^*\n]+\*\*"  # bold
+    r"|__[^_\n]+__"  # bold, underscore form
+)
+
 # `PROMPT_SECTION_SLOTS` for a route that builds no prompt at all: the fixed
 # MT engines, the translation-only models, and the custom endpoint, which are
 # handed text and nothing else. `--prompt` has nowhere to go on these, and the
@@ -463,6 +477,21 @@ class Base(ABC):
         "translation. Never translate a token, and never change its spelling."
     )
 
+    # Said only to requests whose payload has a structure to lose: a unit
+    # carrying inline markup or markers, a body with more than one line or
+    # paragraph in it, and every batched request (delimiter-joined or JSON,
+    # where the shape of the payload *is* the alignment). A plain single
+    # paragraph has no structure to keep, and telling a model to preserve one
+    # there invites it to invent headings and line breaks that were never
+    # sent. Functional, so it is not the operator's to override: it rides in
+    # front of a `--prompt` user template rather than inside it, the same way
+    # the marker contract does, and neither is named by the adoption line the
+    # CLI prints — what `--prompt` did with the operator's own sections is
+    # what that line reports.
+    STRUCTURE_INSTRUCTION = (
+        "Keep the paragraph structure and any inline markup exactly as it is given."
+    )
+
     # Where each `--prompt` section lands on this route:
     #   "native"   — the request has a slot of its own for it
     #   "appended" — no slot, so the text rides in what the route does send
@@ -614,9 +643,9 @@ class Base(ABC):
         and every request then repeats verbatim. Nothing per-request may go
         here: a system message that changes between requests moves the
         prefix session mode caches, and every later request re-reads the
-        whole accumulated history at full input price. The marker contract
-        is exactly such a per-request thing — it rides in the user message,
-        see `_marker_preamble`.
+        whole accumulated history at full input price. The marker and
+        structure contracts are exactly such per-request things — they ride
+        in the user message, see `_functional_preamble`.
         """
         note = self._source_language_note()
         if not note:
@@ -661,6 +690,45 @@ class Base(ABC):
         if not self._carries_markers(request_text):
             return ""
         return f"{self.MARKER_INSTRUCTION}\n\n"
+
+    @classmethod
+    def _carries_structure(cls, text, batched=False):
+        """Whether this payload has a structure the reply has to reproduce.
+
+        Batched requests always do: many units travel as one body, and the
+        delimiters or JSON that separate them are the only thing that lets
+        the pieces be handed back to the right paragraphs. Otherwise it is a
+        property of the text — more than one line, a marker, or inline
+        markup (an html tag, or the markdown the markdown loader hands over
+        verbatim). One plain paragraph of prose has nothing to preserve.
+        """
+        text = (text or "").strip()
+        if not text:
+            return False
+        if batched or "\n" in text:
+            return True
+        return cls._carries_markers(text) or bool(INLINE_MARKUP_RE.search(text))
+
+    def _structure_preamble(self, request_text, batched=False):
+        """The structure contract as a user-message prefix, or "".
+
+        In the user turn for the reason the marker contract is: it is decided
+        per request, and a system message that changes between requests moves
+        the prefix session mode caches.
+        """
+        if not self._carries_structure(request_text, batched):
+            return ""
+        return f"{self.STRUCTURE_INSTRUCTION}\n\n"
+
+    def _functional_preamble(self, request_text, batched=False):
+        """Every conditional functional prompt this request earns, in order.
+
+        The one place a route asks for them, so a new contract is added here
+        rather than at each site that assembles a user turn.
+        """
+        return self._marker_preamble(request_text) + self._structure_preamble(
+            request_text, batched
+        )
 
     def warn_if_extras_refused(self, error):
         """Say so when a request carrying the run's extras was refused.

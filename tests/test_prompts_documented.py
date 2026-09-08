@@ -78,7 +78,9 @@ def _batch_tail() -> str:
     route.context_flag = False
     route.source_language = None
     content = route._create_structured_batch_messages(["one", "two"])[-1]["content"]
-    return content.split("\n\n", 1)[1]
+    # the last paragraph of the turn: the functional preambles are in front of
+    # the payload, and the shape instruction is what follows it
+    return content.split("\n\n")[-1]
 
 
 def _compact(*sections: str) -> str:
@@ -140,6 +142,13 @@ EXPECTED = {
         "The text contains placeholders formatting as ⟦code1⟧. Reproduce "
         "every one of them exactly as given, at the place it belongs in your "
         "translation. Never translate a token, and never change its spelling.",
+    ),
+    # Said only where the payload has a structure to lose — a marked-up or
+    # multi-paragraph unit, or any batched request. Functional, so `--prompt`
+    # neither supplies it nor suppresses it.
+    "structure instruction": (
+        Base.STRUCTURE_INSTRUCTION,
+        "Keep the paragraph structure and any inline markup exactly as it is given.",
     ),
     # The floor rung: what an endpoint that honours no schema field reads.
     "json-only instruction": (
