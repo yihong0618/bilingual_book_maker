@@ -20,6 +20,7 @@ import ast
 import logging
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from tenacity import stop_never
@@ -28,6 +29,8 @@ from book_maker.loader.helper import (
     FATAL_ERROR_NAMES,
     RETRY_WAIT_CAP,
     EPUBBookLoaderHelper,
+    _accepts_context,
+    _is_retryable,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -81,6 +84,74 @@ class TestItWaitsOutWhatMightClear:
 
     def test_there_is_no_attempt_cap_at_all(self):
         assert EPUBBookLoaderHelper.translate_with_backoff.retry.stop is stop_never
+
+
+class TestTheCallMatchesTheRoutesSignature:
+    """The fixed MT engines take the text and nothing else —
+    `DeepLFree.translate(self, text)`. Handing them a second positional was a
+    TypeError on the first paragraph, and under a retry that never gives up a
+    deterministic TypeError is an infinite loop rather than a failed run."""
+
+    class TextOnly:
+        def __init__(self):
+            self.seen = []
+
+        def translate(self, text):
+            self.seen.append(text)
+            return f"译{text}"
+
+    def test_a_text_only_route_is_called_with_the_text_alone(self):
+        model = self.TextOnly()
+        assert _helper(model).translate_with_backoff("one", True) == "译one"
+        assert model.seen == ["one"]
+
+    def test_the_real_route_that_reproduces_it(self):
+        from book_maker.translator.deepl_free_translator import DeepLFree
+
+        route = DeepLFree.__new__(DeepLFree)
+        assert _accepts_context(route.translate) is False
+
+    def test_a_route_that_takes_context_still_gets_it(self):
+        class TakesContext:
+            def __init__(self):
+                self.seen = []
+
+            def translate(self, text, context_flag=False):
+                self.seen.append((text, context_flag))
+                return "译"
+
+        model = TakesContext()
+        _helper(model).translate_with_backoff("one", True)
+        assert model.seen == [("one", True)]
+
+    @pytest.mark.parametrize("callable_", [Mock(), None])
+    def test_an_unreadable_signature_keeps_the_old_behaviour(self, callable_):
+        # a Mock, and a route with no `translate` at all — one that only ever
+        # goes through `translate_list`. Assume it takes what every LLM route
+        # takes, which is what this call did unconditionally before.
+        assert _accepts_context(callable_) is True
+
+    def test_a_wrong_arity_call_raises_at_once_instead_of_looping(self):
+        class Lying:
+            """Says it takes context, then refuses it. The shape the bug had."""
+
+            calls = 0
+
+            def translate(self, text, context_flag=False):
+                type(self).calls += 1
+                raise TypeError("translate() takes 2 positional arguments but 3 given")
+
+        with pytest.raises(TypeError):
+            _helper(Lying()).translate_with_backoff("one")
+        assert Lying.calls == 1
+
+    def test_a_type_error_is_never_waited_out(self):
+        assert _is_retryable(TypeError("wrong arity")) is False
+
+    def test_a_value_error_still_is(self):
+        # reply parsing raises these on an answer the next attempt may get
+        # right, so the never-retry set stays narrow
+        assert _is_retryable(ValueError("could not parse the reply")) is True
 
 
 class TestItGivesUpOnlyOnWhatWillNotClear:

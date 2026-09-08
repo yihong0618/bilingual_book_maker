@@ -1,3 +1,4 @@
+import inspect
 import posixpath
 import re
 import zipfile
@@ -43,10 +44,39 @@ FATAL_ERROR_NAMES = frozenset(
 )
 
 
+# Failures that are ours, not the provider's, and that the next attempt would
+# reproduce exactly. A `TypeError` here is this process calling `translate`
+# with an argument list the route does not have — patient retrying of that is
+# an infinite loop, not tolerance. Deliberately narrow: `ValueError` is *not*
+# in here, because reply parsing raises those on an answer the next attempt
+# may well get right. KeyboardInterrupt and SystemExit are never swallowed —
+# Ctrl-C during an hours-long wait has to stop the run.
+FATAL_ERROR_TYPES = (TypeError, KeyboardInterrupt, SystemExit)
+
+
+def _accepts_context(translate):
+    """Whether a route's `translate` takes anything besides the text.
+
+    `inspect.signature` of the bound method, so `self` is already out of the
+    count. A signature that cannot be read — a C callable, a test double, a
+    route with no `translate` at all — is assumed to take it, which is what
+    every LLM route does and what this call did unconditionally before.
+    """
+    try:
+        parameters = list(inspect.signature(translate).parameters.values())
+    except (TypeError, ValueError):
+        return True
+    if any(p.kind is p.VAR_POSITIONAL for p in parameters):
+        return True
+    positional = [
+        p for p in parameters if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+    ]
+    return len(positional) > 1
+
+
 def _is_retryable(error):
     """Whether waiting could plausibly change the answer."""
-    if isinstance(error, (KeyboardInterrupt, SystemExit)):
-        # Never swallowed: Ctrl-C on an hours-long wait has to stop the run.
+    if isinstance(error, FATAL_ERROR_TYPES):
         return False
     return type(error).__name__ not in FATAL_ERROR_NAMES
 
@@ -394,6 +424,19 @@ class EPUBBookLoaderHelper:
         self.accumulated_num = accumulated_num
         self.translation_style = translation_style
         self.context_flag = context_flag
+        # Asked once, here, because the answer is a property of the route and
+        # cannot change during a run — and because getting it wrong is not
+        # survivable: this call used to hand a second positional to every
+        # route, and the fixed MT engines (`DeepLFree.translate(self, text)`
+        # and the rest) answered TypeError on the first paragraph. A
+        # deterministic TypeError under a retry that never gives up is an
+        # infinite loop, so `_is_retryable` refuses that class too.
+        # `getattr`, because a route (or a test double) that only ever goes
+        # through `translate_list` need not have a `translate` at all, and
+        # asking about one that is not there must not fail construction.
+        self.translate_takes_context = _accepts_context(
+            getattr(translate_model, "translate", None)
+        )
         # The loader hands over the tag it settled on; run through the same
         # rule anyway, so a caller that still passes prompt wording gets what
         # `lang=` accepts rather than a value a validator rejects.
@@ -457,7 +500,9 @@ class EPUBBookLoaderHelper:
         reraise=True,
     )
     def translate_with_backoff(self, text, context_flag=False):
-        return self.translate_model.translate(text, context_flag)
+        if self.translate_takes_context:
+            return self.translate_model.translate(text, context_flag)
+        return self.translate_model.translate(text)
 
     def deal_new(self, p, wait_p_list, single_translate=False):
         self.deal_old(wait_p_list, single_translate, self.context_flag)
