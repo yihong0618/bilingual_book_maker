@@ -57,11 +57,13 @@ _CJK_CHARS_PER_TOKEN = 1.7
 # each window.
 #
 # Chosen: 8192 — a hair above the old 8000, and for the same reason it was
-# 8000. This is the fewest-seams edge of the measured band, and it was the
-# cheapest budget outright in every measured-band model; the 9-25% it sits
-# over each book's own optimum is inside the don't-care zone. 8192 rather
-# than 8000 is owner preference, not a measurement — nothing in the data
-# separates them.
+# 8000: the fewest-seams edge of the measured band. Under the *old* budgets
+# nothing separated 8000 from the flat region on cost — the 9-25% it sat
+# over each book's own optimum was inside the don't-care zone. Under the
+# shipped halved B that is no longer true (the table below: 8192 measures
+# ~10% dearer than 4096), so the case for this number is continuity alone.
+# 8192 rather than 8000 is owner preference, not a measurement — nothing in
+# the data separates them.
 #
 # **Why this is a raise, and what the raise did not buy.** The 260907 ruling
 # first set C to 4096, reasoning that the halved grouping budget shipping
