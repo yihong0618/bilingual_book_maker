@@ -361,6 +361,71 @@ class Base(ABC):
             print(f"[yellow]ℹ glossary conflict — {conflict.describe()}[/yellow]")
         return self.glossary.to_lines()
 
+    # ---- session mode ------------------------------------------------------
+    # Only the routes that keep one growing history reach the four helpers
+    # below; they live here because the openai and anthropic routes wrote
+    # them identically, down to the lines they print.
+
+    # Compact attempts before giving up on a summary and starting clean. More
+    # than one so a transient error does not cost the accumulated context;
+    # bounded so a broken endpoint cannot grow the history forever.
+    COMPACT_ATTEMPTS = 3
+
+    def _save_session_context(self, text, t_text):
+        # Store what was *sent*, not the bare source. The next request replays
+        # this message verbatim, so any difference — the prompt template, say —
+        # would make the newest pair a cache miss, and the run would re-read a
+        # paragraph at full input price every request.
+        self._record_session_exchange(self._user_content(text), t_text)
+
+    def _record_session_exchange(self, user_content, reply_text):
+        """Append one exchange, given the strings the wire actually carried.
+
+        The structured batch path builds its user message itself, so it
+        cannot go through `_save_session_context` — and a batch recorded as N
+        synthetic pairs is a history that no longer matches what the endpoint
+        cached, which costs a full-price re-read of the whole prefix every
+        request.
+        """
+        self.session.append(user_content, reply_text)
+        if not self.session.should_compact(self._session_budget()):
+            return
+        if self.no_context_compact:
+            self._start_empty_window()
+        else:
+            self._compact_session()
+
+    def _start_empty_window(self):
+        """Roll over with no handoff report, because the user asked for none.
+
+        Continuity across the seam is what the report buys, and
+        `--no-context-compact` declines to buy it — so this is a plain reset,
+        not a cheaper summary.
+        """
+        self.session.reset(seed="")
+        if self.quiet:
+            return
+        print(
+            f"[bold cyan]— context window {self.session.windows}, started "
+            f"empty (--no-context-compact) —[/bold cyan]"
+        )
+
+    def _show_handoff(self, report):
+        """Print the report the next window will inherit.
+
+        `escape` is not optional: rich reads square brackets as markup, and
+        these reports genuinely contain things like "[PGA]", which would be
+        swallowed or raise on an unclosed tag.
+        """
+        if self.quiet:
+            # --quiet suppresses echoes like this one; warnings and errors
+            # still print.
+            return
+        print(
+            f"[bold cyan]— handoff report, window {report.window} —[/bold cyan]\n"
+            + escape(report.render())
+        )
+
     def set_request_extras(self, extra_body=None, extra_headers=None):
         """Fields and headers to add to every request this route makes.
 

@@ -23,7 +23,6 @@ from pathlib import Path
 from threading import Lock
 
 from rich import print
-from rich.markup import escape
 
 from ..codex_client import (
     CodexAppServer,
@@ -485,22 +484,6 @@ class Codex(Base):
         print(
             f"[bold cyan]— codex thread {self._window}, started empty "
             f"(--no-context-compact) —[/bold cyan]"
-        )
-
-    def _show_handoff(self, report):
-        """Print the report the next thread will be seeded with.
-
-        `escape` is not optional: rich reads square brackets as markup, and
-        these reports genuinely contain things like "[PGA]", which would be
-        swallowed or raise on an unclosed tag.
-        """
-        if self.quiet:
-            # --quiet suppresses echoes like this one; warnings and errors
-            # still print.
-            return
-        print(
-            f"[bold cyan]— handoff report, window {report.window} —[/bold cyan]\n"
-            + escape(report.render())
         )
 
     def _unit_text(self, text):

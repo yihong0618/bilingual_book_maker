@@ -3,7 +3,6 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from rich import print
-from rich.markup import escape
 from anthropic import (
     Anthropic,
     APIStatusError,
@@ -168,10 +167,6 @@ class Claude(Base):
     SUPPORTS_SESSION_CONTEXT = True
     SUPPORTS_PARALLEL_CONTEXT = True
     SUPPORTS_REQUEST_EXTRAS = True
-    # Compact attempts before giving up on a summary and starting clean. More
-    # than one so a transient error does not cost the accumulated context;
-    # bounded so a broken endpoint cannot grow the history forever.
-    COMPACT_ATTEMPTS = 3
 
     # Session-mode state, declared here so the window-mode path is well
     # defined on any instance — including the test fixtures that build one
@@ -448,23 +443,6 @@ class Claude(Base):
             return compact_budget_for(self.model)
         return self.context_compact_at
 
-    def _save_session_context(self, text, t_text):
-        # Store what was *sent*, not the bare source. The next request replays
-        # this message verbatim, so any difference — the prompt template, say —
-        # would make the newest pair a cache miss, and the run would re-read a
-        # paragraph at full input price every request.
-        self._record_session_exchange(self._user_content(text), t_text)
-
-    def _record_session_exchange(self, user_content, reply_text):
-        """Append one exchange, given the strings the wire actually carried."""
-        self.session.append(user_content, reply_text)
-        if not self.session.should_compact(self._session_budget()):
-            return
-        if self.no_context_compact:
-            self._start_empty_window()
-        else:
-            self._compact_session()
-
     def _compact_session(self):
         """Ask for a handoff report, then start the next window seeded with it.
 
@@ -569,37 +547,6 @@ class Claude(Base):
             # forever on a persistently failing endpoint.
             self._compact_failures = 0
             self.session.reset(seed="")
-
-    def _start_empty_window(self):
-        """Roll over with no handoff report, because the user asked for none.
-
-        Continuity across the seam is what the report buys, and
-        `--no-context-compact` declines to buy it — so this is a plain reset,
-        not a cheaper summary.
-        """
-        self.session.reset(seed="")
-        if self.quiet:
-            return
-        print(
-            f"[bold cyan]— context window {self.session.windows}, started "
-            f"empty (--no-context-compact) —[/bold cyan]"
-        )
-
-    def _show_handoff(self, report):
-        """Print the report the next window will inherit.
-
-        `escape` is not optional: rich reads square brackets as markup, and
-        these reports genuinely contain things like "[PGA]", which would be
-        swallowed or raise on an unclosed tag.
-        """
-        if self.quiet:
-            # --quiet suppresses echoes like this one; warnings and errors
-            # still print.
-            return
-        print(
-            f"[bold cyan]— handoff report, window {report.window} —[/bold cyan]\n"
-            + escape(report.render())
-        )
 
     def _chat_completion(self, prompt, model=None):
         """One question, one answer — the channel plan classification needs.
