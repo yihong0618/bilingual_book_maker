@@ -9,15 +9,16 @@ To tweak the prompt, use the `--prompt` parameter. The placeholders the `user` t
         {text}
         
 
-- If you need to set the `system` role content, you can use the following format: `--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'` or `--prompt prompt_template_sample.json`
+- If you need to set the `system` role content, you can use the following format: `--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'` or `--prompt prompt_template.json`
 
-        # prompt_template_sample.json
+        # prompt_template.json
         {
-            "system": "You are a professional translator.", 
-            "user": "Translate the given text to {language}. Be faithful or accurate in translation. Make the translation readable or intelligible. Be elegant or natural in translation. If the text cannot be translated, return the original text as is. Do not translate person's name. Do not add any additional text in the translation. The text to be translated is:\n{text}"
+            "system": "You are a professional book translator. Translate the given paragraphs into {language} and be accurate, faithful, and fluent. Return translated {language} text only.",
+            "user": "Translate the following into {language}. Text:{crlf}{crlf}{text}",
+            "style": ""
         }
 
-- A third key, `style`, is a standing instruction about how to write. It is said once where a window starts — with the system message on the API routes, with the thread instructions on codex — not repeated on every request.
+- A third key, `style`, is a standing instruction about how to write. It is said once where a window starts — with the system message on the API routes, with the thread instructions on codex — not repeated on every request. The shipped [`prompt_template.json`](../prompt_template.json) carries all three keys with `style` left empty: write your own voice in, or leave it blank.
 
 - `--prompt` reaches every LLM route, srt books included: there its sections sit on top of the subtitle loader's own prompt, section by section, and replacing the `user` template means saying yourself that the block number and timeline must come back unchanged.
 
@@ -49,7 +50,7 @@ You can also set the `user` and `system` role prompt by setting environment vari
 ```sh
 python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template_sample.txt
 # or
-python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template_sample.json
+python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template.json
 # or
 python3 make_book.py --book_name test_books/animal_farm.epub --prompt "Please translate \`{text}\` to {language}"
 ```

@@ -419,9 +419,9 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   - If you don't need to set the `system` role content, you can simply set it up like this: `--prompt "Translate {text} to {language}."` or `--prompt prompt_template_sample.txt` (example of a text file can be found at [./prompt_template_sample.txt](./prompt_template_sample.txt)).
 
-  - If you need to set the `system` role content, you can use the following format: `--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'` or `--prompt prompt_template_sample.json` (example of a JSON file can be found at [./prompt_template_sample.json](./prompt_template_sample.json)).
+  - If you need to set the `system` role content, you can use the following format: `--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'` or `--prompt prompt_template.json` (example of a JSON file can be found at [./prompt_template.json](./prompt_template.json)).
 
-  - A third key, `style`, is a standing instruction about how to write — register, tone, vocabulary. It is said **once where a window starts**, with the run's other standing instructions (the system message on the API routes, the thread instructions on codex), not repeated on every request. Samples carrying all three sections: [./prompt_sections_sample.json](./prompt_sections_sample.json) for a plain run, [./prompt_session_sample.json](./prompt_session_sample.json) for a session run.
+  - A third key, `style`, is a standing instruction about how to write — register, tone, vocabulary. It is said **once where a window starts**, with the run's other standing instructions (the system message on the API routes, the thread instructions on codex), not repeated on every request. The shipped [./prompt_template.json](./prompt_template.json) carries all three sections, `style` left empty: write your own voice in, or leave it blank.
 
   - `--prompt` works on every LLM route, and on srt books too — there its sections sit on top of the subtitle loader's own prompt, section by section. Replacing the `user` template on an srt book means saying yourself that the block number and the timeline must come back unchanged; the run warns about it. The fixed machine-translation routes (google, deepl, caiyun, tencent, qwen, customapi) send text and nothing else, so they carry no prompt at all and the run says so at start.
   
@@ -678,7 +678,7 @@ python3 make_book.py --book_name test_books/animal_farm.epub --plan-classify all
 # Tweaking the prompt
 python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template_sample.txt
 # or
-python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template_sample.json
+python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template.json
 # or
 python3 make_book.py --book_name test_books/animal_farm.epub --prompt "Please translate \`{text}\` to {language}"
 

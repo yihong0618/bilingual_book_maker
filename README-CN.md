@@ -384,9 +384,9 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
   - 如果您不需要设置 `system` 角色，可以这样：`--prompt "Translate {text} to {language}"` 或者 `--prompt prompt_template_sample.txt`（示例文本文件可以在 [./prompt_template_sample.txt](./prompt_template_sample.txt) 找到）。
 
-  - 如果您需要设置 `system` 角色，可以使用以下方式配置：`--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'`，或者 `--prompt prompt_template_sample.json`（示例 JSON 文件可以在 [./prompt_template_sample.json](./prompt_template_sample.json) 找到）。
+  - 如果您需要设置 `system` 角色，可以使用以下方式配置：`--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'`，或者 `--prompt prompt_template.json`（示例 JSON 文件可以在 [./prompt_template.json](./prompt_template.json) 找到）。
 
-  - 第三个键 `style` 是关于文风的常驻指令——语域、语气、用词——随**每个**请求发出。三个键齐全的示例：[./prompt_sections_sample.json](./prompt_sections_sample.json)（普通运行）、[./prompt_session_sample.json](./prompt_session_sample.json)（session 运行）。
+  - 第三个键 `style` 是关于文风的常驻指令——语域、语气、用词——只在**每个窗口开始时**随其他常驻指令发出一次（API 路由放在 system 消息里，codex 放在线程指令里），不会随每个请求重复。三个键齐全的示例：[./prompt_template.json](./prompt_template.json)，其中 `style` 留空——写入你自己的文风，或保持为空。
 
   - 你也可以用环境以下环境变量来配置 `system` 和 `user` 角色 prompt：`BBM_CHATGPTAPI_USER_MSG_TEMPLATE` 和 `BBM_CHATGPTAPI_SYS_MSG`。
   该参数可以是提示模板字符串，也可以是模板 `.txt` 文件的路径。
