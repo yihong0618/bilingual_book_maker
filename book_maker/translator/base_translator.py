@@ -830,12 +830,9 @@ class Base(ABC):
         Returns:
             Tuple of (batch_prompt, batch_sys_msg, batch_text)
         """
+        # Never called with fewer than two texts: `_do_batch_translate`, the
+        # only caller, answers those cases itself before it gets here.
         plist_len = len(text_list)
-        if plist_len == 0:
-            return None, None, None
-
-        if plist_len == 1:
-            return None, None, None  # Signal to use single translation
 
         # Build stripped texts list once
         stripped_texts = [str(t).strip() for t in text_list]
@@ -948,11 +945,10 @@ class Base(ABC):
             text_list, prompt_template, system_content, default_prompt
         )
 
-        # Detect which attribute names this translator uses
-        # ChatGPT uses prompt_template/system_content, Gemini uses prompt/prompt_sys_msg
-        prompt_attr = (
-            "prompt_template" if hasattr(self, "prompt_template") else "prompt"
-        )
+        # Detect which system-message attribute this translator uses:
+        # ChatGPT keeps `system_content`, Claude and Codex `prompt_sys_msg`.
+        # All three spell the user template `prompt_template`.
+        prompt_attr = "prompt_template"
         sys_msg_attr = (
             "system_content" if hasattr(self, "system_content") else "prompt_sys_msg"
         )

@@ -323,7 +323,6 @@ class EPUBBookLoader(BaseBookLoader):
         # that is stamped: deriving one from prose the tables do not know is
         # exactly the guess that flag exists to replace.
         self.language_tag = language_tag or language_code(language)
-        self.new_epub = epub.EpubBook()
         self.translate_model = model(
             key,
             language,
@@ -946,18 +945,12 @@ class EPUBBookLoader(BaseBookLoader):
         return fixed_toc
 
     def _extract_paragraph(self, p):
-        for p_exclude in self.exclude_translate_tags.split(","):
+        # Exclude content within specified tags from translation (e.g., code, pre)
+        for p_exclude in self._exclude_tags_tuple():
             # for issue #280
             if type(p) is NavigableString:
                 continue
             for pt in p.find_all(p_exclude):
-                pt.extract()
-        # Exclude content within specified tags from translation (e.g., code, pre)
-        exclude_tags_list = [t for t in self.exclude_translate_tags.split(",") if t]
-        for tag_name in exclude_tags_list:
-            if type(p) is NavigableString:
-                continue
-            for pt in p.find_all(tag_name):
                 pt.extract()
         return p
 
@@ -972,12 +965,7 @@ class EPUBBookLoader(BaseBookLoader):
         # Check if paragraph contains only excluded content tags
         temp_p = copy(p)
         # Remove excluded tags
-        exclude_tags_list = [t for t in self.exclude_translate_tags.split(",") if t]
-        for tag_name in exclude_tags_list:
-            for pt in temp_p.find_all(tag_name):
-                pt.extract()
-        # Also remove excluded translate tags
-        for tag_name in self.exclude_translate_tags.split(","):
+        for tag_name in self._exclude_tags_tuple():
             for pt in temp_p.find_all(tag_name):
                 pt.extract()
 
@@ -2607,7 +2595,7 @@ class EPUBBookLoader(BaseBookLoader):
             return
 
         # Check if paragraph has excluded content tags
-        exclude_tags_list = [t for t in self.exclude_translate_tags.split(",") if t]
+        exclude_tags_list = self._exclude_tags_tuple()
         has_code_tags = any(p.find(tag) for tag in exclude_tags_list)
 
         if not has_code_tags:
@@ -2857,19 +2845,12 @@ class EPUBBookLoader(BaseBookLoader):
                 print(f"translating {i}/{len(p_list)}")
             temp_p = copy(p)
 
-            for p_exclude in self.exclude_translate_tags.split(","):
+            # Exclude content tags (code, pre, etc.) from translation
+            for p_exclude in self._exclude_tags_tuple():
                 # for issue #280
                 if type(p) is NavigableString:
                     continue
                 for pt in temp_p.find_all(p_exclude):
-                    pt.extract()
-
-            # Also exclude content tags (code, pre, etc.)
-            exclude_tags_list = [t for t in self.exclude_translate_tags.split(",") if t]
-            for tag_name in exclude_tags_list:
-                if type(p) is NavigableString:
-                    continue
-                for pt in temp_p.find_all(tag_name):
                     pt.extract()
 
             if any(
@@ -3760,18 +3741,11 @@ class EPUBBookLoader(BaseBookLoader):
 
             temp_p = copy(p)
 
-            for p_exclude in self.exclude_translate_tags.split(","):
+            # Exclude content within specified tags from translation (e.g., code, pre)
+            for p_exclude in self._exclude_tags_tuple():
                 if isinstance(p, NavigableString):
                     continue
                 for pt in temp_p.find_all(p_exclude):
-                    pt.extract()
-
-            # Exclude content within specified tags from translation (e.g., code, pre)
-            exclude_tags_list = [t for t in self.exclude_translate_tags.split(",") if t]
-            for tag_name in exclude_tags_list:
-                if isinstance(p, NavigableString):
-                    continue
-                for pt in temp_p.find_all(tag_name):
                     pt.extract()
 
             if any(

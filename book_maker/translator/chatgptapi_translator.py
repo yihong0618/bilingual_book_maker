@@ -468,7 +468,6 @@ class ChatGPTAPI(Base):
         **kwargs,
     ) -> None:
         super().__init__(key, language)
-        self.key_len = len(key.split(","))
         api_base = api_base or self.DEFAULT_API_BASE
         self.openai_client = OpenAI(
             api_key=next(self.keys), base_url=api_base, **REQUEST_LIMITS
@@ -1292,12 +1291,6 @@ class ChatGPTAPI(Base):
         except Exception as e:
             print(f"Translation failed after retries: {redact(e)}")
             raise
-
-    def translate_and_split_lines(self, text):
-        result_str = self.translate(text, False)
-        lines = result_str.splitlines()
-        lines = [line.strip() for line in lines if line.strip() != ""]
-        return lines
 
     def translate_list(self, text_list):
         """
