@@ -45,7 +45,7 @@ import re
 _HEADING = re.compile(r"^ {0,3}##\s+(?P<name>.+?)\s*$")
 
 # The same line indented past markdown's limit: a code block by the spec, and
-# a mis-indented heading by every other reading. Refused when it names a
+# a misindented heading by every other reading. Refused when it names a
 # section this reader knows, so the instruction under it cannot go missing in
 # silence; left as content otherwise, because a `##` line inside a fenced
 # example is the operator's own text.

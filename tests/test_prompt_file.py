@@ -16,8 +16,8 @@ Three things this pins:
 
 import ast
 import json
+import re
 import sys
-import tomllib
 from pathlib import Path
 
 import pytest
@@ -132,7 +132,7 @@ class TestHeadingsAWriterActuallyProduces:
 
     def test_a_section_heading_indented_past_markdown_is_refused_by_name(self):
         # markdown reads four spaces as a code block, so this is not a
-        # heading — but it is unmistakably a mis-indented one, and losing the
+        # heading — but it is unmistakably a misindented one, and losing the
         # instruction under it in silence is the whole bug class here
         text = BLOCK.replace("## System Message", "    ## System Message")
         with pytest.raises(PromptFileError) as refused:
@@ -287,5 +287,10 @@ class TestThePackageIsGone:
             assert "promptdown" not in (ROOT / name).read_text(encoding="utf-8"), name
 
     def test_no_console_script_shadows_it(self):
-        scripts = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        assert set(scripts["project"]["scripts"]) == {"bbook_maker"}
+        # read the [project.scripts] table textually: tomllib is stdlib only
+        # from 3.11, and this project still supports 3.10
+        text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        match = re.search(r"^\[project\.scripts\]\n(.*?)(?:^\[|\Z)", text, re.M | re.S)
+        assert match, "pyproject.toml has no [project.scripts] table"
+        names = re.findall(r"^([\w-]+)\s*=", match.group(1), re.M)
+        assert names == ["bbook_maker"]

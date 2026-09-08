@@ -60,14 +60,14 @@ Then:
 ```shell
 cp bbm_providers.example.json bbm_providers.json
 # edit base_url, default_models and env_key in ./bbm_providers.json
-python3 make_book.py --book_name test_books/animal_farm.epub --provider openai --test
+python3 make_book.py --book_name test_books/animal_farm.epub --provider openai --test --use_context session
 ```
 
 You can also pass the key on the command line:
 
 ```shell
 python3 make_book.py --book_name test_books/animal_farm.epub \
-  --key sk-... --model gpt-5.6-luna --api_base https://api.openai.com/v1 --test
+  --key sk-... --model gpt-5.6-luna --api_base https://api.openai.com/v1 --test --use_context session
 ```
 
 To spend a [Codex](https://developers.openai.com/codex/cli) subscription:
@@ -101,7 +101,11 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   `bbm_providers.json`, set the key in it, and `--provider gemini` uses the
   Gemini API from it.
 - `--use_context session` translates in session mode; the history compacts
-  at 8k by default (`--context-compact-at` overrides).
+  at 8k by default (`--context-compact-at` overrides). It keeps one cached
+  history for consistency and learns a glossary from its own handoff
+  reports (`--glossary-auto`), so recurring names stay stable across the
+  book — the recommended mode on OpenAI-compatible endpoints, and what the
+  examples below use.
 - The old preset names and key flags still work, see
   [Migrating from the old flags](./docs/migration.md).
 
@@ -171,7 +175,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 * [xAI](https://x.ai)
 
   ```shell
-  python3 make_book.py --book_name test_books/animal_farm.epub --api_format xai --key ${xai_key} --model grok-4.3
+  python3 make_book.py --book_name test_books/animal_farm.epub --api_format xai --key ${xai_key} --model grok-4.3 --use_context session
   ```
 
 * [OrcaRouter](https://www.orcarouter.ai)
@@ -182,7 +186,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   `--provider orcarouter` reaches the same place.
 
   ```shell
-  python3 make_book.py --book_name test_books/animal_farm.epub --model orcarouter --key ${orcarouter_key}
+  python3 make_book.py --book_name test_books/animal_farm.epub --model orcarouter --key ${orcarouter_key} --use_context session
   ```
 
   To name one model instead: `--provider orcarouter --model <id>`.
@@ -193,7 +197,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   If the ollama server is not local, point `--api_base http://x.x.x.x:port/v1` at it.
 
   ```shell
-  python3 make_book.py --book_name test_books/animal_farm.epub --api_base http://localhost:11434/v1 --model ${ollama_model_name}
+  python3 make_book.py --book_name test_books/animal_farm.epub --api_base http://localhost:11434/v1 --model ${ollama_model_name} --use_context session
   ```
 
 * [groq](https://console.groq.com/keys)
@@ -202,7 +206,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   id from [Supported Models](https://console.groq.com/docs/models).
 
   ```shell
-  python3 make_book.py --book_name test_books/animal_farm.epub --api_format groq --key [your_key] --model llama-3.3-70b-versatile
+  python3 make_book.py --book_name test_books/animal_farm.epub --api_format groq --key [your_key] --model llama-3.3-70b-versatile --use_context session
   ```
 
 * [LiteLLM](https://docs.litellm.ai/docs/simple_proxy)
@@ -212,7 +216,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   the proxy's own, on this machine; elsewhere it is `--api_base`.
 
   ```shell
-  python3 make_book.py --book_name test_books/animal_farm.epub --api_format litellm --model ${name_in_your_litellm_config}
+  python3 make_book.py --book_name test_books/animal_farm.epub --api_format litellm --model ${name_in_your_litellm_config} --use_context session
   ```
 
 * [Codex](https://developers.openai.com/codex/cli)
@@ -277,12 +281,12 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   `--model` names a model at that provider; without it the first of `default_models` is used.
 
   ```shell
-  python3 make_book.py --provider deepseek --key sk-xxx --book_name test_books/animal_farm.epub
+  python3 make_book.py --provider deepseek --key sk-xxx --book_name test_books/animal_farm.epub --use_context session
 
   export BBM_DEEPSEEK_API_KEY=sk-xxx
-  python3 make_book.py --provider deepseek --book_name test_books/animal_farm.epub
+  python3 make_book.py --provider deepseek --book_name test_books/animal_farm.epub --use_context session
 
-  python3 make_book.py --provider deepseek --key sk-xxx --model deepseek-reasoner --book_name test_books/animal_farm.epub
+  python3 make_book.py --provider deepseek --key sk-xxx --model deepseek-reasoner --book_name test_books/animal_farm.epub --use_context session
   ```
 
 ## Usage
@@ -623,13 +627,13 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 ```shell
 # Test quickly
-python3 make_book.py --book_name test_books/animal_farm.epub --key ${openai_key} --test --language zh-hans
+python3 make_book.py --book_name test_books/animal_farm.epub --key ${openai_key} --test --language zh-hans --use_context session
 
 # Test quickly for src
 python3 make_book.py --book_name test_books/Lex_Fridman_episode_322.srt --key ${openai_key} --test
 
 # Or translate the whole book
-python3 make_book.py --book_name test_books/animal_farm.epub --key ${openai_key} --language zh-hans
+python3 make_book.py --book_name test_books/animal_farm.epub --key ${openai_key} --language zh-hans --use_context session
 
 # Gemini
 python3 make_book.py --book_name test_books/animal_farm.epub --api_format gemini --key ${gemini_key} --model gemini-flash-latest
@@ -647,7 +651,7 @@ export OPENAI_API_KEY=${your_api_key}
 python3 make_book.py --book_name test_books/animal_farm.epub --model gpt-4o --use_context --language ja
 
 # Any OpenAI-compatible endpoint: base URL, key, and the model id it uses
-python3 make_book.py --book_name test_books/animal_farm.epub --api_base "https://api.lingyiwanwu.com/v1" --key ${key} --model yi-34b-chat-0205
+python3 make_book.py --book_name test_books/animal_farm.epub --api_base "https://api.lingyiwanwu.com/v1" --key ${key} --model yi-34b-chat-0205 --use_context session
 
 # DeepL, to Japanese
 python3 make_book.py --book_name test_books/animal_farm.epub --api_format deepl --key ${deepl_key} --language ja
@@ -659,7 +663,7 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model claude-sonn
 python3 make_book.py --book_name test_books/animal_farm.epub --api_format customapi --api_base ${custom_api} --language ja
 
 # A provider entry (e.g. DeepSeek); the key comes from the entry's env_key
-python3 make_book.py --book_name test_books/animal_farm.epub --provider deepseek --language ja
+python3 make_book.py --book_name test_books/animal_farm.epub --provider deepseek --language ja --use_context session
 
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p
@@ -696,19 +700,19 @@ export BBM_CAIYUN_API_KEY=${your_api_key}
 More understandable example
 
 ```shell
-python3 make_book.py --book_name 'animal_farm.epub' --key sk-XXXXX --api_base 'https://xxxxx/v1'
+python3 make_book.py --book_name 'animal_farm.epub' --key sk-XXXXX --api_base 'https://xxxxx/v1' --use_context session
 
 # Or python3 is not in your PATH
-python make_book.py --book_name 'animal_farm.epub' --key sk-XXXXX --api_base 'https://xxxxx/v1'
+python make_book.py --book_name 'animal_farm.epub' --key sk-XXXXX --api_base 'https://xxxxx/v1' --use_context session
 ```
 
 Microsoft Azure Endpoints
 
 ```shell
-python3 make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'https://example-endpoint.openai.azure.com/openai/v1' --model 'deployment-name'
+python3 make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'https://example-endpoint.openai.azure.com/openai/v1' --model 'deployment-name' --use_context session
 
 # Or python3 is not in your PATH
-python make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'https://example-endpoint.openai.azure.com/openai/v1' --model 'deployment-name'
+python make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'https://example-endpoint.openai.azure.com/openai/v1' --model 'deployment-name' --use_context session
 ```
 
 ## Docker

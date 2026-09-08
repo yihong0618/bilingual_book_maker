@@ -55,14 +55,14 @@ pip install -r requirements.txt      # 或：pip install -U bbook_maker
 ```shell
 cp bbm_providers.example.json bbm_providers.json
 # 在 ./bbm_providers.json 改 base_url、default_models、env_key
-python3 make_book.py --book_name test_books/animal_farm.epub --provider openai --test
+python3 make_book.py --book_name test_books/animal_farm.epub --provider openai --test --use_context session
 ```
 
 也可直接在CLI里传 key：
 
 ```shell
 python3 make_book.py --book_name test_books/animal_farm.epub \
-  --key sk-... --model gpt-5.6-luna --api_base https://api.openai.com/v1 --test
+  --key sk-... --model gpt-5.6-luna --api_base https://api.openai.com/v1 --test --use_context session
 ```
 
 使用[Codex](https://developers.openai.com/codex/cli)订阅：
@@ -93,7 +93,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 - 或使用`--provider`进行翻译: `bbm_providers.example.json` 里预设了以下厂家（Gemini、Qwen、xAI、Groq、OrcaRouter、Ollama、LiteLLM、DeepSeek、
   SiliconFlow、OpenRouter）：复制为 `bbm_providers.json`，并修改其中的key，
   例如`--provider gemini` 就是使用其中 Gemini 的api。
-- `--use_context session` 使用会话模式翻译；历史默认在 8k 时压缩（`--context-compact-at` 可改）。
+- `--use_context session` 使用会话模式翻译；历史默认在 8k 时压缩（`--context-compact-at` 可改）。它维护一份缓存的历史以保持前后一致，并自动从交接报告中积累术语表（`--glossary-auto`），使人名、术语全书统一——是 OpenAI 兼容接口的推荐用法，下方示例均已带上。
 - 旧的预设名和 key 参数仍然可用，见 [从旧参数迁移](./docs/migration.md)。
 
 ## 支持的翻译服务
@@ -160,7 +160,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 * [xAI](https://x.ai)
 
   ```shell
-  python3 make_book.py --book_name test_books/animal_farm.epub --api_format xai --key ${xai_key} --model grok-4.3
+  python3 make_book.py --book_name test_books/animal_farm.epub --api_format xai --key ${xai_key} --model grok-4.3 --use_context session
   ```
 
 * [OrcaRouter](https://www.orcarouter.ai)
@@ -170,7 +170,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   `--provider orcarouter` 指向同一处。
 
   ```shell
-  python3 make_book.py --book_name test_books/animal_farm.epub --model orcarouter --key ${orcarouter_key}
+  python3 make_book.py --book_name test_books/animal_farm.epub --model orcarouter --key ${orcarouter_key} --use_context session
   ```
 
   若要指定具体模型：`--provider orcarouter --model <模型 id>`。
@@ -181,7 +181,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   如果 ollama server 不运行在本地，使用 `--api_base http://x.x.x.x:port/v1` 指向 ollama server 地址
 
   ```shell
-  python3 make_book.py --book_name test_books/animal_farm.epub --api_base http://localhost:11434/v1 --model ${ollama_model_name}
+  python3 make_book.py --book_name test_books/animal_farm.epub --api_base http://localhost:11434/v1 --model ${ollama_model_name} --use_context session
   ```
 
 * [Groq](https://console.groq.com/keys)
@@ -190,7 +190,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   [Supported Models](https://console.groq.com/docs/models)。
 
   ```shell
-  python3 make_book.py --book_name test_books/animal_farm.epub --api_format groq --key [your_key] --model llama-3.3-70b-versatile
+  python3 make_book.py --book_name test_books/animal_farm.epub --api_format groq --key [your_key] --model llama-3.3-70b-versatile --use_context session
   ```
 
 * [LiteLLM](https://docs.litellm.ai/docs/simple_proxy)
@@ -199,7 +199,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   默认地址是本机上代理的默认端口，代理在别处就用 `--api_base` 指定。
 
   ```shell
-  python3 make_book.py --book_name test_books/animal_farm.epub --api_format litellm --model ${name_in_your_litellm_config}
+  python3 make_book.py --book_name test_books/animal_farm.epub --api_format litellm --model ${name_in_your_litellm_config} --use_context session
   ```
 
 * [Codex](https://developers.openai.com/codex/cli)
@@ -251,12 +251,12 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   `--model` 指定该 provider 下的模型；不写就用 `default_models` 的第一个。
 
   ```shell
-  python3 make_book.py --provider deepseek --key sk-xxx --book_name test_books/animal_farm.epub
+  python3 make_book.py --provider deepseek --key sk-xxx --book_name test_books/animal_farm.epub --use_context session
 
   export BBM_DEEPSEEK_API_KEY=sk-xxx
-  python3 make_book.py --provider deepseek --book_name test_books/animal_farm.epub
+  python3 make_book.py --provider deepseek --book_name test_books/animal_farm.epub --use_context session
 
-  python3 make_book.py --provider deepseek --key sk-xxx --model deepseek-reasoner --book_name test_books/animal_farm.epub
+  python3 make_book.py --provider deepseek --key sk-xxx --model deepseek-reasoner --book_name test_books/animal_farm.epub --use_context session
   ```
 
 ## 使用说明
@@ -553,10 +553,10 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 ```shell
 # 如果你想快速测一下
-python3 make_book.py --book_name test_books/animal_farm.epub --key ${openai_key} --test
+python3 make_book.py --book_name test_books/animal_farm.epub --key ${openai_key} --test --use_context session
 
 # 或翻译完整本书
-python3 make_book.py --book_name test_books/animal_farm.epub --key ${openai_key} --language zh-hans
+python3 make_book.py --book_name test_books/animal_farm.epub --key ${openai_key} --language zh-hans --use_context session
 
 # 用 Gemini 翻译整本书
 python3 make_book.py --book_name test_books/animal_farm.epub --api_format gemini --key ${gemini_key} --model gemini-flash-latest
@@ -574,7 +574,7 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model claude-sonn
 python3 make_book.py --book_name test_books/animal_farm.epub --api_format customapi --api_base ${custom_api} --language ja
 
 # 使用自定义 provider（如 DeepSeek）
-python3 make_book.py --book_name test_books/animal_farm.epub --provider deepseek --language ja
+python3 make_book.py --book_name test_books/animal_farm.epub --provider deepseek --language ja --use_context session
 
 # 在多个模型之间轮换
 python3 make_book.py --book_name test_books/animal_farm.epub --key ${openai_key} --model_list gpt-5-mini,gpt-4o-mini
@@ -606,10 +606,10 @@ export BBM_CAIYUN_API_KEY=${your_api_key}
 更加小白的示例
 
 ```shell
-python3 make_book.py --book_name 'animal_farm.epub' --key sk-XXXXX --api_base 'https://xxxxx/v1'
+python3 make_book.py --book_name 'animal_farm.epub' --key sk-XXXXX --api_base 'https://xxxxx/v1' --use_context session
 
 # 有可能你不需要 python3 而是python
-python make_book.py --book_name 'animal_farm.epub' --key sk-XXXXX --api_base 'https://xxxxx/v1'
+python make_book.py --book_name 'animal_farm.epub' --key sk-XXXXX --api_base 'https://xxxxx/v1' --use_context session
 ```
 
 [演示视频](https://www.bilibili.com/video/BV1XX4y1d75D/?t=0h07m08s)
@@ -618,10 +618,10 @@ python make_book.py --book_name 'animal_farm.epub' --key sk-XXXXX --api_base 'ht
 使用 Azure OpenAI service
 
 ```shell
-python3 make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'https://example-endpoint.openai.azure.com/openai/v1' --model 'deployment-name'
+python3 make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'https://example-endpoint.openai.azure.com/openai/v1' --model 'deployment-name' --use_context session
 
 # Or python3 is not in your PATH
-python make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'https://example-endpoint.openai.azure.com/openai/v1' --model 'deployment-name'
+python make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'https://example-endpoint.openai.azure.com/openai/v1' --model 'deployment-name' --use_context session
 ```
 
 ## 注意
