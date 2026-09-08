@@ -10,20 +10,21 @@ user has said to use it**. Do not lint before asking.
 - The `user` template must contain the literal placeholder `{text}`.
   `{language}` is optional.
 - `.txt` becomes the user template as-is, same `{text}` rule.
-- `.md` is parsed as PromptDown (pinned at 1.1.6), and only in its **block**
-  form: a `## Conversation` section whose turns open with `**User:**` on its
-  own line. The older `| Role | Content |` table form parses to an empty
-  conversation, and the load fails with an error naming the file and the
-  block form. The repo's own `prompt_md.prompt.md` sample is written in the
-  table form: a broken example, not a template to copy. Only the system (or
-  developer) message and the first user turn are read, so a `.md` prompt
-  cannot carry a `style`; put that in a `.json` file or in the system
-  message.
+- `.md` is read as the PromptDown **block** form by the repo's own parser
+  (no package involved): a `## System Message`, an optional `## Style`,
+  and a `## Conversation` whose turns open with `**User:**` on its own
+  line. The `| Role | Content |` table form is refused with an error
+  naming the file and the block form. The repo's `prompt_md.prompt.md`
+  sample is a valid block-form template to copy. `## Developer Message`
+  is accepted as another name for the system section.
+- Unknown `{placeholders}` in the `user` template are refused at parse
+  time, before anything is paid; `{text}`, `{language}` and `{crlf}` are
+  the full set. A literal brace is `{{` / `}}`.
 
 ```markdown
 # Translation Prompt
 
-## Developer Message
+## System Message
 
 You are a professional translator. Keep the register of the original.
 
@@ -54,6 +55,9 @@ local-only; never edit the project's tracked `.gitignore` for this.
 
 ## Where the register goes
 
-A style instruction belongs in the `system` message, stated once, not
-repeated per paragraph in `user`. The `user` template is sent for every unit
-— every word in it is paid for on every request of the book.
+A style instruction belongs in the `style` section (or the `system`
+message), stated once where a window starts — the run places it with the
+standing instructions itself, never repeated per request. The `user`
+template is sent for every unit — every word in it is paid for on every
+request of the book. A user-written style also replaces the model's own
+style notes in session handoffs.

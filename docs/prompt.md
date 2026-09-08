@@ -23,15 +23,13 @@ To tweak the prompt, use the `--prompt` parameter. The placeholders the `user` t
 
 You can also set the `user` and `system` role prompt by setting environment variables: `BBM_CHATGPTAPI_USER_MSG_TEMPLATE` and `BBM_CHATGPTAPI_SYS_MSG` (gemini reads `BBM_GEMINIAPI_USER_MSG_TEMPLATE` and `BBM_GEMINIAPI_SYS_MSG`). `--prompt` outranks all of them. `OPENAI_API_SYS_MSG` is still read as a fallback but is deprecated — it used to outrank `--prompt`'s own system message.
 
-- A `.md` file is read as the [PromptDown](https://github.com/btfranklin/promptdown) **block** form. The format is his; the reader is this repo's own, so no extra package is installed. `--prompt prompt_md.prompt.md`
+- A `.md` file is read as the [PromptDown](https://github.com/btfranklin/promptdown) **block** form. The format is theirs; the reader is this repo's own, so no extra package is installed. `--prompt prompt_md.prompt.md`
 
         # Translation Prompt
 
         ## System Message
 
         You are a professional translator who specializes in accurate translations.
-
-        ## Style
 
         ## Conversation
 
