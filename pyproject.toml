@@ -15,7 +15,6 @@ classifiers = [
 ]
 dependencies = [
     "anthropic",
-    "backoff",
     "bs4",
     "ebooklib",
     # the gemini route's SDK; the groq, xai and litellm routes need none of

@@ -4,7 +4,6 @@ import zipfile
 
 from rich import print
 from dataclasses import dataclass
-import backoff
 import logging
 import uuid
 from copy import copy
@@ -12,6 +11,7 @@ from copy import copy
 from bs4.element import Tag
 from ebooklib import epub
 from lxml import etree
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from book_maker.translator.base_translator import BatchMismatch
 from book_maker.utils import language_code
@@ -388,12 +388,21 @@ class EPUBBookLoaderHelper:
         # written, which the early returns above cover
         return new_p
 
-    @backoff.on_exception(
-        backoff.expo,
-        Exception,
-        on_backoff=lambda details: logger.warning(f"retry backoff: {details}"),
-        on_giveup=lambda details: logger.warning(f"retry abort: {details}"),
-        jitter=None,
+    # Three attempts, like every other retry in this codebase. It used to be
+    # `backoff.on_exception(backoff.expo, Exception)` with no `max_tries` and
+    # no `max_time` — the only unbounded retry here — so a permanent failure
+    # on this path (a rejected key, a model that does not exist) retried
+    # forever with doubling waits, and the run neither finished nor stopped.
+    # `reraise` so the caller still sees the endpoint's own error rather than
+    # tenacity's wrapper.
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=60),
+        before_sleep=lambda state: logger.warning(
+            f"retry backoff: attempt {state.attempt_number} failed with "
+            f"{state.outcome.exception()}"
+        ),
+        reraise=True,
     )
     def translate_with_backoff(self, text, context_flag=False):
         return self.translate_model.translate(text, context_flag)
