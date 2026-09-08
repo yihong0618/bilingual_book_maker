@@ -119,6 +119,7 @@ PROMPT_ENV_MAP = {
     "system": "BBM_GEMINIAPI_SYS_MSG",
 }
 
+
 class TranslationResponse(typing.TypedDict):
     """Schema for batch translation response."""
 

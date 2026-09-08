@@ -144,4 +144,3 @@ class TXTBookLoader(BaseBookLoader):
             f"{Path(self.txt_name).parent}/{Path(self.txt_name).stem}_bilingual_temp.txt",
             self.bilingual_temp_result,
         )
-

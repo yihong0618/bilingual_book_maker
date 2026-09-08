@@ -729,4 +729,3 @@ class MarkdownBookLoader(BaseBookLoader):
             f"{Path(self.md_name).parent}/{Path(self.md_name).stem}_bilingual_temp.txt",
             self.bilingual_temp_result,
         )
-
