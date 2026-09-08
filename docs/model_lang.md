@@ -138,7 +138,6 @@ is cheaper.
 | OpenAI | `https://api.openai.com/v1` (default) |
 | Groq | `https://api.groq.com/openai/v1`, or `--api_format groq` |
 | xAI | `https://api.x.ai/v1`, or `--api_format xai` |
-| DeepSeek | `https://api.deepseek.com/v1` |
 | Gemini (compatibility mode) | `https://generativelanguage.googleapis.com/v1beta/openai/` |
 | Alibaba Qwen (DashScope) | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | SiliconFlow | `https://api.siliconflow.cn/v1` |

@@ -21,8 +21,8 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 ## 支持的接口
 
 支持 OpenAI 和 Anthropic 格式的 API 接口。
-通常需要三个字段，使用官方接口时两个，模型如 `gpt-5.6-luna`（默认）、
-`claude-sonnet-4-6` 或 `deepseek-v4-flash-0731`。
+通常需要三个字段，使用官方接口时两个，模型如 `gpt-5.6-luna`（默认）
+或 `claude-sonnet-4-6`。
 在 `--api_format` 填 `openai` 或 `anthropic` 即可指定 API 请求格式。
 该参数也可以选择常规翻译引擎（`google`、`caiyun`、`deepl`、`deeplfree`、
 `tencent`、`customapi`（非 OpenAI 格式），或填 `codex` 以使用你的 Codex 额度。
@@ -90,7 +90,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 - **其他 OpenAI 兼容 API**: `--api_base`（以 `/v1` 结尾）、
   `--key`即 API key，以及模型标识符 `--model`。省略 `--api_base`即使用openai官方API，
   省略`--model`即使用 gpt-5.6-luna。
-- 或使用`--provider`进行翻译: `bbm_providers.example.json` 里预设了以下厂家（Gemini、Qwen、xAI、Groq、OrcaRouter、Ollama、LiteLLM、DeepSeek、
+- 或使用`--provider`进行翻译: `bbm_providers.example.json` 里预设了以下厂家（Gemini、Qwen、xAI、Groq、OrcaRouter、Ollama、LiteLLM、
   SiliconFlow、OpenRouter）：复制为 `bbm_providers.json`，并修改其中的key，
   例如`--provider gemini` 就是使用其中 Gemini 的api。
 - `--use_context session` 使用会话模式翻译；历史默认在 8k 时压缩（`--context-compact-at` 可改）。它维护一份缓存的历史以保持前后一致，并自动从交接报告中积累术语表（`--glossary-auto`），使人名、术语全书统一——是 OpenAI 兼容接口的推荐用法，下方示例均已带上。
@@ -214,19 +214,13 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 ## 自定义 API Provider
 
-  内置模型不满足需求时，可以通过 JSON 配置文件自定义 provider。不需要改代码，就能使用任何 OpenAI 兼容 / Anthropic 格式的 API（DeepSeek、SiliconFlow、本地代理等）。
+  内置模型不满足需求时，可以通过 JSON 配置文件自定义 provider。不需要改代码，就能使用任何 OpenAI 兼容 / Anthropic 格式的 API（SiliconFlow、本地代理等）。
 
   在当前目录创建 `bbm_providers.json`（也可放在 `~/.bbm/providers.json`）：
 
   ```json
   {
     "providers": {
-      "deepseek": {
-        "api_style": "openai",
-        "base_url": "https://api.deepseek.com/v1",
-        "default_models": ["deepseek-chat", "deepseek-reasoner"],
-        "env_key": "BBM_DEEPSEEK_API_KEY"
-      },
       "siliconflow": {
         "api_style": "openai",
         "base_url": "https://api.siliconflow.cn/v1",
@@ -251,12 +245,10 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   `--model` 指定该 provider 下的模型；不写就用 `default_models` 的第一个。
 
   ```shell
-  python3 make_book.py --provider deepseek --key sk-xxx --book_name test_books/animal_farm.epub --use_context session
+  python3 make_book.py --provider siliconflow --key sk-xxx --book_name test_books/animal_farm.epub --use_context session
 
-  export BBM_DEEPSEEK_API_KEY=sk-xxx
-  python3 make_book.py --provider deepseek --book_name test_books/animal_farm.epub --use_context session
-
-  python3 make_book.py --provider deepseek --key sk-xxx --model deepseek-reasoner --book_name test_books/animal_farm.epub --use_context session
+  export BBM_SILICONFLOW_API_KEY=sk-xxx
+  python3 make_book.py --provider siliconflow --book_name test_books/animal_farm.epub --use_context session
   ```
 
 ## 使用说明
@@ -275,7 +267,6 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   | `gpt-5.6-luna` | `openai` | 默认值，OpenAI 官方地址 |
   | `claude-sonnet-4-6` | `anthropic` | Anthropic 官方地址 |
   | `gpt-4o-mini` | `openai` | OpenAI |
-  | `deepseek-v4-flash-0731` | `openai` | 与`--api_base` 配合使用 |
 
   旧的预设值仍然可以写，会被改写成真实模型 ID 并打印说明，对照表见[从旧参数迁移](./docs/migration.md)。其他任何接口：`--api_base <url> --key <key> --model <id>`，或一条 `--provider` 配置（见「自定义 API Provider」章节）。
 
@@ -289,7 +280,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
   | 格式 | key | 说明 |
   |------|-----|------|
-  | `openai`（默认） | 需要：`--key`，或 `$BBM_API_KEY`、`$OPENAI_API_KEY`；本地地址（如 Ollama）不需要 | 任何 OpenAI 兼容接口：OpenAI 官方、DeepSeek、OpenRouter、Ollama…… 地址写在 `--api_base` |
+  | `openai`（默认） | 需要：`--key`，或 `$BBM_API_KEY`、`$OPENAI_API_KEY`；本地地址（如 Ollama）不需要 | 任何 OpenAI 兼容接口：OpenAI 官方、OpenRouter、Ollama…… 地址写在 `--api_base` |
   | `anthropic` | 需要：`--key`，或 `$BBM_API_KEY`、`$ANTHROPIC_API_KEY` | Anthropic 官方，以及说 Messages API 的网关 |
   | `gemini` | 需要：`--key`，或 `$BBM_API_KEY`、`$BBM_GOOGLE_GEMINI_KEY`、`$GEMINI_API_KEY` | Gemini 官方接口，默认 `gemini-flash-latest`；`--interval` 控制节奏 |
   | `qwen` | 需要：`--key`，或 `$BBM_API_KEY`、`$BBM_QWEN_API_KEY`、`$DASHSCOPE_API_KEY` | 百炼上的 Qwen-MT，默认 `qwen-mt-turbo`；读 `--source_lang` |
@@ -573,8 +564,8 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model claude-sonn
 # Use the CustomAPI model with Japanese
 python3 make_book.py --book_name test_books/animal_farm.epub --api_format customapi --api_base ${custom_api} --language ja
 
-# 使用自定义 provider（如 DeepSeek）
-python3 make_book.py --book_name test_books/animal_farm.epub --provider deepseek --language ja --use_context session
+# 使用自定义 provider（如 SiliconFlow）
+python3 make_book.py --book_name test_books/animal_farm.epub --provider siliconflow --language ja --use_context session
 
 # 在多个模型之间轮换
 python3 make_book.py --book_name test_books/animal_farm.epub --key ${openai_key} --model_list gpt-5-mini,gpt-4o-mini

@@ -23,8 +23,8 @@ The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist u
 ## Supported endpoints
 
 OpenAI and Anthropic format endpoints are supported.
-Usually it comes with three fields, two if you are using the official endpoints, such as `gpt-5.6-luna` (the default),
-`claude-sonnet-4-6` or `deepseek-v4-flash-0731`. 
+Usually it comes with three fields, two if you are using the official endpoints, such as `gpt-5.6-luna` (the default)
+or `claude-sonnet-4-6`. 
 Specify `openai`, or `anthropic` at `--api_format` for API request formats.
 This argument also supports selecting some machine-translation engines (`google`, `caiyun`, `deepl`, `deeplfree`,
 `tencent`, `customapi` — not an OpenAI format) or `codex`
@@ -97,7 +97,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   OpenAI's own API, and `--model` for `gpt-5.6-luna`.
 - Or translate through `--provider`: `bbm_providers.example.json` has an
   entry for each vendor below (Gemini, Qwen, xAI, Groq, OrcaRouter, Ollama,
-  LiteLLM, DeepSeek, SiliconFlow, OpenRouter). Copy it to
+  LiteLLM, SiliconFlow, OpenRouter). Copy it to
   `bbm_providers.json`, set the key in it, and `--provider gemini` uses the
   Gemini API from it.
 - `--use_context session` translates in session mode; the history compacts
@@ -231,19 +231,13 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 ## Custom API Provider
 
-  When the built-in models do not cover your needs, define a provider in a JSON config file. Without a code change, any OpenAI-compatible or Anthropic-format API (DeepSeek, SiliconFlow, a local proxy, ...) becomes usable.
+  When the built-in models do not cover your needs, define a provider in a JSON config file. Without a code change, any OpenAI-compatible or Anthropic-format API (SiliconFlow, a local proxy, ...) becomes usable.
 
   Create `bbm_providers.json` in the current directory (or `~/.bbm/providers.json`):
 
   ```json
   {
     "providers": {
-      "deepseek": {
-        "api_style": "openai",
-        "base_url": "https://api.deepseek.com/v1",
-        "default_models": ["deepseek-chat", "deepseek-reasoner"],
-        "env_key": "BBM_DEEPSEEK_API_KEY"
-      },
       "siliconflow": {
         "api_style": "openai",
         "base_url": "https://api.siliconflow.cn/v1",
@@ -281,12 +275,10 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   `--model` names a model at that provider; without it the first of `default_models` is used.
 
   ```shell
-  python3 make_book.py --provider deepseek --key sk-xxx --book_name test_books/animal_farm.epub --use_context session
+  python3 make_book.py --provider siliconflow --key sk-xxx --book_name test_books/animal_farm.epub --use_context session
 
-  export BBM_DEEPSEEK_API_KEY=sk-xxx
-  python3 make_book.py --provider deepseek --book_name test_books/animal_farm.epub --use_context session
-
-  python3 make_book.py --provider deepseek --key sk-xxx --model deepseek-reasoner --book_name test_books/animal_farm.epub --use_context session
+  export BBM_SILICONFLOW_API_KEY=sk-xxx
+  python3 make_book.py --provider siliconflow --book_name test_books/animal_farm.epub --use_context session
   ```
 
 ## Usage
@@ -305,7 +297,6 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   | `gpt-5.6-luna` | `openai` | the default, at OpenAI's own address |
   | `claude-sonnet-4-6` | `anthropic` | Anthropic's own address |
   | `gpt-4o-mini` | `openai` | OpenAI |
-  | `deepseek/deepseek-v4-flash-0731` | `openai` | with the matching `--api_base` |
   | `gemini-flash-latest` | `gemini` | the default there, at Google's own address |
   | `qwen-mt-turbo` | `qwen` | the default there, on DashScope |
   | `llama-3.3-70b-versatile` | `groq` | Groq's own address |
@@ -322,7 +313,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   | format | key | notes |
   |--------|-----|-------|
-  | `openai` (default) | required: `--key`, else `$BBM_API_KEY`, `$OPENAI_API_KEY`; not for a local address such as Ollama | any OpenAI-compatible endpoint: OpenAI itself, DeepSeek, OpenRouter, Ollama and the rest, the address in `--api_base` |
+  | `openai` (default) | required: `--key`, else `$BBM_API_KEY`, `$OPENAI_API_KEY`; not for a local address such as Ollama | any OpenAI-compatible endpoint: OpenAI itself, OpenRouter, Ollama and the rest, the address in `--api_base` |
   | `anthropic` | required: `--key`, else `$BBM_API_KEY`, `$ANTHROPIC_API_KEY` | Anthropic itself, and gateways that speak the Messages API |
   | `gemini` | required: `--key`, else `$BBM_API_KEY`, `$BBM_GOOGLE_GEMINI_KEY`, `$GEMINI_API_KEY` | the Gemini API, default `gemini-flash-latest`; paced by `--interval` |
   | `qwen` | required: `--key`, else `$BBM_API_KEY`, `$BBM_QWEN_API_KEY`, `$DASHSCOPE_API_KEY` | Qwen-MT on DashScope, default `qwen-mt-turbo`; reads `--source_lang` |
@@ -662,8 +653,8 @@ python3 make_book.py --book_name test_books/animal_farm.epub --model claude-sonn
 # A custom translation API, to Japanese
 python3 make_book.py --book_name test_books/animal_farm.epub --api_format customapi --api_base ${custom_api} --language ja
 
-# A provider entry (e.g. DeepSeek); the key comes from the entry's env_key
-python3 make_book.py --book_name test_books/animal_farm.epub --provider deepseek --language ja --use_context session
+# A provider entry (e.g. SiliconFlow); the key comes from the entry's env_key
+python3 make_book.py --book_name test_books/animal_farm.epub --provider siliconflow --language ja --use_context session
 
 # Translate contents in <div> and <p>
 python3 make_book.py --book_name test_books/animal_farm.epub --translate-tags div,p
