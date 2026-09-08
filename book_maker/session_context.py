@@ -38,20 +38,75 @@ _CJK = re.compile(r"[぀-ヿ㐀-䶿一-鿿豈-﫿가-힯]")
 _LATIN_CHARS_PER_TOKEN = 4.0
 _CJK_CHARS_PER_TOKEN = 1.7
 
-# One budget for every session run, grouped or not, on every route. Measured
-# on an ungrouped run at 0.53x window mode on a cheap-cache endpoint and 1.10x
-# on a dearer one, for several times the context; on a *grouped* run the same
-# 260905 eval put it +9-25% over that book's own cost optimum, which is the
-# short edge of the band where a run compacts between zero and one times.
+# One budget for every session run, grouped or not, on every route. An
+# OWNER-SET number (260907), like the grouping constants in
+# `book_maker/loader/plan.py`; what follows separates what was measured from
+# what was chosen, and must keep doing so.
 #
-# It is pinned there by owner ruling: a derived per-run budget is a moving
-# target for a difference under 30%, and one number an operator can predict —
-# and override with --context-compact-at — is worth more than the last
-# fraction of a bill. The same eval retired the old worry that a shorter
-# window trades cost for drift: across 44 handoff seams every recurring name
-# held, because the report re-states the terminology each window — the only
-# register drift observed was in the *longest*-window run.
-DEFAULT_COMPACT_BUDGET = 8000
+# Measured (260905 grouped session-cost eval, C in {1500, 4000, 8000, 20000}
+# over three books): the cost curve is **flat** across [1500, 4000] — the
+# spread inside it is single-run noise, that region held the cheapest cell on
+# two of the three books, and all three solved optima C* landed in it, at
+# 1580, 2183 and 2512. The old 8000 sat +9-25% above each book's own optimum,
+# which is also noise-adjacent, and it was chosen for predictability rather
+# than for price. The one place the curve stops being flat is the top: C=20000
+# cost up to 56% more *and* was the only cell where register drift was
+# observed — a shift consistent with instruction dilution across a very long
+# window, not with the handoff seams. Across 44 seams at the shorter budgets
+# every recurring name held, because the report re-states the terminology
+# each window.
+#
+# Chosen: 8192 — a hair above the old 8000, and for the same reason it was
+# 8000: the fewest-seams edge of the measured band. Under the *old* budgets
+# nothing separated 8000 from the flat region on cost — the 9-25% it sat
+# over each book's own optimum was inside the don't-care zone. Under the
+# shipped halved B that is no longer true (the table below: 8192 measures
+# ~10% dearer than 4096), so the case for this number is continuity alone.
+# 8192 rather than 8000 is owner preference, not a measurement — nothing in
+# the data separates them.
+#
+# **Why this is a raise, and what the raise did not buy.** The 260907 ruling
+# first set C to 4096, reasoning that the halved grouping budget shipping
+# beside it (`SESSION_BUDGET_FLOOR`, 2400 -> 1200) would shrink per-request
+# history growth by about as much, so 4096 would hold roughly as many
+# *requests* of history as 8000 did before. The branch's price-tag eval
+# measured that and it did not hold: on animal_farm through gpt-5.6-luna,
+# 300 units, compactions went 8 -> 19 and the session bill +27.3% against
+# the old defaults. C was raised here in response.
+#
+# The raise was then measured too, and the honest record is that it did not
+# work as intended (animal_farm / gpt-5.6-luna / 300 units, against the same
+# old-defaults baseline of 33 requests and 283k tokens):
+#
+#     C=4096   63 requests   361k tokens (+27.3%)   19 compactions
+#     C=8192   52 requests   396k tokens (+39.8%)    9 compactions
+#
+# The compaction count came back to roughly the old 8, exactly as intended.
+# The bill did not: 8192 measured ~10% *dearer* than 4096, not cheaper. The
+# seams were never the dominant cost. What the halved B actually does is
+# multiply the request count (33 -> ~52-63), and every one of those requests
+# re-reads the whole carried history — so a longer window is paid for far
+# more often than it used to be. Per-request prompt load tells the story:
+# 7007 tokens at the old defaults, 4690 at C=4096, 6537 at C=8192. The
+# (g/C)(F_h + pi_o*K) seam term is real but small next to it.
+#
+# 8192 stands anyway, by owner ruling and with that price known. The case is
+# not cost: it is the local-device model the owner named, where losing
+# context at a seam is worse than paying to carry it, and where the eval's
+# cost curve — measured on a hosted endpoint with prompt caching — is not
+# the curve those users are on. Note the cache barely helps here either way
+# (9-21k cached against 340k prompt in these cells).
+#
+# If a future ruling revisits this: lowering C is the *cheaper* direction
+# under the current B, not the dearer one, and the +27.3% that prompted the
+# raise was mostly B's doing rather than C's. Re-run the two session cells
+# before moving either number.
+#
+# Still one pinned number for every run rather than a derived one, for the
+# reason that has not changed: a moving target is not worth chasing for a
+# difference this size, and an operator who wants another value types
+# --context-compact-at.
+DEFAULT_COMPACT_BUDGET = 8192
 
 
 def compact_budget_notice(explicit: int | None) -> str:

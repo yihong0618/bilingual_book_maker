@@ -60,7 +60,10 @@ QUOTA_WARN_PERCENT = 90
 
 # Used when --model is omitted. Naming one beats letting Codex pick: the
 # compact budget is looked up by model id, so an unknown default would fall
-# back to the conservative 8000 instead of this model's own 17000.
+# back to the conservative `DEFAULT_COMPACT_BUDGET` instead of this model's
+# own. (`compact_budget_for` is uniform today, so nothing differs yet — the
+# lookup exists so a model that prices its cache very differently can be
+# special-cased there rather than at every call site.)
 DEFAULT_MODEL = "gpt-5.6-luna"
 
 # A minute past the reset, because the server's clock and ours are not the

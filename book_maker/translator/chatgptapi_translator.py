@@ -439,7 +439,13 @@ class ChatGPTAPI(Base):
     # loader from the translator only works lazily, and an instance built
     # without __init__ — a subclass, a test double — still needs the value.
     # The CLI lowers it alongside `--max-batch-units`.
-    substrict_batch_cap = 16
+    #
+    # 8 since the 260907 owner ruling, down from 16 with the unit cap it
+    # halves. Read that constant's note for what is measured here and what is
+    # a chosen margin: the *reason* for the margin is measured, its *size* is
+    # the owner's, and the number is deliberately below what any eval found
+    # faulty.
+    substrict_batch_cap = 8
 
     # Set by the CLI from --quiet. Suppresses this class's own echoes.
     quiet = False
