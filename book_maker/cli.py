@@ -28,6 +28,12 @@ from book_maker.translator import (
 )
 from book_maker.redaction import redact
 from book_maker.translator.base_translator import PriceTable
+from book_maker.translator.chatgptapi_translator import (
+    PROMPT_ENV_MAP as CHATGPT_PROMPT_ENV_MAP,
+)
+from book_maker.translator.gemini_translator import (
+    PROMPT_ENV_MAP as GEMINI_PROMPT_ENV_MAP,
+)
 from book_maker.translator.capabilities import ModelUnavailable
 from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE, parse_language_spec
 
@@ -509,6 +515,17 @@ def read_prompt_config(prompt_arg):
 # same way.
 PROMPT_SECTIONS = ("user", "system", "style")
 
+# Every variable that can put a prompt on the wire without appearing in the
+# command. Collected from the routes that read them rather than retyped: the
+# dry-run notice used to name the ChatGPT trio only, so a gemini run under
+# `$BBM_GEMINIAPI_SYS_MSG` previewed a grouping it would not do.
+PROMPT_ENV_VARS = (
+    *CHATGPT_PROMPT_ENV_MAP.values(),
+    *GEMINI_PROMPT_ENV_MAP.values(),
+    # Deprecated; still read as a fallback by the openai family.
+    "OPENAI_API_SYS_MSG",
+)
+
 
 def prompt_adoption_line(prompt_config, translate_model, api_format):
     """One line saying which `--prompt` sections this run adopted, and where.
@@ -528,13 +545,20 @@ def prompt_adoption_line(prompt_config, translate_model, api_format):
     if not adopted:
         return None
     slots = getattr(translate_model, "PROMPT_SECTION_SLOTS", {})
-    target = getattr(translate_model, "PROMPT_APPEND_TARGET", "the user message")
+    target = getattr(translate_model, "PROMPT_APPEND_TARGET", "the system message")
     appended = [s for s in adopted if slots.get(s, "native") == "appended"]
     ignored = [s for s in adopted if slots.get(s, "native") == "none"]
 
     notes = []
     if appended:
         notes.append(f"{' and '.join(appended)} appended to {target} on this route")
+    if "user" in adopted and getattr(translate_model, "WRAPS_BATCH_JSON", False):
+        # A grouped request does not put a paragraph in `{text}` — it puts a
+        # JSON envelope of the whole group there, and appends a shape
+        # instruction after the template. An operator whose template says
+        # "translate the sentence below" is writing about something else than
+        # what arrives, and nothing said so.
+        notes.append("your `{text}` carries the batch JSON on a grouped request")
     if ignored:
         notes.append(
             f"{' and '.join(ignored)} ignored — the {api_format} route "
@@ -1072,13 +1096,17 @@ COMPAT_RULES = (
     CompatRule(
         "A9",
         "warn",
-        lambda f: prompt_has_system(f)
-        and bool(f.env.get("OPENAI_API_SYS_MSG"))
+        lambda f: bool(f.env.get("OPENAI_API_SYS_MSG"))
         and hasattr(f.translate_model, "_probe_verdict"),
         lambda f: (
-            "$OPENAI_API_SYS_MSG is exported, and it outranks the system "
-            "message from --prompt for the whole run. Unset it, or drop the "
-            '"system" key from --prompt.'
+            "$OPENAI_API_SYS_MSG is exported and is ignored this run: the "
+            'system message from --prompt wins now. Drop the "system" key '
+            "from --prompt to use the variable instead."
+            if prompt_has_system(f)
+            else "$OPENAI_API_SYS_MSG is exported and is this run's system "
+            "message. The variable is deprecated — write it as "
+            "$BBM_CHATGPTAPI_SYS_MSG, or pass it as --prompt's `system` "
+            "section, which outranks both."
         ),
     ),
     CompatRule(
@@ -1194,10 +1222,12 @@ COMPAT_RULES = (
     CompatRule(
         "C4",
         "warn",
-        lambda f: f.book_type == "srt" and f.options.prompt_arg is not None,
+        lambda f: f.book_type == "srt" and bool((f.prompt_config or {}).get("user")),
         lambda f: (
-            "--prompt is ignored for srt books: the subtitle loader sends a "
-            "prompt of its own, written for timed lines."
+            "--prompt's user template replaces the subtitle loader's own, "
+            "which is what tells the model to leave each block's number and "
+            "timeline alone. Say that in your template too, or the output "
+            "will not parse as srt."
         ),
     ),
     CompatRule(
@@ -1824,9 +1854,10 @@ def build_parser():
         "block form). The sections are `user` (the template, required, and "
         "it must contain `{text}`; `{language}` and `{crlf}` are substituted "
         "too, and any other placeholder is refused here rather than mid-run), "
-        "`system`, and `style` (a note on register and voice, handed on "
-        "verbatim to every window in session mode). A bare string or a .txt "
-        "file is the `user` template.",
+        "`system`, and `style` (a note on register and voice, said once with "
+        "the run's standing instructions and handed on verbatim to every "
+        "window in session mode). A bare string or a .txt file is the `user` "
+        "template.",
     )
     parser.add_argument(
         "--accumulated_num",
@@ -2194,14 +2225,7 @@ def main():
             # prompt overhead: None, and the floor stands.
             dry_budget = derived_token_budget(None, dry_route or "schema")
             print(plan_budget_notice(None, dry_route))
-            if (
-                options.prompt_arg
-                or os.environ.get("BBM_CHATGPTAPI_USER_MSG_TEMPLATE")
-                or os.environ.get("BBM_CHATGPTAPI_SYS_MSG")
-                # counted by prompt_overhead_tokens like any other system
-                # message, and it outranks --prompt's own
-                or os.environ.get("OPENAI_API_SYS_MSG")
-            ):
+            if options.prompt_arg or any(map(env.get, PROMPT_ENV_VARS)):
                 # The real run measures its own prompt; a fat custom one —
                 # flag or environment — can raise the budget past the floor
                 # and group differently.

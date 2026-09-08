@@ -390,10 +390,12 @@ class Codex(Base):
             parts.append(note)
         if self.prompt_sys_msg:
             parts.append(self.fill_optional(self.prompt_sys_msg))
-        if self.style_note:
-            # Same wording as the suffix every API route appends, so a style
-            # reads identically whichever route carries it.
-            parts.append(f"{self.STYLE_HEADING} {self.fill_optional(self.style_note)}")
+        # The same standing line every API route puts on its system channel,
+        # so a style reads identically whichever route carries it. Here the
+        # thread instructions *are* that channel, and they are written once
+        # when the thread opens — which is where a style belongs.
+        if self.style_section():
+            parts.append(self.style_section())
         if seed:
             parts.append(seed)
         return "\n\n".join(parts)

@@ -482,7 +482,15 @@ class Base(ABC):
         "system": "native",
         "style": "appended",
     }
-    PROMPT_APPEND_TARGET = "the user message"
+    PROMPT_APPEND_TARGET = "the system message"
+
+    # Whether the request has a channel for standing instructions at all.
+    # Every endpoint reached from here does — openai's `system` role,
+    # anthropic's `system` parameter, gemini's `system_instruction`, a codex
+    # thread's base instructions — but the channel is not something the
+    # prompt format may assume: a route without one folds those instructions
+    # into the turn instead, which is `_fold_standing_instructions`.
+    HAS_SYSTEM_CHANNEL = True
 
     # One wording for the style section wherever it is appended, so a run does
     # not describe its style two ways depending on the route.
@@ -511,29 +519,64 @@ class Base(ABC):
     def _system_message(self):
         """The system message this route sends, before the run-wide note.
 
-        The two attribute spellings are the ones already in use — ChatGPT
-        keeps an `$OPENAI_API_SYS_MSG` value in `system_content` and the
-        `--prompt` one in `prompt_sys_msg`; Claude, Gemini and codex keep only
-        the latter. A route with neither answers "", which is the honest
-        description of what it sends.
+        One attribute on every route, `prompt_sys_msg`: `--prompt`'s system
+        section, with the environment behind it. There used to be a second
+        one — ChatGPT read `$OPENAI_API_SYS_MSG` into `system_content` and
+        this method preferred it — so an exported variable silently outranked
+        the system message the command asked for, for the whole run. The
+        variable is now what it reads like: a fallback.
         """
-        system = getattr(self, "system_content", None) or getattr(
-            self, "prompt_sys_msg", None
-        )
-        return self.fill_optional(system)
+        return self.fill_optional(getattr(self, "prompt_sys_msg", None))
 
-    def style_suffix(self):
-        """The style section as a suffix for the turn, or "".
+    def style_section(self):
+        """`--prompt`'s style section as one standing line, or "".
 
-        Appended rather than slotted because no endpoint has a place for it:
-        the style is a standing instruction about *how* to translate, and the
-        only channel every route has for that is the text it is already
-        sending. Fixed for a run, so it never destabilises a cached prefix.
+        No endpoint has a style slot, and style is not a per-request thing to
+        say: it is a standing instruction about *how* to translate, fixed for
+        the run. So it rides with the standing instructions — said once where
+        a window starts, not re-sent with every paragraph — rather than as a
+        suffix on each turn, which is where it used to go and which paid for
+        it once per request.
         """
         note = (getattr(self, "style_note", None) or "").strip()
         if not note:
             return ""
-        return f"\n\n{self.STYLE_HEADING} {self.fill_optional(note)}"
+        return f"{self.STYLE_HEADING} {self.fill_optional(note)}"
+
+    def _standing_text(self):
+        """Everything this run says once rather than per paragraph.
+
+        The operator's `system` section, the `--source_lang` note it carries,
+        and the style — joined, before anything decides which channel they go
+        on.
+        """
+        parts = (
+            self._augment_system_content(self._system_message()),
+            self.style_section(),
+        )
+        return "\n\n".join(part for part in parts if part)
+
+    def standing_instructions(self):
+        """The standing-instruction channel's value for this route.
+
+        "" on a route with no such channel: there the same text goes in front
+        of the turn instead, and returning it here as well would send it
+        twice.
+        """
+        return self._standing_text() if self.HAS_SYSTEM_CHANNEL else ""
+
+    def _fold_standing_instructions(self, turn):
+        """The turn, carrying the standing instructions where nothing else can.
+
+        A three-part `--prompt` has to work on any route, so a channel a route
+        does not have folds into the nearest one it does: standing
+        instructions first, then the turn, blank line between them — the order
+        the model should read them in.
+        """
+        if self.HAS_SYSTEM_CHANNEL:
+            return turn
+        standing = self._standing_text()
+        return f"{standing}\n\n{turn}" if standing else turn
 
     @property
     def field_language(self):
@@ -592,18 +635,18 @@ class Base(ABC):
         under different instructions, which is exactly what the resume
         checkpoint's fingerprint has to notice.
 
-        The two attribute spellings are the ones already in use: ChatGPT and
-        Claude keep `prompt_template`/`system_content`, Gemini `prompt`/
-        `prompt_sys_msg` (see `_do_batch_translate_with_fallback`). A route
-        with neither — the fixed MT engines, which take no prompt at all —
-        answers empty strings, which is the honest description of what it
-        sends.
+        The two attribute spellings are the ones already in use: ChatGPT,
+        Claude and codex keep `prompt_template`, Gemini `prompt` (see
+        `_do_batch_translate_with_fallback`); the system message is
+        `prompt_sys_msg` everywhere. A route with neither — the fixed MT
+        engines, which take no prompt at all — answers empty strings, which is
+        the honest description of what it sends.
         """
         user = getattr(self, "prompt_template", None) or getattr(self, "prompt", None)
         return {
             "user": user or "",
             "system": self._augment_system_content(self._system_message()) or "",
-            # A fixed --prompt style rides in every request (and replaces
+            # A fixed --prompt style stands over the whole run (and replaces
             # the handoff's observed style), so a style-only change writes
             # a different book and must move the fingerprint with it.
             "style": getattr(self, "style_note", None) or "",
@@ -1010,19 +1053,18 @@ class Base(ABC):
             text_list, prompt_template, system_content, default_prompt
         )
 
-        # Detect which system-message attribute this translator uses:
-        # ChatGPT keeps `system_content`, Claude and Codex `prompt_sys_msg`.
-        # All three spell the user template `prompt_template`.
+        # One spelling on every route: `prompt_template` for the user
+        # template, `prompt_sys_msg` for the system message. ChatGPT used to
+        # keep a second system attribute for `$OPENAI_API_SYS_MSG`, and this
+        # rung had to guess which one it was installing over.
         prompt_attr = "prompt_template"
-        sys_msg_attr = (
-            "system_content" if hasattr(self, "system_content") else "prompt_sys_msg"
-        )
+        sys_msg_attr = "prompt_sys_msg"
 
         # Store original values — read off the instance, not off the arguments.
         # The two are the same wherever a caller hands its own attribute
         # straight in, and differ where it hands the *effective* value it
-        # assembled (the openai route's system message is `system_content` or
-        # `prompt_sys_msg`, and only the assembled form carries a `--prompt`
+        # assembled (the openai route hands in `_system_message()`, and only
+        # the assembled form carries the `--source_lang` note and a `--prompt`
         # system message onto this rung). Restoring the argument there would
         # write the assembled string back over the attribute it came from.
         original_prompt = getattr(self, prompt_attr, prompt_template)

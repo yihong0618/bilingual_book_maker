@@ -7,9 +7,11 @@
    under the wrong instructions still produces a translated book.
 2. Every section reaches the request on every route. Where a route has no slot
    of its own for one — no endpoint has a *style* slot, and a codex thread has
-   no system slot — the text is appended to what the route does send rather
-   than dropped. `PROMPT_SECTION_SLOTS` is each route's own statement of which
-   it does, and the tests below hold it to it.
+   no system slot — the text joins the nearest channel the route does have
+   rather than being dropped: style rides the standing instructions, and a
+   route with no standing channel at all folds them into the turn.
+   `PROMPT_SECTION_SLOTS` is each route's own statement of which it has, and
+   the tests below hold it to it.
 3. A route with a native slot does not *also* append: the section would then
    be said twice, at twice the price, in every request.
 4. The run says at start what it adopted and where it landed. A run with no
@@ -198,38 +200,81 @@ def _gemini(**kwargs):
     return route
 
 
-class TestTheStyleSectionIsAppended:
-    """No endpoint has a style slot, so it rides in the turn — once, and in
-    the same words whichever route carries it."""
+class TestTheStyleSectionStandsOverTheRun:
+    """A style is a standing instruction about *how* to translate, fixed for
+    the run — not something to repeat with every paragraph. So it goes on the
+    standing-instruction channel: the system message on the API routes, the
+    thread instructions on codex, said once where a window starts. It used to
+    ride as a suffix on every user turn, paid for once per request.
+    """
 
-    def test_the_openai_unit_message_carries_it(self):
-        content = _openai(style_note=STYLE)._user_content("Some prose.")
-        assert content.endswith(f"\n\n{ChatGPTAPI.STYLE_HEADING} {STYLE}")
+    STANDING = f"{ChatGPTAPI.STYLE_HEADING} {STYLE}"
 
-    def test_the_openai_structured_batch_carries_it(self):
+    def test_the_openai_system_message_carries_it(self):
+        route = _openai(style_note=STYLE)
+        assert route.standing_instructions().endswith(self.STANDING)
+
+    @pytest.mark.parametrize("build", [_openai, _claude, _gemini])
+    def test_no_user_turn_repeats_it(self, build):
+        assert STYLE not in build(style_note=STYLE)._user_content("Some prose.")
+
+    def test_the_openai_request_says_it_exactly_once(self):
+        route = _openai(style_note=STYLE)
+        messages = route.create_messages("Some prose.")
+        assert messages[0]["content"].endswith(self.STANDING)
+        assert sum(m["content"].count(STYLE) for m in messages) == 1
+
+    def test_the_openai_structured_batch_says_it_once_in_the_system_message(self):
         route = _openai(style_note=STYLE)
         messages = route._create_structured_batch_messages(["one", "two"])
-        content = messages[-1]["content"]
-        assert f"{ChatGPTAPI.STYLE_HEADING} {STYLE}" in content
-        # before the shape instruction: the last thing the model reads has to
-        # stay the shape and the target language
-        assert content.index(STYLE) < content.index("Return a JSON object")
+        assert messages[0]["content"].endswith(self.STANDING)
+        assert STYLE not in messages[-1]["content"]
 
-    def test_the_claude_unit_message_carries_it(self):
-        content = _claude(style_note=STYLE)._user_content("Some prose.")
-        assert content.endswith(f"\n\n{Claude.STYLE_HEADING} {STYLE}")
+    def test_the_claude_system_parameter_carries_it(self):
+        assert _claude(style_note=STYLE).standing_instructions().endswith(self.STANDING)
 
-    def test_the_gemini_turn_carries_it(self):
-        content = _gemini(style_note=STYLE)._user_content("Some prose.")
-        assert content.endswith(f"\n\n{Gemini.STYLE_HEADING} {STYLE}")
+    def test_the_gemini_system_instruction_carries_it(self):
+        assert _gemini(style_note=STYLE)._system_instruction().endswith(self.STANDING)
+
+    def test_it_sits_after_the_system_message_not_over_it(self):
+        standing = _openai(prompt_sys_msg=SYSTEM, style_note=STYLE)
+        assert standing.standing_instructions() == f"{SYSTEM}\n\n{self.STANDING}"
 
     @pytest.mark.parametrize("build", [_openai, _claude, _gemini])
     def test_no_style_adds_nothing(self, build):
-        assert ChatGPTAPI.STYLE_HEADING not in build()._user_content("Some prose.")
+        route = build()
+        assert ChatGPTAPI.STYLE_HEADING not in route._user_content("Some prose.")
+        assert ChatGPTAPI.STYLE_HEADING not in (route.standing_instructions() or "")
 
-    def test_it_is_said_once_not_twice(self):
-        content = _openai(style_note=STYLE)._user_content("Some prose.")
-        assert content.count(STYLE) == 1
+
+class TestARouteWithNoStandingChannelFoldsIntoTheTurn:
+    """Decision 7: a three-part prompt works on any LLM route. Every endpoint
+    reached today has a channel for standing instructions, so this is the
+    fold nothing exercises in production — and exactly why it is pinned here
+    rather than discovered by the first route that lacks one."""
+
+    def _folding(self, **kwargs):
+        route = _openai(**kwargs)
+        route.HAS_SYSTEM_CHANNEL = False
+        return route
+
+    def test_the_standing_text_goes_in_front_of_the_turn(self):
+        route = self._folding(prompt_sys_msg=SYSTEM, style_note=STYLE)
+        content = route._user_content("Some prose.")
+        assert content.startswith(f"{SYSTEM}\n\n{ChatGPTAPI.STYLE_HEADING} {STYLE}\n\n")
+        assert content.endswith("Render `Some prose.` into simplified chinese.")
+
+    def test_the_channel_is_then_empty_rather_than_saying_it_twice(self):
+        route = self._folding(prompt_sys_msg=SYSTEM, style_note=STYLE)
+        assert route.standing_instructions() == ""
+        messages = route.create_messages("Some prose.")
+        assert sum(m["content"].count(SYSTEM) for m in messages) == 1
+
+    def test_nothing_standing_leaves_the_turn_alone(self):
+        assert (
+            self._folding()._user_content("Some prose.")
+            == "Render `Some prose.` into simplified chinese."
+        )
 
 
 class TestTheSystemSectionKeepsItsNativeSlot:
@@ -391,17 +436,25 @@ class TestTheAdoptionNotice:
         assert prompt_adoption_line({}, ChatGPTAPI, "openai") is None
 
     def test_a_user_only_prompt_needs_no_explanation(self):
-        line = prompt_adoption_line({"user": USER}, ChatGPTAPI, "openai")
+        line = prompt_adoption_line({"user": USER}, Claude, "anthropic")
         assert line == "prompt: user from --prompt"
 
     def test_a_style_section_says_where_it_landed(self):
-        line = prompt_adoption_line(
-            {"user": USER, "style": STYLE}, ChatGPTAPI, "openai"
-        )
+        line = prompt_adoption_line({"style": STYLE}, ChatGPTAPI, "openai")
         assert line == (
-            "prompt: user+style from --prompt "
-            "(style appended to the user message on this route)"
+            "prompt: style from --prompt "
+            "(style appended to the system message on this route)"
         )
+
+    def test_a_route_that_rewrites_the_template_says_so(self):
+        # Q11: a grouped request puts a JSON envelope of the whole group in
+        # `{text}` and appends a shape instruction after the template. A
+        # template written about one paragraph is describing something else.
+        line = prompt_adoption_line({"user": USER}, ChatGPTAPI, "openai")
+        assert "your `{text}` carries the batch JSON on a grouped request" in line
+
+    def test_a_route_that_does_not_rewrite_it_stays_quiet(self):
+        assert "batch JSON" not in prompt_adoption_line({"user": USER}, Codex, "codex")
 
     def test_codex_names_the_thread_instructions(self):
         line = prompt_adoption_line(
@@ -439,10 +492,27 @@ class TestTheFingerprintSeesEverySection:
         assert before != after
 
     def test_it_reports_the_settled_system_message_not_the_flag(self):
-        # $OPENAI_API_SYS_MSG outranks --prompt's system section (the CLI's A9
-        # rule says so out loud); the fingerprint has to report what the run
-        # will actually send.
-        route = _openai(system_content="from the environment", prompt_sys_msg=SYSTEM)
+        # `prompt_sys_msg` is settled in __init__ from --prompt, then the
+        # environment; the fingerprint reports what the run will send, which
+        # is not necessarily what the command typed.
+        route = _openai(prompt_sys_msg="from the environment")
+        assert route.resolved_prompt_parts()["system"] == "from the environment"
+
+    def test_the_prompt_system_section_outranks_the_legacy_variable(self, monkeypatch):
+        # $OPENAI_API_SYS_MSG used to be read into a second attribute that won
+        # at send time, so a command asking for a system message translated a
+        # whole book under an exported variable instead.
+        monkeypatch.setenv("OPENAI_API_SYS_MSG", "from the environment")
+        route = ChatGPTAPI.__new__(ChatGPTAPI)
+        ChatGPTAPI.__init__(
+            route, "k", "simplified chinese", prompt_sys_msg=SYSTEM, api_base=None
+        )
+        assert route.resolved_prompt_parts()["system"] == SYSTEM
+
+    def test_the_legacy_variable_is_still_a_fallback(self, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_SYS_MSG", "from the environment")
+        route = ChatGPTAPI.__new__(ChatGPTAPI)
+        ChatGPTAPI.__init__(route, "k", "simplified chinese", api_base=None)
         assert route.resolved_prompt_parts()["system"] == "from the environment"
 
     def test_the_source_language_note_is_part_of_it(self):

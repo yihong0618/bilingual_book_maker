@@ -10,6 +10,20 @@ from book_maker.utils import prompt_config_to_kwargs
 
 from .base_loader import BaseBookLoader
 
+# This loader's own default prompt, and the reason it has one: a subtitle
+# block is a number, a timeline and the line, and a model told only
+# "translate this" rewrites all three. It is a *default* — `--prompt` sits on
+# top of it section by section, the way every other loader's default gives
+# way. An operator replacing the `user` template takes the timeline
+# instruction with it, which is what the CLI's C4 row says out loud.
+DEFAULT_PROMPT_CONFIG = {
+    "system": "You are a srt subtitle file translator.",
+    "user": (
+        "Translate the following subtitle text into {language}, but keep the "
+        "subtitle number and timeline and newlines unchanged: \n{text}"
+    ),
+}
+
 
 class SRTBookLoader(BaseBookLoader):
     # An srt block is separated from the next by a blank line.
@@ -40,11 +54,13 @@ class SRTBookLoader(BaseBookLoader):
             api_base=model_api_base,
             temperature=temperature,
             source_lang=source_lang,
+            # The operator's sections over this loader's own, one by one: a
+            # `--prompt` carrying only a `user` template keeps the subtitle
+            # system message rather than silently losing it. The whole config
+            # used to be discarded here, so `--prompt` was accepted and did
+            # nothing on srt books.
             **prompt_config_to_kwargs(
-                {
-                    "system": "You are a srt subtitle file translator.",
-                    "user": "Translate the following subtitle text into {language}, but keep the subtitle number and timeline and newlines unchanged: \n{text}",
-                }
+                {**DEFAULT_PROMPT_CONFIG, **(prompt_config or {})}
             ),
         )
         self.is_test = is_test

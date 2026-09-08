@@ -329,7 +329,7 @@ class Claude(Base):
         exactly what it sent without threading the string around — the marker
         preamble included, since it is a function of the text too.
         """
-        return (
+        return self._fold_standing_instructions(
             self._marker_preamble(text)
             + self.prompt_template.format(
                 # `{crlf}` is documented for `--prompt` and was filled on the
@@ -339,9 +339,6 @@ class Claude(Base):
                 language=self.language,
                 crlf="\n",
             )
-            # Anthropic has no slot for `--prompt`'s style section either, so
-            # it rides at the end of the turn, in the wording every route uses.
-            + self.style_suffix()
         )
 
     def create_messages(self, text, intermediate_messages=None):
@@ -471,7 +468,7 @@ class Claude(Base):
                 # sends, `--source_lang` note included: the compact turn
                 # used the raw attribute and so ran under different standing
                 # instructions than the window it was condensing.
-                system=self._augment_system_content(self._system_message()),
+                system=self.standing_instructions(),
                 temperature=self.temperature,
                 model=self.model,
                 extra_body=self.extra_body or None,
@@ -586,7 +583,7 @@ class Claude(Base):
             r = self.client.messages.create(
                 max_tokens=4096,
                 messages=messages,
-                system=self._augment_system_content(self._system_message()),
+                system=self.standing_instructions(),
                 temperature=self.temperature,
                 model=self.model,
                 extra_body=self.extra_body or None,

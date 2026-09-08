@@ -410,6 +410,11 @@ class ChatGPTAPI(Base):
     SUPPORTS_BATCH_API = True
     SUPPORTS_REQUEST_EXTRAS = True
     SUPPORTS_GLOSSARY = True
+    # A grouped request on this route rewrites the operator's `{text}` into a
+    # JSON envelope of the whole group and appends a shape instruction after
+    # the template. The adoption line says so: a template written about one
+    # paragraph is describing something the model is not being sent.
+    WRAPS_BATCH_JSON = True
     # Session-mode state, declared here so the window-mode path is well
     # defined on any instance — including the subclasses and test fixtures
     # that build one without running __init__. `session is None` means window
@@ -472,15 +477,17 @@ class ChatGPTAPI(Base):
             or environ.get(PROMPT_ENV_MAP["user"])
             or self.DEFAULT_PROMPT
         )
+        # `--prompt` first. `$OPENAI_API_SYS_MSG` used to be read into a
+        # second attribute that outranked it at send time, so a command
+        # asking for a system message translated a whole book under an
+        # exported variable instead. It is a deprecated fallback now, and the
+        # CLI says so when both are present.
         self.prompt_sys_msg = (
             prompt_sys_msg
-            or environ.get(
-                "OPENAI_API_SYS_MSG",
-            )  # XXX: for backward compatibility, deprecate soon
+            or environ.get("OPENAI_API_SYS_MSG")  # deprecated; prefer BBM_*
             or environ.get(PROMPT_ENV_MAP["system"])
             or ""
         )
-        self.system_content = environ.get("OPENAI_API_SYS_MSG") or ""
         self.temperature = temperature
         self.model_list = None
         self.context_flag = context_flag
@@ -813,22 +820,17 @@ class ChatGPTAPI(Base):
         every request. Once this message is frozen into the history it stops
         varying, so it is stable there.
         """
-        content = (
-            self._marker_preamble(text)
-            + self.prompt_template.format(text=text, language=self.language, crlf="\n")
-            # No endpoint has a slot for `--prompt`'s style section, so it
-            # rides here. Last, after the user's own template: it is the
-            # standing instruction the run must not lose, and a fixed string
-            # keeps every request's tail comparable.
-            + self.style_suffix()
+        content = self._marker_preamble(text) + self.prompt_template.format(
+            text=text, language=self.language, crlf="\n"
         )
         block = self.glossary.prompt_block(text) if self.glossary else ""
-        return f"{block}\n\n{content}" if block else content
+        content = f"{block}\n\n{content}" if block else content
+        return self._fold_standing_instructions(content)
 
     def create_messages(self, text, intermediate_messages=None):
         content = self._user_content(text)
 
-        sys_content = self._augment_system_content(self._system_message())
+        sys_content = self.standing_instructions()
         messages = [
             {"role": "system", "content": sys_content},
         ]
@@ -1300,15 +1302,12 @@ class ChatGPTAPI(Base):
         }
         texts_json = json.dumps(payload, ensure_ascii=False)
 
-        # Format user's prompt template with the JSON payload as {text}.
-        # `--prompt`'s style section has no slot of its own anywhere, so it is
-        # appended here — before the shape instruction below, which has to
-        # stay the last thing the model reads.
-        user_prompt = (
-            self.prompt_template.format(
-                text=texts_json, language=self.language, crlf="\n"
-            )
-            + self.style_suffix()
+        # Format user's prompt template with the JSON payload as {text}. The
+        # style section is not here: it stands over the whole run, so it goes
+        # with the standing instructions below rather than being re-sent with
+        # every group.
+        user_prompt = self.prompt_template.format(
+            text=texts_json, language=self.language, crlf="\n"
         )
 
         # Add structured format instruction. The target language goes last: this
@@ -1347,7 +1346,8 @@ class ChatGPTAPI(Base):
                 f"Every translation must be written in {self.language}."
             )
 
-        sys_content = self._augment_system_content(self._system_message())
+        content = self._fold_standing_instructions(content)
+        sys_content = self.standing_instructions()
 
         messages = [
             {"role": "system", "content": sys_content},

@@ -17,7 +17,11 @@ To tweak the prompt, use the `--prompt` parameter. The placeholders the `user` t
             "user": "Translate the given text to {language}. Be faithful or accurate in translation. Make the translation readable or intelligible. Be elegant or natural in translation. If the text cannot be translated, return the original text as is. Do not translate person's name. Do not add any additional text in the translation. The text to be translated is:\n{text}"
         }
 
-You can also set the `user` and `system` role prompt by setting environment variables: `BBM_CHATGPTAPI_USER_MSG_TEMPLATE` and `BBM_CHATGPTAPI_SYS_MSG`.
+- A third key, `style`, is a standing instruction about how to write. It is said once where a window starts — with the system message on the API routes, with the thread instructions on codex — not repeated on every request.
+
+- `--prompt` reaches every LLM route, srt books included: there its sections sit on top of the subtitle loader's own prompt, section by section, and replacing the `user` template means saying yourself that the block number and timeline must come back unchanged.
+
+You can also set the `user` and `system` role prompt by setting environment variables: `BBM_CHATGPTAPI_USER_MSG_TEMPLATE` and `BBM_CHATGPTAPI_SYS_MSG` (gemini reads `BBM_GEMINIAPI_USER_MSG_TEMPLATE` and `BBM_GEMINIAPI_SYS_MSG`). `--prompt` outranks all of them. `OPENAI_API_SYS_MSG` is still read as a fallback but is deprecated — it used to outrank `--prompt`'s own system message.
 
 - A `.md` file is read as the [PromptDown](https://github.com/btfranklin/promptdown) **block** form. The format is his; the reader is this repo's own, so no extra package is installed. `--prompt prompt_md.prompt.md`
 

@@ -120,12 +120,13 @@ EXPECTED = {
         "Please help me to translate,`{text}` to {language}, please return "
         "only translated content not include the origin text",
     ),
-    # `--prompt`'s style section, as it is appended to the turn. No endpoint
-    # has a slot for it, so this suffix is the whole of how a fixed style
-    # reaches a model — on every route, in these words.
-    "style section suffix": (
-        _styled().style_suffix(),
-        "\n\nStyle to follow: <STYLE>",
+    # `--prompt`'s style section, as it joins the standing instructions. No
+    # endpoint has a slot for it, and it is not a per-request thing to say, so
+    # this line is the whole of how a fixed style reaches a model — on every
+    # route, in these words, once where a window starts.
+    "style section": (
+        _styled().style_section(),
+        "Style to follow: <STYLE>",
     ),
 }
 

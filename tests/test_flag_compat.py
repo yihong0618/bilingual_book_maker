@@ -451,7 +451,7 @@ WARN_FIXTURES = [
         "C4",
         ["--prompt", "translate {text}"],
         {"book_type": "srt"},
-        "--prompt is ignored for srt books",
+        "replaces the subtitle loader's own",
     ),
     (
         "C5",
@@ -637,20 +637,16 @@ class TestNoiseGuard:
         assert "Warning:" not in proc.stdout
 
 
-class TestASystemMessageIsOnlyOutrankedWhenThereIsOne:
-    """A9 names a conflict between two system messages. A `--prompt` that
-    carries only a user template is in no conflict at all: the two fill
-    different halves of the request and both are honoured."""
+class TestTheLegacySystemVariableIsDeprecated:
+    """A9 used to say `$OPENAI_API_SYS_MSG` outranked `--prompt`'s system
+    section, which it did — a command asking for a system message translated
+    a whole book under an exported variable instead. The flag wins now, so
+    the row says which of the two is being used and that the variable is on
+    its way out."""
 
-    def test_a_user_only_prompt_says_nothing(self, capsys, monkeypatch):
-        monkeypatch.setenv("OPENAI_API_SYS_MSG", "you are a translator")
-        f = facts(["--book_name", "b.epub", "--prompt", "translate {text}"])
-
-        assert "A9" not in tripped(f)
-        check_compatibility(f)
-        assert capsys.readouterr().out == ""
-
-    def test_a_prompt_with_a_system_key_still_warns(self, capsys, monkeypatch):
+    def test_a_prompt_with_a_system_key_is_told_the_variable_is_ignored(
+        self, capsys, monkeypatch
+    ):
         monkeypatch.setenv("OPENAI_API_SYS_MSG", "you are a translator")
         f = facts(
             [
@@ -663,9 +659,27 @@ class TestASystemMessageIsOnlyOutrankedWhenThereIsOne:
 
         assert "A9" in tripped(f)
         check_compatibility(f)
-        assert "$OPENAI_API_SYS_MSG is exported" in " ".join(
-            capsys.readouterr().out.split()
-        )
+        said = " ".join(capsys.readouterr().out.split())
+        assert "is exported and is ignored this run" in said
+
+    def test_a_user_only_prompt_is_told_the_variable_is_what_it_is_using(
+        self, capsys, monkeypatch
+    ):
+        monkeypatch.setenv("OPENAI_API_SYS_MSG", "you are a translator")
+        f = facts(["--book_name", "b.epub", "--prompt", "translate {text}"])
+
+        assert "A9" in tripped(f)
+        check_compatibility(f)
+        said = " ".join(capsys.readouterr().out.split())
+        assert "The variable is deprecated" in said
+
+    def test_nothing_is_said_when_it_is_not_exported(self, capsys, monkeypatch):
+        monkeypatch.delenv("OPENAI_API_SYS_MSG", raising=False)
+        f = facts(["--book_name", "b.epub", "--prompt", "translate {text}"])
+
+        assert "A9" not in tripped(f)
+        check_compatibility(f)
+        assert capsys.readouterr().out == ""
 
     def test_reading_the_prompt_here_prints_nothing(self, capsys):
         # the run announces its prompt config once, from its own parse; this

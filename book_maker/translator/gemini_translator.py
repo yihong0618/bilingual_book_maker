@@ -198,14 +198,12 @@ class Gemini(Base):
     def _system_instruction(self):
         """The system slot's value, or None.
 
-        `--prompt`'s system section fills it, with `{language}`/`{crlf}`
-        resolved the way the other routes resolve them. None rather than "":
-        this SDK takes an absent instruction, and an empty one is not the same
-        request.
+        `--prompt`'s system section and its style section fill it, with
+        `{language}`/`{crlf}` resolved the way the other routes resolve them.
+        None rather than "": this SDK takes an absent instruction, and an
+        empty one is not the same request.
         """
-        return self._augment_system_content(
-            self.fill_optional(self.prompt_sys_msg) or None
-        )
+        return self.standing_instructions() or None
 
     def _build_config_kwargs(
         self, response_mime_type: str | None = None, response_schema: type | None = None
@@ -251,16 +249,16 @@ class Gemini(Base):
         )
 
     def _user_content(self, text: str) -> str:
-        """The turn's text: the user template, then the style section.
+        """The turn's text: the user template, and nothing standing.
 
-        Gemini's system slot is `system_instruction`, so `system` is native
-        here. There is no style slot, so `--prompt`'s style rides at the end
-        of the turn, in the wording every other route uses. `{crlf}` is filled
-        too — it is documented for `--prompt` and used to raise KeyError here.
+        Gemini's system slot is `system_instruction`, and `--prompt`'s system
+        and style sections both go there — style is a standing instruction, so
+        it is said once per window rather than with every paragraph. `{crlf}`
+        is filled too: it is documented for `--prompt` and used to raise
+        KeyError here.
         """
-        return (
+        return self._fold_standing_instructions(
             self.prompt.format(text=text, language=self.language, crlf="\n")
-            + self.style_suffix()
         )
 
     def _extract_translation_text(self, response_text: str) -> str:
