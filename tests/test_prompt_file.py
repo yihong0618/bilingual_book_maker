@@ -87,9 +87,65 @@ class TestTheBlockForm:
         text = "## Conversation\n\n**User:**\n\nLine one.\n\n{text}\n"
         assert parse_prompt_markdown(text)["user"] == "Line one.\n\n{text}"
 
+    def test_bold_text_inside_a_turn_is_not_a_role(self):
+        # `**Important**` is emphasis in the operator's own template, not a
+        # turn delimiter. Read as one it opened a role nothing asks for and
+        # silently truncated the template at that line.
+        text = (
+            "## Conversation\n\n**User:**\n\nTranslate {text}.\n"
+            "**Important**\nPreserve every footnote.\n"
+        )
+        assert parse_prompt_markdown(text)["user"] == (
+            "Translate {text}.\n**Important**\nPreserve every footnote."
+        )
+
+    def test_a_bold_role_name_without_a_colon_is_content_too(self):
+        text = "## Conversation\n\n**User:**\n\n{text}\n**Assistant**\nnot a turn\n"
+        assert parse_prompt_markdown(text)["user"] == (
+            "{text}\n**Assistant**\nnot a turn"
+        )
+
+    def test_the_colon_may_sit_outside_the_bold(self):
+        text = "## Conversation\n\n**User**:\n\n{text}\n"
+        assert parse_prompt_markdown(text)["user"] == "{text}"
+
     def test_an_assistant_turn_is_not_the_template(self):
         text = f"## Conversation\n\n**User:**\n\n{TEMPLATE}\n\n**Assistant:**\n\nOk.\n"
         assert parse_prompt_markdown(text) == {"user": TEMPLATE}
+
+
+class TestHeadingsAWriterActuallyProduces:
+    """An editor's byte order mark and markdown's own heading indentation are
+    not malformed input. Both used to leave every heading unmatched, so the
+    whole file parsed as no sections at all and the error blamed the
+    conversation."""
+
+    def test_a_byte_order_mark_does_not_hide_the_first_heading(self):
+        # an editor's BOM lands on the first line, which is the heading in a
+        # file with no title
+        text = f"\ufeff## System Message\n\n{SYSTEM}\n\n## Conversation\n\n**User:**\n\n{TEMPLATE}\n"
+        assert parse_prompt_markdown(text)["system"] == SYSTEM
+
+    def test_a_heading_indented_up_to_three_spaces_is_still_a_heading(self):
+        text = BLOCK.replace("## System Message", "  ## System Message")
+        assert parse_prompt_markdown(text)["system"] == SYSTEM
+
+    def test_a_section_heading_indented_past_markdown_is_refused_by_name(self):
+        # markdown reads four spaces as a code block, so this is not a
+        # heading — but it is unmistakably a mis-indented one, and losing the
+        # instruction under it in silence is the whole bug class here
+        text = BLOCK.replace("## System Message", "    ## System Message")
+        with pytest.raises(PromptFileError) as refused:
+            parse_prompt_markdown(text, "p.md")
+        assert "System Message" in str(refused.value)
+
+    def test_deeper_indentation_that_names_no_section_is_left_as_content(self):
+        # a `##` line inside a code block in the operator's own template
+        text = (
+            "## Conversation\n\n**User:**\n\nTranslate:\n\n"
+            "    ## a heading in the source\n\n{text}\n"
+        )
+        assert "## a heading in the source" in parse_prompt_markdown(text)["user"]
 
 
 class TestWhatCannotBeRead:
@@ -170,6 +226,19 @@ class TestThePlaceholderPreflight:
     )
     def test_what_a_run_can_fill_passes(self, template):
         assert parse_prompt_arg(json.dumps({"user": template}), announce=False)
+
+    def test_an_attribute_reach_is_named_not_a_traceback(self):
+        # `str.format` answers `{language.name}` with AttributeError, which
+        # the pre-flight did not catch: the template passed here and killed
+        # the run on its first paid request instead.
+        with pytest.raises(ValueError) as refused:
+            parse_prompt_arg('{"user": "To {language.name}: {text}"}', announce=False)
+        assert "{language.name}" in str(refused.value)
+
+    def test_an_item_reach_is_named_too(self):
+        with pytest.raises(ValueError) as refused:
+            check_user_placeholders("{text[0]}")
+        assert "{text[0]}" in str(refused.value)
 
     def test_a_positional_field_is_refused_too(self):
         with pytest.raises(ValueError):

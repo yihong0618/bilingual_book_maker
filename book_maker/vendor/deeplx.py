@@ -43,6 +43,10 @@ import requests
 
 DEEPL_API = "https://www2.deepl.com/jsonrpc"
 
+# (connect, read), in seconds — httpx's own default, which is what this code
+# waited before it was vendored onto `requests`.
+TIMEOUT = (5, 5)
+
 HEADERS = {
     "Content-Type": "application/json",
     "Accept": "*/*",
@@ -134,6 +138,11 @@ def translate(
         data=body.encode("utf-8"),
         headers=HEADERS,
         proxies=proxies,
+        # `requests` waits forever by default; `httpx`, which this code used
+        # before it was vendored, waits five seconds. Same five here, connect
+        # and read: an undocumented endpoint that stops answering must not
+        # hang a book-length run on one paragraph.
+        timeout=TIMEOUT,
     )
 
     if response.status_code == 429:

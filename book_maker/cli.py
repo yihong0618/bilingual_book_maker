@@ -5,6 +5,7 @@ import sys
 from collections import namedtuple
 from os import environ as env
 from pathlib import Path
+from string import Formatter
 from types import SimpleNamespace
 from urllib.parse import urlparse
 
@@ -398,28 +399,54 @@ def get_book_type(book_name):
 USER_TEMPLATE_PLACEHOLDERS = ("text", "language", "crlf")
 
 
+def _unfillable(field):
+    known = ", ".join(f"{{{name}}}" for name in USER_TEMPLATE_PLACEHOLDERS)
+    return ValueError(
+        f"prompt's `user` template names {{{field}}}, which no run can fill. "
+        f"The placeholders are {known}; for a literal brace write "
+        f"`{{{{` and `}}}}`."
+    )
+
+
+def _unusable(reason):
+    return ValueError(
+        f"prompt's `user` template is not a usable format string ({reason}); "
+        f"for a literal brace write `{{{{` and `}}}}`."
+    )
+
+
 def check_user_placeholders(template):
     """Refuse a `user` template naming something this run cannot fill.
 
-    `{text}` is required and `{language}`/`{crlf}` are offered; a `{name}`
-    that is none of them used to raise KeyError from inside the translator,
-    on the first request, after the book had been opened and the endpoint
-    paid. A brace meant literally is written `{{`, and this sentence says so.
+    `{text}` is required and `{language}`/`{crlf}` are offered; anything else
+    in braces used to surface from inside the translator, on the first
+    request, after the book had been opened and the endpoint paid. A brace
+    meant literally is written `{{`, and this sentence says so.
+
+    The fields are read out of the template rather than inferred from what
+    `str.format` throws, because what it throws depends on the shape: a bare
+    `{name}` is a KeyError, `{0}` an IndexError, and `{language.name}` or
+    `{text[0]}` — reaching for an attribute or an item of the string we fill
+    in — an AttributeError or a TypeError that names neither the placeholder
+    nor the template it came from. Reading the fields answers all of them the
+    same way, by name.
     """
     try:
+        fields = [f for _, f, _, _ in Formatter().parse(template) if f is not None]
+    except ValueError as e:
+        raise _unusable(e) from e
+
+    for field in fields:
+        root = field.split(".")[0].split("[")[0]
+        if field != root or root not in USER_TEMPLATE_PLACEHOLDERS:
+            raise _unfillable(field)
+
+    # The fields are known good; this catches what is left — a format spec
+    # the value cannot satisfy, like `{text:d}`.
+    try:
         template.format(**dict.fromkeys(USER_TEMPLATE_PLACEHOLDERS, ""))
-    except KeyError as e:
-        known = ", ".join(f"{{{name}}}" for name in USER_TEMPLATE_PLACEHOLDERS)
-        raise ValueError(
-            f"prompt's `user` template names {{{e.args[0]}}}, which no run can "
-            f"fill. The placeholders are {known}; for a literal brace write "
-            f"`{{{{` and `}}}}`."
-        ) from e
-    except (IndexError, ValueError) as e:
-        raise ValueError(
-            f"prompt's `user` template is not a usable format string ({e}); "
-            f"for a literal brace write `{{{{` and `}}}}`."
-        ) from e
+    except Exception as e:  # noqa: BLE001 - re-raised as the sentence above
+        raise _unusable(e) from e
 
 
 def parse_prompt_arg(prompt_arg, announce=True):

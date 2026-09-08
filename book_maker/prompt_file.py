@@ -39,12 +39,30 @@ import re
 
 # `## Heading` — only the ones this reader knows are sections; anything else
 # is refused by name rather than silently dropped, because a misspelled
-# heading means the instruction in it was never sent.
-_HEADING = re.compile(r"^##\s+(?P<name>.+?)\s*$")
+# heading means the instruction in it was never sent. Up to three spaces of
+# indentation, which is markdown's own rule for a heading and what an editor
+# that reflows a list leaves behind.
+_HEADING = re.compile(r"^ {0,3}##\s+(?P<name>.+?)\s*$")
 
-# `**User:**`, with or without the turn's first line trailing it.
+# The same line indented past markdown's limit: a code block by the spec, and
+# a mis-indented heading by every other reading. Refused when it names a
+# section this reader knows, so the instruction under it cannot go missing in
+# silence; left as content otherwise, because a `##` line inside a fenced
+# example is the operator's own text.
+_INDENTED_HEADING = re.compile(r"^ {4,}##\s+(?P<name>.+?)\s*$")
+
+# The turns a conversation may open. Only these end the turn before them —
+# the role name is a fixed set and the colon is required, because any other
+# `**bold**` line is emphasis inside the operator's own template. A pattern
+# that took any bold word for a role read `**Important**` as the start of a
+# turn nobody asked for and dropped every line after it.
+CONVERSATION_ROLES = ("user", "assistant", "system", "developer")
+
+# `**User:**` or `**User**:`, with or without the turn's first line trailing.
 _ROLE = re.compile(
-    r"^\*\*\s*(?P<role>[A-Za-z][A-Za-z ]*?)\s*:?\s*\*\*:?\s*(?P<rest>.*)$"
+    r"^\*\*\s*(?P<role>" + "|".join(CONVERSATION_ROLES) + r")\s*"
+    r"(?::\s*\*\*|\*\*\s*:)\s*(?P<rest>.*)$",
+    re.IGNORECASE,
 )
 
 # Heading -> the `--prompt` section it fills.
@@ -61,7 +79,12 @@ class PromptFileError(ValueError):
 
 
 def _blocks(body):
-    """`{role: text}` for a conversation body, first turn of each role wins."""
+    """`{role: text}` for a conversation body, first turn of each role wins.
+
+    Only a line matching `_ROLE` — one of `CONVERSATION_ROLES`, with its
+    colon — closes the turn before it. Everything else is that turn's own
+    text, bold or not.
+    """
     turns = {}
     role = None
     lines = []
@@ -93,19 +116,28 @@ def parse_prompt_markdown(text, source="the prompt file"):
     """
     sections = {}
     current = None
-    for line in text.splitlines():
+    # An editor's byte order mark sits on the first line, which in a file
+    # with no title is the first heading — unstripped, it matched nothing and
+    # the whole file parsed as no sections at all.
+    for line in text.lstrip("\ufeff").splitlines():
         heading = _HEADING.match(line)
         if heading:
-            name = heading.group("name").strip().lower()
-            current = SECTIONS.get(name)
+            name = heading.group("name").strip()
+            current = SECTIONS.get(name.lower())
             if current is None:
                 raise PromptFileError(
-                    f"{source}: `## {heading.group('name').strip()}` is not a "
-                    f"section this reads. Use `## System Message`, `## Style` "
-                    f"or `## Conversation`."
+                    f"{source}: `## {name}` is not a section this reads. Use "
+                    f"`## System Message`, `## Style` or `## Conversation`."
                 )
             sections.setdefault(current, [])
             continue
+        indented = _INDENTED_HEADING.match(line)
+        if indented and indented.group("name").strip().lower() in SECTIONS:
+            raise PromptFileError(
+                f"{source}: `## {indented.group('name').strip()}` is indented "
+                f"too far to be a heading — markdown reads four spaces as a "
+                f"code block. Move it to the start of its line."
+            )
         if current is not None:
             sections[current].append(line)
 

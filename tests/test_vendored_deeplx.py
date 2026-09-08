@@ -86,6 +86,13 @@ class TestTheRequestShape:
         assert '"method":"' not in raw
         assert '"method": "' in raw or '"method" : "' in raw
 
+    def test_the_request_cannot_hang_the_run(self, post):
+        # `requests` waits forever by default and `httpx`, which this code
+        # used before it was vendored, waits five seconds. An undocumented
+        # endpoint that stops answering must not hang a book on one paragraph.
+        deeplx.translate("hi")
+        assert post.call.timeout == deeplx.TIMEOUT == (5, 5)
+
     def test_the_translation_is_returned(self, post):
         assert deeplx.translate("hi") == "hello"
 

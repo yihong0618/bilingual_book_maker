@@ -11,13 +11,57 @@ from copy import copy
 from bs4.element import Tag
 from ebooklib import epub
 from lxml import etree
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, wait_exponential
 
 from book_maker.translator.base_translator import BatchMismatch
 from book_maker.utils import language_code
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
+
+# The longest single wait between attempts, in seconds. Waits grow
+# exponentially up to this and then stay there: five minutes is long enough
+# to sit out a rate limit and short enough that a provider coming back is
+# noticed within one.
+RETRY_WAIT_CAP = 300
+
+# Errors that will not clear by waiting, matched by class name so this module
+# imports no provider SDK: a rejected key, a request the endpoint will refuse
+# in exactly the same words next time, a model that does not exist. Every
+# other failure — 429, timeout, dropped connection, 5xx, a bare
+# RequestException — is weather, and is waited out.
+FATAL_ERROR_NAMES = frozenset(
+    {
+        "AuthenticationError",
+        "PermissionDeniedError",
+        "BadRequestError",
+        "InvalidRequestError",
+        "NotFoundError",
+        "UnprocessableEntityError",
+        "ModelUnavailable",
+    }
+)
+
+
+def _is_retryable(error):
+    """Whether waiting could plausibly change the answer."""
+    if isinstance(error, (KeyboardInterrupt, SystemExit)):
+        # Never swallowed: Ctrl-C on an hours-long wait has to stop the run.
+        return False
+    return type(error).__name__ not in FATAL_ERROR_NAMES
+
+
+def _say_retrying(retry_state):
+    """One line per retry, so a long tolerance does not look like a hang."""
+    error = retry_state.outcome.exception()
+    logger.warning(
+        "retrying after %s (%s) — attempt %d, waiting %.0fs",
+        type(error).__name__,
+        error,
+        retry_state.attempt_number,
+        retry_state.next_action.sleep,
+    )
+
 
 # Elements whose parent accepts exactly one of them, and containers with a
 # content model too strict for an appended sibling. A translated copy next
@@ -388,20 +432,28 @@ class EPUBBookLoaderHelper:
         # written, which the early returns above cover
         return new_p
 
-    # Three attempts, like every other retry in this codebase. It used to be
-    # `backoff.on_exception(backoff.expo, Exception)` with no `max_tries` and
-    # no `max_time` — the only unbounded retry here — so a permanent failure
-    # on this path (a rejected key, a model that does not exist) retried
-    # forever with doubling waits, and the run neither finished nor stopped.
-    # `reraise` so the caller still sees the endpoint's own error rather than
-    # tenacity's wrapper.
+    # Owner ruling (260907): this retry is **patient**, and gives up only on
+    # a fatal error. The user base runs flaky providers where a 429 or a
+    # first token can be minutes or hours away, and an attempt cap there
+    # abandons a paid book over weather. So: no attempt cap, no total-time
+    # cap, waits that grow to `RETRY_WAIT_CAP` and stay there.
+    #
+    # What the old `backoff.on_exception(backoff.expo, Exception)` got wrong
+    # was not the patience — it was retrying the errors that will never
+    # clear. A rejected key or a model that does not exist retried forever
+    # with doubling waits, and the run neither finished nor stopped. Those
+    # are `FATAL_ERROR_NAMES` now and propagate on the first one.
+    #
+    # Loud on purpose: an hours-long tolerance that says nothing looks
+    # exactly like a hang. (This comment is the in-tree record of the
+    # ruling — worktrees do not carry the repo's CLAUDE.md.)
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=60),
-        before_sleep=lambda state: logger.warning(
-            f"retry backoff: attempt {state.attempt_number} failed with "
-            f"{state.outcome.exception()}"
-        ),
+        retry=retry_if_exception(_is_retryable),
+        wait=wait_exponential(multiplier=1, min=1, max=RETRY_WAIT_CAP),
+        before_sleep=_say_retrying,
+        # No `stop`: tenacity's default is `stop_never`, which is the point.
+        # `reraise` so a fatal error reaches the caller as itself, and so the
+        # behaviour stays right if a stop is ever added above.
         reraise=True,
     )
     def translate_with_backoff(self, text, context_flag=False):
