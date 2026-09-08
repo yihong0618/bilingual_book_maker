@@ -12,6 +12,9 @@ from .base_loader import BaseBookLoader
 
 
 class SRTBookLoader(BaseBookLoader):
+    # An srt block is separated from the next by a blank line.
+    SAVE_FILE_SEPARATOR = "\n\n"
+
     def __init__(
         self,
         srt_name,
@@ -63,12 +66,11 @@ class SRTBookLoader(BaseBookLoader):
         pass
 
     def _parse_srt(self, srt_text):
-        blocks = re.split("\n\s*\n", srt_text)
+        blocks = re.split(r"\n\s*\n", srt_text)
 
         final_blocks = []
         new_block = {}
-        for i in range(0, len(blocks)):
-            block = blocks[i]
+        for block in blocks:
             if block.strip() == "":
                 continue
 
@@ -91,6 +93,19 @@ class SRTBookLoader(BaseBookLoader):
 
     def _concat_blocks(self, sliced_text: str, text: str):
         return f"{sliced_text}\n\n{text}" if sliced_text else text
+
+    def _emit_block(self, position, text):
+        """Append one output block: the source block's head, then `text`.
+
+        `--single_translate` drops the source line and keeps the number and
+        the timestamp, which are what makes the file still an srt.
+        """
+        head = (
+            self._get_block_except_text(self.blocks[position])
+            if self.single_translate
+            else self._get_block_text(self.blocks[position])
+        )
+        self.bilingual_result.append(f"{head}\n{text}")
 
     def _get_block_translate(self, block):
         return f"{block['number']}\n{block['text']}"
@@ -223,25 +238,10 @@ class SRTBookLoader(BaseBookLoader):
                     for i, block in enumerate(translated_blocks):
                         text = block.get("text", "")
                         self.p_to_save.append(text)
-                        if self.single_translate:
-                            self.bilingual_result.append(
-                                f"{self._get_block_except_text(self.blocks[begin + i])}\n{text}"
-                            )
-                        else:
-                            self.bilingual_result.append(
-                                f"{self._get_block_text(self.blocks[begin + i])}\n{text}"
-                            )
+                        self._emit_block(begin + i, text)
                 else:
-                    for i, block in enumerate(self.blocks[begin:end]):
-                        text = self.p_to_save[begin + i]
-                        if self.single_translate:
-                            self.bilingual_result.append(
-                                f"{self._get_block_except_text(self.blocks[begin + i])}\n{text}"
-                            )
-                        else:
-                            self.bilingual_result.append(
-                                f"{self._get_block_text(self.blocks[begin + i])}\n{text}"
-                            )
+                    for i, _block in enumerate(self.blocks[begin:end]):
+                        self._emit_block(begin + i, self.p_to_save[begin + i])
 
                 index += end - begin
                 if self.is_test and index > self.test_num:
@@ -294,10 +294,3 @@ class SRTBookLoader(BaseBookLoader):
 
         except Exception as e:
             raise Exception("can not load resume file") from e
-
-    def save_file(self, book_path, content):
-        try:
-            with open(book_path, "w", encoding="utf-8") as f:
-                f.write("\n\n".join(content))
-        except Exception as e:
-            raise Exception("can not save file") from e

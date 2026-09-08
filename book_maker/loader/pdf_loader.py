@@ -432,10 +432,3 @@ class PDFBookLoader(BaseBookLoader):
                 self.p_to_save = f.read().splitlines()
         except Exception as e:
             raise Exception("can not load resume file") from e
-
-    def save_file(self, book_path, content):
-        try:
-            with open(book_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(content))
-        except Exception as e:
-            raise Exception("can not save file") from e

@@ -1,3 +1,4 @@
+import json
 import os
 from abc import ABC, abstractmethod
 
@@ -7,9 +8,20 @@ class BaseBookLoader(ABC):
     # attribute so no loader needs an __init__ of its own to own the flag.
     _announced_saved_book = False
 
+    # What `save_file` joins its content lines with. The text writers all
+    # join with a newline; srt separates its blocks with a blank line.
+    SAVE_FILE_SEPARATOR = "\n"
+
     @staticmethod
     def _is_special_text(text):
         return text.isdigit() or text.isspace()
+
+    def save_file(self, book_path, content):
+        try:
+            with open(book_path, "w", encoding="utf-8") as f:
+                f.write(self.SAVE_FILE_SEPARATOR.join(content))
+        except Exception as e:
+            raise Exception("can not save file") from e
 
     def announce_saved_book(self, path):
         """The last line of a finished run: the file it produced, in full.
@@ -39,14 +51,33 @@ class BaseBookLoader(ABC):
     def make_bilingual_book(self):
         pass
 
-    @abstractmethod
     def load_state(self):
-        pass
+        """The resume file as a list of already-translated pieces.
+
+        JSON, with a plain-lines fallback for the files earlier versions
+        wrote. Overridden where a loader keeps another shape on disk.
+        """
+        try:
+            with open(self.bin_path, encoding="utf-8") as f:
+                content = f.read()
+                try:
+                    state = json.loads(content)
+                except json.JSONDecodeError:
+                    state = content.splitlines()
+                if not isinstance(state, list):
+                    raise ValueError("resume file must contain a list")
+                self.p_to_save = state
+        except Exception as e:
+            raise Exception("can not load resume file") from e
 
     @abstractmethod
     def _save_temp_book(self):
         pass
 
-    @abstractmethod
     def _save_progress(self):
-        pass
+        """Write the resume file `load_state` reads back."""
+        try:
+            with open(self.bin_path, "w", encoding="utf-8") as f:
+                json.dump(self.p_to_save, f, ensure_ascii=False)
+        except Exception as e:
+            raise Exception("can not save resume file") from e

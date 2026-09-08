@@ -905,6 +905,18 @@ class EPUBBookLoader(BaseBookLoader):
                 "[/bold yellow]"
             )
 
+    def _write_book(self, path, book):
+        """Write one epub, credited and with its fonts as the source had them.
+
+        The three steps always travel together, and the order matters: the
+        credit is stamped into the book before it is serialized, and the
+        obfuscation is put back on the bytes afterwards. `_stamp_disclosure`
+        is idempotent, so a book written twice is credited once.
+        """
+        self._stamp_disclosure(book)
+        epub.write_epub(path, book, {})
+        self._reobfuscate_written(path)
+
     def _reobfuscate_written(self, path):
         """Put back the obfuscation the source shipped, on the file just written.
 
@@ -3072,9 +3084,7 @@ class EPUBBookLoader(BaseBookLoader):
             fixstart,
             fixend,
         )
-        self._stamp_disclosure(new_book)
-        epub.write_epub(f"{name_fix}", new_book, {})
-        self._reobfuscate_written(f"{name_fix}")
+        self._write_book(f"{name_fix}", new_book)
         # --retranslate leaves by `exit(0)` right after this, so this is the
         # end of that run and the file it produced.
         self.announce_saved_book(f"{name_fix}")
@@ -4010,16 +4020,12 @@ class EPUBBookLoader(BaseBookLoader):
 
                 if self.accumulated_num > 1:
                     name, _ = os.path.splitext(self.epub_name)
-                    self._stamp_disclosure(new_book)
-                    epub.write_epub(f"{name}_bilingual.epub", new_book, {})
-                    self._reobfuscate_written(f"{name}_bilingual.epub")
+                    self._write_book(f"{name}_bilingual.epub", new_book)
             name, _ = os.path.splitext(self.epub_name)
             if self.batch_flag:
                 self.translate_model.batch()
             else:
-                self._stamp_disclosure(new_book)
-                epub.write_epub(f"{name}_bilingual.epub", new_book, {})
-                self._reobfuscate_written(f"{name}_bilingual.epub")
+                self._write_book(f"{name}_bilingual.epub", new_book)
                 self.announce_saved_book(f"{name}_bilingual.epub")
         except KeyboardInterrupt as e:
             print(e)
@@ -4164,9 +4170,7 @@ class EPUBBookLoader(BaseBookLoader):
                             )
                     item.content = chapter_plan.soup.encode()
                 new_temp_book.add_item(item)
-            self._stamp_disclosure(new_temp_book)
-            epub.write_epub(temp_path, new_temp_book, {})
-            self._reobfuscate_written(temp_path)
+            self._write_book(temp_path, new_temp_book)
         except Exception as e:
             # The recovery book is the only artifact a crashed run leaves
             # behind. Swallowing this told the user nothing and they found

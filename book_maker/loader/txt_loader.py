@@ -1,4 +1,3 @@
-import json
 import sys
 from pathlib import Path
 
@@ -146,30 +145,3 @@ class TXTBookLoader(BaseBookLoader):
             self.bilingual_temp_result,
         )
 
-    def _save_progress(self):
-        try:
-            with open(self.bin_path, "w", encoding="utf-8") as f:
-                json.dump(self.p_to_save, f, ensure_ascii=False)
-        except Exception as e:
-            raise Exception("can not save resume file") from e
-
-    def load_state(self):
-        try:
-            with open(self.bin_path, encoding="utf-8") as f:
-                content = f.read()
-                try:
-                    state = json.loads(content)
-                except json.JSONDecodeError:
-                    state = content.splitlines()
-                if not isinstance(state, list):
-                    raise ValueError("resume file must contain a list")
-                self.p_to_save = state
-        except Exception as e:
-            raise Exception("can not load resume file") from e
-
-    def save_file(self, book_path, content):
-        try:
-            with open(book_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(content))
-        except Exception as e:
-            raise Exception("can not save file") from e
