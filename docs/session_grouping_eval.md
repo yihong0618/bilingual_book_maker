@@ -310,6 +310,53 @@ the request budget from its own prompt overhead, and pins the rest.
 > `book_maker/loader/plan.py` and `book_maker/session_context.py` for
 > which numbers are measured and which are chosen.
 
+### The two grouping knobs, and how to adjust them (shipped 260907)
+
+What they are:
+
+- **`--accumulated_num`** is the per-request **token budget**:
+  consecutive units of any length share one request until the next unit
+  would push it past `N` estimated tokens. Untyped, every plan run
+  derives it from its own prompt overhead — `1200` with the stock
+  prompts, up to `1600` under a fat custom `--prompt`, and a flat `800`
+  on an endpoint without a strict-schema verdict — except session runs
+  (`codex` included), which keep the un-halved value. The run narrates
+  the number and the route class it chose at start. A typed value
+  always wins, un-halved; `1` turns grouping off entirely; interrupted
+  runs checkpoint and `--resume` either way.
+- **`--max-batch-units`** is the **unit-count cap** behind that budget:
+  the most units one request may carry regardless of how short they
+  are. Default `16`; an endpoint that verifies JSON mode but not a
+  strict schema carries half automatically (effective `8`) — that half
+  is where reply miscounts actually live, so don't undo it by typing
+  the double.
+
+Why two knobs: a batch is risky by *segments × output length* — how
+long an enumeration the model must hold across its own generation. The
+token budget bounds the length axis and is the primary limit; the unit
+cap bounds the segment axis and is the safety net behind it (§6: 4705
+tokens in 48 units was clean while 3563 tokens in 64 units faulted).
+
+When to **lower** them: the run telling you so is the only trigger
+worth acting on. From the third recovered batch a run prints
+`N misaligned batches this run — consider a lower --max-batch-units or
+--accumulated_num`; halve the unit cap first (`16` → `8`, then `4`) —
+the sweep showed a raised cap costs retries before it costs faults, so
+lowering it buys the retries back. Don't pre-shrink for a weak model or
+a router: the weak arm held format *better* than the strong one here,
+and router degradation is schema support, which the probe and ladder
+absorb on their own.
+
+When to **raise** them: cost only. Per-content-token cost falls
+monotonically with request size (15.5 input-equivalents at B=800
+against 12.3 at 1600), so bigger requests are cheaper — but the shipped
+defaults are owner-set safety margins sitting deliberately *below* the
+measured-clean range, and raising spends that margin: only 1600–4800
+was measured fault-free, only at the old 32-unit cap, and only on the
+evaluated models. Values past the defaults are the operator's own
+risk. Never raise the unit cap past `48`: content faults emerged at 64
+effective units, and the token budget bounds content either way.
+
 ## 8. The shipped defaults
 
 Session-mode defaults only; an explicit flag always wins. They are
