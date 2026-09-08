@@ -309,11 +309,11 @@ class MarkdownBookLoader(BaseBookLoader):
             target_size = (
                 min(self.batch_size, remaining) if remaining else self.batch_size
             )
-            if len(batch) >= target_size and not self._batch_is_heading_only(batch):
-                flush_batch()
-            elif self._batch_char_count(
-                batch
-            ) >= self.md_chunk_char_budget and not self._batch_is_heading_only(batch):
+            full = (
+                len(batch) >= target_size
+                or self._batch_char_count(batch) >= self.md_chunk_char_budget
+            )
+            if full and not self._batch_is_heading_only(batch):
                 flush_batch()
 
         if not stop_after_batch:

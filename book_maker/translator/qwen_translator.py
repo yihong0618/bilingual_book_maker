@@ -98,13 +98,13 @@ class QwenTranslator(Base):
         )
 
         # Model configuration
-        self.model = self.set_qwen_model(model)
+        self.set_qwen_model(model)
         self.source_lang = source_lang
         self.target_lang = self._map_language(language)
 
         # Advanced features
-        self.terminology = self.set_terminology(terminology)
-        self.domain_hint = self.set_domain_hint(domain_hint)
+        self.set_terminology(terminology)
+        self.set_domain_hint(domain_hint)
 
         # Context/Translation memory support
         self.context_flag = context_flag
@@ -341,7 +341,7 @@ class QwenTranslator(Base):
             print(
                 f"[red]Invalid Qwen model: {model_name}. Using default: {self.model}[/red]"
             )
-        # Returned, not just stored: __init__ assigns the result back over
-        # self.model, so a setter returning None wiped the model it had just
-        # set and every request went out with model=None.
+        # Every caller lets the setter own the attribute — nothing assigns
+        # the return value back over it, which is how a setter returning None
+        # once wiped the model it had just set.
         return self.model

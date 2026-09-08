@@ -408,24 +408,39 @@ class EPUBBookLoaderHelper:
         )
 
     def deal_old(self, wait_p_list, single_translate=False, context_flag=False):
-        if not wait_p_list:
-            return
-
-        result_txt_list = translate_list_or_singles(
-            self.translate_model, [p.text for p in wait_p_list]
+        flush_waiting(
+            self.translate_model,
+            wait_p_list,
+            self.insert_trans,
+            self.translation_style,
+            single_translate,
         )
 
-        for i in range(len(wait_p_list)):
-            if i < len(result_txt_list):
-                p = wait_p_list[i]
-                self.insert_trans(
-                    p,
-                    shorter_result_link(result_txt_list[i]),
-                    self.translation_style,
-                    single_translate,
-                )
 
-        wait_p_list.clear()
+def flush_waiting(model, wait_p_list, insert, translation_style, single_translate):
+    """Translate the accumulated paragraphs in one request, then insert each.
+
+    `insert` is what differs between the two callers — the helper's
+    `insert_trans` and the loader's `_insert_trans_preserving_tags` — and it
+    is the only thing that ever did. A reply shorter than the batch leaves
+    the tail untouched; the list is emptied either way, so the caller's
+    accumulator does not carry paragraphs it has already asked about.
+    """
+    if not wait_p_list:
+        return
+
+    result_txt_list = translate_list_or_singles(model, [p.text for p in wait_p_list])
+
+    for i in range(len(wait_p_list)):
+        if i < len(result_txt_list):
+            insert(
+                wait_p_list[i],
+                shorter_result_link(result_txt_list[i]),
+                translation_style,
+                single_translate,
+            )
+
+    wait_p_list.clear()
 
 
 url_pattern = r"(http[s]?://|www\.)+(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"

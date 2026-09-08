@@ -42,6 +42,7 @@ from .helper import (
     append_inline_translation,
     backfill_toc_hrefs,
     derive_translation_identity,
+    flush_waiting,
     has_restricted_content_model,
     is_text_link,
     make_tag,
@@ -2790,6 +2791,22 @@ class EPUBBookLoader(BaseBookLoader):
         )
         translated_text_list = self._translate_texts_aligned(new_texts, units=new_units)
 
+        def insert(k, p, translation):
+            # Same choice for a fresh translation and a resumed one: a plan
+            # run inserts against the unit it planned, a tag run against the
+            # paragraph it found.
+            if plan_units is not None:
+                self._insert_plan_translation(
+                    plan_units[k],
+                    translation,
+                    self.translation_style,
+                    self.single_translate,
+                )
+            else:
+                self._insert_trans_preserving_tags(
+                    p, translation, self.translation_style, self.single_translate
+                )
+
         translate_iter = iter(translated_text_list)
         for k, p, text, cached in entries:
             # Check for fatal error and stop immediately
@@ -2802,14 +2819,7 @@ class EPUBBookLoader(BaseBookLoader):
             if text is not None:
                 # Fresh translation
                 t = next(translate_iter)
-                if plan_units is not None:
-                    self._insert_plan_translation(
-                        plan_units[k], t, self.translation_style, self.single_translate
-                    )
-                else:
-                    self._insert_trans_preserving_tags(
-                        p, t, self.translation_style, self.single_translate
-                    )
+                insert(k, p, t)
                 self.p_to_save.append(t)
                 if not self.quiet:
                     print(text)
@@ -2829,17 +2839,7 @@ class EPUBBookLoader(BaseBookLoader):
                     print()
             else:
                 # Resumed from cache
-                if plan_units is not None:
-                    self._insert_plan_translation(
-                        plan_units[k],
-                        cached,
-                        self.translation_style,
-                        self.single_translate,
-                    )
-                else:
-                    self._insert_trans_preserving_tags(
-                        p, cached, self.translation_style, self.single_translate
-                    )
+                insert(k, p, cached)
 
         if thread_safe:
             with self._progress_lock:
@@ -2892,24 +2892,13 @@ class EPUBBookLoader(BaseBookLoader):
 
     def _deal_old_acc(self, wait_p_list, single_translate):
         """Helper for translate_paragraphs_acc - process accumulated paragraphs."""
-        if not wait_p_list:
-            return
-
-        result_txt_list = translate_list_or_singles(
-            self.translate_model, [p.text for p in wait_p_list]
+        flush_waiting(
+            self.translate_model,
+            wait_p_list,
+            self._insert_trans_preserving_tags,
+            self.translation_style,
+            single_translate,
         )
-
-        for i in range(len(wait_p_list)):
-            if i < len(result_txt_list):
-                p = wait_p_list[i]
-                self._insert_trans_preserving_tags(
-                    p,
-                    shorter_result_link(result_txt_list[i]),
-                    self.translation_style,
-                    single_translate,
-                )
-
-        wait_p_list.clear()
 
     def _deal_new_acc(self, p, wait_p_list, single_translate):
         """Helper for translate_paragraphs_acc - process single paragraph."""
@@ -3099,8 +3088,7 @@ class EPUBBookLoader(BaseBookLoader):
         return False
 
     def filter_nest_list(self, p_list, trans_taglist):
-        filtered_list = [p for p in p_list if not self.has_nest_child(p, trans_taglist)]
-        return filtered_list
+        return [p for p in p_list if not self.has_nest_child(p, trans_taglist)]
 
     def _translation_source_text(self, node):
         if isinstance(node, NavigableString):

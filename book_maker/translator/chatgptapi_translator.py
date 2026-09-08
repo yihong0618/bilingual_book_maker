@@ -955,8 +955,6 @@ class ChatGPTAPI(Base):
         """Sampling parameters to send, or nothing when the model owns them."""
         return self.capabilities.sampling_kwargs(model or self.model, self.temperature)
 
-    _classify_bad_request = staticmethod(classify_bad_request)
-
     def _note_temperature_rejected(self, model):
         if self.capabilities.note_temperature_rejected(model):
             print(
@@ -1012,7 +1010,7 @@ class ChatGPTAPI(Base):
                 )
             )
         except BadRequestError as e:
-            if self._classify_bad_request(e) != "schema":
+            if classify_bad_request(e) != "schema":
                 raise  # not a capability answer — do not blame the schema
             raise StructuredOutputUnsupported(str(e)) from e
         except (ValidationError, json.JSONDecodeError) as e:
@@ -1525,7 +1523,7 @@ class ChatGPTAPI(Base):
                 )
             )
         except BadRequestError as e:
-            if self._classify_bad_request(e) != "schema":
+            if classify_bad_request(e) != "schema":
                 raise  # not a capability answer — do not blame the schema
             raise StructuredOutputUnsupported(str(e)) from e
         except (ValidationError, json.JSONDecodeError) as e:
@@ -1573,7 +1571,7 @@ class ChatGPTAPI(Base):
                 )
             )
         except BadRequestError as e:
-            if self._classify_bad_request(e) != "schema":
+            if classify_bad_request(e) != "schema":
                 raise  # not a capability answer — do not blame the schema
             raise StructuredOutputUnsupported(str(e)) from e
 
