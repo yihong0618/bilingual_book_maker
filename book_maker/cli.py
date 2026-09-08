@@ -489,7 +489,7 @@ def parse_prompt_arg(prompt_arg, announce=True):
                 prompt = {"user": f.read()}
         else:
             # if it's a json file, treat it as a json object
-            # eg: --prompt prompt_template_sample.json
+            # eg: --prompt prompt_template.json
             with open(prompt_arg, encoding="utf-8") as f:
                 prompt = json.load(f)
     else:

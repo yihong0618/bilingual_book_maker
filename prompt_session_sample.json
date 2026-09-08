@@ -1,5 +1,0 @@
-{
-  "system": "You are translating one book across many requests. Keep names, terminology and register identical to what you have already written in this conversation.",
-  "user": "Translate into {language}, consistently with the passages above.{crlf}{crlf}{text}",
-  "style": ""
-}

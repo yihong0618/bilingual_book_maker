@@ -118,15 +118,15 @@ class TestParsingTheSections:
         assert config is None
         assert "must contain the key of `user`" in str(error)
 
-    def test_the_shipped_sample_files_parse(self):
-        for name in ("prompt_sections_sample.json", "prompt_session_sample.json"):
-            parsed = parse_prompt_arg(name, announce=False)
-            # every section is present, and `style` is shipped empty: an
-            # example must show where a voice goes without imposing one on
-            # whoever copies the file
-            assert set(parsed) == set(PROMPT_SECTIONS), name
-            assert parsed["user"] and parsed["system"], name
-            assert parsed["style"] == "", name
+    def test_the_shipped_sample_file_parses(self):
+        # one example ships, not one per situation: `prompt_template.json`
+        parsed = parse_prompt_arg("prompt_template.json", announce=False)
+        # every section is present, and `style` is shipped empty: an
+        # example must show where a voice goes without imposing one on
+        # whoever copies the file
+        assert set(parsed) == set(PROMPT_SECTIONS)
+        assert parsed["user"] and parsed["system"]
+        assert parsed["style"] == ""
 
 
 class TestTheSectionsReachTheTranslator:
