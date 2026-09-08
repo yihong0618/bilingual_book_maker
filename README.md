@@ -344,8 +344,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--language`:
 
-  Set the target language: a tag (`--language zh-hant`), a name (`--language "Traditional Chinese"`), or both at once — `--language "zh-hant:Traditional Chinese"`. The tag names the JSON structured-output field; the name is what the model is asked for. The two-part form is for a language the built-in tables miss. Default `zh-hans`.
-  [Available tags](./docs/languages.md).
+  Set the target language: a tag (`--language zh-hant`), a name (`--language "Traditional Chinese"`), or both at once — `--language "zh-hant:Traditional Chinese"`. The tag names the JSON structured-output field; the name is what the model is asked for. Default `zh-hans`. See also [available tags](./docs/languages.md).
 
 - `--source_lang`:
 
@@ -387,7 +386,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   - `<book>_plan.json`: the translation plan; delete it to classify again.
   - `--plan-min-coverage` (default 0.5, range 0–1): plan mode aborts if the plan covers less than this fraction of the text. `0` disables the guard and values above `0.9` usually abort after classification is already paid for — both warn.
 
-  - `--max-batch-units`: the most units one grouped request may carry (default `16`; an endpoint that verifies JSON mode but not a strict schema carries `8`). The defaults are deliberately conservative — a quarter of the level a fault-emergence eval measured content faults at, chosen as a safety margin rather than read off the measurement — so a strong model will run happily above them: raise both this and `--accumulated_num` if you want fewer, larger requests. Move them lower once the run prints degradation warnings such as the misalignment-recovery hint. Content is also bounded by the token budget (`--accumulated_num`). Replaces the deprecated `--poetry-group-size`.
+  - `--max-batch-units`: the most units one grouped request may carry. Raise it together with `--accumulated_num` for fewer, larger (cheaper) requests; lower them once the run prints degradation warnings such as the misalignment-recovery hint. Content is also bounded by the token budget (`--accumulated_num`).
 
   ```shell
   # let the model judge which tags need translating
@@ -411,17 +410,17 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--allow_navigable_strings`:
 
-  If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue. **Note that it's best to look for e-books that are more standardized if possible.**
+  If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue.
 
 - `--prompt`:
 
   To tweak the prompt, use the `--prompt` parameter. The placeholders the `user` template may use are `{text}` (required), `{language}` and `{crlf}` (a newline, for the shapes — a JSON string, a table cell — that cannot carry one). Anything else in braces is refused before the run starts rather than raising mid-book; write `{{` and `}}` for a literal brace. It supports a few ways to configure the prompt:
 
-  - If you don't need to set the `system` role content, you can simply set it up like this: `--prompt "Translate {text} to {language}."` or `--prompt prompt_template_sample.txt` (example of a text file can be found at [./prompt_template_sample.txt](./prompt_template_sample.txt)).
+  - If you don't need to set the `system` role content, you can simply set it up like this: `--prompt "Translate {text} to {language}."` or `--prompt prompt_template_sample.txt`
 
-  - If you need to set the `system` role content, you can use the following format: `--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'` or `--prompt prompt_template.json` (example of a JSON file can be found at [./prompt_template.json](./prompt_template.json)).
+  - If you need to set the `system` role content, you can use the following format: `--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'` or `--prompt prompt_template.json`.
 
-  - A third key, `style`, is a standing instruction about how to write — register, tone, vocabulary. It is said **once where a window starts**, with the run's other standing instructions (the system message on the API routes, the thread instructions on codex), not repeated on every request. The shipped [./prompt_template.json](./prompt_template.json) carries all three sections, `style` left empty: write your own voice in, or leave it blank.
+  - A third key, `style`, is a standing instruction about how to write — register, tone, vocabulary. It is said **once where a window starts**, not repeated on every request.
 
   - `--prompt` works on every LLM route, and on srt books too — there its sections sit on top of the subtitle loader's own prompt, section by section. Replacing the `user` template on an srt book means saying yourself that the block number and the timeline must come back unchanged; the run warns about it. The fixed machine-translation routes (google, deepl, caiyun, tencent, qwen, customapi) send text and nothing else, so they carry no prompt at all and the run says so at start.
   
@@ -445,21 +444,22 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   - You can also set the `user` and `system` role prompt by setting environment variables: `BBM_CHATGPTAPI_USER_MSG_TEMPLATE` and `BBM_CHATGPTAPI_SYS_MSG`.
 
+  - An example JSON file can be found at [./prompt_template.json](./prompt_template.json).
+
 - `--batch_size`:
 
   Use the `--batch_size` parameter to specify the number of lines for batch translation (default is 10, currently only effective for txt files).
 
 - `--accumulated_num`:
 
-  Wait for how many tokens have been accumulated before starting the translation. gpt3.5 limits the total_token to 4090. For example, if you use `--accumulated_num 1600`, maybe openai will output 2200 tokens and maybe 200 tokens for other messages in the system messages user messages, 1600+2200+200=4000, So you are close to reaching the limit. You have to choose your own
-  value, there is no way to know if the limit is reached before sending.
-  In EPUB plan mode this is a per-request token budget: consecutive units of any length share one request up to `N` tokens. Untyped, every plan run derives a default from the run's own prompt overhead — `1200` with the stock prompts, up to `1600` under a fat custom `--prompt` — and an endpoint without a strict-schema verdict carries half that per request, floored at `800`, the same margin that halves the unit cap there — except session runs (codex included), which keep the un-halved value. These are owner-set safety margins, below the range any eval measured fault-free; raise them with an explicit value if your model handles bigger requests. The run narrates the number and the route class it chose; pass `1` to turn grouping off. Minimum `1`.
+  Wait for how many tokens have been accumulated before starting the translation.
+  For example, if you use `--accumulated_num 1600`, maybe openai will output 2200 tokens and maybe 200 tokens for other messages in the system messages user messages, 1600+2200+200=4000 — on some local models that is close to the limit. You have to choose your own value, there is no way to know if the limit is reached before sending.
+
+  In EPUB plan mode this is a per-request token budget: consecutive units of any length share one request up to `N` tokens. Pass `1` to turn grouping off — every unit is sent on its own.
 
 - `--use_context`:
 
   Translate with context.
-  Prompts the model to create a three-paragraph summary. If it's the beginning of the translation, it will summarize the entire passage sent (the size depending on `--accumulated_num`).
-  For subsequent passages, it will amend the summary to include details from the most recent passage, creating a running one-paragraph context payload of the important details of the entire translated work. This improves consistency of flow and tone throughout the translation. The running summary is what the `openai`, `groq`, `xai`, `litellm` and `anthropic` formats do with this flag. The `gemini` format keeps its own chat history instead, and `qwen` keeps a window of recent translation pairs as translation memory — the same flag, the mechanism each route has.
 
 - `--context_paragraph_limit`:
 
@@ -468,15 +468,17 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 - `--use_context session`:
 
   Session mode keeps one append-only history and re-reads it at the cache
-  price, so the context can grow to about a chapter. When the history
-  reaches the compact budget, the model writes a handoff report, which seeds
-  the next window and is appended to `<book>_handoff.md`. Watch the progress
-  bar's `cached=`: if it is still zero after a dozen requests, the endpoint
-  is not reporting a cache; Ctrl+C and switch to window mode.
+  price, so on endpoints that support caching the context can grow to about
+  a chapter. When the history reaches the compact budget, the model writes
+  a handoff report, which seeds the next window and is appended to
+  `<book>_handoff.md`.
+  Watch the progress bar's `cached=`: if it is still zero after a dozen
+  requests, the endpoint may not have a cache; Ctrl+C and switch to window
+  mode.
 
   - `--context-compact-at`:
 
-    Session mode only. The estimated-token budget the history may reach before it is compacted into a handoff report. Default `8192`, minimum `500`. This is the fewest-seams edge of the band a cost eval measured. Unlike the grouping caps it was deliberately *not* lowered, and the reason is continuity rather than price: session runs cost more at this setting, not less, because the smaller grouping budget means many more requests and every one of them re-reads the carried history. If session cost matters more to you than the fewest window seams, a lower `--context-compact-at` is the cheaper direction.
+    Session mode only. The estimated-token budget the history may reach before it is compacted into a handoff report. Default `8192`, minimum `500`.
 
   - `--no-context-compact`:
 
@@ -485,9 +487,8 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 - `--glossary` / `--terminology`:
 
   A file of `term → translation` lines — one per line, `#` starts a note or a
-  comment. A missing file stops the run at parse time.
-  Read by the openai- and codex-shaped routes for EPUB and Markdown books; the
-  other routes say so and ignore it.
+  comment, plain text.
+  Read by the openai- and codex-shaped routes for EPUB and Markdown books.
 
   A pinned term makes the translation say what you pinned, so pin only
   renderings you can stand behind.
@@ -520,7 +521,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--no_disclosure`:
 
-  An epub output is marked as an AI translation by default — one small line below the book intro, e.g. "Translated by gpt-5.6-luna, 2026."; this flag leaves it out. It also turns off the translation metadata (`--translation-metadata`: the model, the date and the glossary).
+  An epub output adds "Translated by gpt-5.6-luna, 2026." below the book intro; this flag leaves it out. It also turns off the translation metadata (`--translation-metadata`: the model, the date and the glossary).
 
 - `--translation_style`:
 
@@ -573,12 +574,9 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 - `--extra_body`:
 
   Pass additional JSON parameters on the routes built on the OpenAI request
-  path — `openai` and the OpenAI-style custom providers, and so also
-  `groq`, `xai`, `litellm` and `--model orcarouter` — and on the `anthropic`
-  route. Every other format says so and ignores it. It reaches the
-  capability probe and the JSON rungs as well as the translate calls, so the
-  endpoint is graded on the request the run actually makes. Provide a JSON
-  object with the desired parameters.
+  path — `openai` and the OpenAI-format custom providers — and on the
+  `anthropic` route. Provide a JSON object with the desired parameters.
+  Example:
 
   ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --key ${openai_key} --extra_body '{"chat_template_kwargs": {"enable_thinking": false}}'
@@ -586,16 +584,12 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--extra_headers`:
 
-  Extra HTTP headers sent with every request, on the same routes. They are
-  set on the client, so the capability probe, the model check and the model
-  listing carry them too. Values must be strings.
+  Extra HTTP headers sent with every request, on the same routes. Values
+  must be strings.
 
   ```shell
   python3 make_book.py --book_name test_books/animal_farm.epub --key ${openrouter_key} --api_base https://openrouter.ai/api/v1 --model anthropic/claude-haiku-4.5 --extra_headers '{"HTTP-Referer": "https://example.com", "X-Title": "bilingual_book_maker"}'
   ```
-
-  If the endpoint refuses a request carrying either flag, it says so and
-  quotes what the endpoint said, rather than quietly falling back.
 
   Common forms, for reference:
 

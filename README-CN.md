@@ -20,8 +20,8 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 
 ## 支持的接口
 
-支持 OpenAI 和 Anthropic 格式的接口。
-通常需要三个字段，使用官方接口时两个即可，模型如 `gpt-5.6-luna`（默认）、
+支持 OpenAI 和 Anthropic 格式的 API 接口。
+通常需要三个字段，使用官方接口时两个，模型如 `gpt-5.6-luna`（默认）、
 `claude-sonnet-4-6` 或 `deepseek-v4-flash-0731`。
 在 `--api_format` 填 `openai` 或 `anthropic` 即可指定 API 请求格式。
 该参数也可以选择常规翻译引擎（`google`、`caiyun`、`deepl`、`deeplfree`、
@@ -317,8 +317,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--language`: 指定目标语言
 
-  - 可以写语言标签（`--language zh-hant`）、语言名（`--language "Traditional Chinese"`），或用 `--language "zh-hant:Traditional Chinese"` 同时指定两者——冒号前的标签用于 JSON 结构化输出字段名，冒号后的名字是发给模型的说法。内置表里没有的小语种就用这种双写形式。预设值 `zh-hans`。
-  - [可用标签](./docs/languages.md)。
+  - 可以写语言标签（`--language zh-hant`）、语言名（`--language "Traditional Chinese"`），或用 `--language "zh-hant:Traditional Chinese"` 同时指定两者——冒号前的标签用于 JSON 结构化输出字段名，冒号后的名字是发给模型的说法。预设值 `zh-hans`。另见[可用标签](./docs/languages.md)。
 
 - `--source_lang`: 源语言。写了就会附加提示词（"Translate from English"），在 `--api_format qwen`（请求里就是一对语言）和 `--api_format customapi` 还会写进请求本身；默认自动检测。
 
@@ -354,7 +353,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   - `<book>_plan.json`：翻译计划；想重新分类请先删除该文件。
   - `--plan-min-coverage`（默认 0.5，范围 0–1）：如果计划覆盖的正文比例低于该阈值，计划模式会直接报错退出。`0` 关闭该闸门，高于 `0.9` 的值多半会在分类已付费之后中止——两种情况都会警告。
 
-  - `--max-batch-units`:一个合并请求最多携带的段落数（默认 `16`；仅验证 JSON 模式而不验证严格 schema 的端点为 `8`）。默认值是刻意保守的安全余量——只有故障出现评测所测水平的四分之一，而非直接采用测得的数值——因此较强的模型完全可以跑在更高的值上：想要更少、更大的请求就把它和 `--accumulated_num` 一起调高。运行开始打印错位恢复等退化提示时则应调低。内容量同时由 token 预算（`--accumulated_num`）约束。取代已废弃的 `--poetry-group-size`。
+  - `--max-batch-units`:一个合并请求最多携带的段落数。想要更少、更大的请求（低成本）就把它和 `--accumulated_num` 一起调高。运行开始打印错位恢复等退化提示时则应调低。内容量同时由 token 预算（`--accumulated_num`）约束。
 
   ```shell
   # 使用模型判断哪些标签需要翻译
@@ -376,20 +375,22 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--allow_navigable_strings`
 
-  如果你想要翻译电子书中的无标签字符串，可以使用 `--allow_navigable_strings` 参数，会将可遍历字符串加入翻译队列，**注意，在条件允许情况下，请寻找更规范的电子书**
+  如果你想要翻译电子书中的无标签字符串，可以使用 `--allow_navigable_strings` 参数，会将可遍历字符串加入翻译队列。
 
 - `--prompt`
 
   如果你想调整 prompt，你可以使用 `--prompt` 参数。有效的占位符包括 `{text}` 和 `{language}`。你可以用以下方式配置 prompt:
 
-  - 如果您不需要设置 `system` 角色，可以这样：`--prompt "Translate {text} to {language}"` 或者 `--prompt prompt_template_sample.txt`（示例文本文件可以在 [./prompt_template_sample.txt](./prompt_template_sample.txt) 找到）。
+  - 如果您不需要设置 `system` 角色，可以这样：`--prompt "Translate {text} to {language}"` 或者 `--prompt prompt_template_sample.txt`
 
-  - 如果您需要设置 `system` 角色，可以使用以下方式配置：`--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'`，或者 `--prompt prompt_template.json`（示例 JSON 文件可以在 [./prompt_template.json](./prompt_template.json) 找到）。
+  - 如果您需要设置 `system` 角色，可以使用以下方式配置：`--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'`，或者 `--prompt prompt_template.json`。
 
-  - 第三个键 `style` 是关于文风的常驻指令——语域、语气、用词——只在**每个窗口开始时**随其他常驻指令发出一次（API 路由放在 system 消息里，codex 放在线程指令里），不会随每个请求重复。三个键齐全的示例：[./prompt_template.json](./prompt_template.json)，其中 `style` 留空——写入你自己的文风，或保持为空。
+  - 第三个键 `style` 是关于文风的常驻指令——语域、语气、用词——只在**每个窗口开始时**随其他常驻指令发出一次。
 
   - 你也可以用环境以下环境变量来配置 `system` 和 `user` 角色 prompt：`BBM_CHATGPTAPI_USER_MSG_TEMPLATE` 和 `BBM_CHATGPTAPI_SYS_MSG`。
   该参数可以是提示模板字符串，也可以是模板 `.txt` 文件的路径。
+
+  - 示例 JSON 文件可以在 [./prompt_template.json](./prompt_template.json) 找到。
 
 - `--batch_size`
 
@@ -397,14 +398,13 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--accumulated_num`:
 
-  达到累计token数开始进行翻译。gpt3.5将total_token限制为4090。
-  例如，如果您使用`--accumulated_num 1600`，则可能会输出2200个令牌，另外200个令牌用于系统指令（system_message）和用户指令（user_message），1600+2200+200 = 4000，所以token接近极限。你必须选择一个自己合适的值，我们无法在发送之前判断是否达到限制。
-  在 EPUB 计划模式下这是每个请求的 token 预算：连续的段落（不限长度）合并进同一个请求，直到累计 `N` 个 token。不传时，每次计划模式运行都会由本次运行自身的提示词开销推导默认值：普通提示词下为 `1200`，很长的自定义 `--prompt` 下最高 `1600`；未验证严格 JSON schema 的端点每个请求减半（下限 `800`），与该处单位数上限减半是同一套余量；session 运行（含 codex）不减半。这些都是刻意设低于评测所测无故障区间的安全余量；若你的模型能承受更大的请求，可显式调高。运行会播报所选数值和路线类别；传 `1` 可关闭合并。最小值 `1`。
+  达到累计token数开始进行翻译。
+  例如，如果您使用`--accumulated_num 1600`，则可能会输出2200个令牌，另外200个令牌用于系统指令（system_message）和用户指令（user_message），1600+2200+200 = 4000，在某些本地模型中token接近极限。你必须选择一个自己合适的值，我们无法在发送之前判断是否达到限制。
+
+  在 EPUB 计划模式下这是每个请求的 token 预算：连续的段落（不限长度）合并进同一个请求，直到累计 `N` 个 token。传 `1` 可关闭合并，即每分段单独发送。
 
 - `--use_context`:
   使用上下文模式翻译。
-  模型提示词将创建三段摘要。如果是翻译的开始，它将总结发送的整个段落（大小取决于`--accumulated_num`）。
-  对于后续的段落，它将修改摘要，以包括最近段落的细节，创建一个完整的段落上下文负载，包含整个翻译作品的重要细节。 这提高了整个翻译过程中的流畅性和语气的一致性。 这段摘要是 `openai`、`groq`、`xai`、`litellm` 和 `anthropic` 格式的做法；`gemini` 格式改为保留自己的对话历史，`qwen` 则保留最近若干条原文/译文作为翻译记忆——同一个参数，各走各自的机制。
 
   - `--context_paragraph_limit`:
 
@@ -412,14 +412,15 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--use_context session`:
 
-  `--use_context` session 模式维护一份
-  只追加的历史，每次按缓存价重读，所以上下文可以长到约整章。历史达到压缩预算时，模型
-  写一份交接报告，用来播种下一个窗口，并追加到 `<book>_handoff.md`。注意看进度条上的
-  `cached=`：十几个请求之后仍是 0，说明端点没有报告缓存，请Ctrl+C后改用 window 模式。
+  session 模式维护一份
+  只追加的历史，每次按缓存价重读，所以对于支持缓存的的端点，上下文可以长到约整章。历史达到压缩预算时，模型
+  写一份交接报告，用来播种下一个窗口，并追加到 `<book>_handoff.md`。
+  注意看进度条上的
+  `cached=`：若十几个请求之后仍是 0，说明端点可能没有缓存机制，可Ctrl+C后改用 window 模式。
 
   - `--context-compact-at`:
 
-    仅 session 模式。历史在被压缩成交接报告前可以达到的估算 token 预算。默认 `8192`，最小值 `500`。这是成本评测所测区间中接缝最少的一端。与分组上限不同，它刻意没有调低，理由是连续性而非价格：在当前设置下 session 运行反而更贵，因为更小的分组预算带来了多得多的请求，而每个请求都要重读已携带的历史。若你更在意 session 成本而非窗口接缝数量，调低 `--context-compact-at` 才是更省的方向。
+    仅 session 模式。历史在被压缩成交接报告前可以达到的估算 token 预算。默认 `8192`，最小值 `500`。
 
   - `--no-context-compact`:
 
@@ -427,14 +428,14 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--glossary` / `--terminology`:
 
-  一个 `term → translation` 术语文件（每行一条，`#` 之后是注释）。文件不存在时在解析阶段即报错退出。
-  仅 openai 系与 codex 路由、且书籍为 EPUB 或 Markdown 时生效；其他路由会提示并忽略。
+  一个 `term → translation` 术语文件（每行一条，`#` 之后是注释，txt格式）。
+  仅 openai 系与 codex 路由、且书籍为 EPUB 或 Markdown 时生效。
   
   钉住一个术语就等于让译文照此表述，所以只钉你能负责的译法。
 
   - `--glossary-auto on|off`:
 
-    保留交接报告中确立的译名，使跨窗口的重复人名、术语保持一致。仅 session 模式。
+    格式化保留交接报告中的译名，使跨窗口的重复人名、术语保持一致。仅 session 模式。
 
 - `--temperature`:
 
@@ -452,7 +453,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--no_disclosure`:
 
-  epub 输出默认标注为 AI 翻译——在书籍简介下方加一行小字，如 "Translated by gpt-5.6-luna, 2026."；附带该参数则不加。同时关闭翻译元数据（`--translation-metadata`，包含模型、日期和词汇表）。
+  epub 输出会在书籍简介下方加 "Translated by gpt-5.6-luna, 2026."；附带该参数则不加。同时关闭翻译元数据（`--translation-metadata`，包含模型、日期和词汇表）。
 
 - `--translation_style`:
 
@@ -505,9 +506,9 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--extra_body`:
 
-  以 JSON 字符串向 ChatGPT/OpenAI 衍生请求路径透传额外参数，包括 OpenAI 风格的
-  自定义 provider，以及同样走这条请求路径的 `groq`、`xai`、`litellm` 和 `--model orcarouter`，还有 `anthropic` 路径。其余格式会明说并忽略该参数。它同样会带到
-  能力探测与 JSON 各级请求上，因此端点是按本次运行真正发出的请求形状被评级的。例如：
+  以 JSON 字符串向 ChatGPT/OpenAI 衍生请求路径透传额外参数，包括 OpenAI 请求格式的
+  自定义 provider，还有 `anthropic` 路径。
+  例：
 
   ```shell
   python3 make_book.py --book_name book.epub --extra_body '{"chat_template_kwargs":{"enable_thinking":false}}'
@@ -515,15 +516,11 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--extra_headers`:
 
-  以 JSON 字符串为每次请求追加 HTTP 头，适用范围同上。头设置在 client 上，因此
-  能力探测、模型校验与模型列表请求也会带上。值必须是字符串。
+  以 JSON 字符串为每次请求追加 HTTP 头，适用范围同上。值必须是字符串。
 
   ```shell
   python3 make_book.py --book_name book.epub --key ${openrouter_key} --api_base https://openrouter.ai/api/v1 --model anthropic/claude-haiku-4.5 --extra_headers '{"HTTP-Referer":"https://example.com","X-Title":"bilingual_book_maker"}'
   ```
-
-  若端点拒绝了带这两个参数的请求，程序会明说，并把端点返回的原文一并打印，而不是
-  悄悄退回更简单的请求形状。
 
   常见写法，供参考：
 
