@@ -1,9 +1,9 @@
 import time
 import random
 
+from ..vendor import deeplx
 from .base_translator import Base, NO_PROMPT_SECTIONS
 from .deepl_translator import deepl_supported_target
-from PyDeepLX import PyDeepLX
 
 
 class DeepLFree(Base):
@@ -23,7 +23,7 @@ class DeepLFree(Base):
         pass
 
     def translate(self, text):
-        t_text = str(PyDeepLX.translate(text, "EN", self.language))
+        t_text = str(deeplx.translate(text, "EN", self.language))
         # spider rule
         time.sleep(random.choice(self.time_random))
         return t_text
