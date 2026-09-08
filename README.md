@@ -415,7 +415,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--prompt`:
 
-  To tweak the prompt, use the `--prompt` parameter. Valid placeholders for the `user` role template include `{text}` and `{language}`. It supports a few ways to configure the prompt:
+  To tweak the prompt, use the `--prompt` parameter. The placeholders the `user` template may use are `{text}` (required), `{language}` and `{crlf}` (a newline, for the shapes — a JSON string, a table cell — that cannot carry one). Anything else in braces is refused before the run starts rather than raising mid-book; write `{{` and `}}` for a literal brace. It supports a few ways to configure the prompt:
 
   - If you don't need to set the `system` role content, you can simply set it up like this: `--prompt "Translate {text} to {language}."` or `--prompt prompt_template_sample.txt` (example of a text file can be found at [./prompt_template_sample.txt](./prompt_template_sample.txt)).
 
@@ -423,19 +423,24 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   - A third key, `style`, is a standing instruction about how to write — register, tone, vocabulary — that rides in **every** request. Samples carrying all three sections: [./prompt_sections_sample.json](./prompt_sections_sample.json) for a plain run, [./prompt_session_sample.json](./prompt_session_sample.json) for a session run.
   
-  - You can now use [PromptDown](https://github.com/btfranklin/promptdown) format (`.md` files) for more structured prompts: `--prompt prompt_md.prompt.md`. PromptDown supports both traditional system messages and developer messages (used by newer AI models). Example:
-  
+  - A `.md` file is read as the [PromptDown](https://github.com/btfranklin/promptdown) **block** form — the format is his, the reader is ours, so no extra package is installed: `--prompt prompt_md.prompt.md` (example at [./prompt_md.prompt.md](./prompt_md.prompt.md)). `## System Message`, an optional `## Style`, and a `## Conversation` whose `**User:**` turn is the template. The table form of a conversation is refused. Example:
+
       ```markdown
       # Translation Prompt
-      
-      ## Developer Message
+
+      ## System Message
+
       You are a professional translator who specializes in accurate translations.
-      
+
+      ## Style
+
       ## Conversation
-      
-      | Role | Content                                                        |
-      | ---- | -------------------------------------------------------------- |
-      | User | Please translate the following text into {language}:\n\n{text} |
+
+      **User:**
+
+      Please translate the following text into {language}:
+
+      {text}
       ```
 
   - You can also set the `user` and `system` role prompt by setting environment variables: `BBM_CHATGPTAPI_USER_MSG_TEMPLATE` and `BBM_CHATGPTAPI_SYS_MSG`.

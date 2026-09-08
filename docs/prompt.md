@@ -1,6 +1,6 @@
 # Tweak the prompt
 
-To tweak the prompt, use the `--prompt` parameter. Valid placeholders for the `user` role template include `{text}` and `{language}`. It supports a few ways to configure the prompt:
+To tweak the prompt, use the `--prompt` parameter. The placeholders the `user` template may use are `{text}` (required), `{language}` and `{crlf}` (a newline, for the shapes that cannot carry one). Anything else in braces is refused before the run starts; write `{{` and `}}` for a literal brace. It supports a few ways to configure the prompt:
 
 - If you don't need to set the `system` role content, you can simply set it up like this: `--prompt "Translate {text} to {language}."` or `--prompt prompt_template_sample.txt`
 
@@ -19,31 +19,29 @@ To tweak the prompt, use the `--prompt` parameter. Valid placeholders for the `u
 
 You can also set the `user` and `system` role prompt by setting environment variables: `BBM_CHATGPTAPI_USER_MSG_TEMPLATE` and `BBM_CHATGPTAPI_SYS_MSG`.
 
-- You can now use PromptDown format (`.md` files) for more structured prompts: `--prompt prompt_md.prompt.md`
+- A `.md` file is read as the [PromptDown](https://github.com/btfranklin/promptdown) **block** form. The format is his; the reader is this repo's own, so no extra package is installed. `--prompt prompt_md.prompt.md`
 
         # Translation Prompt
-        
+
         ## System Message
+
         You are a professional translator who specializes in accurate translations.
-        
+
+        ## Style
+
         ## Conversation
-        
-        | Role  | Content                                  |
-        |-------|------------------------------------------|
-        | User  | Please translate the following text into {language}:\n\n{text} |
-        
-        # OR using Developer Message (for newer AI models)
-        
-        # Translation Prompt
-        
-        ## Developer Message
-        You are a professional translator who specializes in accurate translations.
-        
-        ## Conversation
-        
-        | Role  | Content                                  |
-        |-------|------------------------------------------|
-        | User  | Please translate the following text into {language}:\n\n{text} |
+
+        **User:**
+
+        Please translate the following text into {language}:
+
+        {text}
+
+  Three sections are read: `## System Message` (`## Developer Message` is
+  accepted as another name for it), an optional `## Style`, and
+  `## Conversation`, whose first `**User:**` turn is the `user` template. A
+  conversation written as a `| Role | Content |` table is refused — the
+  template's newlines cannot survive a table cell.
 
 ## Examples
 ```sh

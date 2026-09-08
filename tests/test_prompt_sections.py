@@ -19,6 +19,7 @@ The request bodies themselves are read in tests/test_prompt_capture_server.py.
 """
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -27,6 +28,7 @@ from book_maker.cli import (
     parse_prompt_arg,
     prompt_adoption_line,
     prompt_has_system,
+    read_prompt_config,
 )
 from book_maker.translator import FORMAT_DICT
 from book_maker.translator.base_translator import NO_PROMPT_SECTIONS
@@ -102,14 +104,27 @@ class TestParsingTheSections:
             parse_prompt_arg(json.dumps(["translate {text}"]), announce=False)
 
     def test_reading_the_prompt_for_a_compat_check_stays_silent(self, capsys):
-        assert prompt_has_system(json.dumps({"user": USER, "system": SYSTEM}))
+        config, error = read_prompt_config(json.dumps({"user": USER, "system": SYSTEM}))
+        assert error is None
+        assert prompt_has_system(SimpleNamespace(prompt_config=config))
         assert capsys.readouterr().out == ""
+
+    def test_a_prompt_that_cannot_be_read_is_carried_not_raised(self):
+        # the table has to be able to ask about a malformed --prompt without
+        # pre-empting the refusal written for it
+        config, error = read_prompt_config('{"system": "be terse"}')
+        assert config is None
+        assert "must contain the key of `user`" in str(error)
 
     def test_the_shipped_sample_files_parse(self):
         for name in ("prompt_sections_sample.json", "prompt_session_sample.json"):
             parsed = parse_prompt_arg(name, announce=False)
+            # every section is present, and `style` is shipped empty: an
+            # example must show where a voice goes without imposing one on
+            # whoever copies the file
             assert set(parsed) == set(PROMPT_SECTIONS), name
-            assert all(parsed[section] for section in PROMPT_SECTIONS), name
+            assert parsed["user"] and parsed["system"], name
+            assert parsed["style"] == "", name
 
 
 class TestTheSectionsReachTheTranslator:

@@ -30,13 +30,11 @@ dependencies = [
     "tenacity",
     "tiktoken",
     "tqdm",
-    "promptdown>=0.9.0",
     "PyMuPDF",
 ]
 
 [project.scripts]
 bbook_maker = "book_maker.cli:main"
-promptdown = "promptdown_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/yihong0618/bilingual_book_maker"

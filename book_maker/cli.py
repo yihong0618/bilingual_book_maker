@@ -17,6 +17,7 @@ from book_maker.legacy_cli import translate_legacy_argv
 from book_maker.loader.classify import can_session_classify
 from book_maker.loader.ledger import PlanLedgerError
 from book_maker.loader.plan import GENERAL_GROUP_MAX_UNITS
+from book_maker.prompt_file import parse_prompt_markdown
 from book_maker.provider_loader import resolve_provider
 from book_maker.session_context import DEFAULT_COMPACT_BUDGET, compact_budget_notice
 from book_maker.translator import (
@@ -384,8 +385,45 @@ def get_book_type(book_name):
     return Path(book_name).suffix.lower().lstrip(".")
 
 
+# Everything a `user` template may name in braces. The run fills these three
+# and nothing else, so a template naming a fourth is a run that dies on
+# `str.format` mid-book — which is why `parse_prompt_arg` dry-runs the format
+# before anything is paid for.
+USER_TEMPLATE_PLACEHOLDERS = ("text", "language", "crlf")
+
+
+def check_user_placeholders(template):
+    """Refuse a `user` template naming something this run cannot fill.
+
+    `{text}` is required and `{language}`/`{crlf}` are offered; a `{name}`
+    that is none of them used to raise KeyError from inside the translator,
+    on the first request, after the book had been opened and the endpoint
+    paid. A brace meant literally is written `{{`, and this sentence says so.
+    """
+    try:
+        template.format(**dict.fromkeys(USER_TEMPLATE_PLACEHOLDERS, ""))
+    except KeyError as e:
+        known = ", ".join(f"{{{name}}}" for name in USER_TEMPLATE_PLACEHOLDERS)
+        raise ValueError(
+            f"prompt's `user` template names {{{e.args[0]}}}, which no run can "
+            f"fill. The placeholders are {known}; for a literal brace write "
+            f"`{{{{` and `}}}}`."
+        ) from e
+    except (IndexError, ValueError) as e:
+        raise ValueError(
+            f"prompt's `user` template is not a usable format string ({e}); "
+            f"for a literal brace write `{{{{` and `}}}}`."
+        ) from e
+
+
 def parse_prompt_arg(prompt_arg, announce=True):
     """The `--prompt` argument as a config dict, or None.
+
+    A template string, a JSON string, or a path to a `.json`, `.txt` or `.md`
+    file. Every shape lands on the same validation and the same echo: the
+    `.md` path used to return early with a line of its own, which is how it
+    came to accept keys the JSON path refuses and to carry no `style` section
+    at all.
 
     `announce` is off for the compatibility pass, which asks the same
     question earlier only to decide whether a row fires: the run's own
@@ -395,71 +433,15 @@ def parse_prompt_arg(prompt_arg, announce=True):
     if prompt_arg is None:
         return prompt
 
-    # Check if it's a path to a markdown file (PromptDown format)
-    if prompt_arg.endswith(".md") and os.path.exists(prompt_arg):
-        try:
-            from promptdown import StructuredPrompt
+    # Case-insensitively: `--prompt Config.JSON` named a real file and was
+    # silently translated with as a literal template.
+    lowered = prompt_arg.lower()
+    is_path_shaped = lowered.endswith((".json", ".txt", ".md"))
 
-            structured_prompt = StructuredPrompt.from_promptdown_file(prompt_arg)
-
-            # Initialize our prompt structure
-            prompt = {}
-
-            # Handle developer_message or system_message
-            # Developer message takes precedence if both are present
-            if (
-                hasattr(structured_prompt, "developer_message")
-                and structured_prompt.developer_message
-            ):
-                prompt["system"] = structured_prompt.developer_message
-            elif (
-                hasattr(structured_prompt, "system_message")
-                and structured_prompt.system_message
-            ):
-                prompt["system"] = structured_prompt.system_message
-
-            # Extract user message from conversation
-            if (
-                hasattr(structured_prompt, "conversation")
-                and structured_prompt.conversation
-            ):
-                for message in structured_prompt.conversation:
-                    if message.role.lower() == "user":
-                        prompt["user"] = message.content
-                        break
-
-            # Ensure we found a user message
-            if "user" not in prompt or not prompt["user"]:
-                raise ValueError(
-                    "PromptDown file must contain at least one user message"
-                )
-
-            if announce:
-                print(f"Successfully loaded PromptDown file: {prompt_arg}")
-
-            # Validate required placeholders
-            if any(c not in prompt["user"] for c in ["{text}"]):
-                raise ValueError(
-                    "User message in PromptDown must contain `{text}` placeholder"
-                )
-
-            return prompt
-        except Exception as e:
-            # Falling through left `prompt` half-built and the next line
-            # died on `prompt["user"]` with a KeyError traceback — after
-            # the run had already printed that the file loaded. The pinned
-            # promptdown reads the block form only; its table form (which
-            # this repo's own prompt_md.prompt.md still uses) parses to a
-            # conversation with no user message.
-            raise ValueError(
-                f"could not read the PromptDown file {prompt_arg}: {e}. "
-                f"Write the conversation in block form -- a line reading "
-                f"`**User:**` followed by the template, which must contain "
-                f"`{{text}}`."
-            ) from e
-
-    # Existing parsing logic for JSON strings and other formats
-    if not any(prompt_arg.endswith(ext) for ext in [".json", ".txt", ".md"]):
+    if lowered.endswith(".md") and os.path.exists(prompt_arg):
+        with open(prompt_arg, encoding="utf-8") as f:
+            prompt = parse_prompt_markdown(f.read(), prompt_arg)
+    elif not is_path_shaped:
         try:
             # user can define prompt by passing a json string
             # eg: --prompt '{"system": "You are a professional translator who translates computer technology books", "user": "Translate \`{text}\` to {language}"}'
@@ -467,13 +449,12 @@ def parse_prompt_arg(prompt_arg, announce=True):
         except json.JSONDecodeError:
             # if not a json string, treat it as a template string
             prompt = {"user": prompt_arg}
-
     elif os.path.exists(prompt_arg):
-        if prompt_arg.endswith(".txt"):
+        if lowered.endswith(".txt"):
             # if it's a txt file, treat it as a template string
             with open(prompt_arg, encoding="utf-8") as f:
                 prompt = {"user": f.read()}
-        elif prompt_arg.endswith(".json"):
+        else:
             # if it's a json file, treat it as a json object
             # eg: --prompt prompt_template_sample.json
             with open(prompt_arg, encoding="utf-8") as f:
@@ -492,7 +473,7 @@ def parse_prompt_arg(prompt_arg, announce=True):
     if not prompt.get("user"):
         raise ValueError("prompt must contain the key of `user`")
 
-    if (prompt.keys() - {"user", "system", "style"}) != set():
+    if (prompt.keys() - set(PROMPT_SECTIONS)) != set():
         raise ValueError(
             "prompt can only contain the keys of `user`, `system` and `style`"
         )
@@ -501,9 +482,27 @@ def parse_prompt_arg(prompt_arg, announce=True):
     if "{text}" not in prompt["user"]:
         raise ValueError("prompt must contain `{text}`")
 
+    check_user_placeholders(prompt["user"])
+
     if announce:
         print("prompt config:", prompt)
     return prompt
+
+
+def read_prompt_config(prompt_arg):
+    """`--prompt` read once for the whole run: `(config, the error it raised)`.
+
+    Carried rather than raised so the compatibility table can ask about the
+    prompt without opening the file a second time and without pre-empting the
+    refusal written for it: a malformed `--prompt` is still refused by
+    `main`, by name, after the table has had its say.
+    """
+    if prompt_arg is None:
+        return None, None
+    try:
+        return parse_prompt_arg(prompt_arg, announce=False), None
+    except Exception as e:  # noqa: BLE001 - carried to main, re-raised there
+        return None, e
 
 
 # The order sections are named in, so two runs describe the same prompt the
@@ -912,25 +911,15 @@ def _session_run_source(facts):
     return f"the {facts.api_format} route's one growing thread"
 
 
-def prompt_has_system(prompt_arg):
+def prompt_has_system(facts):
     """Whether `--prompt` carries a system message of its own.
 
-    A user-only prompt loses nothing to `$OPENAI_API_SYS_MSG`: the two fill
-    different halves of the request and both are honoured, so warning about
-    an outranked system message there names a conflict that is not there.
-
-    Read from the argument rather than the config because the config is
-    built after this pass — and deliberately: a malformed `--prompt` is
-    refused further down, by the message that explains it, and this row must
-    not pre-empt that with a traceback. Announced nowhere, so the run still
-    prints its prompt config exactly once.
+    A user-only prompt is in no conflict with `$OPENAI_API_SYS_MSG`: the two
+    fill different halves of the request. Read off the facts, which hold the
+    single parse this run does — the file used to be opened again here, and
+    announced nowhere, to answer this one question.
     """
-    if prompt_arg is None:
-        return False
-    try:
-        return bool((parse_prompt_arg(prompt_arg, announce=False) or {}).get("system"))
-    except Exception:
-        return False
+    return bool((facts.prompt_config or {}).get("system"))
 
 
 # Loaders that read the tag-selection flags. Markdown reads the exclusions
@@ -1083,7 +1072,7 @@ COMPAT_RULES = (
     CompatRule(
         "A9",
         "warn",
-        lambda f: prompt_has_system(f.options.prompt_arg)
+        lambda f: prompt_has_system(f)
         and bool(f.env.get("OPENAI_API_SYS_MSG"))
         and hasattr(f.translate_model, "_probe_verdict"),
         lambda f: (
@@ -1567,6 +1556,10 @@ def run_facts(options, given, **resolved):
         source_language=source_evidence(options.source_lang),
         batch_units=GENERAL_GROUP_MAX_UNITS,
     )
+    # The one parse of `--prompt` this run does. The rows below ask about it,
+    # and `main` announces and re-raises from the same pair rather than
+    # reading the file again.
+    facts.prompt_config, facts.prompt_error = read_prompt_config(options.prompt_arg)
     facts.__dict__.update(resolved)
     facts.plan_mode = plan_mode_expected(facts)
     facts.classify_flag = (
@@ -1827,12 +1820,13 @@ def build_parser():
         type=str,
         metavar="PROMPT_ARG",
         help="customize the prompt: a template string, a JSON string, or a "
-        "path to a .json, .txt or .md file (.md is read as PromptDown). The "
-        "JSON keys are `user` (the template, required, and it must contain "
-        "`{text}`; `{language}` is substituted too), `system`, and `style` "
-        "(a note on register and voice, handed on verbatim to every window "
-        "in session mode). A bare string or a .txt file is the `user` "
-        "template.",
+        "path to a .json, .txt or .md file (.md is read as the PromptDown "
+        "block form). The sections are `user` (the template, required, and "
+        "it must contain `{text}`; `{language}` and `{crlf}` are substituted "
+        "too, and any other placeholder is refused here rather than mid-run), "
+        "`system`, and `style` (a note on register and voice, handed on "
+        "verbatim to every window in session mode). A bare string or a .txt "
+        "file is the `user` template.",
     )
     parser.add_argument(
         "--accumulated_num",
@@ -2364,19 +2358,18 @@ def main():
     # The compatibility table: every combination that would be paid for and
     # then wasted, degraded or ignored. After the endpoint is resolved (the
     # answers depend on the route) and before any translator is built.
-    check_compatibility(
-        run_facts(
-            options,
-            given,
-            book_type=book_type,
-            api_format=api_format,
-            translate_model=translate_model,
-            model_names=model_names,
-            classify_mode=classify_mode,
-            plan_auto=plan_auto,
-            batch_units=batch_units,
-        )
+    facts = run_facts(
+        options,
+        given,
+        book_type=book_type,
+        api_format=api_format,
+        translate_model=translate_model,
+        model_names=model_names,
+        classify_mode=classify_mode,
+        plan_auto=plan_auto,
+        batch_units=batch_units,
     )
+    check_compatibility(facts)
 
     # A codex run's context is the thread, and a thread does not survive the
     # process. The handoff report on disk is written, never read back.
@@ -2466,10 +2459,15 @@ def main():
             f"{book_type} books; only epub output carries the translation credit."
         )
 
-    # Parsed once, here, so the run can say what it adopted before it spends
-    # anything. (`parse_prompt_arg` prints its own "prompt config:" echo on
-    # this call; the compat pass reads the same flag with announce=False.)
-    prompt_config = parse_prompt_arg(options.prompt_arg)
+    # Parsed once, up with the compatibility facts, so the table could ask
+    # about it; announced here, so the run says what it adopted before it
+    # spends anything and after the table has had its say. A file that could
+    # not be read is refused here too, by the sentence written for it.
+    if facts.prompt_error is not None:
+        raise facts.prompt_error
+    prompt_config = facts.prompt_config
+    if prompt_config:
+        print("prompt config:", prompt_config)
     adoption = prompt_adoption_line(prompt_config, translate_model, api_format)
     if adoption:
         print(adoption)
