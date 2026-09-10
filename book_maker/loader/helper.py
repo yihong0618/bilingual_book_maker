@@ -1,10 +1,10 @@
+import inspect
 import posixpath
 import re
 import zipfile
 
 from rich import print
 from dataclasses import dataclass
-import backoff
 import logging
 import uuid
 from copy import copy
@@ -12,12 +12,86 @@ from copy import copy
 from bs4.element import Tag
 from ebooklib import epub
 from lxml import etree
+from tenacity import retry, retry_if_exception, wait_exponential
 
 from book_maker.translator.base_translator import BatchMismatch
 from book_maker.utils import language_code
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
+
+# The longest single wait between attempts, in seconds. Waits grow
+# exponentially up to this and then stay there: five minutes is long enough
+# to sit out a rate limit and short enough that a provider coming back is
+# noticed within one.
+RETRY_WAIT_CAP = 300
+
+# Errors that will not clear by waiting, matched by class name so this module
+# imports no provider SDK: a rejected key, a request the endpoint will refuse
+# in exactly the same words next time, a model that does not exist. Every
+# other failure — 429, timeout, dropped connection, 5xx, a bare
+# RequestException — is weather, and is waited out.
+FATAL_ERROR_NAMES = frozenset(
+    {
+        "AuthenticationError",
+        "PermissionDeniedError",
+        "BadRequestError",
+        "InvalidRequestError",
+        "NotFoundError",
+        "UnprocessableEntityError",
+        "ModelUnavailable",
+    }
+)
+
+
+# Failures that are ours, not the provider's, and that the next attempt would
+# reproduce exactly. A `TypeError` here is this process calling `translate`
+# with an argument list the route does not have — patient retrying of that is
+# an infinite loop, not tolerance. Deliberately narrow: `ValueError` is *not*
+# in here, because reply parsing raises those on an answer the next attempt
+# may well get right. KeyboardInterrupt and SystemExit are never swallowed —
+# Ctrl-C during an hours-long wait has to stop the run.
+FATAL_ERROR_TYPES = (TypeError, KeyboardInterrupt, SystemExit)
+
+
+def _accepts_context(translate):
+    """Whether a route's `translate` takes anything besides the text.
+
+    `inspect.signature` of the bound method, so `self` is already out of the
+    count. A signature that cannot be read — a C callable, a test double, a
+    route with no `translate` at all — is assumed to take it, which is what
+    every LLM route does and what this call did unconditionally before.
+    """
+    try:
+        parameters = list(inspect.signature(translate).parameters.values())
+    except (TypeError, ValueError):
+        return True
+    if any(p.kind is p.VAR_POSITIONAL for p in parameters):
+        return True
+    positional = [
+        p for p in parameters if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+    ]
+    return len(positional) > 1
+
+
+def _is_retryable(error):
+    """Whether waiting could plausibly change the answer."""
+    if isinstance(error, FATAL_ERROR_TYPES):
+        return False
+    return type(error).__name__ not in FATAL_ERROR_NAMES
+
+
+def _say_retrying(retry_state):
+    """One line per retry, so a long tolerance does not look like a hang."""
+    error = retry_state.outcome.exception()
+    logger.warning(
+        "retrying after %s (%s) — attempt %d, waiting %.0fs",
+        type(error).__name__,
+        error,
+        retry_state.attempt_number,
+        retry_state.next_action.sleep,
+    )
+
 
 # Elements whose parent accepts exactly one of them, and containers with a
 # content model too strict for an appended sibling. A translated copy next
@@ -350,6 +424,19 @@ class EPUBBookLoaderHelper:
         self.accumulated_num = accumulated_num
         self.translation_style = translation_style
         self.context_flag = context_flag
+        # Asked once, here, because the answer is a property of the route and
+        # cannot change during a run — and because getting it wrong is not
+        # survivable: this call used to hand a second positional to every
+        # route, and the fixed MT engines (`DeepLFree.translate(self, text)`
+        # and the rest) answered TypeError on the first paragraph. A
+        # deterministic TypeError under a retry that never gives up is an
+        # infinite loop, so `_is_retryable` refuses that class too.
+        # `getattr`, because a route (or a test double) that only ever goes
+        # through `translate_list` need not have a `translate` at all, and
+        # asking about one that is not there must not fail construction.
+        self.translate_takes_context = _accepts_context(
+            getattr(translate_model, "translate", None)
+        )
         # The loader hands over the tag it settled on; run through the same
         # rule anyway, so a caller that still passes prompt wording gets what
         # `lang=` accepts rather than a value a validator rejects.
@@ -388,15 +475,34 @@ class EPUBBookLoaderHelper:
         # written, which the early returns above cover
         return new_p
 
-    @backoff.on_exception(
-        backoff.expo,
-        Exception,
-        on_backoff=lambda details: logger.warning(f"retry backoff: {details}"),
-        on_giveup=lambda details: logger.warning(f"retry abort: {details}"),
-        jitter=None,
+    # Owner ruling (260907): this retry is **patient**, and gives up only on
+    # a fatal error. The user base runs flaky providers where a 429 or a
+    # first token can be minutes or hours away, and an attempt cap there
+    # abandons a paid book over weather. So: no attempt cap, no total-time
+    # cap, waits that grow to `RETRY_WAIT_CAP` and stay there.
+    #
+    # What the old `backoff.on_exception(backoff.expo, Exception)` got wrong
+    # was not the patience — it was retrying the errors that will never
+    # clear. A rejected key or a model that does not exist retried forever
+    # with doubling waits, and the run neither finished nor stopped. Those
+    # are `FATAL_ERROR_NAMES` now and propagate on the first one.
+    #
+    # Loud on purpose: an hours-long tolerance that says nothing looks
+    # exactly like a hang. (This comment is the in-tree record of the
+    # ruling — worktrees do not carry the repo's CLAUDE.md.)
+    @retry(
+        retry=retry_if_exception(_is_retryable),
+        wait=wait_exponential(multiplier=1, min=1, max=RETRY_WAIT_CAP),
+        before_sleep=_say_retrying,
+        # No `stop`: tenacity's default is `stop_never`, which is the point.
+        # `reraise` so a fatal error reaches the caller as itself, and so the
+        # behaviour stays right if a stop is ever added above.
+        reraise=True,
     )
     def translate_with_backoff(self, text, context_flag=False):
-        return self.translate_model.translate(text, context_flag)
+        if self.translate_takes_context:
+            return self.translate_model.translate(text, context_flag)
+        return self.translate_model.translate(text)
 
     def deal_new(self, p, wait_p_list, single_translate=False):
         self.deal_old(wait_p_list, single_translate, self.context_flag)
@@ -408,24 +514,39 @@ class EPUBBookLoaderHelper:
         )
 
     def deal_old(self, wait_p_list, single_translate=False, context_flag=False):
-        if not wait_p_list:
-            return
-
-        result_txt_list = translate_list_or_singles(
-            self.translate_model, [p.text for p in wait_p_list]
+        flush_waiting(
+            self.translate_model,
+            wait_p_list,
+            self.insert_trans,
+            self.translation_style,
+            single_translate,
         )
 
-        for i in range(len(wait_p_list)):
-            if i < len(result_txt_list):
-                p = wait_p_list[i]
-                self.insert_trans(
-                    p,
-                    shorter_result_link(result_txt_list[i]),
-                    self.translation_style,
-                    single_translate,
-                )
 
-        wait_p_list.clear()
+def flush_waiting(model, wait_p_list, insert, translation_style, single_translate):
+    """Translate the accumulated paragraphs in one request, then insert each.
+
+    `insert` is what differs between the two callers — the helper's
+    `insert_trans` and the loader's `_insert_trans_preserving_tags` — and it
+    is the only thing that ever did. A reply shorter than the batch leaves
+    the tail untouched; the list is emptied either way, so the caller's
+    accumulator does not carry paragraphs it has already asked about.
+    """
+    if not wait_p_list:
+        return
+
+    result_txt_list = translate_list_or_singles(model, [p.text for p in wait_p_list])
+
+    for i in range(len(wait_p_list)):
+        if i < len(result_txt_list):
+            insert(
+                wait_p_list[i],
+                shorter_result_link(result_txt_list[i]),
+                translation_style,
+                single_translate,
+            )
+
+    wait_p_list.clear()
 
 
 url_pattern = r"(http[s]?://|www\.)+(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"
@@ -504,10 +625,7 @@ def is_text_figure(text, num=80):
 
 
 def is_text_digit_and_space(s):
-    for c in s:
-        if not c.isdigit() and not c.isspace():
-            return False
-    return True
+    return all(c.isdigit() or c.isspace() for c in s)
 
 
 def is_text_isbn(s):

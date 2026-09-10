@@ -23,6 +23,20 @@ from ..structured import (
 # Special delimiter for batch translation - UUID-based token unlikely to appear in any text
 BATCH_DELIMITER = "\n\n@@\n\n"
 
+# Inline markup a single-line unit can carry: an html/xml tag, and the
+# markdown forms the markdown loader hands over verbatim. Deliberately the
+# unambiguous ones — a bare `*` or `_` is punctuation as often as it is
+# emphasis, and the cost of guessing wrong is a functional instruction on a
+# request that has nothing to apply it to. Anything with a line break in it
+# is caught by `_carries_structure` before this is consulted.
+INLINE_MARKUP_RE = re.compile(
+    r"<[A-Za-z/!?][^>]*>"  # an html/xml tag
+    r"|\[[^\]\n]+\]\([^)\n]*\)"  # a markdown link
+    r"|`[^`\n]+`"  # a code span
+    r"|\*\*[^*\n]+\*\*"  # bold
+    r"|__[^_\n]+__"  # bold, underscore form
+)
+
 # `PROMPT_SECTION_SLOTS` for a route that builds no prompt at all: the fixed
 # MT engines, the translation-only models, and the custom endpoint, which are
 # handed text and nothing else. `--prompt` has nowhere to go on these, and the
@@ -361,6 +375,71 @@ class Base(ABC):
             print(f"[yellow]ℹ glossary conflict — {conflict.describe()}[/yellow]")
         return self.glossary.to_lines()
 
+    # ---- session mode ------------------------------------------------------
+    # Only the routes that keep one growing history reach the four helpers
+    # below; they live here because the openai and anthropic routes wrote
+    # them identically, down to the lines they print.
+
+    # Compact attempts before giving up on a summary and starting clean. More
+    # than one so a transient error does not cost the accumulated context;
+    # bounded so a broken endpoint cannot grow the history forever.
+    COMPACT_ATTEMPTS = 3
+
+    def _save_session_context(self, text, t_text):
+        # Store what was *sent*, not the bare source. The next request replays
+        # this message verbatim, so any difference — the prompt template, say —
+        # would make the newest pair a cache miss, and the run would re-read a
+        # paragraph at full input price every request.
+        self._record_session_exchange(self._user_content(text), t_text)
+
+    def _record_session_exchange(self, user_content, reply_text):
+        """Append one exchange, given the strings the wire actually carried.
+
+        The structured batch path builds its user message itself, so it
+        cannot go through `_save_session_context` — and a batch recorded as N
+        synthetic pairs is a history that no longer matches what the endpoint
+        cached, which costs a full-price re-read of the whole prefix every
+        request.
+        """
+        self.session.append(user_content, reply_text)
+        if not self.session.should_compact(self._session_budget()):
+            return
+        if self.no_context_compact:
+            self._start_empty_window()
+        else:
+            self._compact_session()
+
+    def _start_empty_window(self):
+        """Roll over with no handoff report, because the user asked for none.
+
+        Continuity across the seam is what the report buys, and
+        `--no-context-compact` declines to buy it — so this is a plain reset,
+        not a cheaper summary.
+        """
+        self.session.reset(seed="")
+        if self.quiet:
+            return
+        print(
+            f"[bold cyan]— context window {self.session.windows}, started "
+            f"empty (--no-context-compact) —[/bold cyan]"
+        )
+
+    def _show_handoff(self, report):
+        """Print the report the next window will inherit.
+
+        `escape` is not optional: rich reads square brackets as markup, and
+        these reports genuinely contain things like "[PGA]", which would be
+        swallowed or raise on an unclosed tag.
+        """
+        if self.quiet:
+            # --quiet suppresses echoes like this one; warnings and errors
+            # still print.
+            return
+        print(
+            f"[bold cyan]— handoff report, window {report.window} —[/bold cyan]\n"
+            + escape(report.render())
+        )
+
     def set_request_extras(self, extra_body=None, extra_headers=None):
         """Fields and headers to add to every request this route makes.
 
@@ -393,10 +472,24 @@ class Base(ABC):
     # Said only to requests that carry markers. A model told to preserve
     # tokens in a text that has none is being taught to invent them.
     MARKER_INSTRUCTION = (
-        "The text contains placeholder tokens written like ⟦code1⟧. Reproduce "
-        "every one of them exactly as written, each in the place the content "
-        "it stands for belongs in your translation. Never translate a token, "
-        "never change its spelling, and never invent one."
+        "The text contains placeholders formatting as ⟦code1⟧. Reproduce "
+        "every one of them exactly as given, at the place it belongs in your "
+        "translation. Never translate a token, and never change its spelling."
+    )
+
+    # Said only to requests whose payload has a structure to lose: a unit
+    # carrying inline markup or markers, a body with more than one line or
+    # paragraph in it, and every batched request (delimiter-joined or JSON,
+    # where the shape of the payload *is* the alignment). A plain single
+    # paragraph has no structure to keep, and telling a model to preserve one
+    # there invites it to invent headings and line breaks that were never
+    # sent. Functional, so it is not the operator's to override: it rides in
+    # front of a `--prompt` user template rather than inside it, the same way
+    # the marker contract does, and neither is named by the adoption line the
+    # CLI prints — what `--prompt` did with the operator's own sections is
+    # what that line reports.
+    STRUCTURE_INSTRUCTION = (
+        "Keep the paragraph structure and any inline markup exactly as it is given."
     )
 
     # Where each `--prompt` section lands on this route:
@@ -417,7 +510,15 @@ class Base(ABC):
         "system": "native",
         "style": "appended",
     }
-    PROMPT_APPEND_TARGET = "the user message"
+    PROMPT_APPEND_TARGET = "the system message"
+
+    # Whether the request has a channel for standing instructions at all.
+    # Every endpoint reached from here does — openai's `system` role,
+    # anthropic's `system` parameter, gemini's `system_instruction`, a codex
+    # thread's base instructions — but the channel is not something the
+    # prompt format may assume: a route without one folds those instructions
+    # into the turn instead, which is `_fold_standing_instructions`.
+    HAS_SYSTEM_CHANNEL = True
 
     # One wording for the style section wherever it is appended, so a run does
     # not describe its style two ways depending on the route.
@@ -446,29 +547,64 @@ class Base(ABC):
     def _system_message(self):
         """The system message this route sends, before the run-wide note.
 
-        The two attribute spellings are the ones already in use — ChatGPT
-        keeps an `$OPENAI_API_SYS_MSG` value in `system_content` and the
-        `--prompt` one in `prompt_sys_msg`; Claude, Gemini and codex keep only
-        the latter. A route with neither answers "", which is the honest
-        description of what it sends.
+        One attribute on every route, `prompt_sys_msg`: `--prompt`'s system
+        section, with the environment behind it. There used to be a second
+        one — ChatGPT read `$OPENAI_API_SYS_MSG` into `system_content` and
+        this method preferred it — so an exported variable silently outranked
+        the system message the command asked for, for the whole run. The
+        variable is now what it reads like: a fallback.
         """
-        system = getattr(self, "system_content", None) or getattr(
-            self, "prompt_sys_msg", None
-        )
-        return self.fill_optional(system)
+        return self.fill_optional(getattr(self, "prompt_sys_msg", None))
 
-    def style_suffix(self):
-        """The style section as a suffix for the turn, or "".
+    def style_section(self):
+        """`--prompt`'s style section as one standing line, or "".
 
-        Appended rather than slotted because no endpoint has a place for it:
-        the style is a standing instruction about *how* to translate, and the
-        only channel every route has for that is the text it is already
-        sending. Fixed for a run, so it never destabilises a cached prefix.
+        No endpoint has a style slot, and style is not a per-request thing to
+        say: it is a standing instruction about *how* to translate, fixed for
+        the run. So it rides with the standing instructions — said once where
+        a window starts, not re-sent with every paragraph — rather than as a
+        suffix on each turn, which is where it used to go and which paid for
+        it once per request.
         """
         note = (getattr(self, "style_note", None) or "").strip()
         if not note:
             return ""
-        return f"\n\n{self.STYLE_HEADING} {self.fill_optional(note)}"
+        return f"{self.STYLE_HEADING} {self.fill_optional(note)}"
+
+    def _standing_text(self):
+        """Everything this run says once rather than per paragraph.
+
+        The operator's `system` section, the `--source_lang` note it carries,
+        and the style — joined, before anything decides which channel they go
+        on.
+        """
+        parts = (
+            self._augment_system_content(self._system_message()),
+            self.style_section(),
+        )
+        return "\n\n".join(part for part in parts if part)
+
+    def standing_instructions(self):
+        """The standing-instruction channel's value for this route.
+
+        "" on a route with no such channel: there the same text goes in front
+        of the turn instead, and returning it here as well would send it
+        twice.
+        """
+        return self._standing_text() if self.HAS_SYSTEM_CHANNEL else ""
+
+    def _fold_standing_instructions(self, turn):
+        """The turn, carrying the standing instructions where nothing else can.
+
+        A three-part `--prompt` has to work on any route, so a channel a route
+        does not have folds into the nearest one it does: standing
+        instructions first, then the turn, blank line between them — the order
+        the model should read them in.
+        """
+        if self.HAS_SYSTEM_CHANNEL:
+            return turn
+        standing = self._standing_text()
+        return f"{standing}\n\n{turn}" if standing else turn
 
     @property
     def field_language(self):
@@ -507,9 +643,9 @@ class Base(ABC):
         and every request then repeats verbatim. Nothing per-request may go
         here: a system message that changes between requests moves the
         prefix session mode caches, and every later request re-reads the
-        whole accumulated history at full input price. The marker contract
-        is exactly such a per-request thing — it rides in the user message,
-        see `_marker_preamble`.
+        whole accumulated history at full input price. The marker and
+        structure contracts are exactly such per-request things — they ride
+        in the user message, see `_functional_preamble`.
         """
         note = self._source_language_note()
         if not note:
@@ -527,18 +663,18 @@ class Base(ABC):
         under different instructions, which is exactly what the resume
         checkpoint's fingerprint has to notice.
 
-        The two attribute spellings are the ones already in use: ChatGPT and
-        Claude keep `prompt_template`/`system_content`, Gemini `prompt`/
-        `prompt_sys_msg` (see `_do_batch_translate_with_fallback`). A route
-        with neither — the fixed MT engines, which take no prompt at all —
-        answers empty strings, which is the honest description of what it
-        sends.
+        The two attribute spellings are the ones already in use: ChatGPT,
+        Claude and codex keep `prompt_template`, Gemini `prompt` (see
+        `_do_batch_translate_with_fallback`); the system message is
+        `prompt_sys_msg` everywhere. A route with neither — the fixed MT
+        engines, which take no prompt at all — answers empty strings, which is
+        the honest description of what it sends.
         """
         user = getattr(self, "prompt_template", None) or getattr(self, "prompt", None)
         return {
             "user": user or "",
             "system": self._augment_system_content(self._system_message()) or "",
-            # A fixed --prompt style rides in every request (and replaces
+            # A fixed --prompt style stands over the whole run (and replaces
             # the handoff's observed style), so a style-only change writes
             # a different book and must move the fingerprint with it.
             "style": getattr(self, "style_note", None) or "",
@@ -554,6 +690,45 @@ class Base(ABC):
         if not self._carries_markers(request_text):
             return ""
         return f"{self.MARKER_INSTRUCTION}\n\n"
+
+    @classmethod
+    def _carries_structure(cls, text, batched=False):
+        """Whether this payload has a structure the reply has to reproduce.
+
+        Batched requests always do: many units travel as one body, and the
+        delimiters or JSON that separate them are the only thing that lets
+        the pieces be handed back to the right paragraphs. Otherwise it is a
+        property of the text — more than one line, a marker, or inline
+        markup (an html tag, or the markdown the markdown loader hands over
+        verbatim). One plain paragraph of prose has nothing to preserve.
+        """
+        text = (text or "").strip()
+        if not text:
+            return False
+        if batched or "\n" in text:
+            return True
+        return cls._carries_markers(text) or bool(INLINE_MARKUP_RE.search(text))
+
+    def _structure_preamble(self, request_text, batched=False):
+        """The structure contract as a user-message prefix, or "".
+
+        In the user turn for the reason the marker contract is: it is decided
+        per request, and a system message that changes between requests moves
+        the prefix session mode caches.
+        """
+        if not self._carries_structure(request_text, batched):
+            return ""
+        return f"{self.STRUCTURE_INSTRUCTION}\n\n"
+
+    def _functional_preamble(self, request_text, batched=False):
+        """Every conditional functional prompt this request earns, in order.
+
+        The one place a route asks for them, so a new contract is added here
+        rather than at each site that assembles a user turn.
+        """
+        return self._marker_preamble(request_text) + self._structure_preamble(
+            request_text, batched
+        )
 
     def warn_if_extras_refused(self, error):
         """Say so when a request carrying the run's extras was refused.
@@ -830,12 +1005,9 @@ class Base(ABC):
         Returns:
             Tuple of (batch_prompt, batch_sys_msg, batch_text)
         """
+        # Never called with fewer than two texts: `_do_batch_translate`, the
+        # only caller, answers those cases itself before it gets here.
         plist_len = len(text_list)
-        if plist_len == 0:
-            return None, None, None
-
-        if plist_len == 1:
-            return None, None, None  # Signal to use single translation
 
         # Build stripped texts list once
         stripped_texts = [str(t).strip() for t in text_list]
@@ -948,20 +1120,18 @@ class Base(ABC):
             text_list, prompt_template, system_content, default_prompt
         )
 
-        # Detect which attribute names this translator uses
-        # ChatGPT uses prompt_template/system_content, Gemini uses prompt/prompt_sys_msg
-        prompt_attr = (
-            "prompt_template" if hasattr(self, "prompt_template") else "prompt"
-        )
-        sys_msg_attr = (
-            "system_content" if hasattr(self, "system_content") else "prompt_sys_msg"
-        )
+        # One spelling on every route: `prompt_template` for the user
+        # template, `prompt_sys_msg` for the system message. ChatGPT used to
+        # keep a second system attribute for `$OPENAI_API_SYS_MSG`, and this
+        # rung had to guess which one it was installing over.
+        prompt_attr = "prompt_template"
+        sys_msg_attr = "prompt_sys_msg"
 
         # Store original values — read off the instance, not off the arguments.
         # The two are the same wherever a caller hands its own attribute
         # straight in, and differ where it hands the *effective* value it
-        # assembled (the openai route's system message is `system_content` or
-        # `prompt_sys_msg`, and only the assembled form carries a `--prompt`
+        # assembled (the openai route hands in `_system_message()`, and only
+        # the assembled form carries the `--source_lang` note and a `--prompt`
         # system message onto this rung). Restoring the argument there would
         # write the assembled string back over the attribute it came from.
         original_prompt = getattr(self, prompt_attr, prompt_template)
@@ -1028,7 +1198,7 @@ class Base(ABC):
         # Handle None or empty response
         if not translated_text:
             print(
-                f"[bold red]Error: Translation API returned empty response for batch request.[/bold red]"
+                "[bold red]Error: Translation API returned empty response for batch request.[/bold red]"
             )
             raise Exception("Translation API returned empty response")
 

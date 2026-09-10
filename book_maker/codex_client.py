@@ -55,7 +55,7 @@ CLIENT_NAME = "bilingual-book-maker"
 def _client_version():
     """The installed package version, or a placeholder when running from source."""
     try:
-        from importlib.metadata import PackageNotFoundError, version
+        from importlib.metadata import version
 
         return version("bbook_maker")
     except Exception:

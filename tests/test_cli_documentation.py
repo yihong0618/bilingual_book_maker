@@ -2,7 +2,10 @@
 
 An option carrying `help=argparse.SUPPRESS` is deliberately unadvertised and
 is skipped here — it is absent from `--help` too, so requiring a README row
-for it would be requiring the opposite of what it asks for.
+for it would be requiring the opposite of what it asks for. An option whose
+help text opens with "deprecated" is skipped for the same reason (owner
+ruling 260908): the flag itself warns and points at its replacement at
+runtime, and a README is for what people should use, not what still parses.
 """
 
 import ast
@@ -19,7 +22,15 @@ def _is_suppressed(node: ast.Call) -> bool:
         if keyword.arg != "help":
             continue
         value = keyword.value
-        return isinstance(value, ast.Attribute) and value.attr == "SUPPRESS"
+        if isinstance(value, ast.Attribute) and value.attr == "SUPPRESS":
+            return True
+        # A help text that opens with "deprecated" warns and redirects at
+        # runtime; the references document the replacement instead.
+        return (
+            isinstance(value, ast.Constant)
+            and isinstance(value.value, str)
+            and value.value.lower().startswith("deprecated")
+        )
     return False
 
 
@@ -90,7 +101,16 @@ def test_help_renders():
 # own flags in the docker section, and the shell placeholders the skill uses
 # in its recipes.
 _FOREIGN_FLAGS = frozenset(
-    {"--help", "--rm", "--name", "--mount", "--tag", "--flag", "--git-common-dir"}
+    {
+        "--help",
+        "--rm",
+        "--name",
+        "--mount",
+        "--tag",
+        "--user",
+        "--flag",
+        "--git-common-dir",
+    }
 )
 
 # Every file an operator or an agent reads to decide what to type. The skill

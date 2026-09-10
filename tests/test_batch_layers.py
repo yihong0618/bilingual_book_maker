@@ -531,7 +531,7 @@ class TestMarkerInstructionPlacement:
         t.get_translation("Plain sentence.")
 
         assert "⟦code1⟧" in sent[0]["messages"][-1]["content"]
-        assert "never invent one" in sent[0]["messages"][-1]["content"]
+        assert "never change its spelling" in sent[0]["messages"][-1]["content"]
         # and says nothing about markers to a request that carries none
         assert "never invent one" not in sent[1]["messages"][-1]["content"]
 

@@ -206,7 +206,7 @@ class Glossary:
             "<glossary>\n"
             f"{lines}\n"
             "</glossary>\n"
-            "Use these translations verbatim whenever the source term appears."
+            "Use these translations verbatim in your translation."
         )
 
     # ---- combination ------------------------------------------------------

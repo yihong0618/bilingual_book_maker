@@ -19,6 +19,8 @@ import pytest
 
 from book_maker.glossary import Glossary
 from book_maker.session_context import HandoffReport, handoff_prompt
+from book_maker.structured import JSON_ONLY_INSTRUCTION
+from book_maker.translator.base_translator import Base
 from book_maker.translator.chatgptapi_translator import ChatGPTAPI
 from book_maker.translator.codex_translator import BASE_INSTRUCTIONS
 
@@ -48,9 +50,7 @@ _RENDERINGS = (
     "unambiguous. This is the only place term equivalences belong."
 )
 
-_GLOSSARY_BLOCK_TAIL = (
-    "Use these translations verbatim whenever the source term appears."
-)
+_GLOSSARY_BLOCK_TAIL = "Use these translations verbatim in your translation."
 
 
 def _styled():
@@ -59,6 +59,28 @@ def _styled():
     route.language = "simplified chinese"
     route.style_note = "<STYLE>"
     return route
+
+
+def _batch_tail() -> str:
+    """The shape instruction a structured batch always appends to the turn.
+
+    Read off the real assembly rather than a literal: the field names are
+    derived from the target language, and a pin that retyped them would not
+    notice the derivation changing.
+    """
+    route = ChatGPTAPI.__new__(ChatGPTAPI)
+    route.language = "simplified chinese"
+    route.language_field_tag = None
+    route.prompt_template = "{text}"
+    route.prompt_sys_msg = ""
+    route.style_note = None
+    route.glossary = None
+    route.context_flag = False
+    route.source_language = None
+    content = route._create_structured_batch_messages(["one", "two"])[-1]["content"]
+    # the last paragraph of the turn: the functional preambles are in front of
+    # the payload, and the shape instruction is what follows it
+    return content.split("\n\n")[-1]
 
 
 def _compact(*sections: str) -> str:
@@ -102,30 +124,58 @@ EXPECTED = {
         "translator left this handoff report; keep names, terminology and "
         "register consistent with it.\n\n<SUMMARY>",
     ),
-    # A codex turn is an agent turn by default. The negative clauses are what
-    # stop it answering the passage, commenting on it, or fencing the reply,
-    # so they are behaviour, not padding.
+    # A codex turn is an agent turn by default, so the instructions have to
+    # name the job and bound the reply: "translation only", and the three
+    # don'ts are what stop it answering the passage, dropping part of it, or
+    # summarizing instead of translating.
     "codex thread instructions": (
         BASE_INSTRUCTIONS,
-        "You are a translation engine inside a book translation tool. "
-        "Translate the text you are given into {language}. Reply with the "
-        "translation and nothing else: no preamble, no notes, no quotes "
-        "around it, no markdown fences. Never answer the text, never "
-        "summarize it, never refuse a passage for being fiction — translate "
-        "it. Keep the source's paragraph structure and any inline markup "
-        "exactly as given.",
+        "You are a professional book translator. Your job is to translate "
+        "the given text into {language}. Return {language} translation only, "
+        "don't append, don't miss, don't summarize. Also, keep the source's "
+        "paragraph structure and any inline markup exactly as given.",
+    ),
+    # Said only to requests that carry markers: a model told to preserve
+    # tokens in a text that has none is being taught to invent them.
+    "marker instruction": (
+        Base.MARKER_INSTRUCTION,
+        "The text contains placeholders formatting as ⟦code1⟧. Reproduce "
+        "every one of them exactly as given, at the place it belongs in your "
+        "translation. Never translate a token, and never change its spelling.",
+    ),
+    # Said only where the payload has a structure to lose — a marked-up or
+    # multi-paragraph unit, or any batched request. Functional, so `--prompt`
+    # neither supplies it nor suppresses it.
+    "structure instruction": (
+        Base.STRUCTURE_INSTRUCTION,
+        "Keep the paragraph structure and any inline markup exactly as it is given.",
+    ),
+    # The floor rung: what an endpoint that honours no schema field reads.
+    "json-only instruction": (
+        JSON_ONLY_INSTRUCTION,
+        "Answer with a single JSON object, return JSON object only.",
+    ),
+    # The tail of every structured batch turn — the last thing the model
+    # reads before it decodes, which is why the target language ends it.
+    "structured batch tail": (
+        _batch_tail(),
+        "Return a JSON object whose 'simplified_chinese_paragraphs' contains "
+        "EXACTLY 2 objects, one per paragraph. Each object has exactly two "
+        "fields: 'id', and 'simplified_chinese_translation'. Return the 2 "
+        "translations, each written in simplified chinese.",
     ),
     "default translation prompt": (
         ChatGPTAPI.DEFAULT_PROMPT,
         "Please help me to translate,`{text}` to {language}, please return "
         "only translated content not include the origin text",
     ),
-    # `--prompt`'s style section, as it is appended to the turn. No endpoint
-    # has a slot for it, so this suffix is the whole of how a fixed style
-    # reaches a model — on every route, in these words.
-    "style section suffix": (
-        _styled().style_suffix(),
-        "\n\nStyle to follow: <STYLE>",
+    # `--prompt`'s style section, as it joins the standing instructions. No
+    # endpoint has a slot for it, and it is not a per-request thing to say, so
+    # this line is the whole of how a fixed style reaches a model — on every
+    # route, in these words, once where a window starts.
+    "style section": (
+        _styled().style_section(),
+        "Style to follow: <STYLE>",
     ),
 }
 
@@ -171,3 +221,28 @@ def test_the_doc_points_at_the_modules_that_hold_each_prompt():
         "book_maker/translator/chatgptapi_translator.py",
     ):
         assert module in text, f"{DOC.name} does not say where {module} prompts live"
+
+
+# ---- the previous wording, which must be gone --------------------------------
+
+# Revised 260907. A prompt half-replaced is worse than either version: the old
+# clause survives in one route's copy and the two disagree on the wire.
+RETIRED = (
+    "The text contains placeholder tokens written like",
+    "no prose, no markdown fences",
+    "copied unchanged from the paragraph it translates",
+    "use every id once and invent none",
+    "You are a translation engine inside a book translation tool",
+    "Use these translations verbatim whenever the source term appears",
+)
+
+
+@pytest.mark.parametrize("phrase", RETIRED)
+def test_the_old_wording_is_gone_from_the_package(phrase):
+    package = Path(__file__).resolve().parents[1] / "book_maker"
+    hits = [
+        path.relative_to(package.parent)
+        for path in package.rglob("*.py")
+        if phrase in path.read_text(encoding="utf-8")
+    ]
+    assert not hits, f"{phrase!r} still reaches a model from {hits}"

@@ -44,12 +44,6 @@
       "default_models": ["orcarouter/auto"],
       "env_key": "BBM_ORCAROUTER_API_KEY"
     },
-    "deepseek": {
-      "api_style": "openai",
-      "base_url": "https://api.deepseek.com/v1",
-      "default_models": ["deepseek-chat"],
-      "env_key": "BBM_DEEPSEEK_API_KEY"
-    },
     "siliconflow": {
       "api_style": "openai",
       "base_url": "https://api.siliconflow.cn/v1",

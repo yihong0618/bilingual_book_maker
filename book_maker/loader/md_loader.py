@@ -1,4 +1,3 @@
-import json
 import re
 import sys
 import threading
@@ -310,11 +309,11 @@ class MarkdownBookLoader(BaseBookLoader):
             target_size = (
                 min(self.batch_size, remaining) if remaining else self.batch_size
             )
-            if len(batch) >= target_size and not self._batch_is_heading_only(batch):
-                flush_batch()
-            elif self._batch_char_count(
-                batch
-            ) >= self.md_chunk_char_budget and not self._batch_is_heading_only(batch):
+            full = (
+                len(batch) >= target_size
+                or self._batch_char_count(batch) >= self.md_chunk_char_budget
+            )
+            if full and not self._batch_is_heading_only(batch):
                 flush_batch()
 
         if not stop_after_batch:
@@ -730,31 +729,3 @@ class MarkdownBookLoader(BaseBookLoader):
             f"{Path(self.md_name).parent}/{Path(self.md_name).stem}_bilingual_temp.txt",
             self.bilingual_temp_result,
         )
-
-    def _save_progress(self):
-        try:
-            with open(self.bin_path, "w", encoding="utf-8") as f:
-                json.dump(self.p_to_save, f, ensure_ascii=False)
-        except Exception as e:
-            raise Exception("can not save resume file") from e
-
-    def load_state(self):
-        try:
-            with open(self.bin_path, encoding="utf-8") as f:
-                content = f.read()
-                try:
-                    state = json.loads(content)
-                except json.JSONDecodeError:
-                    state = content.splitlines()
-                if not isinstance(state, list):
-                    raise ValueError("resume file must contain a list")
-                self.p_to_save = state
-        except Exception as e:
-            raise Exception("can not load resume file") from e
-
-    def save_file(self, book_path, content):
-        try:
-            with open(book_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(content))
-        except Exception as e:
-            raise Exception("can not save file") from e

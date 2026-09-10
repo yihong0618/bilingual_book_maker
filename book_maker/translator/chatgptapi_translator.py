@@ -17,7 +17,6 @@ from openai import (
     BadRequestError,
     InternalServerError,
     LengthFinishReasonError,
-    NotFoundError,
     OpenAI,
     RateLimitError,
 )
@@ -411,21 +410,19 @@ class ChatGPTAPI(Base):
     SUPPORTS_BATCH_API = True
     SUPPORTS_REQUEST_EXTRAS = True
     SUPPORTS_GLOSSARY = True
+    # A grouped request on this route rewrites the operator's `{text}` into a
+    # JSON envelope of the whole group and appends a shape instruction after
+    # the template. The adoption line says so: a template written about one
+    # paragraph is describing something the model is not being sent.
+    WRAPS_BATCH_JSON = True
     # Session-mode state, declared here so the window-mode path is well
     # defined on any instance — including the subclasses and test fixtures
     # that build one without running __init__. `session is None` means window
     # mode everywhere in this class.
     session = None
-    # `pinned` is the operator's --glossary file, `learned` what this run's
-    # compacts established, `glossary` the two combined. None here rather than
-    # an empty Glossary so an instance built without __init__ still answers
-    # "no glossary" without constructing one.
-    glossary = None
-    pinned = None
-    learned = None
-    # Tri-state, from `--glossary-auto {on,off}`: None is "unsaid", and
-    # `glossary_auto_on` below turns that into the default for this run.
-    glossary_auto = None
+    # `glossary` / `pinned` / `learned` / `glossary_auto` are declared on
+    # `Base` for the same reason, and `glossary_auto_on` below turns the
+    # tri-state `--glossary-auto` into this run's default.
     handoff_path = None
     context_compact_at = None
     no_context_compact = False
@@ -442,7 +439,13 @@ class ChatGPTAPI(Base):
     # loader from the translator only works lazily, and an instance built
     # without __init__ — a subclass, a test double — still needs the value.
     # The CLI lowers it alongside `--max-batch-units`.
-    substrict_batch_cap = 16
+    #
+    # 8 since the 260907 owner ruling, down from 16 with the unit cap it
+    # halves. Read that constant's note for what is measured here and what is
+    # a chosen margin: the *reason* for the margin is measured, its *size* is
+    # the owner's, and the number is deliberately below what any eval found
+    # faulty.
+    substrict_batch_cap = 8
 
     # Set by the CLI from --quiet. Suppresses this class's own echoes.
     quiet = False
@@ -469,7 +472,6 @@ class ChatGPTAPI(Base):
         **kwargs,
     ) -> None:
         super().__init__(key, language)
-        self.key_len = len(key.split(","))
         api_base = api_base or self.DEFAULT_API_BASE
         self.openai_client = OpenAI(
             api_key=next(self.keys), base_url=api_base, **REQUEST_LIMITS
@@ -481,15 +483,17 @@ class ChatGPTAPI(Base):
             or environ.get(PROMPT_ENV_MAP["user"])
             or self.DEFAULT_PROMPT
         )
+        # `--prompt` first. `$OPENAI_API_SYS_MSG` used to be read into a
+        # second attribute that outranked it at send time, so a command
+        # asking for a system message translated a whole book under an
+        # exported variable instead. It is a deprecated fallback now, and the
+        # CLI says so when both are present.
         self.prompt_sys_msg = (
             prompt_sys_msg
-            or environ.get(
-                "OPENAI_API_SYS_MSG",
-            )  # XXX: for backward compatibility, deprecate soon
+            or environ.get("OPENAI_API_SYS_MSG")  # deprecated; prefer BBM_*
             or environ.get(PROMPT_ENV_MAP["system"])
             or ""
         )
-        self.system_content = environ.get("OPENAI_API_SYS_MSG") or ""
         self.temperature = temperature
         self.model_list = None
         self.context_flag = context_flag
@@ -517,12 +521,13 @@ class ChatGPTAPI(Base):
         self.style_note = style_note
         self.handoff_path = Path(handoff_path) if handoff_path else None
         self._compact_failures = 0
-        if context_paragraph_limit > 0:
-            # not set by user, use default
-            self.context_paragraph_limit = context_paragraph_limit
-        else:
-            # set by user, use user's value
-            self.context_paragraph_limit = CHATGPT_CONFIG["context_paragraph_limit"]
+        # A positive limit is the operator's; anything else takes the default.
+        # (The comments here used to say the opposite of what the branches do.)
+        self.context_paragraph_limit = (
+            context_paragraph_limit
+            if context_paragraph_limit > 0
+            else CHATGPT_CONFIG["context_paragraph_limit"]
+        )
         self.batch_text_list = []
         self.batch_info_cache = None
         self.result_content_cache = {}
@@ -813,7 +818,8 @@ class ChatGPTAPI(Base):
 
         Deterministic for a given (text, glossary), which is what lets session
         mode store exactly what it sent without threading the string around —
-        the marker preamble included, since it is a function of the text too.
+        the functional preambles included, since they are a function of the
+        text too.
 
         Pinned terms belong to *this* unit, so they go in the fresh tail
         message rather than the system prompt: a block that varies per unit
@@ -821,22 +827,17 @@ class ChatGPTAPI(Base):
         every request. Once this message is frozen into the history it stops
         varying, so it is stable there.
         """
-        content = (
-            self._marker_preamble(text)
-            + self.prompt_template.format(text=text, language=self.language, crlf="\n")
-            # No endpoint has a slot for `--prompt`'s style section, so it
-            # rides here. Last, after the user's own template: it is the
-            # standing instruction the run must not lose, and a fixed string
-            # keeps every request's tail comparable.
-            + self.style_suffix()
+        content = self._functional_preamble(text) + self.prompt_template.format(
+            text=text, language=self.language, crlf="\n"
         )
         block = self.glossary.prompt_block(text) if self.glossary else ""
-        return f"{block}\n\n{content}" if block else content
+        content = f"{block}\n\n{content}" if block else content
+        return self._fold_standing_instructions(content)
 
     def create_messages(self, text, intermediate_messages=None):
         content = self._user_content(text)
 
-        sys_content = self._augment_system_content(self._system_message())
+        sys_content = self.standing_instructions()
         messages = [
             {"role": "system", "content": sys_content},
         ]
@@ -963,8 +964,6 @@ class ChatGPTAPI(Base):
         """Sampling parameters to send, or nothing when the model owns them."""
         return self.capabilities.sampling_kwargs(model or self.model, self.temperature)
 
-    _classify_bad_request = staticmethod(classify_bad_request)
-
     def _note_temperature_rejected(self, model):
         if self.capabilities.note_temperature_rejected(model):
             print(
@@ -1020,7 +1019,7 @@ class ChatGPTAPI(Base):
                 )
             )
         except BadRequestError as e:
-            if self._classify_bad_request(e) != "schema":
+            if classify_bad_request(e) != "schema":
                 raise  # not a capability answer — do not blame the schema
             raise StructuredOutputUnsupported(str(e)) from e
         except (ValidationError, json.JSONDecodeError) as e:
@@ -1047,11 +1046,6 @@ class ChatGPTAPI(Base):
         return content.encode("utf8").decode() if content else ""
 
     # ---- session mode -----------------------------------------------------
-
-    # Compact attempts before giving up on a summary and starting clean. More
-    # than one so a transient error does not cost the accumulated context;
-    # bounded so a broken endpoint cannot grow the history forever.
-    COMPACT_ATTEMPTS = 3
 
     def _note_usage(self, completion, model=None):
         """Add what the endpoint billed for this request to the meter.
@@ -1174,61 +1168,6 @@ class ChatGPTAPI(Base):
                 )
         self.session.reset(seed=report.seed_text())
 
-    def _show_handoff(self, report):
-        """Print the report the next window will inherit.
-
-        `escape` is not optional: rich reads square brackets as markup, and
-        these reports genuinely contain things like "[PGA]", which would be
-        swallowed or raise on an unclosed tag.
-        """
-        if self.quiet:
-            # --quiet suppresses echoes like this one; warnings and errors
-            # still print.
-            return
-        print(
-            f"[bold cyan]— handoff report, window {report.window} —[/bold cyan]\n"
-            + escape(report.render())
-        )
-
-    def _save_session_context(self, text, t_text):
-        # Store what was *sent*, not the bare source. The next request replays
-        # this message verbatim, so any difference — the prompt template, say —
-        # would make the newest pair a cache miss, and the run would re-read a
-        # paragraph at full input price every request.
-        self._record_session_exchange(self._user_content(text), t_text)
-
-    def _record_session_exchange(self, user_content, reply_text):
-        """Append one exchange, given the strings the wire actually carried.
-
-        The structured batch path builds its user message itself, so it
-        cannot go through `_save_session_context` — and a batch recorded as N
-        synthetic pairs is a history that no longer matches what the endpoint
-        cached, which costs a full-price re-read of the whole prefix every
-        request.
-        """
-        self.session.append(user_content, reply_text)
-        if not self.session.should_compact(self._session_budget()):
-            return
-        if self.no_context_compact:
-            self._start_empty_window()
-        else:
-            self._compact_session()
-
-    def _start_empty_window(self):
-        """Roll over with no handoff report, because the user asked for none.
-
-        Continuity across the seam is what the report buys, and
-        `--no-context-compact` declines to buy it — so this is a plain reset,
-        not a cheaper summary.
-        """
-        self.session.reset(seed="")
-        if self.quiet:
-            return
-        print(
-            f"[bold cyan]— context window {self.session.windows}, started "
-            f"empty (--no-context-compact) —[/bold cyan]"
-        )
-
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=60),
@@ -1294,80 +1233,6 @@ class ChatGPTAPI(Base):
             print(f"Translation failed after retries: {redact(e)}")
             raise
 
-    def translate_and_split_lines(self, text):
-        result_str = self.translate(text, False)
-        lines = result_str.splitlines()
-        lines = [line.strip() for line in lines if line.strip() != ""]
-        return lines
-
-    def log_retry(self, state, retry_count, elapsed_time, log_path="log/buglog.txt"):
-        if retry_count == 0:
-            return
-        print(f"retry {state}")
-        with open(log_path, "a", encoding="utf-8") as f:
-            print(
-                f"retry {state}, count = {retry_count}, time = {elapsed_time:.1f}s",
-                file=f,
-            )
-
-    def log_translation_mismatch(
-        self,
-        plist_len,
-        result_list,
-        new_str,
-        sep,
-        log_path="log/buglog.txt",
-    ):
-        if len(result_list) == plist_len:
-            return
-        newlist = new_str.split(sep)
-        with open(log_path, "a", encoding="utf-8") as f:
-            print(f"problem size: {plist_len - len(result_list)}", file=f)
-            for i in range(len(newlist)):
-                print(newlist[i], file=f)
-                print(file=f)
-                if i < len(result_list):
-                    print("............................................", file=f)
-                    print(result_list[i], file=f)
-                    print(file=f)
-                print("=============================", file=f)
-
-        print(
-            f"bug: {plist_len} paragraphs of text translated into {len(result_list)} paragraphs",
-        )
-        print("continue")
-
-    def join_lines(self, text):
-        lines = text.splitlines()
-        new_lines = []
-        temp_line = []
-
-        # join
-        for line in lines:
-            if line.strip():
-                temp_line.append(line.strip())
-            else:
-                if temp_line:
-                    new_lines.append(" ".join(temp_line))
-                    temp_line = []
-                new_lines.append(line)
-
-        if temp_line:
-            new_lines.append(" ".join(temp_line))
-
-        text = "\n".join(new_lines)
-        # try to fix #372
-        if not text:
-            return ""
-
-        # del ^M
-        text = text.replace("^M", "\r")
-        lines = text.splitlines()
-        filtered_lines = [line for line in lines if line.strip() != "\r"]
-        new_text = "\n".join(filtered_lines)
-
-        return new_text
-
     def translate_list(self, text_list):
         """
         Translate multiple texts using the best available method.
@@ -1379,11 +1244,11 @@ class ChatGPTAPI(Base):
             return self._do_structured_batch_translate(text_list)
 
         # Fallback to delimiter-based method. The *effective* system message,
-        # not `system_content`: that attribute only ever holds
-        # `$OPENAI_API_SYS_MSG`, so passing it dropped a `--prompt` system
-        # message for the whole group — `_build_batch_prompt` then wrapped the
-        # empty string and installed "Professional translator. …" over the top
-        # of it, and the operator's own instruction never left the process.
+        # settled through `_system_message()`: this rung used to be handed the
+        # `$OPENAI_API_SYS_MSG`-only attribute, so a `--prompt` system message
+        # was dropped for the whole group — `_build_batch_prompt` then wrapped
+        # the empty string and installed "Professional translator. …" over the
+        # top of it, and the operator's own instruction never left the process.
         return self._do_batch_translate(
             text_list,
             self.prompt_template,
@@ -1444,15 +1309,12 @@ class ChatGPTAPI(Base):
         }
         texts_json = json.dumps(payload, ensure_ascii=False)
 
-        # Format user's prompt template with the JSON payload as {text}.
-        # `--prompt`'s style section has no slot of its own anywhere, so it is
-        # appended here — before the shape instruction below, which has to
-        # stay the last thing the model reads.
-        user_prompt = (
-            self.prompt_template.format(
-                text=texts_json, language=self.language, crlf="\n"
-            )
-            + self.style_suffix()
+        # Format user's prompt template with the JSON payload as {text}. The
+        # style section is not here: it stands over the whole run, so it goes
+        # with the standing instructions below rather than being re-sent with
+        # every group.
+        user_prompt = self.prompt_template.format(
+            text=texts_json, language=self.language, crlf="\n"
         )
 
         # Add structured format instruction. The target language goes last: this
@@ -1465,12 +1327,10 @@ class ChatGPTAPI(Base):
         # target language stay the last thing the model reads.
         glossary_block = self.glossary.prompt_block(texts_json) if self.glossary else ""
         content = (f"{glossary_block}\n\n" if glossary_block else "") + (
-            f"{self._marker_preamble(texts_json)}{user_prompt}\n\n"
-            f"Return a JSON object whose '{field}' array contains EXACTLY "
-            f"{plist_len} objects, one per input paragraph. Each object has "
-            f"exactly two fields: 'id', copied unchanged from the paragraph "
-            f"it translates — use every id once and invent none — and "
-            f"'{item_field}', holding that paragraph's translation. Return "
+            f"{self._functional_preamble(texts_json, batched=True)}{user_prompt}\n\n"
+            f"Return a JSON object whose '{field}' contains EXACTLY "
+            f"{plist_len} objects, one per paragraph. Each object has "
+            f"exactly two fields: 'id', and '{item_field}'. Return "
             f"the {plist_len} translations, each written in {self.language}."
         )
 
@@ -1491,7 +1351,8 @@ class ChatGPTAPI(Base):
                 f"Every translation must be written in {self.language}."
             )
 
-        sys_content = self._augment_system_content(self._system_message())
+        content = self._fold_standing_instructions(content)
+        sys_content = self.standing_instructions()
 
         messages = [
             {"role": "system", "content": sys_content},
@@ -1649,7 +1510,7 @@ class ChatGPTAPI(Base):
 
         messages = self._create_structured_batch_messages(text_list, degree=degree)
         if degree not in SCHEMA_BATCH_DEGREES:
-            return self._execute_json_object_batch(messages, plist_len)
+            return self._execute_json_object_batch(messages)
 
         try:
             completion = self._request(
@@ -1667,7 +1528,7 @@ class ChatGPTAPI(Base):
                 )
             )
         except BadRequestError as e:
-            if self._classify_bad_request(e) != "schema":
+            if classify_bad_request(e) != "schema":
                 raise  # not a capability answer — do not blame the schema
             raise StructuredOutputUnsupported(str(e)) from e
         except (ValidationError, json.JSONDecodeError) as e:
@@ -1693,7 +1554,7 @@ class ChatGPTAPI(Base):
             )
         return items, messages[-1]["content"], raw_reply
 
-    def _execute_json_object_batch(self, messages, plist_len):
+    def _execute_json_object_batch(self, messages):
         """One id-echo batch at the json_object degree.
 
         The endpoint guarantees only that *some* JSON comes back, so
@@ -1715,7 +1576,7 @@ class ChatGPTAPI(Base):
                 )
             )
         except BadRequestError as e:
-            if self._classify_bad_request(e) != "schema":
+            if classify_bad_request(e) != "schema":
                 raise  # not a capability answer — do not blame the schema
             raise StructuredOutputUnsupported(str(e)) from e
 
@@ -1839,7 +1700,7 @@ class ChatGPTAPI(Base):
             print("Batch result file does not exist")
             raise Exception("Batch result file does not exist")
 
-        with open(batch_metadata_file_path, "r", encoding="utf-8") as f:
+        with open(batch_metadata_file_path, encoding="utf-8") as f:
             batch_info = json.load(f)
 
         for batch_file in batch_info["batch_files"]:
@@ -1852,7 +1713,7 @@ class ChatGPTAPI(Base):
     def batch_translate(self, book_index):
         if self.batch_info_cache is None:
             batch_metadata_file_path = self.batch_metadata_file_path()
-            with open(batch_metadata_file_path, "r", encoding="utf-8") as f:
+            with open(batch_metadata_file_path, encoding="utf-8") as f:
                 self.batch_info_cache = json.load(f)
 
         batch_info = self.batch_info_cache

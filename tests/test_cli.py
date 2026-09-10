@@ -1750,8 +1750,8 @@ def test_a_plain_dry_run_previews_the_derived_budget_and_names_both_routes(tmp_p
     )
     # rich wraps the line to the terminal width
     out = " ".join(proc.stdout.split())
-    assert "plan grouping: budget 2400 tokens per request" in out
-    assert "1200 below strict decoding" in out
+    assert "plan grouping: budget 1200 tokens per request" in out
+    assert "800 below strict decoding" in out
 
 
 def test_a_google_plan_run_derives_and_narrates_the_substrict_budget(tmp_path):

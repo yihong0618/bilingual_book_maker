@@ -351,11 +351,6 @@ class Ledger:
             k: r["decided_by"] for k, r in self.rows.items() if r["action"] == "skip"
         }
 
-    def set_disposition(self, key, disposition):
-        row = self.rows.get(key)
-        if row is not None:
-            row["disposition"] = disposition
-
     def reopen_decisions(self):
         """Clear judgments whose planning context is no longer current."""
         for key, row in self.rows.items():

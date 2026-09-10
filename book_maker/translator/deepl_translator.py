@@ -2,7 +2,6 @@ import json
 import time
 
 import requests
-import re
 
 from book_maker.utils import TO_LANGUAGE_CODE
 
@@ -32,6 +31,50 @@ def deepl_target(language):
     return DEEPL_TARGETS.get(code.lower(), code)
 
 
+# Every target DeepL serves. Both routes ask the same engine, so one list.
+DEEPL_SUPPORTED = (
+    "bg",
+    "zh",
+    "cs",
+    "da",
+    "nl",
+    "en-US",
+    "en-GB",
+    "et",
+    "fi",
+    "fr",
+    "de",
+    "el",
+    "hu",
+    "id",
+    "it",
+    "ja",
+    "lv",
+    "lt",
+    "pl",
+    "pt-PT",
+    "pt-BR",
+    "ro",
+    "ru",
+    "sk",
+    "sl",
+    "es",
+    "sv",
+    "tr",
+    "uk",
+    "ko",
+    "nb",
+)
+
+
+def deepl_supported_target(language):
+    """`deepl_target`, refusing by name what DeepL does not translate into."""
+    l = deepl_target(language)
+    if l not in DEEPL_SUPPORTED:
+        raise Exception(f"DeepL do not support {l}")
+    return l
+
+
 class DeepL(Base):
     """
     DeepL translator
@@ -48,42 +91,7 @@ class DeepL(Base):
             "X-RapidAPI-Key": "",
             "X-RapidAPI-Host": "dpl-translator.p.rapidapi.com",
         }
-        l = deepl_target(language)
-        if l not in [
-            "bg",
-            "zh",
-            "cs",
-            "da",
-            "nl",
-            "en-US",
-            "en-GB",
-            "et",
-            "fi",
-            "fr",
-            "de",
-            "el",
-            "hu",
-            "id",
-            "it",
-            "ja",
-            "lv",
-            "lt",
-            "pl",
-            "pt-PT",
-            "pt-BR",
-            "ro",
-            "ru",
-            "sk",
-            "sl",
-            "es",
-            "sv",
-            "tr",
-            "uk",
-            "ko",
-            "nb",
-        ]:
-            raise Exception(f"DeepL do not support {l}")
-        self.language = l
+        self.language = deepl_supported_target(language)
 
     def rotate_key(self):
         self.headers["X-RapidAPI-Key"] = f"{next(self.keys)}"
