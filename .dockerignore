@@ -1,10 +1,10 @@
-Dockerfile*
-docker-compose*
-LICENSE
-test_books
-README*
-.dockerignore
-.git
-.github
-.gitignore
-.vscode
+# Allowlist: exclude everything, then re-include exactly what the image needs.
+*
+
+!book_maker
+!make_book.py
+!requirements.txt
+
+# ...minus anything that should never travel inside the allowed paths.
+book_maker/**/__pycache__
+book_maker/**/*.py[cod]

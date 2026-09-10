@@ -101,7 +101,16 @@ def test_help_renders():
 # own flags in the docker section, and the shell placeholders the skill uses
 # in its recipes.
 _FOREIGN_FLAGS = frozenset(
-    {"--help", "--rm", "--name", "--mount", "--tag", "--flag", "--git-common-dir"}
+    {
+        "--help",
+        "--rm",
+        "--name",
+        "--mount",
+        "--tag",
+        "--user",
+        "--flag",
+        "--git-common-dir",
+    }
 )
 
 # Every file an operator or an agent reads to decide what to type. The skill
