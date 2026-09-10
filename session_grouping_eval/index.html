@@ -1,0 +1,1629 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+        <link rel="prev" href="../prompt/">
+      
+      
+        <link rel="next" href="../disclaimer/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Session grouping evaluation - bilingual book maker</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#session-grouping-how-it-batches-and-where-the-defaults-come-from" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="bilingual book maker" class="md-header__button md-logo" aria-label="bilingual book maker" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            bilingual book maker
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Session grouping evaluation
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../installation/" class="md-tabs__link">
+          
+  
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../model_lang/" class="md-tabs__link">
+          
+  
+  
+  Usage
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../disclaimer/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Disclaimer
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="bilingual book maker" class="md-nav__button md-logo" aria-label="bilingual book maker" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    bilingual book maker
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QuickStart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../model_lang/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model and languages
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../languages/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Language tags and names
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cmd/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Command line options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating from the old flags
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../book_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Translate from different source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../env_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Environment setting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../prompt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tweak the prompt
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session grouping evaluation
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session grouping evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-grouping-strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The grouping strategy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-evaluation-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Evaluation design
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-measurement-ledger-field-by-field" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The measurement ledger, field by field
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-cost-model-symbol-by-symbol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The cost model, symbol by symbol
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Results
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-where-the-unit-cap-comes-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Where the unit cap comes from
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-choosing-the-parameters-for-your-endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Choosing the parameters for your endpoint
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Choosing the parameters for your endpoint">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-two-grouping-knobs-and-how-to-adjust-them-shipped-260907" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The two grouping knobs, and how to adjust them (shipped 260907)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-the-shipped-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. The shipped defaults
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-reproducing-a-cell" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Reproducing a cell
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../disclaimer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Disclaimer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-grouping-strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The grouping strategy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-evaluation-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Evaluation design
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-measurement-ledger-field-by-field" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The measurement ledger, field by field
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-cost-model-symbol-by-symbol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The cost model, symbol by symbol
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Results
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-where-the-unit-cap-comes-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Where the unit cap comes from
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-choosing-the-parameters-for-your-endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Choosing the parameters for your endpoint
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Choosing the parameters for your endpoint">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-two-grouping-knobs-and-how-to-adjust-them-shipped-260907" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The two grouping knobs, and how to adjust them (shipped 260907)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-the-shipped-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. The shipped defaults
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-reproducing-a-cell" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Reproducing a cell
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="session-grouping-how-it-batches-and-where-the-defaults-come-from">Session grouping: how it batches, and where the defaults come from</h1>
+<p>A measurement report, September 2026. This documents (a) the grouping
+strategy plan mode uses to batch translation units, (b) the paid
+evaluation (18 runs, <code>gpt-5.6-luna</code>, 3.27M tokens, three books from
+<a href="https://github.com/IDPF/epub-samples">epub-samples</a>) that the session-mode
+defaults for <code>--accumulated_num</code> and <code>--context-compact-at</code> come
+from, and (c) the follow-up fault-emergence sweep (76 cells, 923
+requests, four books, two models) that the <code>--max-batch-units</code> default is
+derived from — plus how to pick these parameters for your own endpoint
+(§7). Raw artifacts (per-cell logs, handoff reports, bilingual epubs,
+ledgers) live outside the repository; every number used below is
+reproduced in this page.</p>
+<h2 id="1-the-grouping-strategy">1. The grouping strategy</h2>
+<p>Plan mode (<code>--model_list</code>-independent; entered automatically for API
+backends that pass its gates) replaces the one-request-per-paragraph loop
+with <strong>token-budget batches</strong>:</p>
+<ul>
+<li>The book's translatable units are grouped, in document order, into
+  requests of at most <strong>32 units</strong> (16 on endpoints without a strict
+  JSON-schema verdict — see §6) and at most <strong>B tokens</strong> of source text
+  (<code>--accumulated_num</code> is B; <code>--max-batch-units</code> is the unit cap). Nothing is
+  split mid-unit; a unit larger than B travels alone.</li>
+<li>Inline markup inside a unit (links, emphasis, spans) is replaced by
+  numbered markers <code>⟦tag1⟧…⟦tagN⟧</code> before translation and restored after,
+  so the model never sees raw HTML and cannot damage it.</li>
+<li>Each request asks for <strong>structured output</strong>: a JSON object whose entries
+  echo each unit's id next to its translation. The id echo is what makes a
+  many-unit answer verifiable — a reply that drops, merges or reorders units
+  fails alignment checks instead of silently shifting every translation
+  one slot.</li>
+<li>Backends differ in what they enforce, so there is a <strong>capability
+  ladder</strong>: JSON schema → <code>json_object</code> → delimiter-separated → plain
+  prompt, probed once per endpoint and remembered. A batch whose reply
+  cannot be aligned is retried down a <strong>halving ladder</strong> (32 → 16 → …
+  → 1 unit), so the worst case degrades to the old per-unit behaviour
+  rather than to a broken book.</li>
+<li>With <code>--use_context session</code> the batches share one rolling
+  conversation. When the carried history reaches <strong>C estimated tokens</strong>
+  (<code>--context-compact-at</code>), the translator asks the model for a <strong>handoff
+  report</strong> — names, register, terminology decisions so far — and starts a
+  fresh window seeded with it. The report behaves as an accumulating
+  terminology ledger, which is why short windows do not cost consistency
+  (measured below).</li>
+</ul>
+<p>The question the eval answers: what should B and C default to, and does a
+short C damage translation continuity?</p>
+<h2 id="2-evaluation-design">2. Evaluation design</h2>
+<table>
+<thead>
+<tr>
+<th>phase</th>
+<th>cells</th>
+<th>what it measures</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>3 books at stock defaults</td>
+<td>calibration: per-request overhead F, JSON wrapper j, handoff prompt F_h, report size K</td>
+</tr>
+<tr>
+<td>1</td>
+<td>C ∈ {1500, 4000, 8000, 20000} × 3 books, B=800</td>
+<td>the cost-vs-C curve</td>
+</tr>
+<tr>
+<td>2</td>
+<td>B ∈ {400, 1600} on moby-dick (800 from phase 1)</td>
+<td>the cost-vs-B curve</td>
+</tr>
+<tr>
+<td>3</td>
+<td>one full book at the solved optimum (B=1088, C=2500)</td>
+<td>out-of-sample validation</td>
+</tr>
+</tbody>
+</table>
+<p>Books: <code>childrens-literature</code> (literary prose, recurring character
+names), <code>moby-dick-mo</code> (long novel chapters), <code>epub30-spec</code> (short,
+repetitive technical units — the cache-friendly extreme). Every cell:
+official OpenAI endpoint, <code>gpt-5.6-luna</code>, <code>--language zh-hans</code>,
+<code>--use_context session</code>, cell sizes chosen so each run makes ~25
+requests.</p>
+<h2 id="3-the-measurement-ledger-field-by-field">3. The measurement ledger, field by field</h2>
+<p>One row per run (<code>ledger.tsv</code> in the raw artifacts):</p>
+<table>
+<thead>
+<tr>
+<th>field</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>run_id</code></td>
+<td>phase and cell, e.g. <code>p1-moby-C4000</code></td>
+</tr>
+<tr>
+<td><code>book</code></td>
+<td>epub-samples volume</td>
+</tr>
+<tr>
+<td><code>B</code></td>
+<td><code>--accumulated_num</code>: source-token budget per request</td>
+</tr>
+<tr>
+<td><code>C</code></td>
+<td><code>--context-compact-at</code>: history size (estimator tokens) that triggers compaction</td>
+</tr>
+<tr>
+<td><code>test_num</code></td>
+<td><code>--test_num</code>: number of translation <em>units</em> in the cell (not requests — cell sizing replays the batcher offline)</td>
+</tr>
+<tr>
+<td><code>tokens_in</code></td>
+<td>billed prompt tokens, summed from the API's <code>usage</code></td>
+</tr>
+<tr>
+<td><code>tokens_out</code></td>
+<td>billed completion tokens</td>
+</tr>
+<tr>
+<td><code>tokens_cached</code></td>
+<td><code>cached_tokens</code> — a <strong>subset</strong> of <code>tokens_in</code> served from prefix cache at a 0.1 price weight; never add it to <code>tokens_in</code></td>
+</tr>
+<tr>
+<td><code>requests</code></td>
+<td>translation requests issued</td>
+</tr>
+<tr>
+<td><code>compactions</code></td>
+<td>compaction seams crossed</td>
+</tr>
+<tr>
+<td><code>exit</code></td>
+<td>process exit status</td>
+</tr>
+</tbody>
+</table>
+<p>One honesty note: at eval time the built-in meter did not count the
+compaction turns themselves (a defect the eval found; fixed since —
+they could be up to 38% of true cost at C=1500, i.e. the meter looked
+best exactly where it lied most). All totals below are metered cost
+<em>plus</em> the reconstructed compaction turns.</p>
+<p><strong>Price weighting.</strong> Costs are stated in <em>input-token-equivalents</em>:
+<code>(tokens_in − tokens_cached) + 0.1·tokens_cached + 4.0·tokens_out</code>,
+matching the vendor's uncached-input : cached-input : output price ratio
+of 1 : 0.1 : 4.</p>
+<h2 id="4-the-cost-model-symbol-by-symbol">4. The cost model, symbol by symbol</h2>
+<p>Per request, session mode:</p>
+<pre><code>cost/request = E + c_h·C/2 + (g/C)·(F_h + π_o·K)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>symbol</th>
+<th>fitted value</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>E</code></td>
+<td>— (per book)</td>
+<td>fixed payload: prompt overhead + the batch itself; has no C in it</td>
+</tr>
+<tr>
+<td><code>F</code></td>
+<td>104</td>
+<td>per-request prompt overhead, tokens (system + instructions)</td>
+</tr>
+<tr>
+<td><code>j</code></td>
+<td>11.3/unit</td>
+<td>JSON wrapper cost of the structured batch (measured at the then-default 16 units)</td>
+</tr>
+<tr>
+<td><code>C</code></td>
+<td>free variable</td>
+<td>compaction trigger; the average request carries ~C/2 history</td>
+</tr>
+<tr>
+<td><code>c_h</code></td>
+<td>0.65–1.08</td>
+<td>billed price of one carried history token: <code>((1−α) + α·0.1)·r</code></td>
+</tr>
+<tr>
+<td><code>α</code></td>
+<td>0.04–0.47</td>
+<td>fraction of carried history served from cache; <strong>rises with C</strong> (each compaction destroys the cache prefix — the force that opposes short C)</td>
+</tr>
+<tr>
+<td><code>r</code></td>
+<td>1.12–1.18</td>
+<td>billed tokens per estimator token (the trigger counts a 4.0 chars/token estimate; the bill counts the real tokenizer)</td>
+</tr>
+<tr>
+<td><code>g</code></td>
+<td>645–1245</td>
+<td>history growth per request, estimator tokens; multiplies the compaction <em>rate</em> — this, not E, is what survives the derivative</td>
+</tr>
+<tr>
+<td><code>F_h</code></td>
+<td>72</td>
+<td>the compaction prompt</td>
+</tr>
+<tr>
+<td><code>K</code></td>
+<td>538</td>
+<td>mean handoff report length (139 reports)</td>
+</tr>
+<tr>
+<td><code>π_o</code></td>
+<td>4.0</td>
+<td>output price relative to uncached input</td>
+</tr>
+<tr>
+<td><code>ρ</code></td>
+<td>1.41–1.74</td>
+<td>zh-hans output tokens per source content token</td>
+</tr>
+</tbody>
+</table>
+<p>Differentiating in C gives the optimum:</p>
+<pre><code>C* = √( 2·g·(F_h + π_o·K) / c_h )
+</code></pre>
+<h2 id="5-results">5. Results</h2>
+<p><img alt="cost vs the two parameters" src="../img/session-cost-curves.png" /></p>
+<p><strong>C — a shallow bowl with one steep wall, on the long side.</strong> Total
+price-weighted cost per book:</p>
+<table>
+<thead>
+<tr>
+<th>book</th>
+<th>C=1500</th>
+<th>C=4000</th>
+<th>C=8000</th>
+<th>C=20000</th>
+<th>C* solved</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>childrens-literature</td>
+<td><strong>218.8k</strong></td>
+<td>220.1k</td>
+<td>228.4k</td>
+<td>340.7k</td>
+<td>2512</td>
+</tr>
+<tr>
+<td>moby-dick-mo</td>
+<td>207.9k</td>
+<td><strong>201.7k</strong></td>
+<td>237.2k</td>
+<td>263.3k</td>
+<td>2191</td>
+</tr>
+<tr>
+<td>epub30-spec</td>
+<td>117.2k</td>
+<td><strong>108.4k</strong></td>
+<td>111.9k</td>
+<td>169.0k</td>
+<td>1580</td>
+</tr>
+</tbody>
+</table>
+<p>Flat within 0.6–3% across [1500, 4000] on all three books — inside
+single-run noise, and all three solved C<em> land in that region. C=8000
+sits 9–25% above C</em>; C=20000 costs up to 56% more. Being wrong short
+is nearly free; being wrong long is not.</p>
+<p>The figure's curves are the §4 cost model evaluated on the same finite
+25-request run as the cells (window sawtooth simulated, measured per-C α
+interpolated), so the dots sit on their own curves; the open squares at
+C=12000 and C=16000 are <strong>model predictions, not measured cells</strong>
+(later runs measured them and confirmed the predictions; the follow-up
+sections live in the <a href="https://github.com/pc418/bilingual_book_maker/blob/docs/session-grouping-eval/docs/session-grouping-eval.md">full report</a>). The
+dashed companion curves re-price cache reads at zero, and they answer a
+question we had wrong until we ran it: the long-C wall barely moves
+(−2 to −8 points) even if cache were free, because at these budgets only
+0.1–0.2 of the carried history is cached at all on prose. <strong>The wall is
+a token-count effect, not a cache-price effect</strong> — a free-cache endpoint
+does not buy you a long C.</p>
+<p><strong>Why the default is pinned at C=8000 anyway.</strong> The band was first
+argued on continuity — that a typical run makes 0–1 compactions inside
+it. The measured band cells (full report, §13) <em>corrected</em> that: on this same
+301-unit cell the band compacts 4 / 3 / 2 times at 8k / 12k / 16k, so
+the 0–1 reading holds only for runs several times shorter, and buying
+the two fewer seams costs +21% to +33% (inside the +10% to +50% over
+C<em> this section already conceded). What survives measurement is the
+price argument: C=8000 was the cheapest budget in every measured-band model,
+monotonically, and stays at most ~25% over the optimum on the worst
+book, which we treat as inside the don't-care zone (&lt;30% on a single
+run is noise-adjacent), while 20000 is past it — that cell showed the
+grid's only drift </em>and* costs up to 56% more. Pinning one number also
+beats deriving one: the derivation moved the default by less than the
+don't-care zone, at the price of a per-run moving target.</p>
+<p><strong>B — the ceiling wins.</strong> At fixed C, input cost is nearly flat in B
+(129k / 132k / 147k at B = 400 / 800 / 1600) because carried history, not
+content, dominates the prompt; content per request rises linearly. So
+cost <em>per translated content token</em> falls monotonically: 17.0 → 15.5 →
+12.3. What binds is the unit cap and batch-alignment risk (one
+misalignment at B=1600, recovered by the halving ladder), not book
+statistics — which is what the follow-up sweep in §6 measured directly.</p>
+<p><strong>Continuity survives short C.</strong> The full-book validation run at C=2500
+crossed 44 compaction seams with zero terminology breaks across 1012
+nodes (皇帝 62/62, 夜莺 38/38, 公主 34/34, 安徒生 12/12). The only drift
+found anywhere in the grid — a 你→您 register shift — was in the
+<strong>C=20000</strong> cell, a within-window drift in the run with almost no seams.
+The handoff report re-states the accumulated name table at every seam;
+one report even self-corrected a defect it noticed.</p>
+<p><strong>Out-of-sample validation.</strong> The full childrens-literature run at
+(B=1088, C=2500) hit the predicted request count exactly (82/82), landed
+within −6.2% of predicted total cost, and was cheaper per content token
+(11.7) than every grid cell (13.1–20.4).</p>
+<h2 id="6-where-the-unit-cap-comes-from">6. Where the unit cap comes from</h2>
+<p>The first eval anchored the cap at a conservative 16: a 210-request
+degradation study across five endpoints had seen every request-level
+fault live in its 50-unit bucket while 16 stayed clean, so 16 was a
+safety margin, not a measurement. The follow-up sweep measured the
+actual emergence: 76 cells / 923 requests over four epub-samples books
+(literary prose, a long novel, a spec, verse), sweeping the effective
+unit count to 128 and B across 1600–4800, on a deliberately weak model
+(<code>gpt-5.4-mini</code>) with a stronger default as cross-check, every cell
+read back from the produced epub rather than trusted from its log.</p>
+<p><img alt="fault rate and retry cost vs units and budget" src="../img/fault-emergence.png" /></p>
+<ul>
+<li><strong>First content fault at 64 effective units per request</strong>, literary
+  prose only (9.4% of units on one book); the other three books were
+  clean through 64.</li>
+<li><strong>Content per request, not the unit count, carries the risk</strong>: 4705
+  source tokens across 48 units translated clean, 3563 tokens across 64
+  units faulted, and 64 units of short lines (600–1100 tokens) were
+  clean. The token budget B is what actually bounds content.</li>
+<li><strong>The weak model held the reply format better than the strong one</strong>
+  (2 alignment recoveries in 9 cells vs 5 in 6): misalignment is format
+  compliance, not competence, so a cap derived from the weak model alone
+  would sit too high.</li>
+<li><strong>B was fault-free across the whole 1600–4800 range</strong>; what rises past
+  ~2000 is retry cost (+150% request overhead at B=2400 with large unit
+  counts), which is why the derived default keeps its ceiling.</li>
+<li>The sweep also caught a real corruption path — a one-slot-shifted
+  reply that survived reconciliation could deposit marker tokens into
+  visible prose — now fixed: wrong-slot marker evidence sends the batch
+  down the halving ladder instead of being written.</li>
+</ul>
+<p>The default is set at <strong>half the measured emergence: 32 units</strong>, with
+the existing halving to 16 on any endpoint that does not verify a
+strict JSON schema — exactly the endpoints where reply miscounts were
+observed. Measured retry overhead at those defaults is 0–25%.</p>
+<h2 id="7-choosing-the-parameters-for-your-endpoint">7. Choosing the parameters for your endpoint</h2>
+<p>Everything below is a default-tuning guide; leaving all three flags
+unset is correct on every route: the run probes the endpoint, derives
+the request budget from its own prompt overhead, and pins the rest.</p>
+<ul>
+<li><strong>Endpoint verifies a strict JSON schema</strong> (the official OpenAI API):
+  the full cap (32) applies and every reply is schema-checked. Nothing
+  to change — and a weak model is not a reason to lower it: rerunning
+  both axes on gpt-4o-mini and DeepSeek kept the 32-unit cap at a 2×
+  margin below the first observable fault (64 effective units) and the
+  derived budget band fault-free through 4800, so if a run keeps
+  printing misalignment recoveries, lower <code>--max-batch-units</code> before
+  touching the budget.</li>
+<li><strong>Endpoint accepts JSON mode but not a strict schema</strong>: the run
+  halves the cap to 16 by itself. Do not raise <code>--max-batch-units</code> to undo
+  it — the halved tier is where miscounted replies were actually
+  observed.</li>
+<li><strong>No structured output at all</strong> (the ChatGPT-plan/codex route, many
+  resellers and proxies): translation uses the delimiter method and the
+  plan is classified over a plain conversation; the effective cap is
+  16 and the halving ladder absorbs miscounts. Trust the startup
+  narration lines — they name the tier the probe found.</li>
+<li><strong>Resellers and routers</strong>: the degradation study compared the
+  official endpoint against a random domestic router serving the <em>same</em>
+  model on byte-identical batches — zero structural faults on either
+  side; the router's only measured tax was 2.4–6× latency. The same
+  router serving an anthropic-family model over the openai wire format
+  returned 0/30 schema-valid replies (fenced code blocks, unescaped
+  quotes) while the translations inside were fine: <strong>wire format, not
+  model quality, is what degrades on a router</strong>, and the probe + ladder
+  exist to absorb exactly that. So: don't pre-shrink the caps for a
+  router; let the probe grade it.</li>
+<li><strong>Weaker or smaller models</strong>: don't pre-emptively lower
+  <code>--max-batch-units</code> either — the sweep's weak model held format better
+  than the strong one. Lower it (to 16, then 8) only when a run prints
+  the misalignment hint (<code>N misaligned batches this run — consider a
+  lower --max-batch-units or --accumulated_num</code>), which appears from the
+  third recovered batch on.</li>
+</ul>
+<p>The weak-model rerun in one picture — what a raised unit cap costs is
+  retries first, faults later, so the cap is the knob to lower and the
+  budget is not:</p>
+<p><img alt="retry overhead vs effective units per request on gpt-4o-mini and deepseek-chat" src="../img/retry_overhead_vs_units.png" /></p>
+<p>A caveat that belongs to model choice rather than to any knob here:
+  DeepSeek compresses aggressively at every unit cap and budget
+  (median zh/en character ratio 0.25–0.31 against gpt-4o-mini's
+  0.31–0.35), so short translations on that model are the model, not a
+  grouping fault:</p>
+<p><img alt="per-cell median zh/en ratio and heavily-compressed slot counts" src="../img/compression_ratio.png" />
+- <strong><code>--accumulated_num</code></strong>: leave unset (the derived band — see the
+  superseding note below for the shipped numbers).
+  The whole 1600–4800 range measured fault-free at the 32-unit cap —
+  on the weak-model rerun too — and raising it toward 4800 produced no
+  faults but spends margin for flattening per-content savings.
+- <strong><code>--context-compact-at</code></strong>: leave unset (§5, §8). Set it lower only if
+  squeezing the last ~10–25% of session cost matters more to you than
+  having the fewest window seams; set it higher never — past 16000 the
+  cost wall is steep and the only drift we ever observed lived in the
+  long-window cell.</p>
+<blockquote>
+<p><strong>Superseded, 260907.</strong> The shipped defaults below were lowered by
+owner ruling after this eval: unit cap 32 → 16 (sub-strict 16 → 8),
+B floor/ceiling 2400/3200 → 1200/1600 (sub-strict floor 1200 → a typed
+800). C went 8000 → 8192 — unchanged in substance: it was briefly set to
+4096 and put back after this branch's price-tag eval measured +27.3%
+session cost at 300 units. The raise restored the compaction count (19 →
+9, against 8 at the old defaults) but not the bill, which measured +39.8%
+— the cost is the halved B multiplying requests, each re-reading the
+carried history, not the seams. C is held high for continuity, knowing
+that. Nothing in this report's <em>measurements</em> changed —
+the new numbers sit below the range measured here, on purpose. The
+ruling traded the per-content-token savings this section recommends for
+margin, on the grounds that schema support is an endpoint property and
+says nothing about whether the model behind it can hold a long
+enumeration together, and that a faulted slot is a wrong book rather
+than an expensive one. Read the constants in
+<code>book_maker/loader/plan.py</code> and <code>book_maker/session_context.py</code> for
+which numbers are measured and which are chosen.</p>
+</blockquote>
+<h3 id="the-two-grouping-knobs-and-how-to-adjust-them-shipped-260907">The two grouping knobs, and how to adjust them (shipped 260907)</h3>
+<p>What they are:</p>
+<ul>
+<li><strong><code>--accumulated_num</code></strong> is the per-request <strong>token budget</strong>:
+  consecutive units of any length share one request until the next unit
+  would push it past <code>N</code> estimated tokens. Untyped, every plan run
+  derives it from its own prompt overhead — <code>1200</code> with the stock
+  prompts, up to <code>1600</code> under a fat custom <code>--prompt</code>, and a flat <code>800</code>
+  on an endpoint without a strict-schema verdict — except session runs
+  (<code>codex</code> included), which keep the un-halved value. The run narrates
+  the number and the route class it chose at start. A typed value
+  always wins, un-halved; <code>1</code> turns grouping off entirely; interrupted
+  runs checkpoint and <code>--resume</code> either way.</li>
+<li><strong><code>--max-batch-units</code></strong> is the <strong>unit-count cap</strong> behind that budget:
+  the most units one request may carry regardless of how short they
+  are. Default <code>16</code>; an endpoint that verifies JSON mode but not a
+  strict schema carries half automatically (effective <code>8</code>) — that half
+  is where reply miscounts actually live, so don't undo it by typing
+  the double.</li>
+</ul>
+<p>Why two knobs: a batch is risky by <em>segments × output length</em> — how
+long an enumeration the model must hold across its own generation. The
+token budget bounds the length axis and is the primary limit; the unit
+cap bounds the segment axis and is the safety net behind it (§6: 4705
+tokens in 48 units was clean while 3563 tokens in 64 units faulted).</p>
+<p>When to <strong>lower</strong> them: the run telling you so is the only trigger
+worth acting on. From the third recovered batch a run prints
+<code>N misaligned batches this run — consider a lower --max-batch-units or
+--accumulated_num</code>; halve the unit cap first (<code>16</code> → <code>8</code>, then <code>4</code>) —
+the sweep showed a raised cap costs retries before it costs faults, so
+lowering it buys the retries back. Don't pre-shrink for a weak model or
+a router: the weak arm held format <em>better</em> than the strong one here,
+and router degradation is schema support, which the probe and ladder
+absorb on their own.</p>
+<p>When to <strong>raise</strong> them: cost only. Per-content-token cost falls
+monotonically with request size (15.5 input-equivalents at B=800
+against 12.3 at 1600), so bigger requests are cheaper — but the shipped
+defaults are owner-set safety margins sitting deliberately <em>below</em> the
+measured-clean range, and raising spends that margin: only 1600–4800
+was measured fault-free, only at the old 32-unit cap, and only on the
+evaluated models. Values past the defaults are the operator's own
+risk. Never raise the unit cap past <code>48</code>: content faults emerged at 64
+effective units, and the token budget bounds content either way.</p>
+<h2 id="8-the-shipped-defaults">8. The shipped defaults</h2>
+<p>Session-mode defaults only; an explicit flag always wins. They are
+equations, not constants, because prompt overhead is user-customizable
+(<code>--prompt</code>) and measured at run start:</p>
+<pre><code>B_default = clamp( 3·F, 1200, 1600 )          # F = measured prompt overhead
+C_default = 8192                              # pinned, every session run
+</code></pre>
+<p>(As shipped since the 260907 ruling. What this eval measured, and what
+the defaults were when it was written, was <code>clamp(3·F, 2400, 3200)</code> and
+<code>C = 8000</code>; the paragraphs below argue for those. They are kept as the
+record of the measurement, not as a description of the current defaults.)</p>
+<p>The old floor was half the largest B measured fault-free (4800, at the
+32-unit cap, weak models included); the old ceiling was a directly
+measured clean rung, 1.5× under that edge. With the stock prompts
+F ≈ 104–111, so B defaults to the floor either way. F
+does not appear in a compaction optimum (it drops out of the
+derivative); prompt growth reaches C only through B.</p>
+<p>C is <strong>pinned, not derived</strong> — a deliberate simplification over the
+earlier derived value (~3156). The measured case for it: the per-book
+optima solve to 1580–2512 and the 1500–4000 region is flat within
+single-run noise, but everything up to ~16000 stays inside a &lt;30%
+penalty — a don't-care zone for a single book run — while 8000
+measured as the cheapest budget outright in every measured-band model (the
+0–1-compactions reading of the band was corrected by those runs: the 301-unit
+cell compacts 4/3/2 times across it), at a 9–25% premium over C<em> (§5).
+Terminology
+held across 44 seams in the validation run and the only drift ever
+observed was </em>within* a long window, so the seams 8000 still makes are
+the cheap side of that trade. A pinned number also never moves between
+runs, which the derived one did — by less than the noise band it sat
+in, which is exactly why it did not earn its complexity.</p>
+<h2 id="9-reproducing-a-cell">9. Reproducing a cell</h2>
+<pre><code>python make_book.py --book_name childrens-literature.epub \
+  --model gpt-5.6-luna --key &quot;$OPENAI_API_KEY&quot; \
+  --use_context session --language zh-hans \
+  --test --test_num 301 --context-compact-at 4000 --accumulated_num 800
+</code></pre>
+<p>Leave <code>--context-compact-at</code> and <code>--accumulated_num</code> unset to get the
+defaults; the run narrates them
+(<code>session: compacting at 8192 estimated tokens (the default;
+--context-compact-at overrides)</code> — it said 8000 when this eval ran).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
