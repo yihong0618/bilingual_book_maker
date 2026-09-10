@@ -615,6 +615,51 @@ python3 make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'http
 python make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'https://example-endpoint.openai.azure.com/openai/v1' --model 'deployment-name' --use_context session
 ```
 
+## Docker
+
+如果不想配置本地环境，可以直接使用 [Docker](https://www.docker.com/)。每次合并到 `main`（对应 `latest` 标签）以及每次发布版本标签时，都会自动构建镜像并发布到 GitHub Container Registry：
+
+```shell
+docker pull ghcr.io/yihong0618/bilingual_book_maker:latest
+```
+
+把书所在的文件夹挂载到 `/book`，其余参数与 `make_book.py` 完全一致（所有命令行参数都支持），翻译结果会写回同一文件夹：
+
+```shell
+# Linux / macOS
+export folder_path=/path/to/your/books
+export book_name=animal_farm.epub
+export openai_key=sk-XXX
+export language=zh-hans   # 语言列表见 book_maker/utils.py
+
+docker run --rm -v "${folder_path}":/book ghcr.io/yihong0618/bilingual_book_maker:latest --book_name "/book/${book_name}" --key "${openai_key}" --language "${language}"
+```
+
+```powershell
+# Windows PowerShell
+$folder_path="C:\Users\user\mybook"
+$book_name="animal_farm.epub"
+$openai_key="sk-xxx"
+$language="zh-hans"
+
+docker run --rm -v ${folder_path}:/book ghcr.io/yihong0618/bilingual_book_maker:latest --book_name "/book/$book_name" --key $openai_key --language $language
+```
+
+例如，走免费的 Google 翻译路线做个不需要任何 key 的快速测试：
+
+```shell
+docker run --rm -v /home/user/my_books:/book ghcr.io/yihong0618/bilingual_book_maker:latest --book_name /book/animal_farm.epub --api_format google --test --test_num 1 --language zh-hant
+```
+
+容器以非 root 用户（uid 1000）运行。在 Linux 上，如果挂载的文件夹对该 uid 不可写，加上 `--user $(id -u)`（只写 uid 即可——镜像内部目录对组保持可写，正是为了这种情况）。API key 也可以用环境变量传入（`-e OPENAI_API_KEY=sk-XXX`）来代替 `--key`。
+
+如果想自己构建镜像而不是拉取：
+
+```shell
+docker build --tag bilingual_book_maker .
+docker run --rm -v /path/to/your/books:/book bilingual_book_maker --book_name /book/animal_farm.epub --key sk-XXX --language zh-hans
+```
+
 ## 注意
 
 1. Free trail 的 API token 有所限制，如果想要更快的速度，可以考虑付费方案

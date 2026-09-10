@@ -708,37 +708,47 @@ python make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'https
 
 ## Docker
 
-You can use [Docker](https://www.docker.com/) if you don't want to deal with setting up the environment.
+You can use [Docker](https://www.docker.com/) if you don't want to deal with setting up the environment. Prebuilt images are published to GitHub Container Registry on every merge to `main` (as `latest`) and on every release tag:
 
 ```shell
-# Build image
-docker build --tag bilingual_book_maker .
-
-# Run container
-# "$folder_path" represents the folder where your book file locates. Also, it is where the processed file will be stored.
-
-# Windows PowerShell
-$folder_path=your_folder_path # $folder_path="C:\Users\user\mybook\"
-$book_name=your_book_name # $book_name="animal_farm.epub"
-$openai_key=your_api_key # $openai_key="sk-xxx"
-$language=your_language # see utils.py
-
-docker run --rm --name bilingual_book_maker --mount type=bind,source=$folder_path,target='/app/test_books' bilingual_book_maker --book_name "/app/test_books/$book_name" --key $openai_key --language $language
-
-# Linux
-export folder_path=${your_folder_path}
-export book_name=${your_book_name}
-export openai_key=${your_api_key}
-export language=${your_language}
-
-docker run --rm --name bilingual_book_maker --mount type=bind,source=${folder_path},target='/app/test_books' bilingual_book_maker --book_name "/app/test_books/${book_name}" --key ${openai_key} --language "${language}"
+docker pull ghcr.io/yihong0618/bilingual_book_maker:latest
 ```
 
-For example:
+Mount the folder containing your book at `/book` and pass the usual flags — the container accepts every `make_book.py` option, and the translated book is written back into the same folder:
 
 ```shell
-# Linux
-docker run --rm --name bilingual_book_maker --mount type=bind,source=/home/user/my_books,target='/app/test_books' bilingual_book_maker --book_name /app/test_books/animal_farm.epub --key sk-XXX --test --test_num 1 --language zh-hant
+# Linux / macOS
+export folder_path=/path/to/your/books
+export book_name=animal_farm.epub
+export openai_key=sk-XXX
+export language=zh-hans   # see the language list in book_maker/utils.py
+
+docker run --rm -v "${folder_path}":/book ghcr.io/yihong0618/bilingual_book_maker:latest --book_name "/book/${book_name}" --key "${openai_key}" --language "${language}"
+```
+
+```powershell
+# Windows PowerShell
+$folder_path="C:\Users\user\mybook"
+$book_name="animal_farm.epub"
+$openai_key="sk-xxx"
+$language="zh-hans"
+
+docker run --rm -v ${folder_path}:/book ghcr.io/yihong0618/bilingual_book_maker:latest --book_name "/book/$book_name" --key $openai_key --language $language
+```
+
+For example, a quick test needing no key at all, over the free Google route:
+
+```shell
+docker run --rm -v /home/user/my_books:/book ghcr.io/yihong0618/bilingual_book_maker:latest --book_name /book/animal_farm.epub --api_format google --test --test_num 1 --language zh-hant
+```
+
+The container runs as a non-root user (uid 1000). On Linux, if the mounted folder is not writable for that uid, add `--user $(id -u)` (uid only — the image keeps its internal directories group-writable for exactly this case). API keys can also be passed as environment variables (`-e OPENAI_API_KEY=sk-XXX`) instead of `--key`.
+
+To build the image yourself instead of pulling:
+
+```shell
+docker build --tag bilingual_book_maker .
+docker run --rm -v /path/to/your/books:/book bilingual_book_maker --book_name /book/animal_farm.epub --key sk-XXX --language zh-hans
 ```
 
 ## Notes
