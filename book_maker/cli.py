@@ -2548,6 +2548,8 @@ def main():
         # with no glossary at all.
         e.glossary_path = options.glossary_path
     if getattr(e, "translate_model", None) is not None:
+        if options.resume and hasattr(e.translate_model, "resume_from_handoff"):
+            e.translate_model.resume_from_handoff()
         if source_language:
             # Reaches the prompt/system message and the schema field
             # descriptions. Never a gate: a book whose source is not what

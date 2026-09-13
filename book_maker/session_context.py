@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
 
-from book_maker.glossary import Glossary
+from book_maker.glossary import Glossary, GlossaryEntry
 
 # Estimated, never billed. A chars-based estimate is what the budget table was
 # derived from, so the knob and the math agree by construction; reading
@@ -450,14 +450,61 @@ class HandoffReport:
             )
 
     @classmethod
+    def read_glossary(cls, path) -> Glossary:
+        """Collect and merge all renderings established across all windows in `path`."""
+        path = Path(path)
+        if not path.exists():
+            return Glossary()
+        return cls.parse_cumulative_glossary(path.read_text(encoding="utf-8"))
+
+    @classmethod
+    def parse_cumulative_glossary(cls, text: str) -> Glossary:
+        """Merge renderings across all window reports in chronological order."""
+        if not text:
+            return Glossary()
+        parts = text.split(cls._MARKER)
+        entries_by_term: dict[str, GlossaryEntry] = {}
+        for part in parts:
+            if not part.strip():
+                continue
+            hg = parse_handoff_glossary(part)
+            if hg.glossary:
+                for entry in hg.glossary.entries:
+                    entries_by_term[entry.term.lower()] = entry
+        return Glossary(entries_by_term.values())
+
+    @classmethod
+    def latest_window_number(cls, path) -> int:
+        """The window number of the last report in `path`, or 0 if none."""
+        path = Path(path)
+        if not path.exists():
+            return 0
+        body = path.read_text(encoding="utf-8")
+        matches = list(
+            re.finditer(rf"^{re.escape(cls._MARKER)}(\d+)", body, re.MULTILINE)
+        )
+        return int(matches[-1].group(1)) if matches else 0
+
+    @classmethod
     def latest_seed(cls, path) -> str:
-        """The last window's report, for resuming a run mid-book."""
+        """The last window's report with all accumulated terms, for resuming a run mid-book."""
         path = Path(path)
         if not path.exists():
             return ""
         body = path.read_text(encoding="utf-8")
+        if not body.strip():
+            return ""
+        all_glossary = cls.parse_cumulative_glossary(body)
         _, sep, tail = body.rpartition(cls._MARKER)
-        return (sep + tail).strip() if sep else body.strip()
+        last_window = (sep + tail).strip() if sep else body.strip()
+        if not all_glossary:
+            return last_window
+
+        clean_last = strip_handoff_glossary(last_window)
+        glossary_block = (
+            f"\n\n### Established renderings\n\n{all_glossary.to_lines().strip()}"
+        )
+        return clean_last + glossary_block
 
 
 def handoff_path(book_path) -> Path:

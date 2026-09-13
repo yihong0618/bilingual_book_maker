@@ -493,6 +493,8 @@ class EPUBBookLoader(BaseBookLoader):
         self.bin_path = f"{Path(epub_name).parent}/.{Path(epub_name).stem}.temp.bin"
         if self.resume:
             self.load_state()
+            if hasattr(self.translate_model, "resume_from_handoff"):
+                self.translate_model.resume_from_handoff()
         elif os.path.exists(self.bin_path):
             # Overwriting is the documented behaviour; doing it silently is
             # not. A run that meant to continue has one flag to add. Worded

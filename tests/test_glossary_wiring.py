@@ -653,3 +653,63 @@ def test_the_fixture_file_is_a_readable_glossary():
     # the compatibility fixtures point --glossary at it; a file the parser
     # accepts but the loader cannot read would hide a real failure
     assert len(Glossary.from_file(FIXTURE)) == 2
+
+
+class TestResumeFromHandoff:
+    def test_resume_restores_cumulative_glossary_and_seeds_session(self, tmp_path):
+        path = tmp_path / "h.md"
+        HandoffReport(
+            window=1,
+            summary="Window 1 summary",
+            glossary_lines="Boxer → 拳手\nClover → 苜蓿",
+        ).append_to(path)
+        HandoffReport(
+            window=2,
+            summary="Window 2 summary",
+            glossary_lines="Boxer → 拳击手\nSnowball → 雪球",
+        ).append_to(path)
+        HandoffReport(
+            window=3,
+            summary="Window 3 summary",
+            glossary_lines="",
+        ).append_to(path)
+
+        t = _session([], handoff_path=path)
+        t.resume_from_handoff()
+
+        # 1. Learned glossary has all 3 cumulative terms
+        assert len(t.learned) == 3
+        assert t.learned.lookup("Boxer").translation == "拳击手"
+        assert t.learned.lookup("Clover").translation == "苜蓿"
+        assert t.learned.lookup("Snowball").translation == "雪球"
+
+        # 2. t.glossary also has the restored terms
+        assert t.glossary.lookup("Boxer").translation == "拳击手"
+
+        # 3. Session is seeded with latest report containing cumulative glossary
+        assert len(t.session.messages()) == 1
+        seed = t.session.messages()[0]["content"]
+        assert "Window 3 summary" in seed
+        assert "Boxer → 拳击手" in seed
+        assert "Clover → 苜蓿" in seed
+        assert "Snowball → 雪球" in seed
+
+        # 4. Session windows counter continues after window 3
+        assert t.session.windows == 4
+
+    def test_resume_merges_with_pinned_glossary(self, tmp_path):
+        path = tmp_path / "h.md"
+        HandoffReport(
+            window=1,
+            summary="Window 1",
+            glossary_lines="Boxer → 拳击手\nSnowball → 雪球",
+        ).append_to(path)
+
+        pinned = Glossary.parse("Boxer → 宝狮\n")
+        t = _session([], handoff_path=path, glossary=pinned)
+        t.resume_from_handoff()
+
+        # Pinned glossary overrides learned glossary on conflict
+        assert t.glossary.lookup("Boxer").translation == "宝狮"
+        assert t.glossary.lookup("Snowball").translation == "雪球"
+

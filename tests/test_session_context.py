@@ -203,3 +203,54 @@ class TestHandoffReport:
         seed = HandoffReport(window=1, summary="summary", glossary_lines="Boxer → 拳击手").seed_text()
         assert "Boxer → 拳击手" in seed
 
+    def test_latest_seed_consolidates_glossary_across_all_windows(self, tmp_path):
+        path = tmp_path / "book_handoff.md"
+        HandoffReport(window=1, summary="window 1 summary", glossary_lines="Boxer → 拳手\nClover → 苜蓿").append_to(path)
+        HandoffReport(window=2, summary="window 2 summary", glossary_lines="Boxer → 拳击手\nSnowball → 雪球").append_to(path)
+
+        seed = HandoffReport.latest_seed(path)
+        assert "window 2 summary" in seed
+        assert "window 1 summary" not in seed
+        # Boxer was updated in window 2
+        assert "Boxer → 拳击手" in seed
+        assert "Boxer → 拳手" not in seed
+        # Clover from window 1 is retained
+        assert "Clover → 苜蓿" in seed
+        # Snowball from window 2 is present
+        assert "Snowball → 雪球" in seed
+
+    def test_latest_seed_preserves_earlier_terms_when_latest_window_has_none(self, tmp_path):
+        path = tmp_path / "book_handoff.md"
+        HandoffReport(window=1, summary="window 1", glossary_lines="Boxer → 拳击手").append_to(path)
+        HandoffReport(window=2, summary="window 2", glossary_lines="").append_to(path)
+
+        seed = HandoffReport.latest_seed(path)
+        assert "window 2" in seed
+        assert "Boxer → 拳击手" in seed
+
+    def test_read_glossary_merges_all_windows_chronologically(self, tmp_path):
+        path = tmp_path / "book_handoff.md"
+        HandoffReport(window=1, summary="w1", glossary_lines="A → 1\nB → 2").append_to(path)
+        HandoffReport(window=2, summary="w2", glossary_lines="B → 20\nC → 3").append_to(path)
+        HandoffReport(window=3, summary="w3", glossary_lines="D → 4").append_to(path)
+
+        glossary = HandoffReport.read_glossary(path)
+        assert len(glossary) == 4
+        assert [e.translation for e in glossary.entries] == ["1", "20", "3", "4"]
+
+    def test_latest_window_number(self, tmp_path):
+        path = tmp_path / "book_handoff.md"
+        assert HandoffReport.latest_window_number(path) == 0
+
+        HandoffReport(window=1, summary="w1").append_to(path)
+        assert HandoffReport.latest_window_number(path) == 1
+
+        HandoffReport(window=15, summary="w15").append_to(path)
+        assert HandoffReport.latest_window_number(path) == 15
+
+    def test_parse_cumulative_glossary_empty_string(self):
+        glossary = HandoffReport.parse_cumulative_glossary("")
+        assert len(glossary) == 0
+
+
+

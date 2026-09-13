@@ -8,9 +8,11 @@ from dataclasses import dataclass
 from rich import print
 from rich.markup import escape
 
+from pathlib import Path
+
 from ..glossary import Glossary
 from ..redaction import redact, remember
-from ..session_context import parse_handoff_glossary
+from ..session_context import HandoffReport, parse_handoff_glossary
 
 from ..structured import (
     extract_json_object,
@@ -384,6 +386,41 @@ class Base(ABC):
         for conflict in conflicts:
             print(f"[yellow]ℹ glossary conflict — {conflict.describe()}[/yellow]")
         return new_learned.to_lines() if new_learned else ""
+
+    def resume_from_handoff(self):
+        """Restore learned glossary and session history from a saved handoff file on resume."""
+        if getattr(self, "_resumed_from_handoff", False):
+            return
+        if not getattr(self, "handoff_path", None):
+            return
+        handoff_p = Path(self.handoff_path)
+        if not handoff_p.is_file():
+            return
+        if getattr(self, "api_format", "") == "codex":
+            return
+        self._resumed_from_handoff = True
+
+        # 1. Restore all cumulative learned glossary across all windows
+        learned = HandoffReport.read_glossary(handoff_p)
+        if learned:
+            self.learned, _ = learned.merge(self.learned or Glossary())
+            self.glossary, conflicts = (self.pinned or Glossary()).merge(self.learned)
+            for conflict in conflicts:
+                print(f"[yellow]ℹ glossary conflict — {conflict.describe()}[/yellow]")
+            print(
+                f"[green]Resumed glossary: {len(self.learned)} learned terms "
+                f"loaded from {handoff_p.name}[/green]"
+            )
+
+        # 2. If session mode is active and session is empty, seed it with the latest report
+        session = getattr(self, "session", None)
+        if session is not None and not session.messages():
+            seed = HandoffReport.latest_seed(handoff_p)
+            if seed:
+                session.reset(seed=seed)
+                last_win = HandoffReport.latest_window_number(handoff_p)
+                if last_win > 0:
+                    session.windows = last_win + 1
 
     # ---- session mode ------------------------------------------------------
     # Only the routes that keep one growing history reach the four helpers
