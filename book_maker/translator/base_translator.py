@@ -361,10 +361,20 @@ class Base(ABC):
             )
         if not learned:
             # Nothing new this window. The vocabulary earlier windows
-            # established still holds — an empty block means "no additions",
-            # so the merged glossary keeps riding the seed instead of
-            # vanishing from it.
-            return self.glossary.to_lines() if self.glossary else ""
+            # established still holds in self.glossary, but nothing new is
+            # recorded for this window's report, preventing handoff.md from
+            # exponentially ballooning by repeating the full dictionary.
+            return ""
+
+        # Identify terms that are newly established or updated in this window
+        old_learned = self.learned or Glossary()
+        new_entries = []
+        for entry in learned.entries:
+            old_entry = old_learned.lookup(entry.term)
+            if old_entry is None or old_entry.translation != entry.translation:
+                new_entries.append(entry)
+        new_learned = Glossary(new_entries)
+
         # This window's reading wins over earlier ones: the model has seen
         # more of the book than it had last time. Then the operator's pins are
         # laid over the top, so a term they chose never drifts, while
@@ -373,7 +383,7 @@ class Base(ABC):
         self.glossary, conflicts = (self.pinned or Glossary()).merge(self.learned)
         for conflict in conflicts:
             print(f"[yellow]ℹ glossary conflict — {conflict.describe()}[/yellow]")
-        return self.glossary.to_lines()
+        return new_learned.to_lines() if new_learned else ""
 
     # ---- session mode ------------------------------------------------------
     # Only the routes that keep one growing history reach the four helpers

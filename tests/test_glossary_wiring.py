@@ -363,9 +363,45 @@ class TestLearningFromTheHandoff:
         t.get_translation("a" * 200)
         t.get_translation("b" * 200)
         text = path.read_text(encoding="utf-8")
-        # both reports carry the vocabulary: the one that learned it, and
-        # the empty one that inherited it
-        assert text.count("Boxer → 拳击手") == 2
+        # The handoff file records newly established terms without repeating
+        # the entire accumulated glossary in every subsequent report:
+        assert text.count("Boxer → 拳击手") == 1
+        # The established vocabulary is still handed to the translator and not erased:
+        assert t.glossary.lookup("Boxer").translation == "拳击手"
+
+    def test_handoff_file_does_not_duplicate_accumulated_glossary_across_windows(
+        self, tmp_path
+    ):
+        """Prevent quadratic file growth: each report only records terms newly
+        established or updated in its window, not the whole accumulated list."""
+        path = tmp_path / "h.md"
+        w1_report = (
+            "Chapter 1 summary.\n\n"
+            "<renderings>\nBoxer → 拳击手\nClover → 三叶草\n</renderings>\n"
+        )
+        w2_report = (
+            "Chapter 2 summary.\n\n"
+            "<renderings>\nBoxer → 拳击手\nNapoleon → 拿破仑\n</renderings>\n"
+        )
+        w3_report = "Chapter 3 summary.\n\n<renderings>\n</renderings>\n"
+        t = _session(
+            ["译文", w1_report, "译文", w2_report, "译文", w3_report],
+            handoff_path=path,
+        )
+        t.get_translation("a" * 200)
+        t.get_translation("b" * 200)
+        t.get_translation("c" * 200)
+
+        text = path.read_text(encoding="utf-8")
+        # Each established term appears exactly once in the handoff file:
+        assert text.count("Boxer → 拳击手") == 1
+        assert text.count("Clover → 三叶草") == 1
+        assert text.count("Napoleon → 拿破仑") == 1
+
+        # The translator still holds all terms cumulatively across windows:
+        assert t.glossary.lookup("Boxer").translation == "拳击手"
+        assert t.glossary.lookup("Clover").translation == "三叶草"
+        assert t.glossary.lookup("Napoleon").translation == "拿破仑"
 
     def test_a_pin_is_never_overwritten_by_what_was_learned(self, tmp_path):
         pinned = Glossary.parse("Boxer → 鲍克瑟\n")
