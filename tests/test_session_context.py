@@ -115,6 +115,23 @@ class TestSessionHistory:
         h.reset(seed="x")
         assert h.windows == 2
 
+    def test_should_compact_measures_incremental_content_not_seed(self):
+        """A large seed must not immediately trigger compaction on the first translation."""
+        h = SessionHistory()
+        # Seed alone is 500 tokens, budget is 100
+        h.reset(seed="a" * 2000)
+        assert h.content_tokens() == 0
+        # Should not compact even though estimated_tokens (500) > budget (100)
+        assert not h.should_compact(100)
+
+        # Adding 60 tokens of translations: content_tokens = 60 < 100
+        h.append("a" * 120, "b" * 120)
+        assert not h.should_compact(100)
+
+        # Adding another 60 tokens: content_tokens = 120 >= 100
+        h.append("a" * 120, "b" * 120)
+        assert h.should_compact(100)
+
 
 class TestHandoffPrompt:
     """Assert the prompt's *structure*, not its wording.
@@ -181,3 +198,8 @@ class TestHandoffReport:
 
     def test_latest_seed_of_missing_file_is_empty(self, tmp_path):
         assert HandoffReport.latest_seed(tmp_path / "nope.md") == ""
+
+    def test_seed_text_carries_glossary_lines(self):
+        seed = HandoffReport(window=1, summary="summary", glossary_lines="Boxer → 拳击手").seed_text()
+        assert "Boxer → 拳击手" in seed
+

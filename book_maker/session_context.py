@@ -151,6 +151,7 @@ class SessionHistory:
     def __init__(self):
         self._messages: list[dict] = []
         self._tokens = 0
+        self._seed_tokens = 0
         self.windows = 1
 
     def messages(self) -> list[dict]:
@@ -165,17 +166,30 @@ class SessionHistory:
     def estimated_tokens(self) -> int:
         return self._tokens
 
+    def content_tokens(self) -> int:
+        """Estimated tokens of translations added in this window (excluding seed)."""
+        return max(0, self._tokens - self._seed_tokens)
+
     def should_compact(self, budget: int) -> bool:
-        return budget > 0 and self._tokens >= budget
+        """Whether this window has accumulated enough new translation content to compact.
+
+        Measures incremental translation content added in this window so a handoff
+        seed never cannibalizes the working translation budget, preventing
+        compaction death loops.
+        """
+        return budget > 0 and self.content_tokens() >= budget
 
     def reset(self, seed: str) -> None:
         """Start the next window, seeded with the handoff report."""
         self._messages = []
-        self._tokens = 0
         self.windows += 1
         if seed:
             self._messages.append({"role": "user", "content": seed})
-            self._tokens = estimate_tokens(seed)
+            self._seed_tokens = estimate_tokens(seed)
+            self._tokens = self._seed_tokens
+        else:
+            self._seed_tokens = 0
+            self._tokens = 0
 
 
 # The compact request, revised by the user 2026-08-29. Kept deliberately terse:
