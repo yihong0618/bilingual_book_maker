@@ -7,6 +7,7 @@ from book_maker.translator.deepl_translator import DeepL
 from book_maker.translator.deepl_free_translator import DeepLFree
 from book_maker.translator.gemini_translator import Gemini
 from book_maker.translator.google_translator import Google
+from book_maker.translator.apiroute_translator import ApiRouteTranslator
 from book_maker.translator.groq_translator import GroqClient
 from book_maker.translator.litellm_translator import liteLLM
 from book_maker.translator.orcarouter_translator import OrcaRouterTranslator
@@ -51,7 +52,10 @@ FORMAT_DICT = {
 
 # Model names that select a route of their own rather than a format. The
 # class carries the endpoint's address and its default model.
-ROUTE_DICT = {"orcarouter": OrcaRouterTranslator}
+ROUTE_DICT = {
+    "orcarouter": OrcaRouterTranslator,
+    "apiroute": ApiRouteTranslator,
+}
 
 # Formats that talk to a model and therefore take one. `codex` is the one
 # that can resolve its own default, so --model is optional there; see

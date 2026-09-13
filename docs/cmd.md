@@ -59,7 +59,7 @@ sections after it provide additional notes for selected workflows.
 | `--parallel-workers N` | Parallel EPUB chapters or Markdown batches/sections; default `1`. Refused with `--use_context session` (one history) and on the `codex` format (one thread). |
 | `--batch` | Submit a ChatGPT Batch API job. Refused on EPUB (the queue path is unreachable there: the run would translate live at full price and submit an empty job instead of writing the book) and on routes without the Batch API. |
 | `--batch-use` | Consume a previously submitted batch job. Refused on EPUB, like `--batch`. |
-| `--extra_body JSON` | Extra fields on every request body, for the routes that build one (`openai`, `groq`, `xai`, `litellm`, `--model orcarouter`, `anthropic`); the others ignore it and say so. Reaches the capability probe and the JSON rungs too, so the endpoint is graded on the request the run makes. Merged over the named parameters, so a field here beats the flag for it. |
+| `--extra_body JSON` | Extra fields on every request body, for the routes that build one (`openai`, `groq`, `xai`, `litellm`, `--model orcarouter`, `--model apiroute`, `anthropic`); the others ignore it and say so. Reaches the capability probe and the JSON rungs too, so the endpoint is graded on the request the run makes. Merged over the named parameters, so a field here beats the flag for it. |
 | `--extra_headers JSON` | Extra HTTP headers on every request, same routes. Set on the client, so the capability probe, the model check and the model listing carry them. Values must be strings. |
 | `--quiet` | Suppress EPUB progress bars and paragraph echoes, not reports/errors. |
 | `--proxy URL` | Set HTTP/HTTPS proxy environment variables for the run. |
@@ -78,6 +78,7 @@ A route is an endpoint, not a model name.
 | `--api_format groq` \| `xai` \| `litellm` | The OpenAI shape at Groq, xAI and a LiteLLM proxy (`http://localhost:4000`). Each carries its address, so the format and a key are the whole route. `--model` is required: those catalogues turn over, so none is assumed. |
 | `--model codex` | The Codex CLI sidecar on a ChatGPT plan, the same as `--api_format codex`. It runs `gpt-5.6-luna`; `--api_format codex --model <id>` names another (the sidecar also offers `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.5`, `gpt-5.2`). |
 | `--model orcarouter` | The OrcaRouter gateway and its smart-routing model `orcarouter/auto`. Needs no `--api_base`; one you pass wins. The key comes from `BBM_ORCAROUTER_API_KEY`. Not a legacy alias: nothing is rewritten. |
+| `--model apiroute` | The API Route gateway and its default model `claude-3-7-sonnet-20250219`. Needs no `--api_base`; one you pass wins. The key comes from `BBM_APIROUTE_API_KEY`. |
 | `--model_list IDS` | Several model ids to rotate across, comma-separated. A single model belongs in `--model`; naming a model in both flags is an error. Refused with `--use_context session`: rotation makes every request a full-price cache miss and mixes models in one conversation. |
 | `--source_lang LANG` | Source language. Stated, it reaches every LLM route's prompt as evidence, and the request itself on `qwen`/`customapi`; default `auto`. |
 | `--interval SECONDS` | Pause between requests, default `0.01`. Only the `gemini` route paces itself with it. |

@@ -44,6 +44,7 @@ no `base_url`, moves the request to another host, and the entry's key is not
 sent there. The run says so; pass `--key` when you meant to reuse it. The file holds the address and the variable name, never a secret.
 See [Endpoints, models and languages](./model_lang.md#named-endpoints---provider).
 `--model orcarouter` reads `BBM_ORCAROUTER_API_KEY` the same way.
+`--model apiroute` reads `BBM_APIROUTE_API_KEY` the same way.
 
 ## Old per-vendor variables
 

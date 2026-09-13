@@ -670,6 +670,46 @@ def test_orcarouter_route_is_still_checked_at_the_first_paid_call():
 
 
 # --------------------------------------------------------------------------
+# API Route: named OpenAI-compatible gateway route
+# --------------------------------------------------------------------------
+
+
+def test_apiroute_uses_apiroute_endpoint_and_default_model():
+    from book_maker.translator.apiroute_translator import ApiRouteTranslator
+
+    translator = ApiRouteTranslator("sk-apiroute-test", "Chinese")
+    assert translator.api_base == "https://global.api-route.com/v1"
+    assert translator.openai_client.base_url == "https://global.api-route.com/v1/"
+    translator.rotate_model()
+    assert translator.model == "claude-3-7-sonnet-20250219"
+
+
+def test_apiroute_honors_custom_api_base():
+    from book_maker.translator.apiroute_translator import ApiRouteTranslator
+
+    translator = ApiRouteTranslator(
+        "sk-apiroute-test", "Chinese", api_base="http://proxy.local/v1"
+    )
+    assert translator.api_base == "http://proxy.local/v1"
+    assert translator.openai_client.base_url == "http://proxy.local/v1/"
+
+
+def test_apiroute_route_is_still_checked_at_the_first_paid_call():
+    from book_maker.translator.apiroute_translator import ApiRouteTranslator
+
+    translator = ApiRouteTranslator("sk-apiroute-test", "Chinese")
+    with patch(
+        "book_maker.translator.chatgptapi_translator.verify_model_routes",
+        return_value={"success": True, "available_models": ["claude-3-7-sonnet-20250219"]},
+    ) as verify:
+        translator._ensure_models_routable()
+        translator._ensure_models_routable()
+
+    verify.assert_called_once()
+    assert verify.call_args.args[1] == ["claude-3-7-sonnet-20250219"]
+
+
+# --------------------------------------------------------------------------
 # Item 6: temperature must not be forced onto models that only accept their
 # default, and a temperature 400 must not be blamed on the JSON schema
 # --------------------------------------------------------------------------
