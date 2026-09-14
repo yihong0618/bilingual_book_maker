@@ -815,8 +815,12 @@ class TestAHarvestedPairMustBeInTheWindow:
 
     def test_grounding_folds_case_rather_than_lowering_it(self):
         """`"Straße".lower()` is still "straße", so a window shouting
-        STRASSE would not match it; `casefold` is the one that does."""
-        window = WindowText.of(["THE HOUSE ON STRASSE 5."], ["斯特拉塞街5号。"])
+        STRASSE would not match it; `casefold` is the one that does.
+
+        The translation side deliberately does NOT contain the rendering:
+        with it there the pair grounds through that end and the test
+        passes with or without case folding, proving nothing."""
+        window = WindowText.of(["THE HOUSE ON STRASSE 5."], ["他们沿着那条街走。"])
         parsed = parse_handoff_glossary(
             "<renderings>\nStraße → 斯特拉塞街\n</renderings>\n", window=window
         )
