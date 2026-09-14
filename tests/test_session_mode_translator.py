@@ -638,16 +638,34 @@ class TestAFixedStyleRidesTheWindowStart:
     def test_the_next_window_still_carries_it(self):
         t = _translator(
             replies=["译一", "Summary of window one.", "译二"],
-            context_compact_at=500,
+            context_compact_at=1500,
             style_note=self.STYLE,
         )
-        t.translate("a" * 4000, False)
+        t.translate("a" * 8000, False)
         t.translate("b" * 10, False)
         assert t.session.windows == 2
         # the request after the rollover: its history is the seed, and the
         # style is where it always was
         assert self.STYLE in t.sent[-1]["messages"][0]["content"]
         assert all(self.STYLE not in m["content"] for m in t.sent[-1]["messages"][1:])
+
+    def test_the_seed_does_not_repeat_it(self):
+        """Including the seam's own seed, which is a user turn like any
+        other. The style is on the standing channel for the new window
+        already, and the handoff file has it verbatim; a copy here would be
+        the same instruction in two places, one of which the hard seed cap
+        can cut in half."""
+        t = _translator(
+            replies=["译一", "Summary of window one.", "译二"],
+            context_compact_at=1500,
+            style_note=self.STYLE,
+        )
+        t.translate("a" * 8000, False)
+        t.translate("b" * 10, False)
+        seed = t.sent[-1]["messages"][1]["content"]
+        assert "continuing a translation" in seed
+        assert "Summary of window one." in seed
+        assert self.STYLE not in seed
 
     def test_the_model_is_not_asked_for_a_style_it_was_given(self):
         t = _translator(

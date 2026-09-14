@@ -4,13 +4,21 @@ import threading
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from rich import print
 from rich.markup import escape
 
 from ..glossary import Glossary
 from ..redaction import redact, remember
-from ..session_context import GLOSSARY_MAX_PER_COMPACT, parse_handoff_glossary
+from ..session_context import (
+    GLOSSARY_MAX_PER_COMPACT,
+    HandoffReport,
+    parse_handoff_glossary,
+    parse_snapshot,
+    report_is_usable,
+    seed_cap,
+)
 
 from ..structured import (
     extract_json_object,
@@ -348,8 +356,19 @@ class Base(ABC):
         """
         if not self.glossary_auto_on or not report_text:
             return ""
-        parsed = parse_handoff_glossary(report_text)
+        parsed = parse_handoff_glossary(
+            report_text, target_language=getattr(self, "language", None)
+        )
         learned, source = parsed.glossary, parsed.source
+        if parsed.flipped:
+            # Not a warning: the pairs were recovered, not lost. Said anyway,
+            # because a model writing its renderings backwards is worth
+            # knowing about even when we can straighten them out.
+            print(
+                f"[yellow]ℹ the handoff report's renderings: {parsed.flipped} "
+                f"pair(s) were written target-first and have been turned "
+                f"round[/yellow]"
+            )
         if parsed.dropped:
             # One line per compact, never one per dropped entry: a model that
             # answers the section with a page of prose would otherwise print
@@ -358,9 +377,10 @@ class Base(ABC):
             # with few recurring names.
             print(
                 f"[yellow]ℹ the handoff report's renderings: {parsed.dropped} "
-                f"line(s) ignored (not a `term → translation` pair, written "
-                f"backwards, or past the {GLOSSARY_MAX_PER_COMPACT} this run "
-                f"takes from one report)[/yellow]"
+                f"line(s) ignored (not a `term → translation` pair, a term "
+                f"rendered as itself, a choice of renderings rather than one, "
+                f"or past the {GLOSSARY_MAX_PER_COMPACT} this run takes from "
+                f"one report)[/yellow]"
             )
         if source == "scanned":
             # The block is what makes this parseable; say so rather than let a
@@ -442,6 +462,58 @@ class Base(ABC):
         else:
             self._compact_session()
 
+    def restore_session_handoff(self, path=None):
+        """Open this run's first window on what the interrupted one handed off.
+
+        `--resume` picks the book up where a stopped run left it, and until
+        now it picked up the *text* only: the session started empty, so the
+        first chapters of the resumed half were translated with none of the
+        terminology or register the first half established. The snapshot
+        beside the book is exactly that context, so it is read back here —
+        the summary seeds window one, and the window counter continues from
+        where the snapshot stopped rather than restarting at 1, so the
+        printed seams keep counting up across the interruption.
+
+        The learned renderings come back only when this run is also learning
+        them (`--glossary-auto on`): they are that flag's artefact, and a run
+        that did not ask for a derived glossary must not acquire one from a
+        file on disk. The operator's pins stay on top either way.
+
+        Returns True when something was restored. Every gate is the caller's
+        (`--resume`, session mode) except the two that are this object's own
+        business: whether there is a session at all, and whether the file
+        holds a snapshot this version can read.
+        """
+        session = getattr(self, "session", None)
+        path = path or getattr(self, "handoff_path", None)
+        if session is None or not path:
+            return False
+        snapshot = parse_snapshot(path)
+        if snapshot is None:
+            return False
+        report = HandoffReport(
+            window=snapshot.window,
+            summary=snapshot.summary,
+            style_note=snapshot.style_note,
+        )
+        budget = self._session_budget() if hasattr(self, "_session_budget") else 0
+        session.reset(seed=report.seed_text(seed_cap(budget)))
+        session.windows = snapshot.window + 1
+        print(
+            f"[bold cyan]resume: context window {session.windows}, seeded "
+            f"from {Path(path).name}[/bold cyan]"
+        )
+        if self.glossary_auto_on and snapshot.glossary:
+            self.learned, _ = snapshot.glossary.merge(self.learned or Glossary())
+            self.glossary, conflicts = (self.pinned or Glossary()).merge(self.learned)
+            for conflict in conflicts:
+                print(f"[yellow]ℹ glossary conflict — {conflict.describe()}[/yellow]")
+            print(
+                f"[bold cyan]resume: {len(snapshot.glossary)} learned "
+                f"renderings restored from {Path(path).name}[/bold cyan]"
+            )
+        return True
+
     def _compact_failed(self, reason, budget, force_give_up=False):
         """A compact that came back with no usable report: retry, or start clean.
 
@@ -480,30 +552,13 @@ class Base(ABC):
             self.session.reset(seed="")
 
     def _usable_report(self, report_text, prompt):
-        """Whether a compact reply is a handoff report at all.
+        """Whether this compact reply is a report; see `report_is_usable`.
 
-        The reply is untrusted. A cheap model answers the compact turn with
-        nothing, with whitespace, with the prompt read back, or with a
-        renderings block and no prose at all — and each of those used to be
-        treated as a successful compaction, which reset the window and seeded
-        it with boilerplate. That is strictly worse than a failed compact: the
-        accumulated context is gone *and* nothing replaced it. So these take
-        the failure path, where the window is kept and the next unit retries.
-
-        Not a quality judgement: a short or unhelpful summary is still a
-        summary, and this only asks whether there is one.
+        A method so every session route asks the same question the same way,
+        and so a route with its own idea of an unusable answer has somewhere
+        to say so.
         """
-        if not report_text or not report_text.strip():
-            return False
-        # A prompt echo, which is what a model that cannot follow the turn at
-        # all tends to produce. Recognised by removing the lines the prompt
-        # itself contains: what is left is the answer, and if there is
-        # essentially nothing left, the reply was the question.
-        asked = {line.strip() for line in prompt.splitlines() if line.strip()}
-        rest = "".join(
-            line for line in report_text.splitlines() if line.strip() not in asked
-        )
-        return bool(re.search(r"\w", rest))
+        return report_is_usable(report_text, prompt)
 
     def _start_empty_window(self):
         """Roll over with no handoff report, because the user asked for none.

@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
@@ -157,13 +157,14 @@ SEED_TARGET_TOKENS = 300
 # truncating a report of ordinary size — a cap that fires routinely would cut
 # mid-sentence on every window.
 SEED_MAX_TOKENS = 500
-# Measured against the same 384-token maximum. Chosen: 1024 — 2.7x the
-# largest summary observed, and 12.5% of the default 8192 budget. Deliberately
-# looser than SEED_MAX_TOKENS: (c) is the backstop for endpoints that ignored
-# (b), and a backstop that cuts reports the endpoint would have allowed is
-# doing (b)'s job badly rather than its own. `seed_cap` narrows it on small
-# budgets, so at the 2000 floor the effective cap is 1000.
-SEED_CAP_TOKENS = 1024
+# CHOSEN by the owner (260913): "always truncated if >~500" — the guarantee
+# is that a seed is never over about 500 tokens, whatever the model does.
+# Measured anchors: the same eval's p95 of 373 and largest observed 384, so
+# 512 sits a third above the worst legitimate report seen. On an honest model
+# truncation therefore stays rare; on a runaway one it is a real ceiling,
+# which is the point — this layer exists for endpoints that ignored
+# SEED_MAX_TOKENS. `seed_cap` narrows it further on small budgets.
+SEED_CAP_TOKENS = 512
 
 
 def seed_cap(budget: int) -> int:
@@ -179,6 +180,35 @@ def seed_cap(budget: int) -> int:
     return max(1, min(SEED_CAP_TOKENS, budget // 2))
 
 
+class _SeedTruncations:
+    """How often the hard cut has had to fire, and whether it keeps firing.
+
+    A readout, deliberately kept as state rather than a local: truncation
+    firing once is a long report, firing on window after window is a model
+    that cannot hold to the size it was asked for, and a follow-on health
+    guard is to read `consecutive` to say so. Nothing here gates anything
+    today.
+    """
+
+    def __init__(self):
+        self.total = 0
+        self.consecutive = 0
+
+    def note(self, fired: bool) -> None:
+        if fired:
+            self.total += 1
+            self.consecutive += 1
+        else:
+            self.consecutive = 0
+
+    def reset(self) -> None:
+        self.total = 0
+        self.consecutive = 0
+
+
+seed_truncations = _SeedTruncations()
+
+
 def truncate_seed(text: str, cap_tokens: int) -> str:
     """`text` cut to `cap_tokens` estimated tokens, head first.
 
@@ -188,7 +218,9 @@ def truncate_seed(text: str, cap_tokens: int) -> str:
     next window is never seeded with half a sentence.
     """
     if not text or cap_tokens <= 0 or estimate_tokens(text) <= cap_tokens:
+        seed_truncations.note(False)
         return text
+    seed_truncations.note(True)
     lines = text.split("\n")
     kept: list[str] = []
     for line in lines:
@@ -412,6 +444,7 @@ class HandoffGlossary(NamedTuple):
     glossary: Glossary
     source: str  # "tagged" | "scanned" | "missing"
     dropped: int = 0
+    flipped: int = 0
 
 
 def _is_sane_entry(entry) -> bool:
@@ -423,9 +456,9 @@ def _is_sane_entry(entry) -> bool:
     contain an arrow. None of that may be stored, because a stored junk term
     is then injected into every later request whose text matches it.
 
-    `Balaene → Balaene` is refused here too — an identity pair instructs the
-    model to do what it would do anyway, and both sides of the 260913 eval's
-    cells produced them.
+    Structural only. Whether the pair says something usable — an identity,
+    a list of alternatives — is asked after the direction has been settled,
+    in `_is_usable_rendering`.
     """
     if not entry.term or not entry.translation:
         return False
@@ -433,9 +466,47 @@ def _is_sane_entry(entry) -> bool:
         return False
     if len(entry.translation) > _MAX_RENDERING_LEN:
         return False
+    return not entry.term.endswith(_SENTENCE_END)
+
+
+# A rendering offering a choice rather than making one. Measured (260913
+# prompt-variant eval): `Rebellion → 起义／反叛（依语境）`, `Beasts of England →
+# 英格兰兽／英伦兽歌`. The block is a verbatim-substitution instruction, so it
+# cannot carry alternatives or a "depending on context" qualifier — there is
+# nothing downstream that could choose.
+_ALTERNATIVES = re.compile(r"／|\s/\s")
+_TRAILING_QUALIFIER = re.compile(r"[（(][^（()）]*[)）]\s*$")
+
+
+def _is_usable_rendering(entry) -> bool:
+    """Whether the pair makes one substitution, once settled on a direction.
+
+    `Balaene → Balaene` is refused: an identity pair instructs the model to
+    do what it would do anyway, and both sides of the 260913 eval produced
+    them.
+    """
     if entry.term.lower() == entry.translation.lower():
         return False
-    return not entry.term.endswith(_SENTENCE_END)
+    if _ALTERNATIVES.search(entry.translation):
+        return False
+    return not _TRAILING_QUALIFIER.search(entry.translation)
+
+
+# Target languages written in CJK script, by name and by tag. The one script
+# axis this module can see: `_CJK` separates CJK from everything else, and
+# nothing here distinguishes Latin from Cyrillic or Arabic.
+_CJK_LANGUAGE_WORDS = ("chinese", "japanese", "korean", "cantonese", "mandarin")
+_CJK_LANGUAGE_TAGS = {"zh", "ja", "ko", "yue", "zh-hans", "zh-hant", "zh-yue"}
+
+
+def target_is_cjk(language) -> bool:
+    """Whether this run translates *into* a CJK script, by language or tag."""
+    text = (language or "").strip().lower()
+    if not text:
+        return False
+    if text in _CJK_LANGUAGE_TAGS:
+        return True
+    return any(word in text for word in _CJK_LANGUAGE_WORDS)
 
 
 def _mostly_cjk(text: str) -> bool:
@@ -445,35 +516,38 @@ def _mostly_cjk(text: str) -> bool:
     return len(_CJK.findall(stripped)) * 2 > len(stripped)
 
 
-def _drop_reversed(entries):
-    """`entries` without the pairs written backwards, and how many went.
+def _flip_reversed(entries, target_language):
+    """`entries` with the backwards pairs turned round, and how many turned.
 
-    Observed live (260913 eval B, deepseek): `利维坦 → Leviathan` alongside
-    correct pairs in the same block — the target rendering on the left and
-    the source term on the right. Stored, such a pair tells a later window to
-    translate the target language back into the source.
+    Observed live (260913 eval B, deepseek): `利维坦 → Leviathan` beside
+    correct pairs in the same block; and eval's prompt matrix caught
+    gpt-5.6-luna emitting a whole 16-of-16 block reversed under the correct
+    instruction. Stored as written, such a pair tells a later window to
+    render the target language back into the source — and it can never match
+    anything either, since matching runs against *source* text.
 
-    The direction is read off the block itself rather than from the run's
-    language, because a term is only "backwards" relative to which way this
-    run translates: a genuine Chinese-to-English run writes every pair with
-    CJK on the left. So a pair is dropped only when the rest of the block
-    demonstrates the opposite direction. All-reversed blocks are therefore
-    kept — there is no evidence in them to say which way round they are, and
-    guessing costs more than the noise does. Flipping is never an option
-    either: `X → Y` and `Y → X` are different instructions and the model's
-    intent is not recoverable.
+    Normalised rather than dropped (owner ruling 260913): both halves are
+    there and legible, so the pair is emitted the right way round instead of
+    thrown away. It runs first, before the identity and alternatives checks
+    and before the per-report cap, so those see the pair as it will be
+    stored.
+
+    Only on a cross-script run, and only the CJK axis: a genuine
+    Chinese-to-English run writes every pair with CJK on the left, and
+    reading that as reversed would invert the operator's whole glossary. A
+    same-script run (en->fr) is left alone entirely — the reversal is
+    invisible there, and guessing is worse than accepting what was written.
     """
-    forward = [
-        e for e in entries if not _mostly_cjk(e.term) and _mostly_cjk(e.translation)
-    ]
-    if not forward:
+    if not target_is_cjk(target_language):
         return entries, 0
-    kept = [
-        e
-        for e in entries
-        if not (_mostly_cjk(e.term) and not _mostly_cjk(e.translation))
-    ]
-    return kept, len(entries) - len(kept)
+    flipped = 0
+    out = []
+    for entry in entries:
+        if _mostly_cjk(entry.term) and not _mostly_cjk(entry.translation):
+            entry = replace(entry, term=entry.translation, translation=entry.term)
+            flipped += 1
+        out.append(entry)
+    return out, flipped
 
 
 def _line_entries(raw, strict):
@@ -514,12 +588,17 @@ def _entries_from_lines(lines, strict):
     return entries, dropped
 
 
-def parse_handoff_glossary(text: str) -> HandoffGlossary:
+def parse_handoff_glossary(text: str, target_language=None) -> HandoffGlossary:
     """Read the renderings the handoff report established.
 
     Preferred shape is the tagged block the prompt asks for. Models drop it,
     so there is a fallback: scan loose `term → translation` lines, guarded so
     ordinary prose containing an arrow is not mistaken for an entry.
+
+    `target_language` is what the run is translating into; without it a pair
+    written backwards cannot be recognised, so it is passed wherever the
+    result is stored. The stripper does not need it — which lines were read
+    is the same question either way.
     """
     if not text:
         return HandoffGlossary(Glossary(), "missing")
@@ -528,24 +607,30 @@ def parse_handoff_glossary(text: str) -> HandoffGlossary:
     if match:
         entries, dropped = _entries_from_lines(match.group(1).splitlines(), strict=True)
         if entries:
-            return _harvest(entries, dropped, "tagged")
+            return _harvest(entries, dropped, "tagged", target_language)
 
     entries, dropped = _entries_from_lines(text.splitlines(), strict=False)
     if entries:
-        return _harvest(entries, dropped, "scanned")
+        return _harvest(entries, dropped, "scanned", target_language)
     return HandoffGlossary(Glossary(), "missing")
 
 
-def _harvest(entries, dropped, source) -> HandoffGlossary:
-    """The pairs a report may contribute: backwards ones out, then capped.
+def _harvest(entries, dropped, source, target_language) -> HandoffGlossary:
+    """The pairs a report may contribute: turned round, filtered, then capped.
+
+    In that order. The flip decides what the pair says, so it has to happen
+    before anything judges what was said — and before the cap counts, or a
+    report could spend its allowance on entries that are then discarded.
 
     The cap keeps the *head* of the list because a report front-loads what
-    matters — the same reason the seed is truncated head first.
+    matters, the same reason the seed is truncated head first.
     """
-    entries, reversed_out = _drop_reversed(entries)
-    kept = entries[:GLOSSARY_MAX_PER_COMPACT]
+    entries, flipped = _flip_reversed(entries, target_language)
+    usable = [entry for entry in entries if _is_usable_rendering(entry)]
+    dropped += len(entries) - len(usable)
+    kept = usable[:GLOSSARY_MAX_PER_COMPACT]
     return HandoffGlossary(
-        Glossary(kept), source, dropped + reversed_out + len(entries) - len(kept)
+        Glossary(kept), source, dropped + len(usable) - len(kept), flipped
     )
 
 
@@ -580,6 +665,34 @@ def _is_block_label(line: str) -> bool:
     if not body or body == text:
         return False
     return not body.endswith(_SENTENCE_END)
+
+
+def report_is_usable(report_text: str, prompt: str) -> bool:
+    """Whether a compact reply is a handoff report at all.
+
+    The reply is untrusted. A cheap model answers the compact turn with
+    nothing, with whitespace, with the prompt read back, or — measured in all
+    six cells of the 260913 eval — with the prompt's numbered section titles
+    mirrored back and no content under them. Each of those used to count as a
+    successful compaction, which reset the window and seeded it with
+    boilerplate: strictly worse than a failed compact, because the
+    accumulated context is gone *and* nothing replaced it.
+
+    Recognised by subtraction rather than by pattern: take away the lines the
+    prompt itself contains and the lines that are only a section label, and
+    what is left is the answer. If there is nothing left, the reply was the
+    question. Not a quality judgement — a short or unhelpful summary is still
+    a summary, and this only asks whether there is one.
+    """
+    if not report_text or not report_text.strip():
+        return False
+    asked = {line.strip() for line in prompt.splitlines() if line.strip()}
+    rest = "".join(
+        line
+        for line in report_text.splitlines()
+        if line.strip() not in asked and not _is_block_label(line)
+    )
+    return bool(re.search(r"\w", rest))
 
 
 def _drop_introducing_heading(before: str) -> str:
@@ -718,17 +831,17 @@ class HandoffReport:
         return bool(self.summary and re.search(r"\w", self.summary))
 
     def seed_text(self, cap_tokens: int = SEED_CAP_TOKENS) -> str:
-        """The next window's opening message: the report's prose, capped.
+        """The next window's opening message: the report's summary, capped.
 
-        Summary and style, never the renderings (owner ruling 260913): the
-        established terms reach the model per unit through
+        The summary, and nothing else. Not the renderings (owner ruling
+        260913): those reach the model per unit through
         `Glossary.prompt_block`, and replaying the whole list at the head of
-        every window is what let the seed grow without bound. The style half
-        needs no code here — where the model was asked to describe one it is
-        part of the summary prose, and a style the *operator* fixed rides the
-        system message on every request instead (decision 8, pinned by
-        `TestAFixedStyleRidesTheWindowStart`), so copying `style_note` in
-        would put a standing instruction in a user turn as well.
+        every window is what let the seed grow without bound. And not the
+        style note either — a style is a standing instruction, so it rides
+        the system channel once per window (`style_section`, folded into the
+        turn on the routes that have no system channel) and is written to
+        the handoff file verbatim so the model cannot erode it. Copying it
+        here would put a standing instruction in a user turn as well.
 
         The cap is applied here, on the one method every route calls, so
         truncation is unconditional — layer (c) of the seed bound assumes the
