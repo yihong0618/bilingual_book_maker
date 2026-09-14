@@ -465,15 +465,19 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   Session mode keeps one append-only history and re-reads it at the cache
   price, so on endpoints that support caching the context can grow to about
   a chapter. When the history reaches the compact budget, the model writes
-  a handoff report, which seeds the next window and is appended to
-  `<book>_handoff.md`.
+  a short handoff report (the run asks for ~300 tokens and truncates
+  anything runaway), whose summary seeds the next window; `<book>_handoff.md`
+  holds the latest snapshot, overwritten at each compaction.
   Watch the progress bar's `cached=`: if it is still zero after a dozen
   requests, the endpoint may not have a cache; Ctrl+C and switch to window
   mode.
 
   - `--context-compact-at`:
 
-    Session mode only. The estimated-token budget the history may reach before it is compacted into a handoff report. Default `8192`, minimum `500`.
+    Session mode only. The estimated-token budget the whole window — the
+    inherited seed included — may reach before it is compacted into a
+    handoff report. Default `8192`, minimum `1500`: a window shorter than
+    that is mostly seed and seams, so below it use window mode instead.
 
   - `--no-context-compact`:
 
@@ -491,7 +495,10 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   - `--glossary-auto on|off`:
 
     Keep the renderings the handoff reports establish, so recurring names
-    stay unified across window seams. Session mode only.
+    stay unified across window seams. Session mode only, and off by
+    default: it relies on the model reporting its own renderings
+    accurately, which takes a capable model — most runs don't need it,
+    since the handoff summary already carries the recurring names.
 
 - `--parallel-workers`:
 
