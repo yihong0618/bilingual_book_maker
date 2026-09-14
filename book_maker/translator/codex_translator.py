@@ -32,12 +32,11 @@ from ..codex_client import (
 )
 from ..glossary import Glossary
 from ..session_context import (
-    HandoffReport,
+    WindowText,
     compact_budget_for,
     estimate_tokens,
     handoff_prompt,
     seed_cap,
-    strip_handoff_glossary,
 )
 from .base_translator import Base
 
@@ -229,6 +228,10 @@ class Codex(Base):
         self._question_threads = {}
         self._window = 1
         self._window_tokens = 0
+        # This window's texts, our only copy of a thread that lives in the
+        # sidecar. Read once per compaction, to ground what it reports.
+        self._window_sources = []
+        self._window_translations = []
         self._turn_lock = Lock()
         self._last_remaining = None
         self._sleep = kwargs.pop("sleeper", time.sleep)
@@ -446,31 +449,13 @@ class Codex(Base):
                 f"codex thread without a summary[/yellow]"
             )
             report_text = ""
-        if report_text and not self._usable_report(report_text, prompt):
-            # Empty, whitespace, or the prompt read back. This route has no
-            # window to keep — the thread is rolled over either way — so the
-            # answer is simply not treated as a report: nothing is learned
-            # from it, nothing is written, and the next thread opens unseeded.
-            print(
-                "[yellow]ℹ the handoff turn returned no usable report; "
-                "starting the next codex thread without a summary[/yellow]"
-            )
-            report_text = ""
-
-        report = HandoffReport(
-            window=self._window,
-            style_note=self.style_note,
-            # Same as the API path: the renderings block is parsed into
-            # `glossary_lines`, so keeping it in the prose too would write
-            # every term twice.
-            summary=(
-                strip_handoff_glossary(report_text)
-                if self.glossary_auto_on
-                else report_text.strip()
-            ),
-        )
+        window = WindowText.of(self._window_sources, self._window_translations)
+        # Same as the API path: split, trimmed by shape, never judged — a
+        # reply is only refused for being empty (owner ruling 260913), and on
+        # this route an empty reply is already the rollover shape below.
+        report = self._handoff_report(self._window, report_text)
         if report.has_summary():
-            report.glossary_lines = self._learn_from_handoff(report_text)
+            report.glossary_lines = self._learn_from_handoff(report_text, window)
             self._show_handoff(report)
             if self.handoff_path:
                 try:
@@ -486,14 +471,10 @@ class Codex(Base):
 
         self._window += 1
         self._window_tokens = 0
+        self._window_sources = []
+        self._window_translations = []
         self._thread_id = None
-        self._ensure_thread(
-            seed=(
-                report.seed_text(seed_cap(self._budget()))
-                if report.has_summary()
-                else ""
-            )
-        )
+        self._ensure_thread(seed=report.seed_text(seed_cap(self._budget())))
 
     def _start_empty_thread(self):
         """Roll over with no handoff report, because the user asked for none.
@@ -504,6 +485,8 @@ class Codex(Base):
         """
         self._window += 1
         self._window_tokens = 0
+        self._window_sources = []
+        self._window_translations = []
         self._thread_id = None
         self._ensure_thread(seed="")
         if self.quiet:
@@ -550,6 +533,12 @@ class Codex(Base):
             self._report_quota()
 
             self._window_tokens += estimate_tokens(text) + estimate_tokens(translated)
+            # The thread itself lives in the sidecar, so this is the only
+            # copy of the window's text on our side — and grounding a
+            # harvested rendering needs one. Cleared on every rollover, so
+            # it holds at most a window's worth.
+            self._window_sources.append(text)
+            self._window_translations.append(translated)
             if self._window_tokens >= self._budget():
                 if self.no_context_compact:
                     self._start_empty_thread()

@@ -14,7 +14,6 @@ from .base_translator import Base
 from ..config import config
 from ..session_context import (
     SEED_MAX_TOKENS,
-    HandoffReport,
     SessionHistory,
     compact_budget_for,
     handoff_prompt,
@@ -483,29 +482,22 @@ class Claude(Base):
         except Exception as e:
             self._compact_failed(e, budget)
             return
-        if not self._usable_report(report_text, prompt):
-            # A 200 carrying no report — an empty or tool-only content list,
-            # which a gateway can answer with, or the prompt read back, which
-            # a weak model can. Nothing was raised, so this used to count as a
-            # successful compaction: the window was reset and seeded with the
-            # empty string, throwing away the whole accumulated context and
-            # buying nothing for it. It is a compact that produced no report,
-            # so it takes the failure path, and it is not a report, so it is
-            # not printed as one.
-            self._compact_failed("the endpoint returned no usable report", budget)
-            return
-
-        report = HandoffReport(
-            window=self.session.windows,
-            # A style the user fixed is handed on verbatim, so it cannot be
-            # eroded window by window by a model re-describing it.
-            style_note=self.style_note,
-            summary=report_text.strip(),
-        )
-        if not report.has_summary():
-            self._compact_failed("the handoff report carried no summary", budget)
+        if not report_text.strip():
+            # A 200 carrying nothing — an empty or tool-only content list,
+            # which a gateway can answer with. Nothing was raised, so this
+            # used to count as a successful compaction: the window was reset
+            # and seeded with the empty string, throwing away the whole
+            # accumulated context and buying nothing for it. Emptiness is the
+            # only thing refused here (owner ruling 260913); a reply that is
+            # merely poor is seeded, bounded by the cap.
+            self._compact_failed("the endpoint returned an empty reply", budget)
             return
         self._compact_failures = 0
+
+        # This route never asks for renderings (`with_glossary=False` above),
+        # so nothing is parsed out of the prose — only the split and the
+        # shape-based tidy every route's seed gets.
+        report = self._handoff_report(self.session.windows, report_text)
         self._show_handoff(report)
         if self.handoff_path:
             try:

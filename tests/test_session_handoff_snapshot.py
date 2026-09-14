@@ -21,6 +21,7 @@ Design: docs/260913-feat-SESSION_HANDOFF_SNAPSHOT_SEED_BOUNDS.md.
 """
 
 import os
+import re
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -36,12 +37,14 @@ from book_maker.session_context import (
     SEED_MAX_TOKENS,
     HandoffReport,
     SessionHistory,
+    WindowText,
     estimate_tokens,
     handoff_prompt,
     parse_handoff_glossary,
     parse_snapshot,
-    report_is_usable,
     seed_cap,
+    split_handoff_sections,
+    trim_handoff_prose,
 )
 from book_maker.translator.capabilities import REASONING_ALLOWANCE_TOKENS
 from book_maker.translator.chatgptapi_translator import ChatGPTAPI
@@ -92,7 +95,10 @@ def _translator(replies=None, **kwargs):
 # it is measured here rather than guessed so a reworded preamble cannot
 # quietly loosen every cap assertion below. The +1 is the estimator itself:
 # it rounds once over the whole string, so the parts can sum a token short.
-PREAMBLE_TOKENS = estimate_tokens(HandoffReport(window=1, summary="").seed_text())
+# Measured over a one-character summary, because a seed with no summary at
+# all is the empty string: since the 260913 ruling the preamble introduces a
+# report or is not sent.
+PREAMBLE_TOKENS = estimate_tokens(HandoffReport(window=1, summary="x").seed_text())
 MAX_SEED_TOKENS = SEED_CAP_TOKENS + PREAMBLE_TOKENS + 1
 
 
@@ -328,11 +334,16 @@ class TestTheCutAlwaysLeavesSomethingToRead:
 
 
 class TestWhatCountsAsASectionLabel:
-    """Codex review 260913, the worst of the seven: a list number alone read
-    as a label, so a model that numbers the beats of its summary wrote a
-    report made entirely of "labels" — which `report_is_usable` then refused,
-    on every route, costing a paid compaction per window and finally an
-    unseeded reset."""
+    """What the cosmetic trim treats as furniture, and only that.
+
+    This used to be an input to whether a compact succeeded, and the codex
+    review found what that costs: a list number alone read as a label, so a
+    model that numbers the beats of its summary wrote a report made entirely
+    of "labels", which was then refused on every route — a paid compaction
+    per window and finally an unseeded reset. Since the owner's 260913 ruling
+    nothing is refused for its shape, so being wrong here costs a stray line
+    in a capped seed. It is still kept narrow, because the summary is what
+    the next window reads."""
 
     @pytest.mark.parametrize(
         "line, is_label",
@@ -351,13 +362,13 @@ class TestWhatCountsAsASectionLabel:
 
         assert _is_block_label(line) is is_label
 
-    def test_a_numbered_summary_is_a_usable_report(self):
+    def test_a_numbered_summary_survives_the_trim_whole(self):
         report = (
             "1. Napoleon seizes power\n"
             "2. The animals rebuild the windmill\n"
             "3. Boxer is sold to the knacker\n"
         )
-        assert report_is_usable(report, handoff_prompt(with_glossary=True))
+        assert trim_handoff_prose(report) == report.strip()
 
     def test_a_numbered_summary_survives_a_compaction(self, tmp_path):
         path = tmp_path / "book_handoff.md"
@@ -529,8 +540,6 @@ class TestTheHandoffFileIsASnapshot:
         renderings**:` above their block, and it survived the strip — so
         every handoff file carried it, introducing nothing, above the
         canonical section."""
-        from book_maker.session_context import strip_handoff_glossary
-
         report_text = (
             "They walked to the farm.\n\n"
             "3. **Established renderings**:\n\n"
@@ -540,7 +549,7 @@ class TestTheHandoffFileIsASnapshot:
         path = tmp_path / "book_handoff.md"
         HandoffReport(
             window=1,
-            summary=strip_handoff_glossary(report_text),
+            summary=trim_handoff_prose(report_text),
             glossary_lines=parsed.glossary.to_lines(),
         ).write_snapshot(path)
 
@@ -621,8 +630,12 @@ class TestTheHarvestIsBounded:
         lines = "\n".join(f"Name{n} → 名字{n}" for n in range(over))
         report_text = f"They walked.\n\n<renderings>\n{lines}\n</renderings>\n"
 
+        # the unit names every one of them, so grounding keeps them all and
+        # the cap is the only thing doing any work here
+        unit = " ".join(f"Name{n}" for n in range(over)) + " " + "a" * 6000
+
         t = _translator(["译文", report_text], glossary_auto=True)
-        t.get_translation("a" * 6000)
+        t.get_translation(unit)
 
         assert len(t.learned) == GLOSSARY_MAX_PER_COMPACT
         # the head, because a report front-loads what matters
@@ -636,8 +649,8 @@ class TestTheHarvestIsBounded:
         first = "They walked.\n\n<renderings>\nBoxer → 拳击手\n</renderings>\n"
         second = "They rested.\n\n<renderings>\nBoxer → 鲍克瑟\n</renderings>\n"
         t = _translator(["译文", first, "译文", second], glossary_auto=True)
-        t.get_translation("a" * 6000)
-        t.get_translation("b" * 6000)
+        t.get_translation("Boxer pulled. " + "a" * 6000)
+        t.get_translation("Boxer rested. " + "b" * 6000)
         assert t.learned.lookup("Boxer").translation == "鲍克瑟"
 
     def test_compact_prompt_states_the_per_report_cap(self):
@@ -647,7 +660,7 @@ class TestTheHarvestIsBounded:
         putting it back in the prompt would be the same unbounded growth by
         another door."""
         prompt = handoff_prompt(with_glossary=True)
-        assert f"at most {GLOSSARY_MAX_PER_COMPACT}" in prompt
+        assert f"At most {GLOSSARY_MAX_PER_COMPACT}" in prompt
         assert "new or has changed" in prompt
         assert "already reported" in prompt
         # the prompt is a constant: the same text on window 1 and window 40
@@ -726,6 +739,185 @@ class TestTheHarvestIsBounded:
         assert parsed.dropped == 0
 
 
+class TestAHarvestedPairMustBeInTheWindow:
+    """Owner ruling 260913: grounding replaced the format heuristics.
+
+    Once the reply is no longer judged for shape, this is what stands
+    between a hallucinated pair and the glossary — and the glossary is the
+    one place junk is expensive, because a stored term is injected into
+    every later request whose text matches it. A pair the model observed has
+    an end in the window: it read the term in a source, or it wrote the
+    rendering into a translation. A pair it invented has neither.
+    """
+
+    WINDOW = WindowText.of(
+        ["Boxer pulled the cart to the farm.", "Clover watched."],
+        ["拳击手把车拉到农场。", "克拉弗看着。"],
+    )
+
+    def _parsed(self, lines, **kwargs):
+        text = f"They walked.\n\n<renderings>\n{lines}\n</renderings>\n"
+        return parse_handoff_glossary(text, window=self.WINDOW, **kwargs)
+
+    def test_a_pair_with_neither_end_in_the_window_is_dropped(self):
+        parsed = self._parsed("Napoleon → 拿破仑")
+        assert parsed.glossary.lookup("Napoleon") is None
+        assert parsed.ungrounded == 1
+
+    def test_a_term_in_the_sources_is_kept(self):
+        parsed = self._parsed("Boxer → 拳击手")
+        assert parsed.glossary.lookup("Boxer").translation == "拳击手"
+        assert parsed.ungrounded == 0
+
+    def test_a_rendering_in_the_translations_is_enough_on_its_own(self):
+        """Either end, deliberately: the model may report a term under a
+        form the source never quite spells — an inflection, a possessive —
+        and what it wrote into the translation is evidence just the same."""
+        parsed = self._parsed("Clover's → 克拉弗")
+        assert parsed.glossary.lookup("Clover's").translation == "克拉弗"
+        assert parsed.ungrounded == 0
+
+    def test_a_reversed_pair_is_flipped_before_it_is_grounded(self):
+        """Order matters: grounding looks the term up in the *source* text,
+        so a pair still written target-first would be measured against the
+        wrong haystack and dropped as invented."""
+        parsed = self._parsed("拳击手 → Boxer", target_language="Chinese")
+        assert parsed.flipped == 1
+        assert parsed.glossary.lookup("Boxer").translation == "拳击手"
+        assert parsed.ungrounded == 0
+
+    def test_without_a_window_nothing_is_grounded(self):
+        """The stripper asks the parse which lines were read, not which
+        survived, so it passes no window and this must not filter."""
+        text = "They walked.\n\n<renderings>\nNapoleon → 拿破仑\n</renderings>\n"
+        parsed = parse_handoff_glossary(text)
+        assert parsed.glossary.lookup("Napoleon") is not None
+        assert parsed.ungrounded == 0
+
+    def test_the_window_is_read_from_the_session_before_the_reset(self):
+        """End to end on the API route: a report naming a term the window
+        never contained teaches the run nothing."""
+        report = (
+            "They walked.\n\n<renderings>\n"
+            "Boxer → 拳击手\nNapoleon → 拿破仑\n"
+            "</renderings>\n"
+        )
+        t = _translator(["译文", report], glossary_auto=True)
+        t.get_translation("Boxer pulled the cart. " + "a" * 6000)
+        assert t.learned.lookup("Boxer") is not None
+        assert t.learned.lookup("Napoleon") is None
+
+
+class TestTheReplyIsSplitIntoSections:
+    """The ladder: the protocol headers, then shape, then all summary.
+
+    Owner ruling 260913. A style note that lands in the summary costs a few
+    tokens of a capped seed; a summary that lands in the style is missing
+    from the seed entirely, which was the whole point of compacting. So
+    every tie-break leans towards the summary.
+    """
+
+    HEADED = (
+        "## Summary\n\nNapoleon took the farm.\n\n"
+        "## Style\n\nPlain, no adverbs.\n\n"
+        "## Renderings\n\n<renderings>\nBoxer → 拳击手\n</renderings>\n"
+    )
+
+    def test_the_headers_split_it_directly(self):
+        summary, style = split_handoff_sections(self.HEADED)
+        assert summary == "Napoleon took the farm."
+        assert style == "Plain, no adverbs."
+
+    def test_a_headed_reply_seeds_a_window_with_no_headings_in_it(self):
+        report = HandoffReport(window=2, summary=trim_handoff_prose(self.HEADED))
+        seed = report.seed_text()
+        assert "Napoleon took the farm." in seed
+        assert "## " not in seed
+        assert "Boxer" not in seed
+
+    def test_a_target_language_heading_is_trimmed_by_shape(self):
+        """The headers are asked for in English, and a model writes its own
+        in the book's language anyway. Nothing may depend on the words."""
+        reply = (
+            "Napoleon took the farm.\n\n"
+            "## 术语表\n\n"
+            "Boxer → 拳击手\nClover → 三叶草\n"
+        )
+        assert trim_handoff_prose(reply) == "Napoleon took the farm."
+
+    def test_two_headerless_blocks_split_by_length(self):
+        reply = (
+            "Napoleon took the farm and the windmill was rebuilt twice.\n\n"
+            "Plain, no adverbs.\n\n"
+            "Boxer → 拳击手\n"
+        )
+        summary, style = split_handoff_sections(reply, with_style=True)
+        assert summary.startswith("Napoleon took the farm")
+        assert style == "Plain, no adverbs."
+
+    def test_a_user_fixed_style_leaves_both_blocks_as_summary(self):
+        """`with_style` is False when the operator fixed a style, and then
+        nothing in a reply can be read as one — the note is a standing
+        instruction, not something a model may erode a window at a time."""
+        reply = (
+            "Napoleon took the farm and the windmill was rebuilt twice.\n\n"
+            "Plain, no adverbs.\n"
+        )
+        summary, style = split_handoff_sections(reply, with_style=False)
+        assert "Napoleon took the farm" in summary
+        assert "Plain, no adverbs." in summary
+        assert style == ""
+
+    def test_a_single_headerless_block_is_all_summary(self):
+        reply = "Napoleon took the farm.\n\nBoxer → 拳击手\n"
+        summary, style = split_handoff_sections(reply, with_style=True)
+        assert "Napoleon took the farm." in summary
+        assert style == ""
+
+    def test_an_empty_fence_does_not_count_as_a_section(self):
+        """The renderings come out by their arrows, and the fence lines with
+        them — otherwise an empty block was one of the two "prose blocks"
+        and the summary was filed as the style."""
+        reply = (
+            "Napoleon took the farm.\n\n<renderings>\nBoxer → 拳击手\n</renderings>\n"
+        )
+        summary, style = split_handoff_sections(reply, with_style=True)
+        assert summary.startswith("Napoleon took the farm.")
+        assert style == ""
+
+    def test_the_user_fixed_note_is_what_the_report_carries(self):
+        t = _translator(style_note="Clipped, no adverbs.")
+        report = t._handoff_report(2, "Napoleon took the farm.\n\nBreezy.\n")
+        assert report.style_note == "Clipped, no adverbs."
+        assert "Breezy." in report.summary
+
+
+class TestTheCompactPromptShowsATemplate:
+    """Owner ruling 260913: a shown template, no numbered list.
+
+    Models mirror numbering back into the report — six of six cells of the
+    260913 eval emitted `3. **Established renderings**:` — and a number read
+    back is a line of a capped seed spent on furniture.
+    """
+
+    def test_the_prompt_carries_the_three_english_headers(self):
+        prompt = handoff_prompt(with_glossary=True, with_style=True)
+        for header in ("## Summary", "## Style", "## Renderings"):
+            assert header in prompt
+
+    def test_the_prompt_numbers_no_sections(self):
+        prompt = handoff_prompt(with_glossary=True, with_style=True)
+        assert not [
+            line for line in prompt.splitlines() if re.match(r"^\s{0,3}\d+[.)]\s", line)
+        ]
+
+    def test_a_section_that_is_not_asked_for_leaves_no_header(self):
+        prompt = handoff_prompt(with_glossary=False, with_style=False)
+        assert "## Summary" in prompt
+        assert "## Style" not in prompt
+        assert "## Renderings" not in prompt
+
+
 class TestARelearnedTermReplaces:
     def test_relearned_term_replaces_old_rendering(self, tmp_path):
         """This window has read more of the book than the last one, so its
@@ -736,8 +928,8 @@ class TestARelearnedTermReplaces:
         t = _translator(
             ["译文", first, "译文", second], glossary_auto=True, handoff_path=path
         )
-        t.get_translation("a" * 6000)
-        t.get_translation("b" * 6000)
+        t.get_translation("Boxer pulled. " + "a" * 6000)
+        t.get_translation("Boxer rested. " + "b" * 6000)
 
         assert t.learned.lookup("Boxer").translation == "鲍克瑟"
         assert len(t.learned) == 1
@@ -757,7 +949,7 @@ class TestARelearnedTermReplaces:
             handoff_path=path,
             glossary=Glossary.parse("Boxer → 鲍克瑟\n"),
         )
-        t.get_translation("a" * 6000)
+        t.get_translation("Boxer pulled. " + "a" * 6000)
 
         assert t.glossary.lookup("Boxer").translation == "鲍克瑟"
         body = path.read_text(encoding="utf-8")
@@ -938,36 +1130,67 @@ JUNK_REPLIES = {
 
 
 class TestAJunkCompactReplyDegradesSafely:
-    """Owner emphasis 260913: "especially for some cheap models all kinds of
-    stuff can happen". Every one of these used to count as a successful
-    compaction — the window was reset and seeded with the reply, whatever it
-    was, and the good snapshot on disk was overwritten with it."""
+    """Owner ruling 260913: the compact reply is NEVER judged for format.
 
-    @pytest.mark.parametrize("label", sorted(JUNK_REPLIES))
-    def test_junk_compact_reply_degrades_safely(self, tmp_path, label, capsys):
+    Owner emphasis, same discussion: "especially for some cheap models all
+    kinds of stuff can happen". The earlier answer was to recognise a report
+    and refuse anything else — and that cost more than it saved, because the
+    recogniser was wrong about legitimate reports (a numbered summary, a
+    report under one heading) and every mistake threw a whole window away for
+    a paid compaction that produced nothing.
+
+    So the bar is emptiness and nothing else. Junk compacts: it is trimmed by
+    shape, bounded by the cap, and seeds the next window, where it is one
+    short paragraph of nonsense in front of a fresh translation — and the
+    window after that replaces it. What junk must never do is reach the
+    *glossary*, where a stored term is injected into every later request that
+    matches it, or overwrite a good snapshot with nothing.
+    """
+
+    @pytest.mark.parametrize("label", ("empty", "whitespace"))
+    def test_an_empty_reply_is_the_one_failure(self, tmp_path, label, capsys):
+        path = tmp_path / "book_handoff.md"
+        HandoffReport(window=1, summary="The good one.").write_snapshot(path)
+        good = path.read_text(encoding="utf-8")
+
+        t = _translator(["译文", JUNK_REPLIES[label]], handoff_path=path)
+        assert t.get_translation("a" * 6000) == "译文"
+
+        # the window is kept for a retry rather than reset onto nothing
+        assert t.session.windows == 1
+        assert t.session.estimated_tokens() > 0
+        assert path.read_text(encoding="utf-8") == good
+        assert "handoff report failed" in capsys.readouterr().out
+
+    @pytest.mark.parametrize(
+        "label",
+        sorted(set(JUNK_REPLIES) - {"empty", "whitespace"}),
+    )
+    def test_junk_that_is_not_empty_compacts_anyway(self, tmp_path, label):
         path = tmp_path / "book_handoff.md"
         HandoffReport(
             window=1,
             summary="The good one: Napoleon took the farm.",
             glossary_lines="Napoleon → 拿破仑\n",
         ).write_snapshot(path)
-        good = path.read_text(encoding="utf-8")
 
         t = _translator(
             ["译文", JUNK_REPLIES[label]], glossary_auto=True, handoff_path=path
         )
-        # no exception, and the paragraph is translated
+        # no exception, the paragraph is translated, the window rolls over
         assert t.get_translation("a" * 6000) == "译文"
+        assert t.session.windows == 2
 
-        # the previous snapshot is untouched
-        assert path.read_text(encoding="utf-8") == good
-        # nothing junk was learned
+        # whatever it said, the seed is bounded — that is what makes seeding
+        # junk affordable rather than a death loop
+        assert t.session.estimated_tokens() <= MAX_SEED_TOKENS
+
+        # and nothing junk was learned: none of it is in the window
         for term in ("Here", "I cannot comply with this request", "Boxer", "!!!!!"):
             assert t.glossary.lookup(term) is None
-        # the window was kept for a retry rather than reset onto nothing
-        assert t.session.windows == 1
-        assert t.session.estimated_tokens() > 0
-        assert "handoff report failed" in capsys.readouterr().out
+
+        # the file on disk is still a snapshot a resume can read
+        assert parse_snapshot(path) is not None
 
     @pytest.mark.parametrize(
         "reply",
@@ -977,63 +1200,42 @@ class TestAJunkCompactReplyDegradesSafely:
             "### Established renderings\n\nBoxer → 拳击手\n",
         ),
     )
-    @pytest.mark.parametrize("learning", (True, False))
-    def test_a_reply_of_only_loose_renderings_is_not_a_report(
-        self, tmp_path, reply, learning
+    def test_a_reply_of_only_renderings_keeps_the_previous_summary(
+        self, tmp_path, reply
     ):
-        """Codex review 260913, the residual: the subtraction removed the
-        *tagged* block, so a reply of bare `term → translation` lines still
-        read as prose — and a good snapshot was overwritten with a summary
-        that had been parsed away to nothing.
-
-        Both guards are asserted, on and off the learning path, because they
-        fail in different places: `report_is_usable` refuses the reply, and
-        `has_summary` refuses to write a summary that is a heading and
-        nothing else. What they protect — a snapshot already on disk — is
-        not recoverable, so one guard is not enough.
+        """Owner ruling 260913, which resolved this by design rather than by
+        a guard: such a reply is not refused, it simply has no prose in it.
+        The renderings are harvested, the trim leaves nothing, and an empty
+        summary is the one thing `write_snapshot` will not write — so the
+        good snapshot stands and the next window opens unseeded, which is the
+        ordinary rollover shape rather than a failure.
         """
-        assert not report_is_usable(reply, handoff_prompt(with_glossary=True))
-
         path = tmp_path / "book_handoff.md"
         HandoffReport(
             window=1, summary="The good one.", glossary_lines="Napoleon → 拿破仑\n"
         ).write_snapshot(path)
         good = path.read_bytes()
 
-        t = _translator(["译文", reply], glossary_auto=learning, handoff_path=path)
+        t = _translator(["译文", reply], glossary_auto=True, handoff_path=path)
         assert t.get_translation("a" * 6000) == "译文"
-        assert path.read_bytes() == good
-        assert t.session.windows == 1
-        assert t.session.estimated_tokens() > 0
 
-    def test_a_summary_of_only_a_heading_is_never_written(self, tmp_path):
+        assert path.read_bytes() == good  # not overwritten with nothing
+        assert t.session.windows == 2  # but the compaction did happen
+        assert t.session.messages() == []  # unseeded, having nothing to say
+
+    def test_an_empty_summary_is_never_written(self, tmp_path):
         path = tmp_path / "book_handoff.md"
         HandoffReport(window=1, summary="The good one.").write_snapshot(path)
-        assert HandoffReport(window=2, summary="## Summary").write_snapshot(path) is (
-            False
-        )
+        assert HandoffReport(window=2, summary="   ").write_snapshot(path) is False
         assert "The good one." in path.read_text(encoding="utf-8")
 
-    def test_a_headed_glossary_with_no_prose_is_not_a_report(self, tmp_path):
-        """Codex review 260913: the renderings block was left in the
-        subtraction, so `## Summary` with nothing under it and a full block
-        beneath passed — on the strength of the heading's own words. The
-        block is not a summary and is not stored as one."""
-        reply = (
-            "## Summary\n\n"
-            "## Established renderings\n\n"
-            "<renderings>\nBoxer → 拳击手\nClover → 三叶草\n</renderings>\n"
-        )
-        assert not report_is_usable(reply, handoff_prompt(with_glossary=True))
-
+    def test_a_junk_summary_that_is_not_empty_is_written(self, tmp_path):
+        """The other half of the same ruling, pinned so it cannot drift back
+        into a quality test: what is written is whatever there was."""
         path = tmp_path / "book_handoff.md"
         HandoffReport(window=1, summary="The good one.").write_snapshot(path)
-        good = path.read_text(encoding="utf-8")
-        t = _translator(["译文", reply], glossary_auto=True, handoff_path=path)
-        t.get_translation("a" * 6000)
-        assert path.read_text(encoding="utf-8") == good
-        assert not t.learned
-        assert t.session.windows == 1
+        assert HandoffReport(window=2, summary="!!!!! ???").write_snapshot(path) is True
+        assert "!!!!! ???" in path.read_text(encoding="utf-8")
 
     def test_an_oversized_blob_is_a_report_and_is_cut(self, tmp_path, capsys):
         """The one reply in this family that *is* a report: a real summary,

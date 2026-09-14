@@ -402,12 +402,28 @@ GLOSSARY_MAX_PER_COMPACT = 16
 # for a reader.
 _PREAMBLE = (
     "Context is compacting. Summarize content you translated so far in your "
-    "context for brief reference of later translations."
+    "context for brief reference of later translations. Reply in exactly "
+    "this shape, keeping the English headers verbatim:"
 )
 
+# The headers are protocol tokens, not prose, and they are asked for in
+# English whatever the book's target language is — a model writing its own
+# `## 摘要` is fine for a reader and useless to anything that has to find the
+# section. Shown as a template rather than described in a numbered list
+# because models mirror numbering back into the report (all six cells of the
+# 260913 eval B did), and a number read back is a line of the seed spent on
+# furniture. Nothing downstream *depends* on the headers: the trim removes
+# headings by shape, in any language, and the parse finds renderings by their
+# arrows. They are asked for because a report shaped this way is a better
+# report, not because the client needs them.
+_SUMMARY_HEADER = "## Summary"
+_STYLE_HEADER = "## Style"
+_RENDERINGS_HEADER = "## Renderings"
+
 _SUMMARY_REQUEST = (
-    "Summary - of translated content above. What happened, who was "
-    "involved, when did those happen."
+    f"{_SUMMARY_HEADER}\n\n"
+    "What happened in the content above, who was involved, when did those "
+    "happen."
 )
 
 # Capped, and scoped to deviations only. Both clauses earn their place:
@@ -421,8 +437,9 @@ _SUMMARY_REQUEST = (
 # which nothing else supplies. The result was that the *default* path, with no
 # glossary, was the one running unscoped.
 _STYLE_REQUEST = (
-    "Style — up to 3 lines of what translation style is used so far. "
-    "Only note down what's different from general translation."
+    f"{_STYLE_HEADER}\n\n"
+    "Up to 3 lines of what translation style is used so far. Only note down "
+    "what's different from general translation."
 )
 
 # Scoped to *this* window's renderings. The accumulated set is held on this
@@ -436,12 +453,14 @@ _STYLE_REQUEST = (
 # model re-emits anyway, which it cannot be told not to do when it can no
 # longer see what it established (see GLOSSARY_MAX_PER_COMPACT).
 _GLOSSARY_REQUEST = (
-    f"Established renderings — at most {GLOSSARY_MAX_PER_COMPACT} names from "
-    f"the passages above whose rendering is new or has changed. Never repeat "
-    f"an entry you have already reported. If there are none, emit an empty "
-    f"block. One per line as `term → translation # note` (the note is "
-    f"optional), source term on the left. Wrap the list in <renderings> and "
-    f"</renderings> tags so its start and end are unambiguous. This is the "
+    f"{_RENDERINGS_HEADER}\n\n"
+    f"<renderings>\n"
+    f"term → translation # note\n"
+    f"</renderings>\n\n"
+    f"At most {GLOSSARY_MAX_PER_COMPACT} names from the passages above whose "
+    f"rendering is new or has changed, one per line inside those tags, source "
+    f"term on the left and the note optional. Never repeat an entry you have "
+    f"already reported. If there are none, emit an empty block. This is the "
     f"only place term equivalences belong."
 )
 
@@ -467,18 +486,18 @@ def handoff_prompt(with_glossary: bool = False, with_style: bool = True) -> str:
     on it, so one is only asked for when something downstream consumes it —
     the renderings only when this run learns a glossary (`--glossary-auto`),
     the style only when the user has not fixed one via `--prompt`'s `style`
-    field. Numbering follows what is actually included, so a fixed style does
-    not leave the renderings labelled "3." in a two-section request.
+    field. A section that is not asked for leaves no trace: the template
+    simply does not show that header, so there is no numbering to renumber
+    and nothing saying a section was skipped.
     """
     sections = [_SUMMARY_REQUEST]
     if with_style:
         sections.append(_STYLE_REQUEST)
     if with_glossary:
         sections.append(_GLOSSARY_REQUEST)
-    numbered = [f"{n}. {body}" for n, body in enumerate(sections, start=1)]
     # The size request closes the prompt rather than opening it: it is about
     # the answer as a whole, so it belongs after the sections it bounds.
-    return "\n\n".join([_PREAMBLE, *numbered, _size_request()])
+    return "\n\n".join([_PREAMBLE, *sections, _size_request()])
 
 
 # The block the report is asked to emit. Tolerant of a missing closing tag:
@@ -513,6 +532,59 @@ class HandoffGlossary(NamedTuple):
     source: str  # "tagged" | "scanned" | "missing"
     dropped: int = 0
     flipped: int = 0
+    ungrounded: int = 0
+
+
+class WindowText(NamedTuple):
+    """The window being compacted, as the two haystacks grounding searches.
+
+    Lower-cased once here rather than per entry: a window is thousands of
+    characters and a report offers at most a couple of dozen pairs.
+    """
+
+    sources: str
+    translations: str
+
+    @classmethod
+    def from_messages(cls, messages) -> "WindowText":
+        """The window of a `SessionHistory`-shaped message list.
+
+        The seed rides in as a user message and is therefore counted as
+        source text. That is what it is, for this purpose: a term the
+        previous window established and this one carried forward is
+        genuinely part of the context being summarised.
+        """
+        return cls.of(
+            [m.get("content") or "" for m in messages if m.get("role") == "user"],
+            [m.get("content") or "" for m in messages if m.get("role") == "assistant"],
+        )
+
+    @classmethod
+    def of(cls, sources, translations) -> "WindowText":
+        return cls("\n".join(sources).lower(), "\n".join(translations).lower())
+
+
+def _is_grounded(entry, window: WindowText) -> bool:
+    """Whether either end of this pair is actually in the window.
+
+    The keep-test for a harvested rendering, and the one that replaced the
+    format heuristics (owner ruling 260913). A pair the model invented —
+    from its training data, from the prompt, or from nothing — has no end in
+    the text it was just shown; a pair it observed has at least one, because
+    it read the term in a source or wrote the rendering into a translation.
+    Either end is enough on purpose: the model is allowed to report a term
+    it rendered differently from how it appears, and inflection or a
+    possessive can move the other end out of reach.
+
+    Substring, case-folded, no word boundaries: this is a cheap negative
+    filter for hallucinations, not a claim about morphology, and CJK has no
+    boundaries to anchor to anyway.
+    """
+    term = entry.term.strip().lower()
+    if term and term in window.sources:
+        return True
+    rendering = entry.translation.strip().lower()
+    return bool(rendering and rendering in window.translations)
 
 
 def _is_sane_entry(entry) -> bool:
@@ -665,17 +737,22 @@ def _entries_from_lines(lines, strict):
     return entries, dropped
 
 
-def parse_handoff_glossary(text: str, target_language=None) -> HandoffGlossary:
+def parse_handoff_glossary(
+    text: str, target_language=None, window: WindowText | None = None
+) -> HandoffGlossary:
     """Read the renderings the handoff report established.
 
     Preferred shape is the tagged block the prompt asks for. Models drop it,
-    so there is a fallback: scan loose `term → translation` lines, guarded so
-    ordinary prose containing an arrow is not mistaken for an entry.
+    so the backup is a grep: every line of the reply that carries an arrow,
+    tags or no tags, anywhere in it. Neither path judges the reply as a whole
+    — a compact reply is never refused for its format (owner ruling 260913) —
+    and the guards that remain decide only what gets STORED.
 
     `target_language` is what the run is translating into; without it a pair
     written backwards cannot be recognised, so it is passed wherever the
-    result is stored. The stripper does not need it — which lines were read
-    is the same question either way.
+    result is stored. `window` is the text being compacted, for the grounding
+    test; without it grounding is skipped, which is right for the stripper —
+    which lines were *read* is the same question however few survive.
     """
     if not text:
         return HandoffGlossary(Glossary(), "missing")
@@ -684,30 +761,41 @@ def parse_handoff_glossary(text: str, target_language=None) -> HandoffGlossary:
     if match:
         entries, dropped = _entries_from_lines(match.group(1).splitlines(), strict=True)
         if entries:
-            return _harvest(entries, dropped, "tagged", target_language)
+            return _harvest(entries, dropped, "tagged", target_language, window)
 
     entries, dropped = _entries_from_lines(text.splitlines(), strict=False)
     if entries:
-        return _harvest(entries, dropped, "scanned", target_language)
+        return _harvest(entries, dropped, "scanned", target_language, window)
     return HandoffGlossary(Glossary(), "missing")
 
 
-def _harvest(entries, dropped, source, target_language) -> HandoffGlossary:
+def _harvest(entries, dropped, source, target_language, window) -> HandoffGlossary:
     """The pairs a report may contribute: turned round, filtered, then capped.
 
     In that order. The flip decides what the pair says, so it has to happen
-    before anything judges what was said — and before the cap counts, or a
-    report could spend its allowance on entries that are then discarded.
+    before anything judges what was said — grounding included, which looks
+    the term up in the source text and would miss a pair still written
+    target-first — and before the cap counts, or a report could spend its
+    allowance on entries that are then discarded.
 
     The cap keeps the *head* of the list because a report front-loads what
     matters, the same reason the seed is truncated head first.
     """
     entries, flipped = _flip_reversed(entries, target_language)
+    ungrounded = 0
+    if window is not None:
+        grounded = [entry for entry in entries if _is_grounded(entry, window)]
+        ungrounded = len(entries) - len(grounded)
+        entries = grounded
     usable = [entry for entry in entries if _is_usable_rendering(entry)]
     dropped += len(entries) - len(usable)
     kept = usable[:GLOSSARY_MAX_PER_COMPACT]
     return HandoffGlossary(
-        Glossary(kept), source, dropped + len(usable) - len(kept), flipped
+        Glossary(kept),
+        source,
+        dropped + len(usable) - len(kept),
+        flipped,
+        ungrounded,
     )
 
 
@@ -730,15 +818,18 @@ def _is_block_label(line: str) -> bool:
     with only the `#` form recognised it survived the strip and was written
     into every handoff file above the canonical section, introducing nothing.
 
-    Deliberately narrow, and narrower since the 260913 review found out why
-    it has to be. A list number alone is NOT a label: models number the
-    beats of a summary, so `1. Napoleon seizes power` is content, and
-    reading it as a label made a whole legitimate report look like nothing
-    but section titles — which `report_is_usable` then refused, costing the
-    run a paid compaction per window and finally an unseeded reset. The line
-    must therefore carry decoration a sentence does not have — emphasis
-    around the whole of it, or a trailing colon — and must not read as a
-    sentence even then.
+    COSMETIC ONLY (owner ruling 260913): this decides what is tidied out of
+    the summary before it is stored and seeded, and nothing else. It is never
+    an input to whether a compact succeeded — a reply is refused for being
+    empty and for nothing else — so being wrong here costs a stray heading in
+    the seed, never a thrown-away window. The judgement version of this
+    question, `report_is_usable`, is gone; do not reintroduce one.
+
+    Deliberately narrow all the same. A list number alone is NOT a label:
+    models number the beats of a summary, so `1. Napoleon seizes power` is
+    content. The line must carry decoration a sentence does not have —
+    emphasis around the whole of it, or a trailing colon — and must not read
+    as a sentence even then.
     """
     text = line.strip()
     if not text or len(text) > _MAX_TERM_LEN:
@@ -758,118 +849,138 @@ def _is_block_label(line: str) -> bool:
     return not core.endswith(_SENTENCE_END)
 
 
-def report_is_usable(report_text: str, prompt: str) -> bool:
-    """Whether a compact reply is a handoff report at all.
+# A line that is nothing but a markup tag: the `<renderings>` fence the
+# prompt asks for, and whatever else a model wraps a section in.
+_TAG_ONLY = re.compile(r"^</?[A-Za-z][^>]*>$")
 
-    The reply is untrusted. A cheap model answers the compact turn with
-    nothing, with whitespace, with the prompt read back, or — measured in all
-    six cells of the 260913 eval — with the prompt's numbered section titles
-    mirrored back and no content under them. Each of those used to count as a
-    successful compaction, which reset the window and seeded it with
-    boilerplate: strictly worse than a failed compact, because the
-    accumulated context is gone *and* nothing replaced it.
 
-    Recognised by subtraction rather than by pattern: take away the
-    renderings block, the lines the prompt itself contains, and the lines
-    that are only a section label, and what is left is the answer. If there
-    is nothing left, the reply was the question.
+def _heading_key(line: str):
+    """Which protocol section this line heads, or None.
 
-    The renderings go too, tagged or not, because they are not a summary and
-    are not stored as one: a reply of `## Summary` with nothing under it and
-    a full block beneath used to pass on the strength of the heading's own
-    words, and a reply of nothing but bare `term → translation` lines passed
-    on the strength of the terms. Both then overwrote a good snapshot with a
-    summary that was empty. The loose lines are recognised with the same
-    guard the fallback parse uses, so this refuses exactly what that would
-    have harvested.
-
-    Not a quality judgement otherwise — a short or unhelpful summary is
-    still a summary, and this only asks whether there is one.
+    The one place an English word is matched, and it is matched against our
+    own template's headers rather than against anything the model invented —
+    they are protocol tokens, asked for verbatim in `handoff_prompt`. When
+    they do not come back (a model that writes `## 摘要`, or none at all) this
+    returns None for every line and the caller falls to the shape backoff,
+    which is why no keyword list here has to cover any language but ours.
     """
-    if not report_text or not report_text.strip():
-        return False
-    # The prompt's own lines go first, by exact match, and only then the
-    # renderings block: the prompt *describes* that block, tags and all, so
-    # removing the block first rewrites the very lines the echo check is
-    # about and an echoed prompt stops matching itself.
-    asked = {line.strip() for line in prompt.splitlines() if line.strip()}
-    unasked = "\n".join(
-        line for line in report_text.splitlines() if line.strip() not in asked
-    )
-    return any(
-        re.search(r"\w", line)
-        for line in _RENDERINGS.sub("", unasked).splitlines()
-        if line.strip()
-        and not _is_block_label(line)
-        and not _line_entries(line, strict=False)
-    )
+    if not _HEADING.match(line):
+        return None
+    text = line.strip().lstrip("#").strip().rstrip(":").strip().lower()
+    return text if text in ("summary", "style", "renderings") else None
 
 
-def _drop_introducing_heading(before: str) -> str:
-    """`before` without a heading left dangling at its end.
+def split_handoff_sections(text: str, with_style: bool = True) -> tuple[str, str]:
+    """The reply split into (summary prose, style prose), by a ladder.
 
-    `before` is the prose that ran up to a block being removed, so a heading
-    sitting at the end of it — blank lines aside — is that block's own
-    heading and goes with it. A heading anywhere else is the report's.
+    1. The protocol headers, when they came back: each section is what sits
+       under its header, and anything above the first header joins the
+       summary.
+    2. When they did not: the renderings are carved out by their arrows, and
+       if a style was asked for and exactly two prose blocks remain, the
+       LONGER is the summary and the shorter is the style (owner ruling
+       260913). Models answer the template in order and a style note is
+       three lines at most, so length separates them where the labels are
+       gone.
+    3. Otherwise everything is summary.
+
+    The tie-breaks all lean the same way, because the costs are not
+    symmetric: a summary misfiled as style is missing from the seed, where
+    it was the whole point, while a style note misfiled into the summary
+    costs a few tokens of a capped seed and nothing else. So an ambiguous
+    reply — one block, or three, or a style that was never asked for — files
+    as summary.
+
+    This runs BEFORE `trim_handoff_prose`: the headings are what the split
+    reads, and only then are they furniture. A user-fixed style is not
+    overwritten by anything here — `with_style` is False in that case and
+    the caller keeps its own note — so the guarantee is structural.
     """
-    lines = before.split("\n")
-    end = len(lines)
-    while end and not lines[end - 1].strip():
-        end -= 1
-    if end and _is_block_label(lines[end - 1]):
-        del lines[end - 1]
-    return "\n".join(lines)
-
-
-def _drop_loose_entry_lines(text: str) -> str:
-    """`text` without the loose lines the fallback parse read as entries."""
+    if not text or not text.strip():
+        return "", ""
     lines = text.split("\n")
-    dropped = {i for i, raw in enumerate(lines) if _line_entries(raw, strict=False)}
-    for i in sorted(dropped):
-        if i - 1 in dropped:
-            continue  # same run; its heading was already considered
-        above = i - 1
-        while above >= 0 and not lines[above].strip():
-            above -= 1
-        if above >= 0 and _is_block_label(lines[above]):
-            dropped.add(above)
-    return "\n".join(line for i, line in enumerate(lines) if i not in dropped)
+    marked = [
+        (key, i)
+        for i, key in ((i, _heading_key(l)) for i, l in enumerate(lines))
+        if key
+    ]
+    if any(key in ("summary", "style") for key, _ in marked):
+        sections = {}
+        for n, (key, start) in enumerate(marked):
+            end = marked[n + 1][1] if n + 1 < len(marked) else len(lines)
+            sections.setdefault(key, []).extend(lines[start + 1 : end])
+        preamble = lines[: marked[0][1]]
+        summary = "\n".join(preamble + sections.get("summary", [])).strip()
+        style = "\n".join(sections.get("style", [])).strip() if with_style else ""
+        return summary, style
+
+    if with_style:
+        blocks = _prose_blocks(lines)
+        # Sequence AND length, both: the template asks for the style after
+        # the summary and caps it at three lines, so the style candidate is
+        # the last block and the shorter one. When either test fails the
+        # reply is not the two-section shape and everything files as summary
+        # — the cheap mistake rather than the expensive one.
+        if len(blocks) == 2 and len(blocks[1]) < len(blocks[0]):
+            return blocks[0], blocks[1]
+    return text.strip(), ""
 
 
-def strip_handoff_glossary(text: str) -> str:
-    """The report's prose, without the renderings the parse recovered.
+def _prose_blocks(lines) -> list[str]:
+    """The reply's prose, in blank-line separated blocks.
 
-    Those entries are re-rendered canonically into the report, so any copy
-    left in the prose is written twice into `<book>_handoff.md` and sent
-    twice in the next window's seed. Whatever the parse recovered therefore
-    has to come out here: the tagged block when the model emitted one, and
-    the loose lines the parse fell back to when it did not — the fallback
-    used to be stripped by neither, so a report without tags duplicated
-    every term it established.
+    Prose: the renderings are carved out by their arrows and our fence lines
+    with them, and a block that is left holding nothing but a heading is not
+    a block at all — otherwise an empty `<renderings>` fence would count as
+    one of the two sections and the summary would be filed as the style.
+    """
+    kept = [
+        line
+        for line in lines
+        if not _ARROW_SHAPED.search(line) and not _TAG_ONLY.match(line.strip())
+    ]
+    blocks = [b.strip() for b in re.split(r"\n\s*\n", "\n".join(kept)) if b.strip()]
+    return [b for b in blocks if _has_substance(b.split("\n"))]
 
-    A report that established nothing is returned as written. Deleting its
-    last heading anyway — which this did, on the guess that a heading in
-    that position introduced the block — took a genuine section title off a
-    report that never had a renderings block at all.
+
+def trim_handoff_prose(text: str) -> str:
+    """The report's prose: what is left once the furniture is removed.
+
+    Used for both things the summary becomes — the snapshot section and the
+    next window's seed — so they cannot disagree about what the report said.
+
+    By SHAPE, never by keyword (owner ruling 260913). Models write their
+    section headers in the target language, so `## Summary` and `## 摘要` and
+    `## Résumé` are all the same line to a reader and unmatchable to a
+    keyword list; matching the shape is the only version of this that works
+    in every language. Four shapes go:
+
+    * lines carrying an arrow — the renderings, tagged or loose, which are
+      parsed into `glossary_lines` and would otherwise be recorded twice and
+      sent again in the seed;
+    * every markdown heading, whatever it says. A heading is navigation for
+      a document, and the seed is not one: its preamble already says what
+      the text under it is, so a header above it introduces nothing;
+    * tag-only lines, which are our fence and not the report;
+    * decorated label lines — the prompt's own section titles read back with
+      emphasis or a trailing colon.
+
+    Then blank runs collapse, so removing a block does not leave a hole.
+    Nothing here judges the reply: what survives is seeded whatever it says.
     """
     if not text:
-        return text
-    blocks = list(_RENDERINGS.finditer(text))
-    # An empty or unparseable block still sends the parse to the loose lines,
-    # so "there were tags" is not the same question as "which lines were read".
-    scanned = parse_handoff_glossary(text).source == "scanned"
-    if not blocks and not scanned:
-        return text.strip()
-
-    parts, cursor = [], 0
-    for block in blocks:
-        parts.append(_drop_introducing_heading(text[cursor : block.start()]))
-        cursor = block.end()
-    parts.append(text[cursor:])
-    without = "".join(parts)
-    if scanned:
-        without = _drop_loose_entry_lines(without)
-    return re.sub(r"\n{3,}", "\n\n", without).strip()
+        return ""
+    kept = []
+    for raw in text.split("\n"):
+        stripped = raw.strip()
+        if _ARROW_SHAPED.search(raw):
+            continue
+        if _HEADING.match(raw) or _TAG_ONLY.match(stripped):
+            continue
+        if _is_block_label(raw):
+            continue
+        kept.append(raw)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
 
 
 # The snapshot file's format, and how a file written by another version is
@@ -930,22 +1041,17 @@ class HandoffReport:
     style_note: str = ""
 
     def has_summary(self) -> bool:
-        """Whether there is a report here at all.
+        """Whether anything at all was left after the renderings came out.
 
-        The compact reply is untrusted: cheap models answer it with nothing,
-        with the prompt back, or with a renderings block and no prose. A
-        report with no summary is not a cheaper handoff, it is a failed one —
-        callers take the failed-compact path rather than seeding a window
-        with boilerplate and overwriting a good snapshot with it.
-
-        Asked of the summary as it will be *stored*, headings and all, which
-        is why a lone `## Summary` does not count: that is what a reply of
-        pure renderings leaves behind once they have been parsed out of it.
-        This is the second of two guards on the same failure (the first is
-        `report_is_usable`, on the raw reply), because the thing it protects
-        — a good snapshot already on disk — cannot be recovered.
+        Emptiness, and strictly emptiness (owner ruling 260913). Whether
+        what is here reads like a summary is not asked and must not be: the
+        reply is never judged for format, so a weak model's junk summary is
+        stored and seeded, bounded by the cap, and corrects itself next
+        window. What is *empty* is a different matter — there is nothing to
+        write, so the snapshot already on disk is worth more than an empty
+        one replacing it, and the next window opens unseeded.
         """
-        return bool(self.summary) and _has_substance(self.summary.splitlines())
+        return bool(self.summary and self.summary.strip())
 
     def seed_text(self, cap_tokens: int = SEED_CAP_TOKENS) -> str:
         """The next window's opening message: the report's summary, capped.
@@ -971,12 +1077,20 @@ class HandoffReport:
         be backwards. The seed can therefore exceed `cap_tokens` by that
         much, which the no-death-loop margin (cap vs MIN_COMPACT_BUDGET)
         covers many times over.
+
+        Empty when there is no summary to introduce — a reply that was
+        nothing but renderings leaves nothing behind once they are parsed
+        out, and the next window then opens the ordinary unseeded way rather
+        than being told to keep faith with a report that is not there.
         """
+        summary = truncate_seed(self.summary, cap_tokens)
+        if not summary.strip():
+            return ""
         return (
             "You are continuing a translation already in progress. "
             "The previous translator left this handoff report; keep names, "
             "terminology and register consistent with it.\n\n"
-            f"{truncate_seed(self.summary, cap_tokens)}"
+            f"{summary}"
         )
 
     def render(self) -> str:
@@ -1016,8 +1130,11 @@ class HandoffReport:
         than a half-written file that neither a person nor `parse_snapshot`
         can read.
 
-        A report with no summary is refused for the same reason, one step
-        earlier: the good snapshot on disk is worth more than a junk one.
+        A report with an EMPTY summary is refused for the same reason, one
+        step earlier: there is nothing to write, and the snapshot already on
+        disk is worth more than a blank one. Emptiness is the whole of the
+        test (owner ruling 260913) — a summary that reads like junk is
+        written, because refusing it would be judging the reply's format.
         """
         path = Path(path)
         if not self.has_summary():

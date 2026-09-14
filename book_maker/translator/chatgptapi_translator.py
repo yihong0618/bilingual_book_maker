@@ -62,12 +62,11 @@ from ..config import config
 from ..glossary import Glossary
 from ..session_context import (
     SEED_MAX_TOKENS,
-    HandoffReport,
     SessionHistory,
+    WindowText,
     compact_budget_for,
     handoff_prompt,
     seed_cap,
-    strip_handoff_glossary,
 )
 
 CHATGPT_CONFIG = config["translator"]["chatgptapi"]
@@ -1134,6 +1133,9 @@ class ChatGPTAPI(Base):
         prompt = handoff_prompt(
             with_glossary=self.glossary_auto_on, with_style=not self.style_note
         )
+        # Captured before the reset, because grounding asks whether a
+        # reported pair is actually in the window being condensed.
+        window = WindowText.from_messages(self.session.messages())
         messages = [
             *self.session.messages(),
             {"role": "user", "content": prompt},
@@ -1155,35 +1157,22 @@ class ChatGPTAPI(Base):
             # budget stays exceeded, so the next unit simply tries again.
             self._compact_failed(e, budget)
             return
-        if not self._usable_report(report_text, prompt):
-            # A 200 carrying no report: empty, whitespace, or the prompt read
-            # back. Resetting the window on that would throw the context away
-            # and seed its replacement with nothing, so it takes the failure
-            # path instead — and the snapshot on disk is left alone.
-            self._compact_failed("the endpoint returned no usable report", budget)
-            return
-
-        report = HandoffReport(
-            window=self.session.windows,
-            # A style the user fixed is handed on verbatim, so it cannot be
-            # eroded window by window by a model re-describing it.
-            style_note=self.style_note,
-            # The renderings block is parsed into `glossary_lines`, so it is
-            # stripped from the prose rather than stored and recorded twice.
-            summary=(
-                strip_handoff_glossary(report_text)
-                if self.glossary_auto_on
-                else report_text.strip()
-            ),
-        )
-        if not report.has_summary():
-            # All renderings and no prose. Checked before anything is learned
-            # or written, so a reply like this leaves neither the glossary nor
-            # the snapshot changed.
-            self._compact_failed("the handoff report carried no summary", budget)
+        if not report_text.strip():
+            # The one thing a compact reply can fail at (owner ruling
+            # 260913): being empty. Resetting the window on nothing would
+            # throw the context away and seed its replacement with nothing,
+            # so it takes the failure path and the snapshot is left alone.
+            # Anything non-empty succeeds — junk, an echo, renderings and no
+            # prose — because the seed is bounded and self-correcting, and
+            # judging the format cost more windows than it ever saved.
+            self._compact_failed("the endpoint returned an empty reply", budget)
             return
         self._compact_failures = 0
-        report.glossary_lines = self._learn_from_handoff(report_text)
+
+        # The renderings are parsed into `glossary_lines` below, so they are
+        # trimmed out of the prose rather than stored and sent twice.
+        report = self._handoff_report(self.session.windows, report_text)
+        report.glossary_lines = self._learn_from_handoff(report_text, window)
         self._show_handoff(report)
         if self.handoff_path:
             try:

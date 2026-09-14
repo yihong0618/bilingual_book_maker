@@ -7,6 +7,7 @@ feature replaces.
 """
 
 import json
+import re
 
 import pytest
 
@@ -129,8 +130,8 @@ class TestHandoffPrompt:
 
     def test_summary_alone_when_the_style_is_fixed(self):
         prompt = handoff_prompt(with_style=False)
-        assert "1." in prompt and "summary" in prompt.lower()
-        assert "2." not in prompt
+        assert "## Summary" in prompt
+        assert "## Style" not in prompt
 
     def test_style_is_requested_by_default(self):
         """Only a user-supplied style turns it off."""
@@ -138,7 +139,7 @@ class TestHandoffPrompt:
 
     def test_style_is_asked_for_when_the_user_has_not_fixed_one(self):
         prompt = handoff_prompt(with_style=True)
-        assert "2." in prompt and "style" in prompt.lower()
+        assert "## Style" in prompt
 
     def test_a_user_style_is_not_asked_for(self):
         """It is already known, so asking wastes output tokens and invites
@@ -151,10 +152,16 @@ class TestHandoffPrompt:
         would follow anyway, which costs a line and says nothing."""
         assert "different from general translation" in handoff_prompt()
 
-    def test_sections_are_numbered_from_one_without_gaps(self):
-        prompt = handoff_prompt(with_style=True)
-        assert prompt.index("1.") < prompt.index("2.")
-        assert "3." not in prompt
+    def test_the_sections_are_shown_in_order_and_never_numbered(self):
+        """Owner ruling 260913: the prompt is a shown template, because
+        models mirror numbering back into the report and a number read back
+        is a line of a capped seed spent on furniture."""
+        prompt = handoff_prompt(with_style=True, with_glossary=True)
+        assert prompt.index("## Summary") < prompt.index("## Style")
+        assert prompt.index("## Style") < prompt.index("## Renderings")
+        assert not [
+            line for line in prompt.splitlines() if re.match(r"^\s{0,3}\d+[.)]\s", line)
+        ]
 
 
 class TestHandoffReport:

@@ -28,7 +28,7 @@ from book_maker.session_context import (
     HandoffReport,
     handoff_prompt,
     parse_handoff_glossary,
-    strip_handoff_glossary,
+    trim_handoff_prose,
 )
 from book_maker.translator import chatgptapi_translator, codex_translator
 from book_maker.translator.chatgptapi_translator import ChatGPTAPI
@@ -37,8 +37,14 @@ from book_maker.translator.codex_translator import Codex
 REPO = Path(__file__).resolve().parent.parent
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "glossary.txt"
 
-# The section only a glossary-learning compact turn asks for.
-RENDERINGS_MARKER = "Established renderings"
+# The section only a glossary-learning compact turn asks for. The header is
+# a protocol token asked for in English whatever the target language is.
+RENDERINGS_MARKER = "## Renderings"
+
+# A unit naming the terms the fixture reports back, so a harvested pair is
+# grounded in the window (owner ruling 260913: a pair with neither end in
+# the text was invented, not observed, and is dropped).
+UNIT = "Boxer and Clover walked to the farm. " + "a" * 200
 
 
 @pytest.fixture
@@ -361,7 +367,7 @@ class TestLearningIsAskedFor:
 class TestLearningFromTheHandoff:
     def test_the_compact_turn_asks_for_renderings(self, tmp_path):
         t = _session(["译文", HANDOFF_WITH_TERMS], handoff_path=tmp_path / "h.md")
-        t.get_translation("a" * 200)
+        t.get_translation(UNIT)
         asked = [c for c in _tails(t) if handoff_prompt()[:40] in c]
         assert asked and RENDERINGS_MARKER in asked[-1]
 
@@ -369,7 +375,7 @@ class TestLearningFromTheHandoff:
         t = _session(
             ["译文", HANDOFF_WITH_TERMS, "译文"], handoff_path=tmp_path / "h.md"
         )
-        t.get_translation("a" * 200)
+        t.get_translation(UNIT)
         t.get_translation("Boxer pulled the cart")
         # the translation request, not the compact turn that follows it: with
         # this budget every unit rolls the window over
@@ -378,13 +384,15 @@ class TestLearningFromTheHandoff:
     def test_the_report_records_them_for_the_operator(self, tmp_path):
         path = tmp_path / "h.md"
         t = _session(["译文", HANDOFF_WITH_TERMS], handoff_path=path)
-        t.get_translation("a" * 200)
-        assert RENDERINGS_MARKER in path.read_text(encoding="utf-8")
+        t.get_translation(UNIT)
+        # the snapshot's own heading, written by us for whoever opens the
+        # file — not the protocol header the prompt asks the model for
+        assert "## Established renderings" in path.read_text(encoding="utf-8")
 
     def test_the_block_is_not_left_in_the_prose_as_well(self, tmp_path):
         path = tmp_path / "h.md"
         t = _session(["译文", HANDOFF_WITH_TERMS], handoff_path=path)
-        t.get_translation("a" * 200)
+        t.get_translation(UNIT)
         assert "<renderings>" not in path.read_text(encoding="utf-8")
 
     def test_an_empty_block_does_not_erase_what_was_learned(self, tmp_path):
@@ -408,7 +416,7 @@ class TestLearningFromTheHandoff:
         path = tmp_path / "h.md"
         empty = "Nothing new this window.\n\n<renderings>\n</renderings>\n"
         t = _session(["译文", HANDOFF_WITH_TERMS, "译文", empty], handoff_path=path)
-        t.get_translation("a" * 200)
+        t.get_translation(UNIT)
         t.get_translation("b" * 200)
         # memory: the empty window added nothing and forgot nothing
         assert t.glossary.lookup("Boxer").translation == "拳击手"
@@ -425,7 +433,7 @@ class TestLearningFromTheHandoff:
             glossary=pinned,
             handoff_path=tmp_path / "h.md",
         )
-        t.get_translation("a" * 200)
+        t.get_translation(UNIT)
         assert t.glossary.lookup("Boxer").translation == "鲍克瑟"
         # and the operator's own set is left exactly as it was read
         assert t.pinned == pinned
@@ -456,7 +464,7 @@ def _assembled(report_text, learned_lines):
     """
     return HandoffReport(
         window=1,
-        summary=strip_handoff_glossary(report_text),
+        summary=trim_handoff_prose(report_text),
         glossary_lines=learned_lines,
     )
 
@@ -477,15 +485,22 @@ class TestTheStripperRemovesExactlyWhatWasParsed:
         assert "<renderings>" not in report.render()
         assert "They walked to the farm." in report.summary
 
-    def test_a_tagged_block_takes_its_own_heading_and_leaves_the_others(self):
+    def test_every_heading_goes_whatever_it_says(self):
+        """Owner ruling 260913: the trim is by shape, not by keyword.
+
+        Models write their section headers in the target language, so a list
+        of English words to recognise is unwinnable — `## 术语表` above a
+        block of arrow lines is the ordinary case, not the exotic one. A
+        heading is furniture for a document, and a seed is not one: its
+        preamble already says what the text under it is.
+        """
         text = (
             "## Summary\n\nThey walked to the farm.\n\n"
-            "### Established renderings\n\n"
+            "## 术语表\n\n"
             "<renderings>\nBoxer → 拳击手\n</renderings>\n"
         )
-        summary = strip_handoff_glossary(text)
-        assert "### Established renderings" not in summary
-        assert "## Summary" in summary
+        summary = trim_handoff_prose(text)
+        assert summary == "They walked to the farm."
 
     def test_loose_lines_leave_the_prose_once(self):
         # the fallback recovers these, and nothing used to remove them: the
@@ -497,24 +512,32 @@ class TestTheStripperRemovesExactlyWhatWasParsed:
         assert report.render().count("Clover → 三叶草") == 1
         assert "Boxer → 拳击手" not in report.seed_text()
         assert "Clover → 三叶草" not in report.seed_text()
-        # the report's own last section is not a glossary heading and stays
-        assert "### Next window" in report.summary
+        # the report's own prose stays; only its headings go with the terms
         assert "The rebellion starts in chapter two." in report.summary
 
     @pytest.mark.parametrize(
-        "report",
+        "report, expected",
         (
-            HANDOFF_WITHOUT_RENDERINGS,
-            # ends on a heading of its own: the stripper deleted the last
-            # heading by position, whether or not a block had been there
-            "They walked to the farm.\n\n### Open questions",
-            # named like a glossary heading, but nothing was established
-            "## Terms\n\nNothing new to keep unified this window.",
+            (
+                HANDOFF_WITHOUT_RENDERINGS,
+                "They walked to the farm.\n\nThe rebellion starts in chapter two.",
+            ),
+            (
+                "They walked to the farm.\n\n### Open questions",
+                "They walked to the farm.",
+            ),
+            (
+                "## Terms\n\nNothing new to keep unified this window.",
+                "Nothing new to keep unified this window.",
+            ),
         ),
     )
-    def test_a_report_that_established_nothing_is_left_alone(self, report):
+    def test_a_report_that_established_nothing_keeps_all_its_prose(
+        self, report, expected
+    ):
+        """Nothing is parsed out of it, so nothing but furniture is removed."""
         assert parse_handoff_glossary(report).source == "missing"
-        assert strip_handoff_glossary(report) == report
+        assert trim_handoff_prose(report) == expected
 
     def test_an_empty_block_does_not_take_the_loose_lines_with_it(self):
         # an empty block sends the parse to the loose lines, so those are
@@ -529,12 +552,12 @@ class TestTheStripperRemovesExactlyWhatWasParsed:
         assert parsed.source == "scanned"
         report = _assembled(text, parsed.glossary.to_lines())
         assert report.render().count("Boxer → 拳击手") == 1
-        assert "### Next window" in report.summary
+        assert "On to chapter two." in report.summary
 
     def test_the_whole_file_carries_each_term_once(self, tmp_path):
         path = tmp_path / "h.md"
         t = _session(["译文", HANDOFF_WITHOUT_TAGS], handoff_path=path)
-        t.get_translation("a" * 200)
+        t.get_translation(UNIT)
         text = path.read_text(encoding="utf-8")
         assert text.count("Boxer → 拳击手") == 1
         assert text.count("Clover → 三叶草") == 1
@@ -550,7 +573,7 @@ class TestTheStripperRemovesExactlyWhatWasParsed:
         t = _session(
             ["译文", HANDOFF_WITHOUT_TAGS, "译文"], handoff_path=tmp_path / "h.md"
         )
-        t.get_translation("a" * 200)
+        t.get_translation(UNIT)
         t.get_translation("Boxer pulled the cart")
         request = "\n".join(
             m["content"] for m in t.sent[-1]["messages"] if m.get("content")
@@ -561,18 +584,20 @@ class TestTheStripperRemovesExactlyWhatWasParsed:
         t = _session(
             ["译文", HANDOFF_WITHOUT_TAGS, "译文"], handoff_path=tmp_path / "h.md"
         )
-        t.get_translation("a" * 200)
+        t.get_translation(UNIT)
         t.get_translation("the windmill stood")
         request = "\n".join(
             m["content"] for m in t.sent[-1]["messages"] if m.get("content")
         )
         assert "Boxer → 拳击手" not in request
 
-    def test_the_codex_path_shares_the_stripper(self):
-        # codex_translator._compact_window assembles the same two halves; it
-        # is fixed by importing the same function, not by a copy of it
-        assert codex_translator.strip_handoff_glossary is strip_handoff_glossary
-        assert chatgptapi_translator.strip_handoff_glossary is strip_handoff_glossary
+    def test_every_route_assembles_the_report_the_same_way(self):
+        # each route's compact path builds its HandoffReport through the one
+        # shared helper, so the split and the trim cannot drift per route
+        from book_maker.translator.base_translator import Base
+
+        assert codex_translator.Codex._handoff_report is Base._handoff_report
+        assert chatgptapi_translator.ChatGPTAPI._handoff_report is Base._handoff_report
 
 
 class TestOffSuppressesTheDerivedGlossary:
@@ -582,7 +607,7 @@ class TestOffSuppressesTheDerivedGlossary:
             glossary_auto=False,
             handoff_path=tmp_path / "h.md",
         )
-        t.get_translation("a" * 200)
+        t.get_translation(UNIT)
         asked = [c for c in _tails(t) if handoff_prompt()[:40] in c]
         assert asked and RENDERINGS_MARKER not in asked[-1]
 
@@ -592,7 +617,7 @@ class TestOffSuppressesTheDerivedGlossary:
             glossary_auto=False,
             handoff_path=tmp_path / "h.md",
         )
-        t.get_translation("a" * 200)
+        t.get_translation(UNIT)
         assert len(t.learned) == 0
         assert not t.glossary
         t.get_translation("Boxer pulled the cart")
@@ -605,7 +630,7 @@ class TestOffSuppressesTheDerivedGlossary:
             glossary_auto=False,
             handoff_path=path,
         )
-        t.get_translation("a" * 200)
+        t.get_translation(UNIT)
         assert RENDERINGS_MARKER not in path.read_text(encoding="utf-8")
 
     def test_the_pinned_block_still_rides_with_the_unit(self, glossary_path, tmp_path):

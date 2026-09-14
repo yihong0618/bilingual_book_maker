@@ -16,8 +16,9 @@ from ..session_context import (
     HandoffReport,
     parse_handoff_glossary,
     parse_snapshot,
-    report_is_usable,
     seed_cap,
+    split_handoff_sections,
+    trim_handoff_prose,
 )
 
 from ..structured import (
@@ -344,7 +345,29 @@ class Base(ABC):
     # from `--glossary-auto` and whether a session is actually open.
     glossary_auto_on = False
 
-    def _learn_from_handoff(self, report_text):
+    def _handoff_report(self, window_number, report_text):
+        """The report a compact reply yields, the same way on every route.
+
+        Split first, trim second: the protocol headers are what tells the
+        summary from the style, and only once they have been read are they
+        furniture the seed does not need (`split_handoff_sections`,
+        `trim_handoff_prose`).
+
+        A style the user fixed via `--prompt` is handed on verbatim and is
+        never overwritten from a reply — the model was not even asked for
+        one in that case, and a standing instruction the model can erode a
+        window at a time would not be standing.
+        """
+        summary, style = split_handoff_sections(
+            report_text, with_style=not self.style_note
+        )
+        return HandoffReport(
+            window=window_number,
+            summary=trim_handoff_prose(summary),
+            style_note=self.style_note or trim_handoff_prose(style),
+        )
+
+    def _learn_from_handoff(self, report_text, window=None):
         """Fold a handoff report's renderings into this run's glossary.
 
         Returns the lines to record in the snapshot — "" when this run is not
@@ -353,11 +376,20 @@ class Base(ABC):
         reaches the seed: since 260913 the seed carries summary and style
         only, and the terms reach the model per unit through
         `Glossary.prompt_block` instead.
+
+        `window` is the text just compacted, and it is what keeps a
+        hallucinated pair out now that the reply is no longer judged for
+        format: a pair with neither end anywhere in the window was not
+        observed, it was invented. Callers pass it; it is optional only so
+        a route that cannot reconstruct its window still learns what the
+        older filters can defend.
         """
         if not self.glossary_auto_on or not report_text:
             return ""
         parsed = parse_handoff_glossary(
-            report_text, target_language=getattr(self, "language", None)
+            report_text,
+            target_language=getattr(self, "language", None),
+            window=window,
         )
         learned, source = parsed.glossary, parsed.source
         if parsed.flipped:
@@ -368,6 +400,18 @@ class Base(ABC):
                 f"[yellow]ℹ the handoff report's renderings: {parsed.flipped} "
                 f"pair(s) were written target-first and have been turned "
                 f"round[/yellow]"
+            )
+        if parsed.ungrounded:
+            # Said separately from `dropped` because it means something
+            # different: not a malformed line, but a well-formed pair whose
+            # term is nowhere in what was just translated. One or two is
+            # ordinary (inflection moves a word out of reach); a whole
+            # report's worth means the model is answering from memory rather
+            # than from the window, which an operator should know.
+            print(
+                f"[yellow]ℹ the handoff report's renderings: "
+                f"{parsed.ungrounded} pair(s) ignored (neither the term nor "
+                f"its rendering appears anywhere in this window)[/yellow]"
             )
         if parsed.dropped:
             # One line per compact, never one per dropped entry: a model that
@@ -515,7 +559,11 @@ class Base(ABC):
         return True
 
     def _compact_failed(self, reason, budget, force_give_up=False):
-        """A compact that came back with no usable report: retry, or start clean.
+        """A compact that produced nothing: retry, or start clean.
+
+        Nothing, in the literal sense (owner ruling 260913): the request
+        raised, or the reply was empty. A reply that merely disappoints is
+        not a failure — it is trimmed, capped and seeded like any other.
 
         Keeping the window is the default, and the reason the retry exists:
         one rate-limited or dropped request is not grounds for throwing away a
@@ -562,15 +610,6 @@ class Base(ABC):
             # forever on a persistently failing endpoint.
             self._compact_failures = 0
             self.session.reset(seed="")
-
-    def _usable_report(self, report_text, prompt):
-        """Whether this compact reply is a report; see `report_is_usable`.
-
-        A method so every session route asks the same question the same way,
-        and so a route with its own idea of an unusable answer has somewhere
-        to say so.
-        """
-        return report_is_usable(report_text, prompt)
 
     def _start_empty_window(self):
         """Roll over with no handoff report, because the user asked for none.
