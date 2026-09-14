@@ -209,24 +209,20 @@ def _paragraphs(text):
     return rows if isinstance(rows, list) else None
 
 
-class CaptureEndpoint:
-    """A running endpoint plus the bodies it was sent."""
+class CapturedRequests:
+    """The bodies an endpoint was sent, after it has stopped listening.
 
-    def __init__(self, mode="schema"):
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
-        self.server.requests = []
-        self.server.mode = mode
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-        self.thread.start()
+    Reading is all these tests do with an endpoint once the run is over, so
+    a finished run can be handed round as one of these — see
+    `shared_capture`.
+    """
 
-    @property
-    def api_base(self):
-        host, port = self.server.server_address[:2]
-        return f"http://{host}:{port}/v1"
+    def __init__(self, requests):
+        self._requests = list(requests)
 
     @property
     def requests(self):
-        return list(self.server.requests)
+        return list(self._requests)
 
     def translation_requests(self):
         """Every request that carried book text.
@@ -255,6 +251,39 @@ class CaptureEndpoint:
                     out.append(message.get("content") or "")
                     break
         return out
+
+
+class SharedCapture(CapturedRequests):
+    """A finished run: what it was sent, and what it printed."""
+
+    def __init__(self, proc, requests):
+        super().__init__(requests)
+        self.proc = proc
+
+    @property
+    def stdout(self):
+        return self.proc.stdout
+
+
+class CaptureEndpoint(CapturedRequests):
+    """A running endpoint plus the bodies it was sent."""
+
+    def __init__(self, mode="schema"):
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        self.server.requests = []
+        self.server.mode = mode
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    @property
+    def api_base(self):
+        host, port = self.server.server_address[:2]
+        return f"http://{host}:{port}/v1"
+
+    @property
+    def requests(self):
+        # live, unlike the base class's frozen copy
+        return list(self.server.requests)
 
     def close(self):
         self.server.shutdown()
@@ -332,6 +361,39 @@ def _run(endpoint, tmp_path, *args, expect_ok=True, language=CLI_LANGUAGE):
     return proc
 
 
+@pytest.fixture(scope="session")
+def shared_capture(tmp_path_factory):
+    """One run per distinct command line, for the tests that only read it.
+
+    A `_run` here is a real subprocess against a real endpoint — ~1.5s,
+    most of it the provider SDKs the CLI imports — and several command
+    lines below were typed out a second and a third time so that each
+    assertion could have its own test. The tests stay separate; the
+    subprocess stops being. Only a command line with no per-test file in it
+    can be shared, which is why the `--prompt` and `--glossary` tests below
+    still run their own.
+    """
+    cache = {}
+
+    def run(*args, language=CLI_LANGUAGE):
+        key = (args, language)
+        if key not in cache:
+            endpoint = CaptureEndpoint()
+            try:
+                proc = _run(
+                    endpoint,
+                    tmp_path_factory.mktemp("capture"),
+                    *args,
+                    language=language,
+                )
+                cache[key] = SharedCapture(proc, endpoint.requests)
+            finally:
+                endpoint.close()
+        return cache[key]
+
+    return run
+
+
 # Plan mode over the whole partition: no classification requests, so every
 # captured body is a translation request and the structured batch path is the
 # one under test.
@@ -355,9 +417,8 @@ def _prompt(tmp_path, **sections):
 
 
 class TestTheDefaultPrompt:
-    def test_the_default_prompt_arrives_filled_in(self, endpoint, tmp_path):
-        _run(endpoint, tmp_path, *LEGACY)
-        sent = endpoint.user_messages()
+    def test_the_default_prompt_arrives_filled_in(self, shared_capture):
+        sent = shared_capture(*LEGACY).user_messages()
         assert sent, "the run made no translation request"
         for text in sent:
             # the default template, with the language substituted
@@ -367,13 +428,13 @@ class TestTheDefaultPrompt:
             assert "{language}" not in text
             assert "{crlf}" not in text
 
-    def test_a_default_run_has_no_style_and_no_custom_system(self, endpoint, tmp_path):
-        _run(endpoint, tmp_path, *LEGACY)
-        for text in endpoint.user_messages():
+    def test_a_default_run_has_no_style_and_no_custom_system(self, shared_capture):
+        run = shared_capture(*LEGACY)
+        for text in run.user_messages():
             assert ChatGPTAPI.STYLE_HEADING not in text
         # `$OPENAI_API_SYS_MSG` is unset and no --prompt was given, so the
         # system message carries nothing of the operator's.
-        assert all(text == "" for text in endpoint.system_messages())
+        assert all(text == "" for text in run.system_messages())
 
 
 # ------------------------------------------------- the sections, in each mode
@@ -468,10 +529,10 @@ def glossary_file(tmp_path):
 
 class TestTheGlossaryBlock:
     @pytest.mark.parametrize("flags", [LEGACY, PLAN], ids=["legacy", "plan"])
-    def test_no_glossary_flag_sends_no_block(self, endpoint, tmp_path, flags):
-        _run(endpoint, tmp_path, *flags)
-        assert endpoint.user_messages()
-        assert all("<glossary>" not in t for t in endpoint.user_messages())
+    def test_no_glossary_flag_sends_no_block(self, shared_capture, flags):
+        sent = shared_capture(*flags).user_messages()
+        assert sent
+        assert all("<glossary>" not in t for t in sent)
 
     def test_the_block_rides_only_with_a_request_carrying_the_term(
         self, endpoint, tmp_path, glossary_file
@@ -615,12 +676,10 @@ class TestTheRunAnnouncesWhatItAdopted:
             "your `{text}` carries the batch JSON on a grouped request)" in out
         ), proc.stdout
 
-    def test_a_run_without_the_flag_says_nothing_about_prompts(
-        self, endpoint, tmp_path
-    ):
-        proc = _run(endpoint, tmp_path, *LEGACY)
-        assert "from --prompt" not in proc.stdout
-        assert "prompt config" not in proc.stdout
+    def test_a_run_without_the_flag_says_nothing_about_prompts(self, shared_capture):
+        out = shared_capture(*LEGACY).stdout
+        assert "from --prompt" not in out
+        assert "prompt config" not in out
 
 
 # ------------------------------------------------- the tag / name split
@@ -637,20 +696,19 @@ class TestTheLanguageSplit:
 
     PINNED = "zh-hant:Traditional Chinese"
 
-    def test_the_name_is_what_the_model_is_asked_for(self, endpoint, tmp_path):
-        _run(endpoint, tmp_path, *PLAN, language=self.PINNED)
-        sent = endpoint.user_messages()
+    def test_the_name_is_what_the_model_is_asked_for(self, shared_capture):
+        sent = shared_capture(*PLAN, language=self.PINNED).user_messages()
         assert sent, "the run made no translation request"
         for text in sent:
             assert "Traditional Chinese" in text
             # the tag is a stamp, not something to say to a model
             assert "zh-hant" not in text
 
-    def test_the_tag_is_what_the_structured_field_is_named(self, endpoint, tmp_path):
-        _run(endpoint, tmp_path, *PLAN, language=self.PINNED)
+    def test_the_tag_is_what_the_structured_field_is_named(self, shared_capture):
+        run = shared_capture(*PLAN, language=self.PINNED)
         schemas = [
             (body.get("response_format") or {}).get("json_schema") or {}
-            for body in endpoint.translation_requests()
+            for body in run.translation_requests()
         ]
         named = [schema for schema in schemas if schema.get("name")]
         assert named, "no structured request was sent"
@@ -664,15 +722,12 @@ class TestTheLanguageSplit:
             assert single_field_name("zh-hant") in item_props
             assert "zh_hant_translation" in item_props
 
-    def test_a_bare_language_keeps_the_field_name_it_always_had(
-        self, endpoint, tmp_path
-    ):
+    def test_a_bare_language_keeps_the_field_name_it_always_had(self, shared_capture):
         """The compatibility half of the split: nothing about a command line
         that does not use it may move."""
-        _run(endpoint, tmp_path, *PLAN)
         named = [
             (body.get("response_format") or {}).get("json_schema") or {}
-            for body in endpoint.translation_requests()
+            for body in shared_capture(*PLAN).translation_requests()
         ]
         named = [schema for schema in named if schema.get("name")]
         assert named, "no structured request was sent"
@@ -698,7 +753,6 @@ class TestTheSourceLanguageEvidence:
         for text in said:
             assert "Translate from english" in text
 
-    def test_auto_states_nothing(self, endpoint, tmp_path):
-        _run(endpoint, tmp_path, *PLAN)
-        for text in endpoint.system_messages():
+    def test_auto_states_nothing(self, shared_capture):
+        for text in shared_capture(*PLAN).system_messages():
             assert "Translate from" not in text

@@ -32,11 +32,11 @@ from ..codex_client import (
 )
 from ..glossary import Glossary
 from ..session_context import (
-    HandoffReport,
+    WindowText,
     compact_budget_for,
     estimate_tokens,
     handoff_prompt,
-    strip_handoff_glossary,
+    seed_cap,
 )
 from .base_translator import Base
 
@@ -228,6 +228,10 @@ class Codex(Base):
         self._question_threads = {}
         self._window = 1
         self._window_tokens = 0
+        # This window's texts, our only copy of a thread that lives in the
+        # sidecar. Read once per compaction, to ground what it reports.
+        self._window_sources = []
+        self._window_translations = []
         self._turn_lock = Lock()
         self._last_remaining = None
         self._sleep = kwargs.pop("sleeper", time.sleep)
@@ -414,9 +418,11 @@ class Codex(Base):
         """Whether this run learns renderings from its own handoff reports.
 
         The thread is always the history here, so there is always a compact
-        turn to learn from: this route is on unless `--glossary-auto off`.
+        turn to learn from — but since 260913 that is not reason enough: the
+        section costs output on every compaction and needs a model that
+        answers it with names, so this route waits to be asked too.
         """
-        return self.glossary_auto is not False
+        return self.glossary_auto is True
 
     def _budget(self):
         """How many estimated tokens a thread may carry before it rolls over."""
@@ -431,45 +437,50 @@ class Codex(Base):
         one turn where re-reading the whole window earns its cost, because it
         is being turned into the thing that replaces it.
         """
+        prompt = handoff_prompt(
+            with_glossary=self.glossary_auto_on,
+            with_style=not self.style_note,
+        )
         try:
-            report_text = self._run_turn(
-                self._thread_id,
-                handoff_prompt(
-                    with_glossary=self.glossary_auto_on,
-                    with_style=not self.style_note,
-                ),
-            )
+            report_text = self._run_turn(self._thread_id, prompt)
         except CodexTurnFailed as e:
             print(
                 f"[yellow]ℹ handoff report failed ({e}); starting the next "
                 f"codex thread without a summary[/yellow]"
             )
             report_text = ""
-
-        glossary_lines = self._learn_from_handoff(report_text)
-
-        report = HandoffReport(
-            window=self._window,
-            style_note=self.style_note,
-            # Same as the API path: the renderings block is parsed into
-            # `glossary_lines`, so keeping it in the prose too would write
-            # every term twice.
-            summary=(
-                strip_handoff_glossary(report_text)
-                if self.glossary_auto_on
-                else report_text.strip()
-            ),
-            glossary_lines=glossary_lines,
-        )
-        if report_text:
+        window = WindowText.of(self._window_sources, self._window_translations)
+        # Same as the API path: split, trimmed by shape, never judged — a
+        # reply is only refused for being empty (owner ruling 260913), and on
+        # this route an empty reply is already the rollover shape below.
+        report = self._handoff_report(self._window, report_text)
+        # Learning is not gated on the summary, the way the API routes do not
+        # gate it either: a reply that is nothing but a renderings block still
+        # observed those renderings, and dropping them because the prose was
+        # missing loses the one part of it that parsed. Writing the snapshot
+        # IS gated below — a report with no summary would overwrite a good
+        # one on disk with an empty seed.
+        report.glossary_lines = self._learn_from_handoff(report_text, window)
+        if report.has_summary():
             self._show_handoff(report)
-        if self.handoff_path and report_text:
-            report.append_to(self.handoff_path)
+            if self.handoff_path:
+                try:
+                    report.write_snapshot(self.handoff_path)
+                except OSError as e:
+                    # The units in this thread are already translated and
+                    # billed; a file that could not be written is not worth
+                    # losing them over.
+                    print(
+                        f"[yellow]ℹ could not write {self.handoff_path} ({e}); "
+                        f"the run continues without a saved handoff[/yellow]"
+                    )
 
         self._window += 1
         self._window_tokens = 0
+        self._window_sources = []
+        self._window_translations = []
         self._thread_id = None
-        self._ensure_thread(seed=report.seed_text() if report_text else "")
+        self._ensure_thread(seed=report.seed_text(seed_cap(self._budget())))
 
     def _start_empty_thread(self):
         """Roll over with no handoff report, because the user asked for none.
@@ -480,6 +491,8 @@ class Codex(Base):
         """
         self._window += 1
         self._window_tokens = 0
+        self._window_sources = []
+        self._window_translations = []
         self._thread_id = None
         self._ensure_thread(seed="")
         if self.quiet:
@@ -526,6 +539,12 @@ class Codex(Base):
             self._report_quota()
 
             self._window_tokens += estimate_tokens(text) + estimate_tokens(translated)
+            # The thread itself lives in the sidecar, so this is the only
+            # copy of the window's text on our side — and grounding a
+            # harvested rendering needs one. Cleared on every rollover, so
+            # it holds at most a window's worth.
+            self._window_sources.append(text)
+            self._window_translations.append(translated)
             if self._window_tokens >= self._budget():
                 if self.no_context_compact:
                     self._start_empty_thread()

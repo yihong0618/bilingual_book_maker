@@ -28,26 +28,49 @@ DOC = Path(__file__).resolve().parents[1] / "docs/260829-refactor-PROMPTS_FOR_RE
 
 _PREAMBLE = (
     "Context is compacting. Summarize content you translated so far in your "
-    "context for brief reference of later translations."
+    "context for brief reference of later translations. Reply in exactly "
+    "this shape, keeping the English headers verbatim:"
 )
 
+# Shown as a template, not described in a numbered list: models mirror
+# numbering back into the report, and the headers are protocol tokens asked
+# for in English whatever the book's target language is.
 _SUMMARY = (
-    "Summary - of translated content above. What happened, who was involved, "
-    "when did those happen."
+    "## Summary\n"
+    "\n"
+    "What happened in the content above, who was involved, when did those "
+    "happen."
 )
 
 _STYLE = (
-    "Style — up to 3 lines of what translation style is used so far. Only "
-    "note down what's different from general translation."
+    "## Style\n"
+    "\n"
+    "Up to 3 lines of what translation style is used so far. Only note down "
+    "what's different from general translation."
 )
 
 
 _RENDERINGS = (
-    "Established renderings — nouns we need to keep unified that are **not "
-    "already listed above**. If none are new, emit an empty block. One per "
-    "line as `term → translation # note` (the note is optional). Wrap the "
-    "list in <renderings> and </renderings> tags so its start and end are "
-    "unambiguous. This is the only place term equivalences belong."
+    "## Renderings\n"
+    "\n"
+    "<renderings>\n"
+    "term → translation # note\n"
+    "</renderings>\n"
+    "\n"
+    "At most 16 names from the passages above whose rendering is new or has "
+    "changed, one per line inside those tags, source term on the left and "
+    "the note optional. Never repeat an entry you have already reported. If "
+    "there are none, emit an empty block. This is the only place term "
+    "equivalences belong."
+)
+
+# The size the report is asked to hold to — layer (a) of the seed bound. The
+# number is `SEED_TARGET_TOKENS`, spelled out here so a change to it has to
+# be read as a change to the prompt.
+_SIZE = (
+    "Keep the whole report under about 300 tokens (roughly 225 words). It is "
+    "read as the opening of the next context window, not by a person; "
+    "anything past that is cut off."
 )
 
 _GLOSSARY_BLOCK_TAIL = "Use these translations verbatim in your translation."
@@ -84,8 +107,7 @@ def _batch_tail() -> str:
 
 
 def _compact(*sections: str) -> str:
-    numbered = [f"{n}. {body}" for n, body in enumerate(sections, start=1)]
-    return "\n\n".join([_PREAMBLE, *numbered])
+    return "\n\n".join([_PREAMBLE, *sections, _SIZE])
 
 
 # Every prompt, exactly as sent. Keyed by a label that names the case.
@@ -101,9 +123,8 @@ EXPECTED = {
         handoff_prompt(with_style=False),
         _compact(_SUMMARY),
     ),
-    # A run that learns its own renderings asks for one more section. It is
-    # the last one, so a fixed style does not leave it numbered "3." in a
-    # two-section request.
+    # A run that learns its own renderings asks for one more section. A
+    # section that is not asked for simply leaves no header behind.
     "compact (glossary)": (
         handoff_prompt(with_glossary=True),
         _compact(_SUMMARY, _STYLE, _RENDERINGS),

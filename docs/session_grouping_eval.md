@@ -124,7 +124,7 @@ C* = √( 2·g·(F_h + π_o·K) / c_h )
 
 ## 5. Results
 
-![cost vs the two parameters](img/session-cost-curves.png)
+![cost vs the two parameters](img/session-cost-curves.webp)
 
 **C — a shallow bowl with one steep wall, on the long side.** Total
 price-weighted cost per book:
@@ -201,7 +201,7 @@ unit count to 128 and B across 1600–4800, on a deliberately weak model
 (`gpt-5.4-mini`) with a stronger default as cross-check, every cell
 read back from the produced epub rather than trusted from its log.
 
-![fault rate and retry cost vs units and budget](img/fault-emergence.png)
+![fault rate and retry cost vs units and budget](img/fault-emergence.webp)
 
 - **First content fault at 64 effective units per request**, literary
   prose only (9.4% of units on one book); the other three books were
@@ -271,7 +271,7 @@ the request budget from its own prompt overhead, and pins the rest.
   retries first, faults later, so the cap is the knob to lower and the
   budget is not:
 
-  ![retry overhead vs effective units per request on gpt-4o-mini and deepseek-chat](img/retry_overhead_vs_units.png)
+  ![retry overhead vs effective units per request on gpt-4o-mini and deepseek-chat](img/retry_overhead_vs_units.webp)
 
   A caveat that belongs to model choice rather than to any knob here:
   DeepSeek compresses aggressively at every unit cap and budget
@@ -279,7 +279,7 @@ the request budget from its own prompt overhead, and pins the rest.
   0.31–0.35), so short translations on that model are the model, not a
   grouping fault:
 
-  ![per-cell median zh/en ratio and heavily-compressed slot counts](img/compression_ratio.png)
+  ![per-cell median zh/en ratio and heavily-compressed slot counts](img/compression_ratio.webp)
 - **`--accumulated_num`**: leave unset (the derived band — see the
   superseding note below for the shipped numbers).
   The whole 1600–4800 range measured fault-free at the 32-unit cap —

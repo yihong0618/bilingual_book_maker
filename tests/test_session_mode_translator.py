@@ -221,8 +221,22 @@ class TestCompact:
             handoff_path=path,
         )
         t.get_translation("a" * 200)
-        t.get_translation("b" * 200)
         assert "they walked" in path.read_text(encoding="utf-8")
+
+    def test_the_file_holds_the_latest_report_only(self, tmp_path):
+        """Since 260913 it is a snapshot, not a log: a second compaction
+        replaces the first rather than appending to it, so the file stays the
+        size of one handoff however long the book is."""
+        path = tmp_path / "book_handoff.md"
+        t = _translator(
+            ["译文", "Summary: they walked.", "译文", "Summary: they rested."],
+            context_compact_at=10,
+            handoff_path=path,
+        )
+        t.get_translation("a" * 200)
+        t.get_translation("b" * 200)
+        body = path.read_text(encoding="utf-8")
+        assert "they rested" in body and "they walked" not in body
 
     def test_no_compact_in_window_mode(self, tmp_path):
         t = _translator(["译文"] * 4, context_mode="window", context_compact_at=10)
@@ -624,16 +638,34 @@ class TestAFixedStyleRidesTheWindowStart:
     def test_the_next_window_still_carries_it(self):
         t = _translator(
             replies=["译一", "Summary of window one.", "译二"],
-            context_compact_at=500,
+            context_compact_at=1500,
             style_note=self.STYLE,
         )
-        t.translate("a" * 4000, False)
+        t.translate("a" * 8000, False)
         t.translate("b" * 10, False)
         assert t.session.windows == 2
         # the request after the rollover: its history is the seed, and the
         # style is where it always was
         assert self.STYLE in t.sent[-1]["messages"][0]["content"]
         assert all(self.STYLE not in m["content"] for m in t.sent[-1]["messages"][1:])
+
+    def test_the_seed_does_not_repeat_it(self):
+        """Including the seam's own seed, which is a user turn like any
+        other. The style is on the standing channel for the new window
+        already, and the handoff file has it verbatim; a copy here would be
+        the same instruction in two places, one of which the hard seed cap
+        can cut in half."""
+        t = _translator(
+            replies=["译一", "Summary of window one.", "译二"],
+            context_compact_at=1500,
+            style_note=self.STYLE,
+        )
+        t.translate("a" * 8000, False)
+        t.translate("b" * 10, False)
+        seed = t.sent[-1]["messages"][1]["content"]
+        assert "continuing a translation" in seed
+        assert "Summary of window one." in seed
+        assert self.STYLE not in seed
 
     def test_the_model_is_not_asked_for_a_style_it_was_given(self):
         t = _translator(
@@ -658,4 +690,4 @@ class TestAFixedStyleRidesTheWindowStart:
         t.translate("b" * 10, False)
         # the model was never asked to describe a style, so the section the
         # report shows is the operator's own words, unedited
-        assert f"### Style\n\n{self.STYLE}" in path.read_text(encoding="utf-8")
+        assert f"## Style\n\n{self.STYLE}" in path.read_text(encoding="utf-8")

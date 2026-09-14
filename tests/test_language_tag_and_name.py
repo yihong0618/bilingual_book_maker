@@ -361,6 +361,25 @@ def _translate(tmp_path, language):
     return package, document
 
 
+@pytest.fixture(scope="session")
+def translated(tmp_path_factory):
+    """One run per language asked for, shared by the tests that read it.
+
+    `_translate` is a subprocess, and nearly all of its ~2.7s is the
+    provider SDKs the CLI imports on the way to a book of two paragraphs.
+    Both halves of the stamp are read off the same written file, so the two
+    sites below are two assertions about one run, not two runs.
+    """
+    cache = {}
+
+    def run(language):
+        if language not in cache:
+            cache[language] = _translate(tmp_path_factory.mktemp("lang"), language)
+        return cache[language]
+
+    return run
+
+
 class TestTheStamp:
     """What lands in the file is the tag, never the name a model was given.
 
@@ -369,15 +388,15 @@ class TestTheStamp:
     on each inserted paragraph (`stamp_translation`).
     """
 
-    def test_a_pinned_tag_is_what_the_book_declares(self, tmp_path):
-        package, document = _translate(tmp_path, "zh-hant:Traditional Chinese")
+    def test_a_pinned_tag_is_what_the_book_declares(self, translated):
+        package, document = translated("zh-hant:Traditional Chinese")
 
         declared = re.findall(r"<dc:language>([^<]*)</dc:language>", package)
         assert declared[0] == "zh-hant"
         assert "Traditional Chinese" not in package
 
-    def test_a_pinned_tag_is_what_the_inserted_markup_carries(self, tmp_path):
-        package, document = _translate(tmp_path, "zh-hant:Traditional Chinese")
+    def test_a_pinned_tag_is_what_the_inserted_markup_carries(self, translated):
+        package, document = translated("zh-hant:Traditional Chinese")
 
         assert 'lang="zh-hant"' in document
         assert "Traditional Chinese" not in document

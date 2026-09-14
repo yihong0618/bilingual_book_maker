@@ -1146,6 +1146,23 @@ class EPUBBookLoader(BaseBookLoader):
         route = "substrict" if request_budget is not None else self._partition_route()
         print(plan_budget_notice(self._prompt_overhead(), route))
 
+    def _restore_session_handoff(self):
+        """Seed a resumed session from the handoff the interrupted run left.
+
+        Once per run, and only when every gate is open: `--resume` was asked
+        for, this run is a session (`--use_context session` — the codex route
+        is excluded because its thread does not survive the process, which
+        the CLI already says), and the translator finds a readable snapshot.
+        A `<book>_handoff.md` sitting beside a book is otherwise inert: a
+        fresh run, or a windowed one, must translate exactly as it would have
+        if the file were not there.
+        """
+        if not self.resume or self.context_mode != "session":
+            return
+        restore = getattr(self.translate_model, "restore_session_handoff", None)
+        if restore is not None:
+            restore()
+
     def _narrate_session_compact_budget(self):
         """Say once what window this session run compacts at.
 
@@ -3791,6 +3808,10 @@ class EPUBBookLoader(BaseBookLoader):
         # checkpoint written into another language (or under another prompt,
         # or by another model) is not this run's to continue.
         self._check_resume_run_fingerprint()
+        # And after it, never before: the fingerprint is what says this
+        # checkpoint is this run's to continue, so a handoff left beside the
+        # book must not seed anything until that has been agreed.
+        self._restore_session_handoff()
         self.helper = EPUBBookLoaderHelper(
             self.translate_model,
             self.accumulated_num,

@@ -4,13 +4,22 @@ import threading
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from rich import print
 from rich.markup import escape
 
 from ..glossary import Glossary
 from ..redaction import redact, remember
-from ..session_context import parse_handoff_glossary
+from ..session_context import (
+    GLOSSARY_MAX_PER_COMPACT,
+    HandoffReport,
+    parse_handoff_glossary,
+    parse_snapshot,
+    seed_cap,
+    split_handoff_sections,
+    trim_handoff_prose,
+)
 
 from ..structured import (
     extract_json_object,
@@ -336,16 +345,113 @@ class Base(ABC):
     # from `--glossary-auto` and whether a session is actually open.
     glossary_auto_on = False
 
-    def _learn_from_handoff(self, report_text):
+    # The style the run's own handoff reports observed, when the operator
+    # fixed none. Declared here so every route answers it, including the ones
+    # that never compact. It is a run artefact, never an instruction the
+    # operator gave: `style_note` (from `--prompt`) always wins, and nothing
+    # here can overwrite it. It changes only where a report is assembled —
+    # a seam, where the window resets anyway — so the standing instructions
+    # stay byte-identical for the life of a window and the cached prefix is
+    # never invalidated mid-window.
+    handoff_style = ""
+
+    def _handoff_report(self, window_number, report_text):
+        """The report a compact reply yields, the same way on every route.
+
+        Split first, trim second: the protocol headers are what tells the
+        summary from the style, and only once they have been read are they
+        furniture the seed does not need (`split_handoff_sections`,
+        `trim_handoff_prose`).
+
+        A style the user fixed via `--prompt` is handed on verbatim and is
+        never overwritten from a reply — the model was not even asked for
+        one in that case, and a standing instruction the model can erode a
+        window at a time would not be standing.
+
+        Otherwise the reply's style is *adopted*, here, because this is the
+        one place every route assembles a report. Before the sections were
+        split apart the observed style rode the seed inside the summary, so
+        the next window read it; once split it was written to the snapshot
+        and nowhere else, which made it write-only. `handoff_style` is the
+        channel it goes back on (`style_section`), and the newest report
+        replaces the previous one outright — a style is a description of how
+        this book is being translated, not a list to accumulate. A report
+        that says nothing about style leaves the standing one alone, the way
+        an empty renderings block leaves the glossary alone.
+        """
+        summary, style = split_handoff_sections(
+            report_text, with_style=not self.style_note
+        )
+        if not self.style_note:
+            self.handoff_style = trim_handoff_prose(style) or self.handoff_style
+        return HandoffReport(
+            window=window_number,
+            summary=trim_handoff_prose(summary),
+            # The snapshot records the style that is actually standing, so a
+            # resume restores what this run was translating under — not just
+            # whatever the final window happened to mention.
+            style_note=self.style_note or self.handoff_style,
+        )
+
+    def _learn_from_handoff(self, report_text, window=None):
         """Fold a handoff report's renderings into this run's glossary.
 
-        Returns the lines to record in the report — "" when this run is not
+        Returns the lines to record in the snapshot — "" when this run is not
         learning, so a route that never asked for the section cannot acquire
-        terms from prose that happens to contain an arrow.
+        terms from prose that happens to contain an arrow. Nothing here
+        reaches the seed: since 260913 the seed carries summary and style
+        only, and the terms reach the model per unit through
+        `Glossary.prompt_block` instead.
+
+        `window` is the text just compacted, and it is what keeps a
+        hallucinated pair out now that the reply is no longer judged for
+        format: a pair with neither end anywhere in the window was not
+        observed, it was invented. Callers pass it; it is optional only so
+        a route that cannot reconstruct its window still learns what the
+        older filters can defend.
         """
         if not self.glossary_auto_on or not report_text:
             return ""
-        learned, source = parse_handoff_glossary(report_text)
+        parsed = parse_handoff_glossary(
+            report_text,
+            target_language=getattr(self, "language", None),
+            window=window,
+        )
+        learned, source = parsed.glossary, parsed.source
+        if parsed.flipped:
+            # Not a warning: the pairs were recovered, not lost. Said anyway,
+            # because a model writing its renderings backwards is worth
+            # knowing about even when we can straighten them out.
+            print(
+                f"[yellow]ℹ the handoff report's renderings: {parsed.flipped} "
+                f"pair(s) were written target-first and have been turned "
+                f"round[/yellow]"
+            )
+        if parsed.ungrounded:
+            # Said separately from `dropped` because it means something
+            # different: not a malformed line, but a well-formed pair whose
+            # term is nowhere in what was just translated. One or two is
+            # ordinary (inflection moves a word out of reach); a whole
+            # report's worth means the model is answering from memory rather
+            # than from the window, which an operator should know.
+            print(
+                f"[yellow]ℹ the handoff report's renderings: "
+                f"{parsed.ungrounded} pair(s) ignored (neither the term nor "
+                f"its rendering appears anywhere in this window)[/yellow]"
+            )
+        if parsed.dropped:
+            # One line per compact, never one per dropped entry: a model that
+            # answers the section with a page of prose would otherwise print
+            # a page of warnings. Degraded, not broken — whatever did parse is
+            # kept — but said out loud, because silently it looks like a book
+            # with few recurring names.
+            print(
+                f"[yellow]ℹ the handoff report's renderings: {parsed.dropped} "
+                f"line(s) ignored (not a `term → translation` pair, a term "
+                f"rendered as itself, a choice of renderings rather than one, "
+                f"or past the {GLOSSARY_MAX_PER_COMPACT} this run takes from "
+                f"one report)[/yellow]"
+            )
         if source == "scanned":
             # The block is what makes this parseable; say so rather than let a
             # quietly degraded recovery look like a clean one.
@@ -359,20 +465,37 @@ class Base(ABC):
                 "[yellow]ℹ the handoff report established no new "
                 "renderings; this window adds no learned terms[/yellow]"
             )
-        if not learned:
+        # Client-side deduplication, which replaced the compact prompt's "not
+        # already listed above" when the glossary left the seed: the model is
+        # no longer shown what it established earlier, so it re-emits terms,
+        # and only what is new or *changed* is worth acting on.
+        fresh = Glossary(
+            [
+                entry
+                for entry in learned.entries
+                if (known := (self.learned or Glossary()).lookup(entry.term)) is None
+                or known.translation != entry.translation
+            ]
+        )
+        if not fresh:
             # Nothing new this window. The vocabulary earlier windows
-            # established still holds — an empty block means "no additions",
-            # so the merged glossary keeps riding the seed instead of
-            # vanishing from it.
+            # established still holds — an empty block (or one that repeats
+            # what is known) means "no additions", so the merged glossary
+            # keeps being recorded instead of vanishing from the snapshot.
             return self.glossary.to_lines() if self.glossary else ""
         # This window's reading wins over earlier ones: the model has seen
         # more of the book than it had last time. Then the operator's pins are
         # laid over the top, so a term they chose never drifts, while
         # everything else keeps improving.
-        self.learned, _ = learned.merge(self.learned or Glossary())
+        self.learned, _ = fresh.merge(self.learned or Glossary())
         self.glossary, conflicts = (self.pinned or Glossary()).merge(self.learned)
         for conflict in conflicts:
-            print(f"[yellow]ℹ glossary conflict — {conflict.describe()}[/yellow]")
+            # Only what *this* window asserted. Without the seed to tell it
+            # otherwise the model re-emits its renderings every window, so a
+            # term that disagrees with a pin would otherwise be reported once
+            # per compaction for the rest of the book.
+            if fresh.lookup(conflict.term) is not None:
+                print(f"[yellow]ℹ glossary conflict — {conflict.describe()}[/yellow]")
         return self.glossary.to_lines()
 
     # ---- session mode ------------------------------------------------------
@@ -408,6 +531,119 @@ class Base(ABC):
             self._start_empty_window()
         else:
             self._compact_session()
+
+    def restore_session_handoff(self, path=None):
+        """Open this run's first window on what the interrupted one handed off.
+
+        `--resume` picks the book up where a stopped run left it, and until
+        now it picked up the *text* only: the session started empty, so the
+        first chapters of the resumed half were translated with none of the
+        terminology or register the first half established. The snapshot
+        beside the book is exactly that context, so it is read back here —
+        the summary seeds window one, and the window counter continues from
+        where the snapshot stopped rather than restarting at 1, so the
+        printed seams keep counting up across the interruption.
+
+        The learned renderings come back only when this run is also learning
+        them (`--glossary-auto on`): they are that flag's artefact, and a run
+        that did not ask for a derived glossary must not acquire one from a
+        file on disk. The operator's pins stay on top either way.
+
+        Returns True when something was restored. Every gate is the caller's
+        (`--resume`, session mode) except the two that are this object's own
+        business: whether there is a session at all, and whether the file
+        holds a snapshot this version can read.
+        """
+        session = getattr(self, "session", None)
+        path = path or getattr(self, "handoff_path", None)
+        if session is None or not path:
+            return False
+        snapshot = parse_snapshot(path)
+        if snapshot is None:
+            return False
+        report = HandoffReport(
+            window=snapshot.window,
+            summary=snapshot.summary,
+            style_note=snapshot.style_note,
+        )
+        budget = self._session_budget() if hasattr(self, "_session_budget") else 0
+        session.reset(seed=report.seed_text(seed_cap(budget)))
+        session.windows = snapshot.window + 1
+        # The style the stopped run was translating under, back on the
+        # standing channel — not just into the snapshot it came from. Gated
+        # exactly like the summary (session + `--resume`), never like the
+        # glossary: a style is how the book reads, not a derived vocabulary
+        # the operator has to opt into. A `--prompt` style still wins, so a
+        # resume can be given a new one without the file arguing back.
+        if not getattr(self, "style_note", None) and snapshot.style_note:
+            self.handoff_style = snapshot.style_note
+        print(
+            f"[bold cyan]resume: context window {session.windows}, seeded "
+            f"from {Path(path).name}[/bold cyan]"
+        )
+        if self.glossary_auto_on and snapshot.glossary:
+            self.learned, _ = snapshot.glossary.merge(self.learned or Glossary())
+            self.glossary, conflicts = (self.pinned or Glossary()).merge(self.learned)
+            for conflict in conflicts:
+                print(f"[yellow]ℹ glossary conflict — {conflict.describe()}[/yellow]")
+            print(
+                f"[bold cyan]resume: {len(snapshot.glossary)} learned "
+                f"renderings restored from {Path(path).name}[/bold cyan]"
+            )
+        return True
+
+    def _compact_failed(self, reason, budget, force_give_up=False):
+        """A compact that produced nothing: retry, or start clean.
+
+        Nothing, in the literal sense (owner ruling 260913): the request
+        raised, or the reply was empty. A reply that merely disappoints is
+        not a failure — it is trimmed, capped and seeded like any other.
+
+        Keeping the window is the default, and the reason the retry exists:
+        one rate-limited or dropped request is not grounds for throwing away a
+        book's worth of accumulated context, and the budget stays exceeded, so
+        the next unit simply tries again.
+
+        `force_give_up` is for a refusal that says retrying cannot work — the
+        anthropic route's "this history is too long", which the retry would
+        meet again on the very next request, carrying the same history.
+        """
+        self._compact_failures += 1
+        # Give up on attempts, or once the window has outgrown its budget
+        # badly enough that retrying is the wrong bet: a compact that fails
+        # because the history is too long will keep failing, and the
+        # translation requests carrying that history fail with it.
+        #
+        # The size arm only arms from the SECOND failure on, because at a
+        # small budget the window can be past twice it through granularity
+        # alone — a grouped exchange runs ~2400 estimated tokens, so a single
+        # unit can clear 2 x MIN_COMPACT_BUDGET without anything being wrong.
+        # Giving up there would throw the window away on one flaky request,
+        # which is exactly what the retry exists to prevent. A genuinely
+        # oversized history fails again on the next unit, and the second
+        # failure is what settles it.
+        give_up = (
+            force_give_up
+            or self._compact_failures >= self.COMPACT_ATTEMPTS
+            or (
+                self._compact_failures >= 2
+                and self.session.estimated_tokens() > 2 * budget
+            )
+        )
+        print(
+            f"[yellow]ℹ handoff report failed ({reason}); "
+            + (
+                "starting the next context window without a summary"
+                if give_up
+                else "keeping the current context and retrying on the next paragraph"
+            )
+            + "[/yellow]"
+        )
+        if give_up:
+            # Bounded: without this the history would grow past the budget
+            # forever on a persistently failing endpoint.
+            self._compact_failures = 0
+            self.session.reset(seed="")
 
     def _start_empty_window(self):
         """Roll over with no handoff report, because the user asked for none.
@@ -557,7 +793,13 @@ class Base(ABC):
         return self.fill_optional(getattr(self, "prompt_sys_msg", None))
 
     def style_section(self):
-        """`--prompt`'s style section as one standing line, or "".
+        """The standing style line, or "".
+
+        `--prompt`'s style section when the operator wrote one; otherwise the
+        style this run's own handoff reports observed (`handoff_style`), which
+        is how a compacted session keeps translating the way it was before the
+        seam. The operator's is checked first and is never merged with the
+        observed one: two descriptions of the same thing would only argue.
 
         No endpoint has a style slot, and style is not a per-request thing to
         say: it is a standing instruction about *how* to translate, fixed for
@@ -566,7 +808,11 @@ class Base(ABC):
         suffix on each turn, which is where it used to go and which paid for
         it once per request.
         """
-        note = (getattr(self, "style_note", None) or "").strip()
+        note = (
+            getattr(self, "style_note", None)
+            or getattr(self, "handoff_style", None)
+            or ""
+        ).strip()
         if not note:
             return ""
         return f"{self.STYLE_HEADING} {self.fill_optional(note)}"

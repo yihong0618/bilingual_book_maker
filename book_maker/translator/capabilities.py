@@ -153,6 +153,57 @@ RUNG_REFUSAL_ERRORS = (
     UnprocessableEntityError,
 )
 
+# How an endpoint is asked to cap a reply's length, in the order they are
+# tried. The two are not interchangeable: the gpt-5 and o-series families
+# reject `max_tokens` outright and name `max_completion_tokens` in the
+# refusal, while plenty of OpenAI-compatible servers know only the older
+# spelling. An endpoint that refuses both is asked for no cap at all — the
+# only caller (the session compact turn) truncates on this side anyway.
+COMPACT_CAP_FIELDS = ("max_tokens", "max_completion_tokens")
+
+# Headroom added to the cap under the `max_completion_tokens` spelling, and
+# only under it. That spelling is what the reasoning families answer to, and
+# on those the budget covers the reasoning *before* the reply: a cap sized for
+# the report alone is spent thinking, and the request comes back with an empty
+# message. Measured live (260913 smoke matrix, gpt-5.6-luna): every session
+# cell lost its first compaction to exactly this — a billed request answering
+# nothing, the window kept, the report retried on the next unit.
+#
+# CHOSEN, not measured: 1500 covers the reasoning budgets observed there with
+# room over. It cannot make the seed bigger — the client truncates at
+# SEED_CAP_TOKENS whatever arrives — so the whole cost of being generous here
+# is some completion tokens on one request per window, against a wasted
+# request per run if it is too small.
+REASONING_ALLOWANCE_TOKENS = 1500
+
+# How an endpoint says it does not know a field, as opposed to not liking the
+# value in it. The difference decides whether a cap is given up for the rest
+# of the run: "max_tokens is too large: 500 > limit" and "max_tokens exceeds
+# the context length" both name the field while confirming the endpoint
+# understands it, and treating either as a refusal of the parameter would
+# strip the cap permanently over one bad request.
+PARAMETER_REFUSAL_PHRASES = (
+    "unsupported parameter",
+    "unsupported_parameter",
+    "unknown parameter",
+    "unrecognized",
+    "unrecognised",
+    "is not supported",
+    "not supported with",
+    "no longer supported",
+)
+
+# ...except when the endpoint is refusing the VALUE in the field, which it
+# can only do by understanding the field. These overlap in wording — a real
+# 400 reads "Unsupported value: max_tokens=0 is not supported; must be
+# greater than zero" — so a value complaint wins over a refusal phrase
+# outright, and the cap survives to be sent again with a sane number.
+PARAMETER_VALUE_COMPLAINTS = re.compile(
+    r"unsupported value|invalid value|must be (greater|less|at least|no more)"
+    r"|too large|too small|maximum|minimum|greater than|less than",
+    re.IGNORECASE,
+)
+
 # One garbled response from a proxy must not cost the whole book its structured
 # mode. A genuinely unsupported endpoint still pays at most this many attempts.
 STRUCTURED_FAILURE_THRESHOLD = 2
@@ -241,7 +292,7 @@ def probe_structured_output(client, model, extra_body=None):
 
 
 def classify_bad_request(error):
-    """Say what a 400 was actually about: 'temperature', 'schema' or 'other'.
+    """What a 400 was about: 'temperature', 'schema', 'max_tokens' or 'other'.
 
     Without this, a temperature rejection is misread as "no schema support":
     the model gets demoted for the rest of the run and the real cause never
@@ -252,6 +303,12 @@ def classify_bad_request(error):
         return "temperature"
     if "response_format" in text or "json_schema" in text:
         return "schema"
+    if (
+        any(field in text for field in COMPACT_CAP_FIELDS)
+        and any(phrase in text for phrase in PARAMETER_REFUSAL_PHRASES)
+        and not PARAMETER_VALUE_COMPLAINTS.search(text)
+    ):
+        return "max_tokens"
     return "other"
 
 
@@ -435,6 +492,9 @@ class CapabilityLedger:
         self.verdicts = {}
         # Learned from the first rejection, never asked again.
         self.temperature_unsupported = {}
+        # How far down COMPACT_CAP_FIELDS each model has pushed us: 0 is the
+        # first spelling, len(COMPACT_CAP_FIELDS) means it takes no cap.
+        self.compact_cap_field = {}
         # Consecutive capability failures, and models whose probe was
         # postponed by an outage (tracked only to keep the log to one line).
         self.failures = {}
@@ -535,6 +595,35 @@ class CapabilityLedger:
             first_time = not self.temperature_unsupported.get(model)
             self.temperature_unsupported[model] = True
         return first_time
+
+    def compact_cap_kwargs(self, model, cap):
+        """How to ask `model` for a reply no longer than `cap`, or nothing.
+
+        Empty once the endpoint has turned down every spelling there is —
+        which is not a failure: the caller's own truncation is what the seed
+        bound actually rests on, and a cap the endpoint applies only saves
+        paying for output that would be cut anyway.
+
+        The `max_completion_tokens` spelling gets REASONING_ALLOWANCE_TOKENS
+        on top: the endpoints that insist on it spend that budget on hidden
+        reasoning before the reply, so a cap sized for the report alone buys
+        thinking and an empty message.
+        """
+        with self.lock:
+            index = self.compact_cap_field.get(model, 0)
+        if index >= len(COMPACT_CAP_FIELDS):
+            return {}
+        field = COMPACT_CAP_FIELDS[index]
+        if field == "max_completion_tokens":
+            return {field: cap + REASONING_ALLOWANCE_TOKENS}
+        return {field: cap}
+
+    def note_compact_cap_rejected(self, model):
+        """Remember that `model` refused this spelling; name the next, if any."""
+        with self.lock:
+            index = self.compact_cap_field.get(model, 0) + 1
+            self.compact_cap_field[model] = index
+        return COMPACT_CAP_FIELDS[index] if index < len(COMPACT_CAP_FIELDS) else None
 
     def sampling_kwargs(self, model, temperature):
         """Sampling parameters to send, or nothing when the model owns them.
