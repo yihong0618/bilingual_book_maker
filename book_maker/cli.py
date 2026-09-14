@@ -647,12 +647,16 @@ class GlossaryPath(argparse.Action):
 
 
 def glossary_auto_flag(value):
-    """`--glossary-auto {on,off}` as the tri-state the translator wants.
+    """`--glossary-auto {on,off}` as the boolean the translator wants.
 
-    None means the operator said nothing, and the run defaults it: on where
-    there is a session to learn from, off where there is not.
+    Off unless the operator asked for it (owner ruling 260913). It used to
+    default on wherever a session ran, on the reasoning that a session has a
+    compact turn and the terms are free once it does. They are not free: the
+    section costs output on every compaction, and harvesting names from a
+    model's prose takes a model that can be trusted to answer with names.
+    Most runs do not need it, so it is now something a run asks for.
     """
-    return {"on": True, "off": False}.get(value)
+    return value == "on"
 
 
 def batch_unit_cap(value):
@@ -2046,10 +2050,11 @@ off. Minimum 1.
         default=None,
         help="whether a session run also keeps the renderings its own handoff "
         "reports establish, so recurring names stay unified across a context "
-        "window seam. On by default wherever a session runs (--use_context "
-        "session, and the codex route's one thread); 'off' asks the compact "
-        "turn for a summary only. Learned terms live in this run and in "
-        "<book>_handoff.md, and nowhere else",
+        "window seam. Off unless you ask for it, and it needs a session to "
+        "learn from (--use_context session, or the codex route's one thread) "
+        "as well as a model that can be trusted to answer with names rather "
+        "than prose — most runs need neither. Learned terms live in this run "
+        "and in <book>_handoff.md, and nowhere else",
     )
     parser.add_argument(
         "--context_paragraph_limit",

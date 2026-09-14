@@ -128,8 +128,10 @@ class TestTheTwoSpellings:
         assert proc.returncode != 0
         assert "Could not read --glossary" in proc.stdout + proc.stderr
 
-    def test_the_auto_switch_is_a_tri_state(self):
-        assert glossary_auto_flag(None) is None
+    def test_the_auto_switch_is_off_unless_asked(self):
+        """Owner ruling 260913. It was a tri-state whose None meant "on
+        wherever a session runs"; saying nothing now means off."""
+        assert glossary_auto_flag(None) is False
         assert glossary_auto_flag("on") is True
         assert glossary_auto_flag("off") is False
 
@@ -292,23 +294,55 @@ def _session(replies, **kwargs):
     kwargs.setdefault("context_flag", True)
     kwargs.setdefault("context_mode", "session")
     kwargs.setdefault("context_compact_at", 10)
+    # Asked for, because since 260913 it has to be: these tests are about what
+    # learning does, not about whether a run opts into it. The default itself
+    # is pinned by `TestLearningIsAskedFor`.
+    kwargs.setdefault("glossary_auto", True)
     return _translator(replies, **kwargs)
 
 
-class TestTheDefaultFollowsTheSession:
-    def test_a_session_run_learns_by_default(self):
-        assert _session([]).glossary_auto_on is True
+class TestLearningIsAskedFor:
+    """Owner ruling 260913: `--glossary-auto` is off until it is asked for.
+
+    It used to default on wherever a session ran, on the reasoning that the
+    compact turn exists anyway. The section is not free — it costs output on
+    every compaction, and harvesting names out of a model's prose needs a
+    model that answers with names — so a run now opts in.
+    """
+
+    def test_a_session_run_does_not_learn_unless_asked(self):
+        t = _translator(context_flag=True, context_mode="session")
+        assert t.glossary_auto_on is False
+
+    def test_and_its_compact_turn_asks_for_no_renderings(self):
+        """The other half of the default: no learning means the section is
+        never sent, so the run is not billed for output nobody reads."""
+        t = _translator(context_flag=True, context_mode="session")
+        prompt = handoff_prompt(with_glossary=t.glossary_auto_on)
+        assert RENDERINGS_MARKER not in prompt
+
+    def test_on_turns_it_on(self):
+        t = _translator(context_flag=True, context_mode="session", glossary_auto=True)
+        assert t.glossary_auto_on is True
 
     def test_a_windowed_run_does_not(self):
         assert _translator(
             context_flag=True, context_mode="window"
         ).glossary_auto_on is (False)
 
-    def test_the_codex_thread_learns_by_default(self):
-        # its thread is the history whether or not --use_context was typed
-        assert Codex(
-            key="", language="Chinese", server=SimpleNamespace()
-        ).glossary_auto_on
+    def test_the_codex_thread_waits_to_be_asked_too(self):
+        # its thread is the history whether or not --use_context was typed,
+        # which used to be reason enough; since 260913 it is not
+        assert (
+            Codex(key="", language="Chinese", server=SimpleNamespace()).glossary_auto_on
+            is False
+        )
+
+    def test_on_turns_the_codex_thread_on(self):
+        codex = Codex(
+            key="", language="Chinese", server=SimpleNamespace(), glossary_auto=True
+        )
+        assert codex.glossary_auto_on is True
 
     def test_off_turns_the_codex_thread_off_too(self):
         codex = Codex(
@@ -356,16 +390,33 @@ class TestLearningFromTheHandoff:
     def test_an_empty_block_does_not_erase_what_was_learned(self, tmp_path):
         """codex review 260905 (P2): an empty block means "no additions",
         not "forget everything" — a later report that learns nothing new
-        must still hand the established vocabulary to the next window."""
+        must not cost the run the vocabulary earlier ones established.
+
+        The claim is unchanged; where it lands is. Before the 260913
+        redesign (owner-authorized, docs/260913-feat-SESSION_HANDOFF_
+        SNAPSHOT_SEED_BOUNDS.md, rulings 4 and 6) the evidence was the seed:
+        the whole merged glossary rode into every window, so "still there"
+        meant "still in the seed", and the handoff file was an append log
+        where it could be counted twice. Now the seed carries summary and
+        style only and the file is one overwritten snapshot, so the same
+        claim is made against memory and against that snapshot.
+
+        This is deliberately not #569's silent flip of the same behaviour:
+        that patch dropped the vocabulary from the seed as a side effect of
+        an accounting change, with no ruling and no test moved to follow it.
+        """
         path = tmp_path / "h.md"
         empty = "Nothing new this window.\n\n<renderings>\n</renderings>\n"
         t = _session(["译文", HANDOFF_WITH_TERMS, "译文", empty], handoff_path=path)
         t.get_translation("a" * 200)
         t.get_translation("b" * 200)
+        # memory: the empty window added nothing and forgot nothing
+        assert t.glossary.lookup("Boxer").translation == "拳击手"
+        assert t.learned.lookup("Clover").translation == "三叶草"
+        # the snapshot: the current set, written once, by the latest window
         text = path.read_text(encoding="utf-8")
-        # both reports carry the vocabulary: the one that learned it, and
-        # the empty one that inherited it
-        assert text.count("Boxer → 拳击手") == 2
+        assert text.count("Boxer → 拳击手") == 1
+        assert "Nothing new this window." in text
 
     def test_a_pin_is_never_overwritten_by_what_was_learned(self, tmp_path):
         pinned = Glossary.parse("Boxer → 鲍克瑟\n")
@@ -420,7 +471,9 @@ class TestTheStripperRemovesExactlyWhatWasParsed:
         report = _assembled(HANDOFF_WITH_TERMS, parsed.glossary.to_lines())
         assert report.render().count("Boxer → 拳击手") == 1
         assert report.render().count("Clover → 三叶草") == 1
-        assert report.seed_text().count("Boxer → 拳击手") == 1
+        # and not in the seed at all: since 260913 the seed is summary and
+        # style only (`TestTheSeedCarriesSummaryAndStyleOnly`)
+        assert "Boxer → 拳击手" not in report.seed_text()
         assert "<renderings>" not in report.render()
         assert "They walked to the farm." in report.summary
 
@@ -442,8 +495,8 @@ class TestTheStripperRemovesExactlyWhatWasParsed:
         report = _assembled(HANDOFF_WITHOUT_TAGS, parsed.glossary.to_lines())
         assert report.render().count("Boxer → 拳击手") == 1
         assert report.render().count("Clover → 三叶草") == 1
-        assert report.seed_text().count("Boxer → 拳击手") == 1
-        assert report.seed_text().count("Clover → 三叶草") == 1
+        assert "Boxer → 拳击手" not in report.seed_text()
+        assert "Clover → 三叶草" not in report.seed_text()
         # the report's own last section is not a glossary heading and stays
         assert "### Next window" in report.summary
         assert "The rebellion starts in chapter two." in report.summary
@@ -486,17 +539,34 @@ class TestTheStripperRemovesExactlyWhatWasParsed:
         assert text.count("Boxer → 拳击手") == 1
         assert text.count("Clover → 三叶草") == 1
 
-    def test_the_next_window_is_seeded_with_each_term_once(self, tmp_path):
+    def test_the_next_window_carries_each_term_once(self, tmp_path):
+        """One copy, and it comes from the unit's own block.
+
+        It used to be the seed's copy that this counted, and the risk was a
+        second one left in the prose. Since 260913 the seed carries no terms
+        at all, so the question is the same and the answer moved: a unit that
+        names a term gets it once, from `prompt_block`.
+        """
         t = _session(
             ["译文", HANDOFF_WITHOUT_TAGS, "译文"], handoff_path=tmp_path / "h.md"
         )
         t.get_translation("a" * 200)
-        # a unit that names no pinned term, so the only copies are the seed's
-        t.get_translation("the windmill stood")
+        t.get_translation("Boxer pulled the cart")
         request = "\n".join(
             m["content"] for m in t.sent[-1]["messages"] if m.get("content")
         )
         assert request.count("Boxer → 拳击手") == 1
+
+    def test_a_unit_naming_nothing_carries_no_terms_at_all(self, tmp_path):
+        t = _session(
+            ["译文", HANDOFF_WITHOUT_TAGS, "译文"], handoff_path=tmp_path / "h.md"
+        )
+        t.get_translation("a" * 200)
+        t.get_translation("the windmill stood")
+        request = "\n".join(
+            m["content"] for m in t.sent[-1]["messages"] if m.get("content")
+        )
+        assert "Boxer → 拳击手" not in request
 
     def test_the_codex_path_shares_the_stripper(self):
         # codex_translator._compact_window assembles the same two halves; it

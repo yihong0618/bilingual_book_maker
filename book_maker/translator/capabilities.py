@@ -153,6 +153,14 @@ RUNG_REFUSAL_ERRORS = (
     UnprocessableEntityError,
 )
 
+# How an endpoint is asked to cap a reply's length, in the order they are
+# tried. The two are not interchangeable: the gpt-5 and o-series families
+# reject `max_tokens` outright and name `max_completion_tokens` in the
+# refusal, while plenty of OpenAI-compatible servers know only the older
+# spelling. An endpoint that refuses both is asked for no cap at all — the
+# only caller (the session compact turn) truncates on this side anyway.
+COMPACT_CAP_FIELDS = ("max_tokens", "max_completion_tokens")
+
 # One garbled response from a proxy must not cost the whole book its structured
 # mode. A genuinely unsupported endpoint still pays at most this many attempts.
 STRUCTURED_FAILURE_THRESHOLD = 2
@@ -241,7 +249,7 @@ def probe_structured_output(client, model, extra_body=None):
 
 
 def classify_bad_request(error):
-    """Say what a 400 was actually about: 'temperature', 'schema' or 'other'.
+    """What a 400 was about: 'temperature', 'schema', 'max_tokens' or 'other'.
 
     Without this, a temperature rejection is misread as "no schema support":
     the model gets demoted for the rest of the run and the real cause never
@@ -252,6 +260,8 @@ def classify_bad_request(error):
         return "temperature"
     if "response_format" in text or "json_schema" in text:
         return "schema"
+    if any(field in text for field in COMPACT_CAP_FIELDS):
+        return "max_tokens"
     return "other"
 
 
@@ -435,6 +445,9 @@ class CapabilityLedger:
         self.verdicts = {}
         # Learned from the first rejection, never asked again.
         self.temperature_unsupported = {}
+        # How far down COMPACT_CAP_FIELDS each model has pushed us: 0 is the
+        # first spelling, len(COMPACT_CAP_FIELDS) means it takes no cap.
+        self.compact_cap_field = {}
         # Consecutive capability failures, and models whose probe was
         # postponed by an outage (tracked only to keep the log to one line).
         self.failures = {}
@@ -535,6 +548,27 @@ class CapabilityLedger:
             first_time = not self.temperature_unsupported.get(model)
             self.temperature_unsupported[model] = True
         return first_time
+
+    def compact_cap_kwargs(self, model, cap):
+        """How to ask `model` for a reply no longer than `cap`, or nothing.
+
+        Empty once the endpoint has turned down every spelling there is —
+        which is not a failure: the caller's own truncation is what the seed
+        bound actually rests on, and a cap the endpoint applies only saves
+        paying for output that would be cut anyway.
+        """
+        with self.lock:
+            index = self.compact_cap_field.get(model, 0)
+        if index >= len(COMPACT_CAP_FIELDS):
+            return {}
+        return {COMPACT_CAP_FIELDS[index]: cap}
+
+    def note_compact_cap_rejected(self, model):
+        """Remember that `model` refused this spelling; name the next, if any."""
+        with self.lock:
+            index = self.compact_cap_field.get(model, 0) + 1
+            self.compact_cap_field[model] = index
+        return COMPACT_CAP_FIELDS[index] if index < len(COMPACT_CAP_FIELDS) else None
 
     def sampling_kwargs(self, model, temperature):
         """Sampling parameters to send, or nothing when the model owns them.

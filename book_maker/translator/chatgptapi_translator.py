@@ -61,10 +61,12 @@ from ..structured import (
 from ..config import config
 from ..glossary import Glossary
 from ..session_context import (
+    SEED_MAX_TOKENS,
     HandoffReport,
     SessionHistory,
     compact_budget_for,
     handoff_prompt,
+    seed_cap,
     strip_handoff_glossary,
 )
 
@@ -804,14 +806,14 @@ class ChatGPTAPI(Base):
         """Whether this run learns renderings from its own handoff reports.
 
         The derived glossary is a by-product of session compaction, so it can
-        only exist where a session does. The default is therefore "on wherever
-        a session runs": `--glossary-auto off` is the way to decline it, and
-        `--glossary-auto on` cannot conjure one on the windowed path, where
-        there is no compact turn to learn from (the CLI says so).
+        only exist where a session does — and since 260913 it is off unless
+        asked for: `--glossary-auto on`, which cannot conjure a session on the
+        windowed path, where there is no compact turn to learn from (the CLI
+        says so).
         """
         if self.session is None:
             return False
-        return self.glossary_auto is not False
+        return self.glossary_auto is True
 
     def _user_content(self, text):
         """The user message for one unit.
@@ -1077,6 +1079,50 @@ class ChatGPTAPI(Base):
             return compact_budget_for(self.model)
         return self.context_compact_at
 
+    def _compact_request(self, messages):
+        """The compact turn, asked with a cap on how long the report may be.
+
+        Layer (b) of the seed bound (`session_context`): the endpoint stops a
+        model that would answer the compact turn with half a book, which is
+        what seeds a window already over its budget. It is only a layer — the
+        cap is a field some endpoints refuse and some gateways drop, and the
+        two spellings below are not interchangeable — so the client truncates
+        the seed regardless.
+
+        The refusal is learned once per model, capability-ledger style: the
+        gpt-5 and o-series families reject `max_tokens` and name
+        `max_completion_tokens` instead, and asking every compact turn to find
+        that out again would cost one refused request per window.
+        """
+
+        def create(sampling, cap):
+            return self.openai_client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                extra_body=self.extra_body if self.extra_body else None,
+                **cap,
+                **sampling,
+            )
+
+        while True:
+            cap = self.capabilities.compact_cap_kwargs(self.model, SEED_MAX_TOKENS)
+            try:
+                return self._request(lambda sampling: create(sampling, cap))
+            except BadRequestError as e:
+                if not cap or classify_bad_request(e) != "max_tokens":
+                    raise
+                spelling = self.capabilities.note_compact_cap_rejected(self.model)
+                print(
+                    f"[yellow]ℹ '{self.model}' rejected {next(iter(cap))} on the "
+                    + (
+                        f"handoff turn; asking with {spelling} instead"
+                        if spelling
+                        else "handoff turn; asking without a length cap "
+                        "(the seed is still truncated on this side)"
+                    )
+                    + "[/yellow]"
+                )
+
     def _compact_session(self):
         """Ask for a handoff report, then start the next window seeded with it.
 
@@ -1093,14 +1139,7 @@ class ChatGPTAPI(Base):
             {"role": "user", "content": prompt},
         ]
         try:
-            completion = self._request(
-                lambda sampling: self.openai_client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    extra_body=self.extra_body if self.extra_body else None,
-                    **sampling,
-                )
-            )
+            completion = self._compact_request(messages)
             # The handoff turn is billed like any other request — it carries
             # the whole window and answers with a report. Without this line
             # the meter understates a session run's cost worst exactly where
@@ -1112,33 +1151,15 @@ class ChatGPTAPI(Base):
             # Keep the window. One rate-limited or dropped request is not a
             # reason to throw away a book's worth of accumulated context — the
             # budget stays exceeded, so the next unit simply tries again.
-            self._compact_failures += 1
-            # Give up on attempts, or as soon as the window has outgrown its
-            # budget badly enough that retrying is the wrong bet: a compact
-            # that fails because the history is too long will keep failing,
-            # and the translation requests carrying that history fail with it.
-            give_up = (
-                self._compact_failures >= self.COMPACT_ATTEMPTS
-                or self.session.estimated_tokens() > 2 * budget
-            )
-            print(
-                f"[yellow]ℹ handoff report failed ({e}); "
-                + (
-                    "starting the next context window without a summary"
-                    if give_up
-                    else "keeping the current context and retrying on the next paragraph"
-                )
-                + "[/yellow]"
-            )
-            if give_up:
-                # Bounded: without this the history would grow past the
-                # budget forever on a persistently failing endpoint.
-                self._compact_failures = 0
-                self.session.reset(seed="")
+            self._compact_failed(e, budget)
             return
-        self._compact_failures = 0
-
-        glossary_lines = self._learn_from_handoff(report_text)
+        if not self._usable_report(report_text, prompt):
+            # A 200 carrying no report: empty, whitespace, or the prompt read
+            # back. Resetting the window on that would throw the context away
+            # and seed its replacement with nothing, so it takes the failure
+            # path instead — and the snapshot on disk is left alone.
+            self._compact_failed("the endpoint returned no usable report", budget)
+            return
 
         report = HandoffReport(
             window=self.session.windows,
@@ -1146,18 +1167,25 @@ class ChatGPTAPI(Base):
             # eroded window by window by a model re-describing it.
             style_note=self.style_note,
             # The renderings block is parsed into `glossary_lines`, so it is
-            # stripped from the prose rather than stored and re-seeded twice.
+            # stripped from the prose rather than stored and recorded twice.
             summary=(
                 strip_handoff_glossary(report_text)
                 if self.glossary_auto_on
                 else report_text.strip()
             ),
-            glossary_lines=glossary_lines,
         )
+        if not report.has_summary():
+            # All renderings and no prose. Checked before anything is learned
+            # or written, so a reply like this leaves neither the glossary nor
+            # the snapshot changed.
+            self._compact_failed("the handoff report carried no summary", budget)
+            return
+        self._compact_failures = 0
+        report.glossary_lines = self._learn_from_handoff(report_text)
         self._show_handoff(report)
         if self.handoff_path:
             try:
-                report.append_to(self.handoff_path)
+                report.write_snapshot(self.handoff_path)
             except OSError as e:
                 # The paragraph is already translated and billed. Failing here
                 # would send get_translation's retry policy round again and
@@ -1166,7 +1194,7 @@ class ChatGPTAPI(Base):
                     f"[yellow]ℹ could not write {self.handoff_path} ({e}); "
                     f"the run continues without a saved handoff[/yellow]"
                 )
-        self.session.reset(seed=report.seed_text())
+        self.session.reset(seed=report.seed_text(seed_cap(budget)))
 
     @retry(
         stop=stop_after_attempt(3),

@@ -10,7 +10,7 @@ from rich.markup import escape
 
 from ..glossary import Glossary
 from ..redaction import redact, remember
-from ..session_context import parse_handoff_glossary
+from ..session_context import GLOSSARY_MAX_PER_COMPACT, parse_handoff_glossary
 
 from ..structured import (
     extract_json_object,
@@ -339,13 +339,29 @@ class Base(ABC):
     def _learn_from_handoff(self, report_text):
         """Fold a handoff report's renderings into this run's glossary.
 
-        Returns the lines to record in the report — "" when this run is not
+        Returns the lines to record in the snapshot — "" when this run is not
         learning, so a route that never asked for the section cannot acquire
-        terms from prose that happens to contain an arrow.
+        terms from prose that happens to contain an arrow. Nothing here
+        reaches the seed: since 260913 the seed carries summary and style
+        only, and the terms reach the model per unit through
+        `Glossary.prompt_block` instead.
         """
         if not self.glossary_auto_on or not report_text:
             return ""
-        learned, source = parse_handoff_glossary(report_text)
+        parsed = parse_handoff_glossary(report_text)
+        learned, source = parsed.glossary, parsed.source
+        if parsed.dropped:
+            # One line per compact, never one per dropped entry: a model that
+            # answers the section with a page of prose would otherwise print
+            # a page of warnings. Degraded, not broken — whatever did parse is
+            # kept — but said out loud, because silently it looks like a book
+            # with few recurring names.
+            print(
+                f"[yellow]ℹ the handoff report's renderings: {parsed.dropped} "
+                f"line(s) ignored (not a `term → translation` pair, written "
+                f"backwards, or past the {GLOSSARY_MAX_PER_COMPACT} this run "
+                f"takes from one report)[/yellow]"
+            )
         if source == "scanned":
             # The block is what makes this parseable; say so rather than let a
             # quietly degraded recovery look like a clean one.
@@ -359,20 +375,37 @@ class Base(ABC):
                 "[yellow]ℹ the handoff report established no new "
                 "renderings; this window adds no learned terms[/yellow]"
             )
-        if not learned:
+        # Client-side deduplication, which replaced the compact prompt's "not
+        # already listed above" when the glossary left the seed: the model is
+        # no longer shown what it established earlier, so it re-emits terms,
+        # and only what is new or *changed* is worth acting on.
+        fresh = Glossary(
+            [
+                entry
+                for entry in learned.entries
+                if (known := (self.learned or Glossary()).lookup(entry.term)) is None
+                or known.translation != entry.translation
+            ]
+        )
+        if not fresh:
             # Nothing new this window. The vocabulary earlier windows
-            # established still holds — an empty block means "no additions",
-            # so the merged glossary keeps riding the seed instead of
-            # vanishing from it.
+            # established still holds — an empty block (or one that repeats
+            # what is known) means "no additions", so the merged glossary
+            # keeps being recorded instead of vanishing from the snapshot.
             return self.glossary.to_lines() if self.glossary else ""
         # This window's reading wins over earlier ones: the model has seen
         # more of the book than it had last time. Then the operator's pins are
         # laid over the top, so a term they chose never drifts, while
         # everything else keeps improving.
-        self.learned, _ = learned.merge(self.learned or Glossary())
+        self.learned, _ = fresh.merge(self.learned or Glossary())
         self.glossary, conflicts = (self.pinned or Glossary()).merge(self.learned)
         for conflict in conflicts:
-            print(f"[yellow]ℹ glossary conflict — {conflict.describe()}[/yellow]")
+            # Only what *this* window asserted. Without the seed to tell it
+            # otherwise the model re-emits its renderings every window, so a
+            # term that disagrees with a pin would otherwise be reported once
+            # per compaction for the rest of the book.
+            if fresh.lookup(conflict.term) is not None:
+                print(f"[yellow]ℹ glossary conflict — {conflict.describe()}[/yellow]")
         return self.glossary.to_lines()
 
     # ---- session mode ------------------------------------------------------
@@ -408,6 +441,69 @@ class Base(ABC):
             self._start_empty_window()
         else:
             self._compact_session()
+
+    def _compact_failed(self, reason, budget, force_give_up=False):
+        """A compact that came back with no usable report: retry, or start clean.
+
+        Keeping the window is the default, and the reason the retry exists:
+        one rate-limited or dropped request is not grounds for throwing away a
+        book's worth of accumulated context, and the budget stays exceeded, so
+        the next unit simply tries again.
+
+        `force_give_up` is for a refusal that says retrying cannot work — the
+        anthropic route's "this history is too long", which the retry would
+        meet again on the very next request, carrying the same history.
+        """
+        self._compact_failures += 1
+        # Give up on attempts, or as soon as the window has outgrown its
+        # budget badly enough that retrying is the wrong bet: a compact that
+        # fails because the history is too long will keep failing, and the
+        # translation requests carrying that history fail with it.
+        give_up = (
+            force_give_up
+            or self._compact_failures >= self.COMPACT_ATTEMPTS
+            or self.session.estimated_tokens() > 2 * budget
+        )
+        print(
+            f"[yellow]ℹ handoff report failed ({reason}); "
+            + (
+                "starting the next context window without a summary"
+                if give_up
+                else "keeping the current context and retrying on the next paragraph"
+            )
+            + "[/yellow]"
+        )
+        if give_up:
+            # Bounded: without this the history would grow past the budget
+            # forever on a persistently failing endpoint.
+            self._compact_failures = 0
+            self.session.reset(seed="")
+
+    def _usable_report(self, report_text, prompt):
+        """Whether a compact reply is a handoff report at all.
+
+        The reply is untrusted. A cheap model answers the compact turn with
+        nothing, with whitespace, with the prompt read back, or with a
+        renderings block and no prose at all — and each of those used to be
+        treated as a successful compaction, which reset the window and seeded
+        it with boilerplate. That is strictly worse than a failed compact: the
+        accumulated context is gone *and* nothing replaced it. So these take
+        the failure path, where the window is kept and the next unit retries.
+
+        Not a quality judgement: a short or unhelpful summary is still a
+        summary, and this only asks whether there is one.
+        """
+        if not report_text or not report_text.strip():
+            return False
+        # A prompt echo, which is what a model that cannot follow the turn at
+        # all tends to produce. Recognised by removing the lines the prompt
+        # itself contains: what is left is the answer, and if there is
+        # essentially nothing left, the reply was the question.
+        asked = {line.strip() for line in prompt.splitlines() if line.strip()}
+        rest = "".join(
+            line for line in report_text.splitlines() if line.strip() not in asked
+        )
+        return bool(re.search(r"\w", rest))
 
     def _start_empty_window(self):
         """Roll over with no handoff report, because the user asked for none.

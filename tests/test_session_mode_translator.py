@@ -221,8 +221,22 @@ class TestCompact:
             handoff_path=path,
         )
         t.get_translation("a" * 200)
-        t.get_translation("b" * 200)
         assert "they walked" in path.read_text(encoding="utf-8")
+
+    def test_the_file_holds_the_latest_report_only(self, tmp_path):
+        """Since 260913 it is a snapshot, not a log: a second compaction
+        replaces the first rather than appending to it, so the file stays the
+        size of one handoff however long the book is."""
+        path = tmp_path / "book_handoff.md"
+        t = _translator(
+            ["译文", "Summary: they walked.", "译文", "Summary: they rested."],
+            context_compact_at=10,
+            handoff_path=path,
+        )
+        t.get_translation("a" * 200)
+        t.get_translation("b" * 200)
+        body = path.read_text(encoding="utf-8")
+        assert "they rested" in body and "they walked" not in body
 
     def test_no_compact_in_window_mode(self, tmp_path):
         t = _translator(["译文"] * 4, context_mode="window", context_compact_at=10)
@@ -658,4 +672,4 @@ class TestAFixedStyleRidesTheWindowStart:
         t.translate("b" * 10, False)
         # the model was never asked to describe a style, so the section the
         # report shows is the operator's own words, unedited
-        assert f"### Style\n\n{self.STYLE}" in path.read_text(encoding="utf-8")
+        assert f"## Style\n\n{self.STYLE}" in path.read_text(encoding="utf-8")

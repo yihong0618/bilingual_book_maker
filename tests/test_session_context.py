@@ -17,6 +17,7 @@ from book_maker.session_context import (
     compact_budget_for,
     estimate_tokens,
     handoff_prompt,
+    parse_snapshot,
 )
 
 
@@ -159,25 +160,33 @@ class TestHandoffPrompt:
 class TestHandoffReport:
     def test_persists_and_reloads(self, tmp_path):
         path = tmp_path / "book_handoff.md"
-        HandoffReport(window=1, summary="so far").append_to(path)
+        HandoffReport(window=1, summary="so far").write_snapshot(path)
         assert "so far" in path.read_text(encoding="utf-8")
 
-    def test_appends_without_clobbering(self, tmp_path):
+    def test_the_snapshot_replaces_the_previous_one(self, tmp_path):
+        """The redesign (owner ruling 260913): one current handoff on disk,
+        not a log of every window. The file's size is the size of the
+        handoff, whatever the book's length."""
         path = tmp_path / "book_handoff.md"
-        HandoffReport(window=1, summary="first").append_to(path)
-        HandoffReport(window=2, summary="second").append_to(path)
+        HandoffReport(window=1, summary="first").write_snapshot(path)
+        HandoffReport(window=2, summary="second").write_snapshot(path)
         body = path.read_text(encoding="utf-8")
-        assert "first" in body and "second" in body
+        assert "second" in body and "first" not in body
 
     def test_seed_text_carries_the_summary(self):
         seed = HandoffReport(window=1, summary="so far").seed_text()
         assert "so far" in seed
 
-    def test_latest_seed_reads_back_the_last_window(self, tmp_path):
+    def test_the_snapshot_reads_back(self, tmp_path):
         path = tmp_path / "book_handoff.md"
-        HandoffReport(window=1, summary="first").append_to(path)
-        HandoffReport(window=2, summary="second").append_to(path)
-        assert "second" in HandoffReport.latest_seed(path)
+        HandoffReport(
+            window=4, summary="so far", style_note="terse", glossary_lines="A → B\n"
+        ).write_snapshot(path)
+        snapshot = parse_snapshot(path)
+        assert snapshot.window == 4
+        assert snapshot.summary == "so far"
+        assert snapshot.style_note == "terse"
+        assert snapshot.glossary.lookup("A").translation == "B"
 
-    def test_latest_seed_of_missing_file_is_empty(self, tmp_path):
-        assert HandoffReport.latest_seed(tmp_path / "nope.md") == ""
+    def test_a_missing_file_reads_back_as_nothing(self, tmp_path):
+        assert parse_snapshot(tmp_path / "nope.md") is None

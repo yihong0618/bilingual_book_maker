@@ -43,11 +43,21 @@ _STYLE = (
 
 
 _RENDERINGS = (
-    "Established renderings — nouns we need to keep unified that are **not "
-    "already listed above**. If none are new, emit an empty block. One per "
-    "line as `term → translation # note` (the note is optional). Wrap the "
-    "list in <renderings> and </renderings> tags so its start and end are "
-    "unambiguous. This is the only place term equivalences belong."
+    "Established renderings — at most 16 names from the passages above whose "
+    "rendering is new or has changed. Never repeat an entry you have already "
+    "reported. If there are none, emit an empty block. One per line as `term "
+    "→ translation # note` (the note is optional), source term on the left. "
+    "Wrap the list in <renderings> and </renderings> tags so its start and "
+    "end are unambiguous. This is the only place term equivalences belong."
+)
+
+# The size the report is asked to hold to — layer (a) of the seed bound. The
+# number is `SEED_TARGET_TOKENS`, spelled out here so a change to it has to
+# be read as a change to the prompt.
+_SIZE = (
+    "Keep the whole report under about 300 tokens (roughly 225 words). It is "
+    "read as the opening of the next context window, not by a person; "
+    "anything past that is cut off."
 )
 
 _GLOSSARY_BLOCK_TAIL = "Use these translations verbatim in your translation."
@@ -85,7 +95,7 @@ def _batch_tail() -> str:
 
 def _compact(*sections: str) -> str:
     numbered = [f"{n}. {body}" for n, body in enumerate(sections, start=1)]
-    return "\n\n".join([_PREAMBLE, *numbered])
+    return "\n\n".join([_PREAMBLE, *numbered, _SIZE])
 
 
 # Every prompt, exactly as sent. Keyed by a label that names the case.
