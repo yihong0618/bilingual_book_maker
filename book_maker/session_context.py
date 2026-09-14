@@ -536,10 +536,13 @@ class HandoffGlossary(NamedTuple):
 
 
 class WindowText(NamedTuple):
-    """The window being compacted, as the two haystacks grounding searches.
+    """The window being compacted, as the text a grounding search runs over.
 
-    Lower-cased once here rather than per entry: a window is thousands of
-    characters and a report offers at most a couple of dozen pairs.
+    The two sides are kept apart only because the callers have them apart;
+    `contains` searches both, because neither side owns a kind of text (see
+    `_is_grounded`). Case-folded once here rather than per entry: a window is
+    thousands of characters and a report offers at most a couple of dozen
+    pairs.
     """
 
     sources: str
@@ -561,7 +564,11 @@ class WindowText(NamedTuple):
 
     @classmethod
     def of(cls, sources, translations) -> "WindowText":
-        return cls("\n".join(sources).lower(), "\n".join(translations).lower())
+        return cls("\n".join(sources).casefold(), "\n".join(translations).casefold())
+
+    def contains(self, needle: str) -> bool:
+        """Whether this case-folded string appears anywhere in the window."""
+        return needle in self.sources or needle in self.translations
 
 
 def _is_grounded(entry, window: WindowText) -> bool:
@@ -576,15 +583,24 @@ def _is_grounded(entry, window: WindowText) -> bool:
     it rendered differently from how it appears, and inflection or a
     possessive can move the other end out of reach.
 
+    Both ends are looked for across the whole window, not each end in "its"
+    half (owner's rule: any end found in context). The halves do not divide
+    by language. A name often survives untranslated — the model writes
+    "Boxer" into a Chinese translation — so the source term turns up on the
+    translation side; and the carried seed arrives as a user message, so the
+    previous window's target-language renderings and names sit on the source
+    side. Splitting the haystacks would drop exactly the pairs a working
+    session produces most.
+
     Substring, case-folded, no word boundaries: this is a cheap negative
     filter for hallucinations, not a claim about morphology, and CJK has no
     boundaries to anchor to anyway.
     """
-    term = entry.term.strip().lower()
-    if term and term in window.sources:
-        return True
-    rendering = entry.translation.strip().lower()
-    return bool(rendering and rendering in window.translations)
+    for end in (entry.term, entry.translation):
+        text = end.strip().casefold()
+        if text and window.contains(text):
+            return True
+    return False
 
 
 def _is_sane_entry(entry) -> bool:

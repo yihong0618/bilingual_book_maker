@@ -778,12 +778,49 @@ class TestAHarvestedPairMustBeInTheWindow:
         assert parsed.ungrounded == 0
 
     def test_a_reversed_pair_is_flipped_before_it_is_grounded(self):
-        """Order matters: grounding looks the term up in the *source* text,
-        so a pair still written target-first would be measured against the
-        wrong haystack and dropped as invented."""
+        """Flipping still runs first, and grounding no longer cares: both
+        ends are looked for across the whole window, so a pair that arrived
+        backwards is grounded either way and comes out the right way round."""
         parsed = self._parsed("拳击手 → Boxer", target_language="Chinese")
         assert parsed.flipped == 1
         assert parsed.glossary.lookup("Boxer").translation == "拳击手"
+        assert parsed.ungrounded == 0
+
+    def test_a_rendering_carried_in_on_the_seed_grounds_its_pair(self):
+        """The window does not divide by language, so neither does the
+        search (codex review 260913, P2). The seed arrives as a *user*
+        message: the previous window's target-language renderings therefore
+        sit on the source side, and a pair whose term this window only
+        implies is still a pair the run established."""
+        window = WindowText.of(
+            ["Previously: 克拉弗 stayed by the gate.", "The mare grazed."],
+            ["母马在吃草。"],
+        )
+        parsed = parse_handoff_glossary(
+            "<renderings>\nClover → 克拉弗\n</renderings>\n", window=window
+        )
+        assert parsed.glossary.lookup("Clover").translation == "克拉弗"
+        assert parsed.ungrounded == 0
+
+    def test_a_name_left_untranslated_grounds_its_pair_too(self):
+        """The other direction of the same fact: models keep "Boxer" as
+        "Boxer" inside a Chinese sentence, so the SOURCE term is what turns
+        up on the translation side."""
+        window = WindowText.of(["The mare grazed by the gate."], ["Boxer 站在门口。"])
+        parsed = parse_handoff_glossary(
+            "<renderings>\nBoxer → 博克瑟\n</renderings>\n", window=window
+        )
+        assert parsed.glossary.lookup("Boxer").translation == "博克瑟"
+        assert parsed.ungrounded == 0
+
+    def test_grounding_folds_case_rather_than_lowering_it(self):
+        """`"Straße".lower()` is still "straße", so a window shouting
+        STRASSE would not match it; `casefold` is the one that does."""
+        window = WindowText.of(["THE HOUSE ON STRASSE 5."], ["斯特拉塞街5号。"])
+        parsed = parse_handoff_glossary(
+            "<renderings>\nStraße → 斯特拉塞街\n</renderings>\n", window=window
+        )
+        assert parsed.glossary.lookup("Straße").translation == "斯特拉塞街"
         assert parsed.ungrounded == 0
 
     def test_without_a_window_nothing_is_grounded(self):
@@ -989,6 +1026,116 @@ class TestTheSeedCarriesTheSummaryOnly:
         assert glossary.prompt_block("the windmill stood") == ""
 
 
+# ------------------------------------------------------ the style that stands
+
+
+LONG_UNIT = "Boxer pulled the cart to the farm. " + "a" * 6000
+
+
+def _styled_report(style, summary="They walked to the farm."):
+    return f"## Summary\n\n{summary}\n\n## Style\n\n{style}\n"
+
+
+def _system_carrying(t, unit):
+    """The system message of the request that carried this unit."""
+    for call in t.sent:
+        messages = call["messages"]
+        if any(unit in (m.get("content") or "") for m in messages):
+            return "\n".join(
+                m.get("content") or "" for m in messages if m.get("role") == "system"
+            )
+    raise AssertionError(f"no request carried {unit[:30]!r}")
+
+
+class TestTheObservedStyleStandsUntilItIsReplaced:
+    """A style the run observed has to reach the model, not just the file.
+
+    codex review 260913 (P2). Before the reply was split into sections the
+    observed style rode the seed inside the summary, so the next window read
+    it; splitting it out sent it to the snapshot and nowhere else, which made
+    the whole `## Style` request write-only. It goes back on the standing
+    channel — where a style belongs (owner-pinned decision 8) — and the
+    operator's own `--prompt` style still outranks it absolutely.
+    """
+
+    def test_a_reported_style_reaches_the_next_window(self):
+        t = _translator(["译文", _styled_report("Clipped, no adverbs."), "译文"])
+        t.get_translation(LONG_UNIT)
+        t.get_translation("Clover watched.")
+        assert "Clipped, no adverbs." in _system_carrying(t, "Clover watched.")
+
+    def test_the_newest_report_replaces_the_previous_one(self):
+        """Snapshot semantics, like the glossary's: the model has read more
+        of the book than it had last window, so its newest description wins
+        outright rather than accumulating next to the old one."""
+        t = _translator(
+            [
+                "译文",
+                _styled_report("Clipped, no adverbs."),
+                "译文",
+                _styled_report("Formal, long sentences."),
+                "译文",
+            ]
+        )
+        t.get_translation(LONG_UNIT)
+        t.get_translation(LONG_UNIT)
+        t.get_translation("Clover watched.")
+        system = _system_carrying(t, "Clover watched.")
+        assert "Formal, long sentences." in system
+        assert "Clipped" not in system
+
+    def test_a_report_with_no_style_leaves_the_standing_one_alone(self):
+        """Same as an empty renderings block: "nothing to add" is not "forget
+        what you knew". A window the model describes in prose only must not
+        silently drop the register the book has been translated in."""
+        t = _translator(
+            [
+                "译文",
+                _styled_report("Clipped, no adverbs."),
+                "译文",
+                "They reached the barn.",
+                "译文",
+            ]
+        )
+        t.get_translation(LONG_UNIT)
+        t.get_translation(LONG_UNIT)
+        t.get_translation("Clover watched.")
+        assert "Clipped, no adverbs." in _system_carrying(t, "Clover watched.")
+
+    def test_a_fixed_style_is_never_replaced_by_a_reply(self):
+        """The structural guarantee. A standing instruction the model can
+        erode a window at a time would not be standing — and with a fixed
+        style the compact turn is not even asked for one, so anything that
+        looks like a style section is just more of the summary."""
+        t = _translator(
+            ["译文", _styled_report("Clipped, no adverbs."), "译文"],
+            style_note="Formal and old-fashioned.",
+        )
+        t.get_translation(LONG_UNIT)
+        t.get_translation("Clover watched.")
+        system = _system_carrying(t, "Clover watched.")
+        assert "Formal and old-fashioned." in system
+        assert "Clipped, no adverbs." not in system
+        assert t.handoff_style == ""
+
+    def test_the_snapshot_records_the_style_that_is_standing(self, tmp_path):
+        path = tmp_path / "book_handoff.md"
+        t = _translator(
+            [
+                "译文",
+                _styled_report("Clipped, no adverbs."),
+                "译文",
+                "They reached the barn.",
+            ],
+            handoff_path=path,
+        )
+        t.get_translation(LONG_UNIT)
+        t.get_translation(LONG_UNIT)
+        # the second report mentioned no style, so the file keeps the one the
+        # run is actually translating under rather than emptying out
+        assert "Clipped, no adverbs." in path.read_text(encoding="utf-8")
+
+
 # ------------------------------------------------------------------- resume
 
 
@@ -1045,6 +1192,24 @@ class TestResumeReadsTheSnapshotBack:
         _loader(translate_model=off)._restore_session_handoff()
         assert not off.learned
         assert "Napoleon took the farm." in off.session.messages()[0]["content"]
+
+    def test_resume_puts_the_style_back_on_the_standing_channel(self, tmp_path):
+        """The snapshot's style is restored the way its summary is — session
+        plus `--resume`, never gated on `--glossary-auto`. A style is how the
+        book reads, not a derived vocabulary an operator opts into, and the
+        second half of a book should not change register at the seam."""
+        path = _snapshot(tmp_path / "book_handoff.md", style_note="Clipped.")
+        t = _translator(handoff_path=path)
+        _loader(translate_model=t)._restore_session_handoff()
+        assert t.handoff_style == "Clipped."
+        assert "Clipped." in t.style_section()
+
+    def test_a_fixed_style_outranks_the_restored_one(self, tmp_path):
+        path = _snapshot(tmp_path / "book_handoff.md", style_note="Clipped.")
+        t = _translator(handoff_path=path, style_note="Formal and old-fashioned.")
+        _loader(translate_model=t)._restore_session_handoff()
+        assert "Formal and old-fashioned." in t.style_section()
+        assert "Clipped." not in t.style_section()
 
     def test_a_pin_still_wins_over_what_is_restored(self, tmp_path):
         path = _snapshot(

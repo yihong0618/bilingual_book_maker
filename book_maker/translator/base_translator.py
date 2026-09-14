@@ -345,6 +345,16 @@ class Base(ABC):
     # from `--glossary-auto` and whether a session is actually open.
     glossary_auto_on = False
 
+    # The style the run's own handoff reports observed, when the operator
+    # fixed none. Declared here so every route answers it, including the ones
+    # that never compact. It is a run artefact, never an instruction the
+    # operator gave: `style_note` (from `--prompt`) always wins, and nothing
+    # here can overwrite it. It changes only where a report is assembled —
+    # a seam, where the window resets anyway — so the standing instructions
+    # stay byte-identical for the life of a window and the cached prefix is
+    # never invalidated mid-window.
+    handoff_style = ""
+
     def _handoff_report(self, window_number, report_text):
         """The report a compact reply yields, the same way on every route.
 
@@ -357,14 +367,30 @@ class Base(ABC):
         never overwritten from a reply — the model was not even asked for
         one in that case, and a standing instruction the model can erode a
         window at a time would not be standing.
+
+        Otherwise the reply's style is *adopted*, here, because this is the
+        one place every route assembles a report. Before the sections were
+        split apart the observed style rode the seed inside the summary, so
+        the next window read it; once split it was written to the snapshot
+        and nowhere else, which made it write-only. `handoff_style` is the
+        channel it goes back on (`style_section`), and the newest report
+        replaces the previous one outright — a style is a description of how
+        this book is being translated, not a list to accumulate. A report
+        that says nothing about style leaves the standing one alone, the way
+        an empty renderings block leaves the glossary alone.
         """
         summary, style = split_handoff_sections(
             report_text, with_style=not self.style_note
         )
+        if not self.style_note:
+            self.handoff_style = trim_handoff_prose(style) or self.handoff_style
         return HandoffReport(
             window=window_number,
             summary=trim_handoff_prose(summary),
-            style_note=self.style_note or trim_handoff_prose(style),
+            # The snapshot records the style that is actually standing, so a
+            # resume restores what this run was translating under — not just
+            # whatever the final window happened to mention.
+            style_note=self.style_note or self.handoff_style,
         )
 
     def _learn_from_handoff(self, report_text, window=None):
@@ -543,6 +569,14 @@ class Base(ABC):
         budget = self._session_budget() if hasattr(self, "_session_budget") else 0
         session.reset(seed=report.seed_text(seed_cap(budget)))
         session.windows = snapshot.window + 1
+        # The style the stopped run was translating under, back on the
+        # standing channel — not just into the snapshot it came from. Gated
+        # exactly like the summary (session + `--resume`), never like the
+        # glossary: a style is how the book reads, not a derived vocabulary
+        # the operator has to opt into. A `--prompt` style still wins, so a
+        # resume can be given a new one without the file arguing back.
+        if not getattr(self, "style_note", None) and snapshot.style_note:
+            self.handoff_style = snapshot.style_note
         print(
             f"[bold cyan]resume: context window {session.windows}, seeded "
             f"from {Path(path).name}[/bold cyan]"
@@ -759,7 +793,13 @@ class Base(ABC):
         return self.fill_optional(getattr(self, "prompt_sys_msg", None))
 
     def style_section(self):
-        """`--prompt`'s style section as one standing line, or "".
+        """The standing style line, or "".
+
+        `--prompt`'s style section when the operator wrote one; otherwise the
+        style this run's own handoff reports observed (`handoff_style`), which
+        is how a compacted session keeps translating the way it was before the
+        seam. The operator's is checked first and is never merged with the
+        observed one: two descriptions of the same thing would only argue.
 
         No endpoint has a style slot, and style is not a per-request thing to
         say: it is a standing instruction about *how* to translate, fixed for
@@ -768,7 +808,11 @@ class Base(ABC):
         suffix on each turn, which is where it used to go and which paid for
         it once per request.
         """
-        note = (getattr(self, "style_note", None) or "").strip()
+        note = (
+            getattr(self, "style_note", None)
+            or getattr(self, "handoff_style", None)
+            or ""
+        ).strip()
         if not note:
             return ""
         return f"{self.STYLE_HEADING} {self.fill_optional(note)}"

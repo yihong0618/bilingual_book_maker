@@ -454,8 +454,14 @@ class Codex(Base):
         # reply is only refused for being empty (owner ruling 260913), and on
         # this route an empty reply is already the rollover shape below.
         report = self._handoff_report(self._window, report_text)
+        # Learning is not gated on the summary, the way the API routes do not
+        # gate it either: a reply that is nothing but a renderings block still
+        # observed those renderings, and dropping them because the prose was
+        # missing loses the one part of it that parsed. Writing the snapshot
+        # IS gated below — a report with no summary would overwrite a good
+        # one on disk with an empty seed.
+        report.glossary_lines = self._learn_from_handoff(report_text, window)
         if report.has_summary():
-            report.glossary_lines = self._learn_from_handoff(report_text, window)
             self._show_handoff(report)
             if self.handoff_path:
                 try:

@@ -591,6 +591,44 @@ class TestTheStripperRemovesExactlyWhatWasParsed:
         )
         assert "Boxer → 拳击手" not in request
 
+    def test_the_codex_route_learns_from_a_renderings_only_reply(self, tmp_path):
+        """codex review 260913 (P2): learning is not gated on the summary.
+
+        A reply that is nothing but a renderings block still observed those
+        renderings — they were parsed, they are grounded in the window, and
+        dropping them because the prose was missing loses the one part of the
+        reply that worked. The API routes already learned unconditionally
+        after the empty-reply check; this route gated everything behind
+        `has_summary()`. Writing the snapshot stays gated: an empty summary
+        must not overwrite a good file with nothing.
+        """
+        path = tmp_path / "h.md"
+        path.write_text("earlier snapshot\n", encoding="utf-8")
+        codex = Codex(
+            key="",
+            language="Chinese",
+            server=SimpleNamespace(),
+            glossary_auto=True,
+            handoff_path=path,
+            context_compact_at=1500,
+        )
+        codex._thread_id = "t1"
+        codex._window_sources = ["Boxer pulled the cart."]
+        codex._window_translations = ["拳击手拉着车。"]
+        codex._run_turn = Mock(
+            return_value="<renderings>\nBoxer → 拳击手\n</renderings>\n"
+        )
+        seeds = []
+        codex._ensure_thread = lambda seed=None: seeds.append(seed)
+
+        codex._compact_window()
+
+        assert codex.learned.lookup("Boxer").translation == "拳击手"
+        # nothing to seed with and nothing to record: the thread opens clean
+        # and the file on disk is left exactly as it was
+        assert seeds == [""]
+        assert path.read_text(encoding="utf-8") == "earlier snapshot\n"
+
     def test_every_route_assembles_the_report_the_same_way(self):
         # each route's compact path builds its HandoffReport through the one
         # shared helper, so the split and the trim cannot drift per route
