@@ -1036,10 +1036,21 @@ def test_the_cli_forwards_the_glossary_into_the_record(tmp_path):
     assert record[tmeta.GLOSSARY_SHA_KEY] == sha256(body).hexdigest()
 
 
-def test_a_plain_legacy_run_records_nothing(tmp_path):
+@pytest.fixture(scope="session")
+def plain_run(tmp_path_factory):
+    """The default command line, run once for the two tests that read it.
+
+    Both look at the same written book, from opposite ends — what is *not*
+    in the archive, and where the one credit line landed — so they are two
+    assertions about one ~2.6s subprocess, not two subprocesses.
+    """
+    return _cli(tmp_path_factory.mktemp("plain"))
+
+
+def test_a_plain_legacy_run_records_nothing(plain_run):
     """The tag-mode default. The reader still gets the line; a machine gets
     nothing it was not asked for."""
-    proc, output = _cli(tmp_path)
+    proc, output = plain_run
 
     assert proc.returncode == 0, proc.stdout + proc.stderr
     with zipfile.ZipFile(output) as archive:
@@ -1068,10 +1079,10 @@ def test_the_switch_that_silences_the_line_silences_the_record_too(tmp_path):
     assert _credit_count(output) == 0
 
 
-def test_the_credit_line_lands_on_the_real_books_title_page(tmp_path):
+def test_the_credit_line_lands_on_the_real_books_title_page(plain_run):
     """animal_farm.epub is calibre output with an EPUB 2 guide: the line
     goes where the guide says, once."""
-    proc, output = _cli(tmp_path)
+    proc, output = plain_run
 
     assert proc.returncode == 0, proc.stdout + proc.stderr
     with zipfile.ZipFile(output) as archive:

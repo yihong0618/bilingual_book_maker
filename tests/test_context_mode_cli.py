@@ -10,6 +10,20 @@ import pytest
 from book_maker.cli import parse_args, resolve_context_mode
 
 
+@pytest.fixture(autouse=True)
+def _no_backoff_naps(monkeypatch):
+    """Sit out none of the retry waits.
+
+    `TestUnsupportedLoaderWarning` drives the real `main()` to the point of
+    the warning it is about and then lets the run fall over on an
+    unreachable endpoint. The falling over is patient by design, so the
+    test was spending 5s in `tenacity.nap` after its assertion was already
+    decided. Every stop is `stop_after_attempt`, so the attempt count and
+    the printed lines do not move.
+    """
+    monkeypatch.setattr("tenacity.nap.time.sleep", lambda _seconds: None)
+
+
 def _parse(*args):
     return parse_args(["--book_name", "book.epub", *args])
 

@@ -42,6 +42,20 @@ SINGLE_FIELD = single_field_name(LANGUAGE)
 BATCH_FIELD = batch_field_name(LANGUAGE)
 
 
+@pytest.fixture(autouse=True)
+def _no_backoff_naps(monkeypatch):
+    """Sit out none of the retry waits.
+
+    Every retry in this module is `stop_after_attempt(3)` with
+    `wait_exponential`, so the attempt count — the thing these tests assert
+    — does not depend on the waiting, only the wall clock does. A test that
+    made the endpoint raise was spending 4s asleep in `tenacity.nap`.
+    What the waits themselves are is pinned in
+    tests/test_translate_with_backoff.py, off the retry's own object.
+    """
+    monkeypatch.setattr("tenacity.nap.time.sleep", lambda _seconds: None)
+
+
 def _single(text):
     """`.parsed` for a single translation in the fixture's language."""
     return SimpleNamespace(**{SINGLE_FIELD: text})
