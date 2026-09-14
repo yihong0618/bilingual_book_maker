@@ -1144,7 +1144,9 @@ class ChatGPTAPI(Base):
             # the whole window and answers with a report. Without this line
             # the meter understates a session run's cost worst exactly where
             # it looks best: at a short compact budget, where compaction is
-            # frequent (up to 38% of real cost invisible, 260905 eval).
+            # frequent (up to 38% of real cost invisible, 260905 eval). It is
+            # also the one place a per-purpose meter would tag as compaction
+            # rather than translation, if one is ever wanted.
             self._note_usage(completion)
             report_text = completion.choices[0].message.content or ""
         except Exception as e:
