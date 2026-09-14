@@ -76,6 +76,25 @@ class TestCompactBudgetFlag:
         with pytest.raises(SystemExit):
             _parse("--context-compact-at", "50")
 
+    def test_min_compact_budget_floor(self, capsys):
+        """The floor is 1500 (owner ruling 260913, raised from 500), and it
+        is a hard refusal rather than a clamp — the same treatment the old
+        floor gave, so a run never quietly uses a budget nobody typed.
+
+        Not a measured cost knee, and the message must not imply one: the
+        260913 cost curve was flat from 500 to 3000. The case is what a
+        window is for — at 1500 a ~300-token handoff seed is already a fifth
+        of it — so the refusal points at window mode, which is what an
+        operator wanting less context than this actually wants.
+        """
+        with pytest.raises(SystemExit):
+            _parse("--context-compact-at", "1499")
+        message = capsys.readouterr().err
+        assert "1500" in message
+        assert "--use_context" in message
+
+        assert _parse("--context-compact-at", "1500").context_compact_at == 1500
+
 
 class TestNoContextCompactFlag:
     """`--no-context-compact`: keep the seam, drop the report it pays for."""

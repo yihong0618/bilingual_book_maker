@@ -597,9 +597,27 @@ def prompt_adoption_line(prompt_config, translate_model, api_format):
     return line
 
 
-# Below this a window cannot hold even one paragraph with its translation, so
-# every unit would trigger a paid handoff report.
-MIN_COMPACT_BUDGET = 500
+# The smallest window this tool will run a session in. OWNER-SET (260913),
+# raised from 500, and the honest case for it is geometry rather than price.
+#
+# Measured (260913 eval C, the low-budget cost curve on the pre-redesign
+# tree): the curve is **flat** from 500 to 3000 — a run at 500 cost only
+# 1.06-1.12x the same run at 2000 — so there is no measured cost knee here to
+# point at, and nothing below claims one. What the curve does show is seams:
+# 10 compactions at 500 against 6 at 3000, each one a place where the context
+# is condensed and something can be lost.
+#
+# Chosen, from what a window is *for*: a window holds `budget` tokens minus
+# the seed that opens it, and the seed is about 300 (SEED_TARGET_TOKENS). At
+# 1500 that seed is a fifth of the window and four fifths are content; the
+# ratio gets worse quickly below it, and as the budget approaches the seed
+# size the per-content overhead diverges — every window pays for a handoff
+# report to carry less and less book. 1500 is where the owner drew that line.
+#
+# An operator who wants a context shorter than this does not want session
+# mode: window mode re-sends a few paragraphs and never compacts at all,
+# which is what the refusal below says.
+MIN_COMPACT_BUDGET = 1500
 
 
 def compact_budget(value):
@@ -610,9 +628,12 @@ def compact_budget(value):
         raise argparse.ArgumentTypeError(f"expected a whole number, got {value!r}")
     if budget < MIN_COMPACT_BUDGET:
         raise argparse.ArgumentTypeError(
-            f"a compact budget of {budget} is too small to be useful; use at "
-            f"least {MIN_COMPACT_BUDGET} estimated tokens (a window that "
-            f"short is a handoff report and little else)"
+            f"a compact budget of {budget} is too small for a session; use at "
+            f"least {MIN_COMPACT_BUDGET} estimated tokens. Most of a window "
+            f"that short is the handoff report that opens it. If you want the "
+            f"model to carry less context than that, do not use session mode "
+            f"— plain --use_context re-sends the last few paragraphs and "
+            f"never compacts"
         )
     return budget
 
@@ -2017,8 +2038,11 @@ off. Minimum 1.
         f"route included, --use_context or not — uses "
         f"{DEFAULT_COMPACT_BUDGET}, printed at start. It also bounds the "
         f"plan classifier's own conversation on endpoints that classify over "
-        f"a plain session (which restarts there, no handoff). An explicit "
-        f"value always wins; minimum 500",
+        f"a plain session (which restarts there, no handoff). It bounds the "
+        f"whole window, the handoff seed that opens it included, so it can "
+        f"be set to a model's input limit. An explicit value always wins; "
+        f"minimum {MIN_COMPACT_BUDGET} — below that, use plain --use_context "
+        f"rather than a session",
     )
     parser.add_argument(
         "--no-context-compact",
