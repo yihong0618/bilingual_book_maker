@@ -209,13 +209,44 @@ class _SeedTruncations:
 seed_truncations = _SeedTruncations()
 
 
+def _prefix_within(text: str, cap_tokens: int) -> str:
+    """The longest head of `text` whose own estimate fits `cap_tokens`.
+
+    Measured with `estimate_tokens` rather than converted with a
+    chars-per-token constant: the estimate is script-dependent (CJK packs
+    more than twice as densely as latin), so a character count derived from
+    the latin ratio hands back more than twice the cap on a CJK line — which
+    is exactly the seed the cap exists to prevent. Bisected, which the
+    estimate allows because a longer prefix never estimates smaller.
+    """
+    if cap_tokens <= 0 or not text:
+        return ""
+    if estimate_tokens(text) <= cap_tokens:
+        return text
+    low, high = 0, len(text)
+    while low < high:
+        mid = (low + high + 1) // 2
+        if estimate_tokens(text[:mid]) <= cap_tokens:
+            low = mid
+        else:
+            high = mid - 1
+    return text[:low]
+
+
+def _has_substance(lines) -> bool:
+    """Whether these lines say anything — a heading or a blank does not."""
+    return any(line.strip() and not _is_block_label(line) for line in lines)
+
+
 def truncate_seed(text: str, cap_tokens: int) -> str:
     """`text` cut to `cap_tokens` estimated tokens, head first.
 
     Head first because models front-load a handoff report: the summary and
     the terminology come before the trailing elaboration, so cutting the tail
     loses the least (owner ruling 260913). Cuts at a line boundary so the
-    next window is never seeded with half a sentence.
+    next window is never seeded with half a sentence — unless keeping whole
+    lines would leave the seed saying nothing, which is worse than a cut
+    sentence.
     """
     if not text or cap_tokens <= 0 or estimate_tokens(text) <= cap_tokens:
         seed_truncations.note(False)
@@ -228,11 +259,19 @@ def truncate_seed(text: str, cap_tokens: int) -> str:
         if estimate_tokens("\n".join(candidate)) > cap_tokens:
             break
         kept = candidate
-    if not kept:
-        # One line longer than the whole cap. Hand the next window the head of
-        # it rather than nothing at all; `_LATIN_CHARS_PER_TOKEN` is the
-        # conversion the estimate itself uses.
-        kept = [lines[0][: int(cap_tokens * _LATIN_CHARS_PER_TOKEN)]]
+    if not _has_substance(kept):
+        # Nothing fitted, or only headings and blank lines did — a report
+        # that opens `## Summary` on one long paragraph hits the second case,
+        # and used to seed the next window with the heading and no summary
+        # under it. Give it the head of the first line that says something,
+        # cut mid-sentence, which is the lesser loss.
+        first = next(
+            (line for line in lines if line.strip() and not _is_block_label(line)),
+            lines[0],
+        )
+        room = cap_tokens - estimate_tokens("\n".join(kept))
+        head = _prefix_within(first, room)
+        kept = kept + [head] if head else [_prefix_within(first, cap_tokens)]
     result = "\n".join(kept).rstrip()
     print(
         f"[yellow]ℹ the handoff report ran to {estimate_tokens(text)} "
@@ -475,7 +514,14 @@ def _is_sane_entry(entry) -> bool:
 # cannot carry alternatives or a "depending on context" qualifier — there is
 # nothing downstream that could choose.
 _ALTERNATIVES = re.compile(r"／|\s/\s")
-_TRAILING_QUALIFIER = re.compile(r"[（(][^（()）]*[)）]\s*$")
+_TRAILING_PAREN = re.compile(r"[（(]([^（()）]*)[)）]\s*$")
+# What makes a trailing parenthetical a hedge rather than part of the name.
+# A parenthesis alone is not evidence of one: `Organisation mondiale de la
+# santé (OMS)` is a rendering, abbreviation included, and refusing it would
+# throw away exactly the names most worth keeping unified.
+_QUALIFIER_WORDS = re.compile(
+    r"依语境|视语境|视上下文|按语境|看语境|context|depending", re.IGNORECASE
+)
 
 
 def _is_usable_rendering(entry) -> bool:
@@ -483,13 +529,15 @@ def _is_usable_rendering(entry) -> bool:
 
     `Balaene → Balaene` is refused: an identity pair instructs the model to
     do what it would do anyway, and both sides of the 260913 eval produced
-    them.
+    them. So is a rendering that offers a choice instead of making one —
+    there is nothing downstream that could choose.
     """
     if entry.term.lower() == entry.translation.lower():
         return False
     if _ALTERNATIVES.search(entry.translation):
         return False
-    return not _TRAILING_QUALIFIER.search(entry.translation)
+    trailing = _TRAILING_PAREN.search(entry.translation)
+    return not (trailing and _QUALIFIER_WORDS.search(trailing.group(1)))
 
 
 # Target languages written in CJK script, by name and by tag. The one script
@@ -640,6 +688,8 @@ _HEADING = re.compile(r"^\s{0,3}#{1,6}(\s|$)")
 # A list number a model puts in front of it, mirroring the compact prompt's
 # own numbering back into the report.
 _LIST_NUMBER = re.compile(r"^\s{0,3}\d+[.)]\s*")
+# A whole line wrapped in markdown emphasis: `**Established renderings**`.
+_EMPHASISED = re.compile(r"^(\*\*|__|\*|_)(.+?)\1$")
 
 
 def _is_block_label(line: str) -> bool:
@@ -651,20 +701,32 @@ def _is_block_label(line: str) -> bool:
     with only the `#` form recognised it survived the strip and was written
     into every handoff file above the canonical section, introducing nothing.
 
-    Deliberately narrow. The line must be short, must carry a label's
-    decoration — a number, emphasis, or a trailing colon — and must not read
-    as a sentence, or an ordinary numbered line of the summary would be eaten
-    along with the block.
+    Deliberately narrow, and narrower since the 260913 review found out why
+    it has to be. A list number alone is NOT a label: models number the
+    beats of a summary, so `1. Napoleon seizes power` is content, and
+    reading it as a label made a whole legitimate report look like nothing
+    but section titles — which `report_is_usable` then refused, costing the
+    run a paid compaction per window and finally an unseeded reset. The line
+    must therefore carry decoration a sentence does not have — emphasis
+    around the whole of it, or a trailing colon — and must not read as a
+    sentence even then.
     """
     text = line.strip()
     if not text or len(text) > _MAX_TERM_LEN:
         return False
     if _HEADING.match(line):
         return True
-    body = _LIST_NUMBER.sub("", text).strip("*_ ").rstrip(":").strip()
-    if not body or body == text:
+    body = _LIST_NUMBER.sub("", text).strip()
+    labelled = body.endswith(":") or bool(_EMPHASISED.match(body))
+    if not labelled:
         return False
-    return not body.endswith(_SENTENCE_END)
+    core = body.rstrip(":").strip()
+    emphasised = _EMPHASISED.match(core)
+    if emphasised:
+        core = emphasised.group(2).strip()
+    if not core:
+        return False
+    return not core.endswith(_SENTENCE_END)
 
 
 def report_is_usable(report_text: str, prompt: str) -> bool:
@@ -678,21 +740,32 @@ def report_is_usable(report_text: str, prompt: str) -> bool:
     boilerplate: strictly worse than a failed compact, because the
     accumulated context is gone *and* nothing replaced it.
 
-    Recognised by subtraction rather than by pattern: take away the lines the
-    prompt itself contains and the lines that are only a section label, and
-    what is left is the answer. If there is nothing left, the reply was the
-    question. Not a quality judgement — a short or unhelpful summary is still
-    a summary, and this only asks whether there is one.
+    Recognised by subtraction rather than by pattern: take away the
+    renderings block, the lines the prompt itself contains, and the lines
+    that are only a section label, and what is left is the answer. If there
+    is nothing left, the reply was the question.
+
+    The renderings go first because they are not a summary and are not
+    stored as one: a reply of `## Summary` with nothing under it and a full
+    block beneath used to pass, on the strength of the heading's own words.
+    Not a quality judgement otherwise — a short or unhelpful summary is
+    still a summary, and this only asks whether there is one.
     """
     if not report_text or not report_text.strip():
         return False
+    # The prompt's own lines go first, by exact match, and only then the
+    # renderings block: the prompt *describes* that block, tags and all, so
+    # removing the block first rewrites the very lines the echo check is
+    # about and an echoed prompt stops matching itself.
     asked = {line.strip() for line in prompt.splitlines() if line.strip()}
-    rest = "".join(
-        line
-        for line in report_text.splitlines()
-        if line.strip() not in asked and not _is_block_label(line)
+    unasked = "\n".join(
+        line for line in report_text.splitlines() if line.strip() not in asked
     )
-    return bool(re.search(r"\w", rest))
+    return any(
+        re.search(r"\w", line)
+        for line in _RENDERINGS.sub("", unasked).splitlines()
+        if line.strip() and not _is_block_label(line)
+    )
 
 
 def _drop_introducing_heading(before: str) -> str:
@@ -957,6 +1030,16 @@ def parse_snapshot(path) -> HandoffSnapshot | None:
     try:
         body = path.read_text(encoding="utf-8")
     except OSError:
+        # Not there, or not readable. Silent: a run with no handoff beside
+        # the book is the ordinary case, not a degraded one.
+        return None
+    except (ValueError, UnicodeDecodeError):
+        # Hand-edited and saved in another encoding. Worth a line, because
+        # the operator has a file they believe is being read.
+        print(
+            f"[yellow]ℹ {path.name} is not valid UTF-8, so it cannot be read "
+            f"back; ignoring it[/yellow]"
+        )
         return None
     if not body.strip():
         return None

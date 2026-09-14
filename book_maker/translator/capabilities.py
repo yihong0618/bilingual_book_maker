@@ -161,6 +161,23 @@ RUNG_REFUSAL_ERRORS = (
 # only caller (the session compact turn) truncates on this side anyway.
 COMPACT_CAP_FIELDS = ("max_tokens", "max_completion_tokens")
 
+# How an endpoint says it does not know a field, as opposed to not liking the
+# value in it. The difference decides whether a cap is given up for the rest
+# of the run: "max_tokens is too large: 500 > limit" and "max_tokens exceeds
+# the context length" both name the field while confirming the endpoint
+# understands it, and treating either as a refusal of the parameter would
+# strip the cap permanently over one bad request.
+PARAMETER_REFUSAL_PHRASES = (
+    "unsupported parameter",
+    "unsupported_parameter",
+    "unknown parameter",
+    "unrecognized",
+    "unrecognised",
+    "is not supported",
+    "not supported with",
+    "no longer supported",
+)
+
 # One garbled response from a proxy must not cost the whole book its structured
 # mode. A genuinely unsupported endpoint still pays at most this many attempts.
 STRUCTURED_FAILURE_THRESHOLD = 2
@@ -260,7 +277,9 @@ def classify_bad_request(error):
         return "temperature"
     if "response_format" in text or "json_schema" in text:
         return "schema"
-    if any(field in text for field in COMPACT_CAP_FIELDS):
+    if any(field in text for field in COMPACT_CAP_FIELDS) and any(
+        phrase in text for phrase in PARAMETER_REFUSAL_PHRASES
+    ):
         return "max_tokens"
     return "other"
 

@@ -40,6 +40,7 @@ from book_maker.session_context import (
     handoff_prompt,
     parse_handoff_glossary,
     parse_snapshot,
+    report_is_usable,
     seed_cap,
 )
 from book_maker.translator.chatgptapi_translator import ChatGPTAPI
@@ -83,6 +84,15 @@ def _translator(replies=None, **kwargs):
     )
     t.sent = sent
     return t
+
+
+# The largest a seed may measure. The cap bounds the *report*; the line
+# introducing it is a fixed ~40 tokens of ours on top (see `seed_text`), and
+# it is measured here rather than guessed so a reworded preamble cannot
+# quietly loosen every cap assertion below. The +1 is the estimator itself:
+# it rounds once over the whole string, so the parts can sum a token short.
+PREAMBLE_TOKENS = estimate_tokens(HandoffReport(window=1, summary="").seed_text())
+MAX_SEED_TOKENS = SEED_CAP_TOKENS + PREAMBLE_TOKENS + 1
 
 
 def _bad_request(message):
@@ -146,7 +156,7 @@ class TestTheSeedIsBounded:
         )
         seed = report.seed_text(SEED_CAP_TOKENS)
 
-        assert estimate_tokens(seed) <= SEED_CAP_TOKENS + 40  # + the preamble
+        assert estimate_tokens(seed) <= MAX_SEED_TOKENS
         assert "Clipped, no adverbs." not in seed
         # the head of the summary is there and the tail is gone
         assert "line 0 " in seed
@@ -204,6 +214,78 @@ class TestTheSeedIsBounded:
         seed_truncations.reset()
 
 
+class TestTheCutAlwaysLeavesSomethingToRead:
+    """Codex review 260913, three findings that share a cause: the cut was
+    reasoned about in lines and characters, and neither is what the cap
+    counts."""
+
+    def test_one_overlong_cjk_line_is_cut_to_the_cap(self):
+        """The fallback converted the cap to characters with the *latin*
+        ratio, so a CJK line kept 2048 characters — about 1205 estimated
+        tokens against a 512 cap, which is the seed the cap exists to
+        prevent."""
+        seed = HandoffReport(window=2, summary="拿" * 3000).seed_text(SEED_CAP_TOKENS)
+        assert estimate_tokens(seed) <= MAX_SEED_TOKENS
+        assert "拿" in seed
+
+    def test_a_heading_over_one_long_paragraph_still_says_something(self):
+        """`## Summary` fits, the paragraph under it does not, and the
+        fallback did not fire because something *had* been kept — so the next
+        window was seeded with a heading and nothing under it."""
+        paragraph = "They walked to the farm. " * 400
+        report = HandoffReport(window=2, summary=f"## Summary\n\n{paragraph}")
+        seed = report.seed_text(SEED_CAP_TOKENS)
+        assert estimate_tokens(seed) <= MAX_SEED_TOKENS
+        assert "They walked to the farm." in seed
+
+    def test_a_whole_report_of_headings_is_not_a_seed(self):
+        """Nothing substantive at all: there is no first real line to fall
+        back to, and the seed is whatever fits rather than an exception."""
+        report = HandoffReport(window=2, summary="## Summary\n\n### Style\n")
+        assert report.seed_text(SEED_CAP_TOKENS)
+
+
+class TestWhatCountsAsASectionLabel:
+    """Codex review 260913, the worst of the seven: a list number alone read
+    as a label, so a model that numbers the beats of its summary wrote a
+    report made entirely of "labels" — which `report_is_usable` then refused,
+    on every route, costing a paid compaction per window and finally an
+    unseeded reset."""
+
+    @pytest.mark.parametrize(
+        "line, is_label",
+        (
+            ("1. Napoleon seizes power", False),
+            ("2. The animals rebuild the windmill", False),
+            ("3. **Established renderings**:", True),
+            ("2) Style:", True),
+            ("**Established renderings**", True),
+            ("## Summary", True),
+            ("They walked to the farm.", False),
+        ),
+    )
+    def test_a_number_alone_is_not_decoration(self, line, is_label):
+        from book_maker.session_context import _is_block_label
+
+        assert _is_block_label(line) is is_label
+
+    def test_a_numbered_summary_is_a_usable_report(self):
+        report = (
+            "1. Napoleon seizes power\n"
+            "2. The animals rebuild the windmill\n"
+            "3. Boxer is sold to the knacker\n"
+        )
+        assert report_is_usable(report, handoff_prompt(with_glossary=True))
+
+    def test_a_numbered_summary_survives_a_compaction(self, tmp_path):
+        path = tmp_path / "book_handoff.md"
+        report = "1. Napoleon seizes power\n2. The windmill is rebuilt\n"
+        t = _translator(["译文", report], handoff_path=path)
+        t.get_translation("a" * 6000)
+        assert t.session.windows == 2
+        assert "Napoleon seizes power" in path.read_text(encoding="utf-8")
+
+
 class TestTheCompactRequestAsksForALength:
     def test_the_prompt_states_a_target_size(self):
         assert f"{300} tokens" in handoff_prompt()
@@ -239,6 +321,44 @@ class TestTheCompactRequestAsksForALength:
         # and remembered: the next compact does not re-learn it
         assert t.capabilities.compact_cap_kwargs("test-model", SEED_MAX_TOKENS) == {
             "max_completion_tokens": SEED_MAX_TOKENS
+        }
+
+    @pytest.mark.parametrize(
+        "message, verdict",
+        (
+            (
+                "Unsupported parameter: 'max_tokens' is not supported with "
+                "this model. Use 'max_completion_tokens' instead.",
+                "max_tokens",
+            ),
+            ("Unknown parameter: 'max_completion_tokens'.", "max_tokens"),
+            ("max_tokens is too large: 500 > limit", "other"),
+            (
+                "This model's maximum context length is 8192 tokens; "
+                "max_tokens exceeds what is left",
+                "other",
+            ),
+        ),
+    )
+    def test_only_a_refused_parameter_gives_the_cap_up(self, message, verdict):
+        """Codex review 260913: any 400 naming the field counted as a
+        refusal of it, so an unrelated size complaint stripped the cap for
+        the rest of the run. A complaint about the *value* confirms the
+        endpoint understands the field."""
+        from book_maker.translator.capabilities import classify_bad_request
+
+        assert classify_bad_request(_bad_request(message)) == verdict
+
+    def test_a_size_complaint_does_not_demote_the_spelling(self):
+        t = _translator()
+
+        def create(**call):
+            raise _bad_request("max_tokens is too large: 500 > limit")
+
+        t.openai_client.chat.completions.create = Mock(side_effect=create)
+        t._compact_session()  # the failure path, not the demotion path
+        assert t.capabilities.compact_cap_kwargs("test-model", SEED_MAX_TOKENS) == {
+            "max_tokens": SEED_MAX_TOKENS
         }
 
     def test_an_endpoint_that_takes_no_cap_is_asked_without_one(self):
@@ -361,6 +481,16 @@ class TestTheHandoffFileIsASnapshot:
         assert parse_snapshot(path) is None
         assert capsys.readouterr().out == ""
 
+    def test_a_file_in_another_encoding_is_ignored_not_raised(self, tmp_path, capsys):
+        """Codex review 260913: the read caught OSError only, so a
+        hand-edited file saved as latin-1 raised UnicodeDecodeError out of
+        the resume path and ended the run. The operator believes this file is
+        being read, so it is a line rather than silence."""
+        path = tmp_path / "book_handoff.md"
+        path.write_bytes("résumé of the window\n".encode("latin-1"))
+        assert parse_snapshot(path) is None
+        assert "not valid UTF-8" in capsys.readouterr().out
+
 
 # ---------------------------------------------------------------- the harvest
 
@@ -449,6 +579,7 @@ class TestTheHarvestIsBounded:
             ("Rebellion → 起义／反叛（依语境）", "a choice of renderings, not one"),
             ("Beasts of England → 英格兰兽／英伦兽歌", "the same with no qualifier"),
             ("whale → 鲸 / 鲸鱼", "the ascii spelling of the same thing"),
+            ("shore → 海岸（视语境）", "a hedge rather than a rendering"),
         ),
     )
     def test_a_pair_that_makes_no_single_substitution_is_dropped(self, line, why):
@@ -460,6 +591,23 @@ class TestTheHarvestIsBounded:
         assert len(parsed.glossary) == 1, why
         assert parsed.glossary.lookup("Boxer") is not None
         assert parsed.dropped == 1
+
+    @pytest.mark.parametrize(
+        "line, term",
+        (
+            ("WHO → Organisation mondiale de la santé (OMS)", "WHO"),
+            ("Manor Farm → 庄园农场（曼诺农场）", "Manor Farm"),
+        ),
+    )
+    def test_a_parenthesised_name_is_not_a_hedge(self, line, term):
+        """Codex review 260913: any trailing parenthetical was read as a
+        qualifier, which threw away renderings that carry their own
+        abbreviation — exactly the names most worth keeping unified. The
+        parenthetical has to say it is context-dependent to count."""
+        text = f"They walked.\n\n<renderings>\n{line}\n</renderings>\n"
+        parsed = parse_handoff_glossary(text, target_language="French")
+        assert parsed.glossary.lookup(term) is not None
+        assert parsed.dropped == 0
 
 
 class TestARelearnedTermReplaces:
@@ -606,7 +754,7 @@ class TestResumeReadsTheSnapshotBack:
         path = _snapshot(tmp_path / "book_handoff.md", summary="word " * 4000)
         t = _translator(handoff_path=path)
         _loader(translate_model=t)._restore_session_handoff()
-        assert t.session.estimated_tokens() <= SEED_CAP_TOKENS + 40
+        assert t.session.estimated_tokens() <= MAX_SEED_TOKENS
 
     @pytest.mark.parametrize(
         "gate",
@@ -705,6 +853,27 @@ class TestAJunkCompactReplyDegradesSafely:
         assert t.session.estimated_tokens() > 0
         assert "handoff report failed" in capsys.readouterr().out
 
+    def test_a_headed_glossary_with_no_prose_is_not_a_report(self, tmp_path):
+        """Codex review 260913: the renderings block was left in the
+        subtraction, so `## Summary` with nothing under it and a full block
+        beneath passed — on the strength of the heading's own words. The
+        block is not a summary and is not stored as one."""
+        reply = (
+            "## Summary\n\n"
+            "## Established renderings\n\n"
+            "<renderings>\nBoxer → 拳击手\nClover → 三叶草\n</renderings>\n"
+        )
+        assert not report_is_usable(reply, handoff_prompt(with_glossary=True))
+
+        path = tmp_path / "book_handoff.md"
+        HandoffReport(window=1, summary="The good one.").write_snapshot(path)
+        good = path.read_text(encoding="utf-8")
+        t = _translator(["译文", reply], glossary_auto=True, handoff_path=path)
+        t.get_translation("a" * 6000)
+        assert path.read_text(encoding="utf-8") == good
+        assert not t.learned
+        assert t.session.windows == 1
+
     def test_an_oversized_blob_is_a_report_and_is_cut(self, tmp_path, capsys):
         """The one reply in this family that *is* a report: a real summary,
         ten times too long. It compacts normally and the seed is truncated —
@@ -715,7 +884,7 @@ class TestAJunkCompactReplyDegradesSafely:
         t.get_translation("a" * 6000)
 
         assert t.session.windows == 2
-        assert t.session.estimated_tokens() <= SEED_CAP_TOKENS + 40
+        assert t.session.estimated_tokens() <= MAX_SEED_TOKENS
         assert "seed cap" in capsys.readouterr().out
         assert "part 0" in path.read_text(encoding="utf-8")
 
