@@ -90,7 +90,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 - **其他 OpenAI 兼容 API**: `--api_base`（以 `/v1` 结尾）、
   `--key`即 API key，以及模型标识符 `--model`。省略 `--api_base`即使用openai官方API，
   省略`--model`即使用 gpt-5.6-luna。
-- 或使用`--provider`进行翻译: `bbm_providers.example.json` 里预设了以下厂家（Gemini、Qwen、xAI、Groq、OrcaRouter、Ollama、LiteLLM、
+- 或使用`--provider`进行翻译: `bbm_providers.example.json` 里预设了以下厂家（Gemini、Qwen、xAI、Groq、OrcaRouter、API Route、Ollama、LiteLLM、
   SiliconFlow、OpenRouter）：复制为 `bbm_providers.json`，并修改其中的key，
   例如`--provider gemini` 就是使用其中 Gemini 的api。
 - `--use_context session` 使用会话模式翻译；历史默认在 8k 时压缩（`--context-compact-at` 可改）。它维护一份缓存的历史以保持前后一致，并自动从交接报告中积累术语表（`--glossary-auto`），使人名、术语全书统一——是 OpenAI 兼容接口的推荐用法，下方示例均已带上。
@@ -174,6 +174,18 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   ```
 
   若要指定具体模型：`--provider orcarouter --model <模型 id>`。
+
+* [API Route](https://www.api-route.com)
+
+  [API Route](https://www.api-route.com) 网关，默认使用 `claude-3-7-sonnet-20250219` 模型，
+  服务地址 `https://global.api-route.com/v1`。地址随该路由自带，无需 `--api_base`；
+  key 用 `--key` 或 `BBM_APIROUTE_API_KEY`。`--provider apiroute` 指向同一处。
+
+  ```shell
+  python3 make_book.py --book_name test_books/animal_farm.epub --model apiroute --key ${apiroute_key} --use_context session
+  ```
+
+  若要指定其他模型：`--provider apiroute --model <模型 id>`。
 
 * [Ollama](https://github.com/ollama/ollama)
 
@@ -289,6 +301,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   | `litellm` | 本机代理不需要；否则 `--key` 或 `$LITELLM_MASTER_KEY` | LiteLLM 代理，不写 `--api_base` 就是 `http://localhost:4000`；必须写 `--model` |
   | `codex` | 不需要：`codex login`（Codex CLI） | 本地 `codex app-server` 侧车，消耗 ChatGPT/Codex 套餐额度，默认 `gpt-5.6-luna` |
   | `orcarouter` | 需要：`--key` 或 `$BBM_ORCAROUTER_API_KEY` | 使用OrcaRouter |
+  | `apiroute` | 需要：`--key` 或 `$BBM_APIROUTE_API_KEY` | 使用API Route（默认 `claude-3-7-sonnet-20250219`） |
   | `google` | 不需要 | 免费谷歌翻译 |
   | `caiyun` | 需要：`--key` 或 `$BBM_CAIYUN_API_KEY` | 彩云小译 |
   | `deepl` | 需要：`--key` 或 `$BBM_DEEPL_API_KEY` | DeepL（付费） |

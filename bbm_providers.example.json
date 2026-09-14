@@ -44,6 +44,12 @@
       "default_models": ["orcarouter/auto"],
       "env_key": "BBM_ORCAROUTER_API_KEY"
     },
+    "apiroute": {
+      "api_style": "openai",
+      "base_url": "https://global.api-route.com/v1",
+      "default_models": ["claude-3-7-sonnet-20250219"],
+      "env_key": "BBM_APIROUTE_API_KEY"
+    },
     "siliconflow": {
       "api_style": "openai",
       "base_url": "https://api.siliconflow.cn/v1",

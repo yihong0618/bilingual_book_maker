@@ -213,3 +213,4 @@ FORMAT_DICT["google"] = OfflineTranslator
 # what a bare command does have no other way to stay offline.
 FORMAT_DICT["openai"] = OfflineLLM
 ROUTE_DICT["orcarouter"] = OfflineLLM
+ROUTE_DICT["apiroute"] = OfflineLLM

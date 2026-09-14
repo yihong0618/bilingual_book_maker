@@ -348,12 +348,19 @@ def resolve_endpoint(options):
     model_names = named_models(options)
 
     # A model name that selects a route says where the request goes, so a
-    # provider entry must not capture it. `--model orcarouter` is upstream's
-    # OrcaRouter route: its class carries the gateway's address and its
-    # smart-routing model, and the key comes from BBM_ORCAROUTER_API_KEY.
+    # provider entry must not capture it. `--model orcarouter` and
+    # `--model apiroute` are gateway routes: their classes carry the gateway's
+    # address and smart-routing model, and the key comes from their env vars.
     if len(model_names) == 1 and model_names[0].lower() in ROUTE_DICT:
         options.api_base = normalize_api_base(options.api_base, "openai")
-        return [model_names[0].lower()], "openai", ("BBM_ORCAROUTER_API_KEY",)
+        route_name = model_names[0].lower()
+        if route_name == "orcarouter":
+            env_keys = ("BBM_ORCAROUTER_API_KEY",)
+        elif route_name == "apiroute":
+            env_keys = ("BBM_APIROUTE_API_KEY", "APIROUTE_API_KEY")
+        else:
+            env_keys = (f"BBM_{route_name.upper()}_API_KEY",)
+        return [route_name], "openai", env_keys
     # `--model codex` is rewritten to `--api_format codex` by the legacy shim;
     # `--model_list` is not, so a bare `codex` here came from --model_list and
     # names the route, not a model to rotate to. Say what to type instead of
@@ -1725,9 +1732,9 @@ def build_parser():
         default=None,
         metavar="MODEL",
         help="model id, exactly as the endpoint names it (e.g. gpt-5-mini, "
-        "claude-sonnet-4-6, or a namespaced openai/gpt-5-mini). One value "
-        "names a route instead of a model: 'orcarouter' sends the run to the "
-        "OrcaRouter gateway. Old alias values, 'codex' among them, are "
+        "claude-sonnet-4-6, or a namespaced openai/gpt-5-mini). Values that "
+        "name a route instead of a model: 'orcarouter' or 'apiroute' sends the run "
+        "to the respective gateway. Old alias values, 'codex' among them, are "
         "translated to their format or model with a note; prefer "
         "'--api_format codex'. Defaults to gpt-5.6-luna on the openai format; "
         "the anthropic format needs an id",

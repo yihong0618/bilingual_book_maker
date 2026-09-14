@@ -452,6 +452,30 @@ class TestOrcaRouter:
         )
 
 
+class TestApiRoute:
+    """`--model apiroute` is a live route; only its key flag is old."""
+
+    def test_the_old_key_flag_becomes_key(self):
+        assert flags("--model", "apiroute", "--apiroute_key", "K") == {
+            "--key": "K",
+            "--model": "apiroute",
+        }
+        assert "--apiroute_key" in notices(
+            "--model", "apiroute", "--apiroute_key", "K"
+        )
+
+    def test_the_model_is_passed_through_untranslated(self):
+        assert rewrite("--model", "apiroute/claude-3-7-sonnet-20250219") == [
+            "--model",
+            "apiroute/claude-3-7-sonnet-20250219",
+        ]
+
+    def test_the_key_is_never_echoed(self):
+        assert "K-secret" not in notices(
+            "--model", "apiroute", "--apiroute_key", "K-secret"
+        )
+
+
 class TestCodex:
     """`--model codex` named the sidecar; `--api_format codex` does now."""
 

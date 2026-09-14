@@ -96,7 +96,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   `--key` the API key, and the model id in `--model`. Omit `--api_base` for
   OpenAI's own API, and `--model` for `gpt-5.6-luna`.
 - Or translate through `--provider`: `bbm_providers.example.json` has an
-  entry for each vendor below (Gemini, Qwen, xAI, Groq, OrcaRouter, Ollama,
+  entry for each vendor below (Gemini, Qwen, xAI, Groq, OrcaRouter, API Route, Ollama,
   LiteLLM, SiliconFlow, OpenRouter). Copy it to
   `bbm_providers.json`, set the key in it, and `--provider gemini` uses the
   Gemini API from it.
@@ -190,6 +190,19 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   ```
 
   To name one model instead: `--provider orcarouter --model <id>`.
+
+* [API Route](https://www.api-route.com)
+
+  The [API Route](https://www.api-route.com) gateway, defaulting to `claude-3-7-sonnet-20250219`
+  at `https://global.api-route.com/v1`. The address comes with the route, so there
+  is no `--api_base`; the key is `--key` or `BBM_APIROUTE_API_KEY`.
+  `--provider apiroute` reaches the same place.
+
+  ```shell
+  python3 make_book.py --book_name test_books/animal_farm.epub --model apiroute --key ${apiroute_key} --use_context session
+  ```
+
+  To name another model instead: `--provider apiroute --model <id>`.
 
 * [Ollama](https://github.com/ollama/ollama)
 
@@ -322,6 +335,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   | `litellm` | none for a proxy on this machine, else `--key` or `$LITELLM_MASTER_KEY` | a LiteLLM proxy, `http://localhost:4000` unless `--api_base` says otherwise; `--model` required |
   | `codex` | none: `codex login` (Codex CLI) | the local `codex app-server` sidecar on a ChatGPT/Codex plan, default `gpt-5.6-luna` |
   | `orcarouter` | required: `--key` or `$BBM_ORCAROUTER_API_KEY` | OrcaRouter |
+  | `apiroute` | required: `--key` or `$BBM_APIROUTE_API_KEY` | API Route (default `claude-3-7-sonnet-20250219`) |
   | `google` | none | Google Translate, free |
   | `caiyun` | required: `--key` or `$BBM_CAIYUN_API_KEY` | Caiyun |
   | `deepl` | required: `--key` or `$BBM_DEEPL_API_KEY` | DeepL (paid) |

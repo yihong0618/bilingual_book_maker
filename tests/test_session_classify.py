@@ -888,11 +888,13 @@ class TestTheRoutesThatOfferOne:
         assert can_session_classify(Codex.__new__(Codex))
 
     def test_so_can_the_openai_route_and_its_resellers(self):
+        from book_maker.translator.apiroute_translator import ApiRouteTranslator
         from book_maker.translator.chatgptapi_translator import ChatGPTAPI
         from book_maker.translator.orcarouter_translator import OrcaRouterTranslator
 
         assert can_session_classify(ChatGPTAPI.__new__(ChatGPTAPI))
         assert can_session_classify(OrcaRouterTranslator.__new__(OrcaRouterTranslator))
+        assert can_session_classify(ApiRouteTranslator.__new__(ApiRouteTranslator))
 
     @pytest.mark.parametrize("route", ["anthropic", "gemini", "qwen"])
     def test_a_route_with_no_session_of_its_own_does_not_pretend(self, route):

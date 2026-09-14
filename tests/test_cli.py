@@ -39,6 +39,8 @@ KEY_ENV_VARS = (
     "BBM_CAIYUN_API_KEY",
     "BBM_DEEPL_API_KEY",
     "BBM_ORCAROUTER_API_KEY",
+    "BBM_APIROUTE_API_KEY",
+    "APIROUTE_API_KEY",
 )
 
 
@@ -668,6 +670,25 @@ def test_orcarouter_needs_no_endpoint_and_reads_its_own_key(tmp_path):
     assert "deprecated" not in proc.stdout
 
 
+def test_apiroute_needs_no_endpoint_and_reads_its_own_key(tmp_path):
+    src = tmp_path / BOOK.name
+    src.write_bytes(BOOK.read_bytes())
+    proc = _cli_in(
+        tmp_path,
+        "--book_name",
+        str(src),
+        "--model",
+        "apiroute",
+        "--test",
+        "--test_num",
+        "1",
+        BBM_APIROUTE_API_KEY="sk-apiroute",
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert (tmp_path / "animal_farm_bilingual.epub").exists()
+    assert "deprecated" not in proc.stdout
+
+
 def _options(**kwargs):
     """The flags `resolve_endpoint` reads, defaulting to "not passed"."""
     from types import SimpleNamespace
@@ -1068,6 +1089,31 @@ class TestProviderPrecedence:
         models, _, _ = resolve_endpoint(options)
 
         assert models == ["orcarouter"]
+        assert options.api_base == "https://mine/v1"
+
+    def test_model_apiroute_keeps_its_own_gateway_at_a_provider(self, provider_entry):
+        from book_maker.cli import resolve_endpoint
+
+        provider_entry(
+            api_style="openai",
+            base_url="https://api.provider.example/v1",
+            env_key="BBM_TEST_PROVIDER_KEY",
+        )
+        options = _options(provider="p", model="apiroute")
+        models, api_format, env_keys = resolve_endpoint(options)
+
+        assert models == ["apiroute"]
+        assert not options.api_base
+        assert api_format == "openai"
+        assert env_keys == ("BBM_APIROUTE_API_KEY", "APIROUTE_API_KEY")
+
+    def test_an_explicit_api_base_still_reaches_the_apiroute_class(self):
+        from book_maker.cli import resolve_endpoint
+
+        options = _options(model="ApiRoute", api_base="https://mine/v1/")
+        models, _, _ = resolve_endpoint(options)
+
+        assert models == ["apiroute"]
         assert options.api_base == "https://mine/v1"
 
     def test_an_explicit_api_format_still_outranks_a_route_selecting_model(self):
