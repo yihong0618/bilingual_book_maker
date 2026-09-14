@@ -43,6 +43,7 @@ from book_maker.session_context import (
     report_is_usable,
     seed_cap,
 )
+from book_maker.translator.capabilities import REASONING_ALLOWANCE_TOKENS
 from book_maker.translator.chatgptapi_translator import ChatGPTAPI
 
 
@@ -134,6 +135,60 @@ class TestTheBudgetBoundsTheWholeWindow:
         history.reset(seed="x " * 400)
         assert history.estimated_tokens() > 0
         assert not history.should_compact(0)  # 0 is "no budget", not "always"
+
+
+class TestTheGiveUpGuardWaitsForASecondFailure:
+    """A window past 2x its budget is not on its own evidence of trouble.
+
+    At the floor budget a single grouped exchange runs ~2400 estimated
+    tokens, so one unit can clear 2 x 1500 through granularity alone. The
+    size arm firing on the first failure therefore threw a healthy window
+    away whenever one compact request happened to be flaky — the precise
+    thing the retry exists to prevent. The arm still fires; it just waits
+    for the failure to repeat, which costs one paragraph and proves it.
+    """
+
+    BUDGET = MIN_COMPACT_BUDGET
+
+    def _overshot(self):
+        t = _translator(context_compact_at=self.BUDGET)
+        t.session.reset(seed="")
+        t.session.append("x " * 4 * self.BUDGET, "y " * 4 * self.BUDGET)
+        assert t.session.estimated_tokens() > 2 * self.BUDGET
+        return t
+
+    def test_the_first_failure_at_an_overshot_window_retries(self):
+        t = self._overshot()
+        before = t.session.messages()
+        t._compact_failed("no report", self.BUDGET)
+        assert t.session.messages() == before  # window kept
+        assert t._compact_failures == 1
+
+    def test_the_second_failure_gives_up(self):
+        t = self._overshot()
+        t._compact_failed("no report", self.BUDGET)
+        t._compact_failed("no report", self.BUDGET)
+        assert t.session.messages() == []  # window thrown away, seeded empty
+        assert t._compact_failures == 0
+
+    def test_a_definitive_refusal_still_gives_up_on_the_first(self):
+        """The anthropic route's "this history is too long" is the endpoint
+        saying retrying cannot work. That is evidence; a size estimate is
+        not, and only the estimate was made patient."""
+        t = self._overshot()
+        t._compact_failed("history too long", self.BUDGET, force_give_up=True)
+        assert t.session.messages() == []
+
+    def test_a_window_inside_its_budget_still_retries_twice(self):
+        """The patience is not unbounded — COMPACT_ATTEMPTS still ends it."""
+        t = _translator(context_compact_at=self.BUDGET)
+        t.session.reset(seed="")
+        t.session.append("x " * 20, "y " * 20)
+        for _ in range(t.COMPACT_ATTEMPTS - 1):
+            t._compact_failed("no report", self.BUDGET)
+            assert t.session.messages() != []
+        t._compact_failed("no report", self.BUDGET)
+        assert t.session.messages() == []
 
 
 # ------------------------------------------------------------- the seed bound
@@ -238,6 +293,33 @@ class TestTheCutAlwaysLeavesSomethingToRead:
         assert estimate_tokens(seed) <= MAX_SEED_TOKENS
         assert "They walked to the farm." in seed
 
+    @pytest.mark.parametrize(
+        "text",
+        (
+            "## Summary\n" + "拿" * 3000,
+            "## Summary\n\n" + "They walked to the farm. " * 400,
+            "拿" * 3000,
+            "## Summary\n\n### Style\n",
+            "\n".join(f"line {n} " + "word " * 30 for n in range(200)),
+            "x",
+            "",
+        ),
+    )
+    @pytest.mark.parametrize("cap", (512, 100, 7, 1))
+    def test_the_result_never_exceeds_the_cap(self, text, cap):
+        """The postcondition, stated as one: whatever the shape of the
+        report and whatever the cap, what comes back fits.
+
+        Codex review 260913 found two ways it did not, both from measuring
+        parts separately — each rounded on its own, and the newline joining
+        them counted by neither. `"## Summary\\n" + 3000 CJK characters`
+        came back at 513 against a cap of 512. The size is settled on the
+        final joined string now, which is the only string that matters.
+        """
+        from book_maker.session_context import truncate_seed
+
+        assert estimate_tokens(truncate_seed(text, cap)) <= cap
+
     def test_a_whole_report_of_headings_is_not_a_seed(self):
         """Nothing substantive at all: there is no first real line to fall
         back to, and the seed is whatever fits rather than an exception."""
@@ -315,13 +397,38 @@ class TestTheCompactRequestAsksForALength:
         t.openai_client.chat.completions.create = Mock(side_effect=create)
         t._compact_session()
 
-        # asked with the cap, refused, asked again with the other spelling
+        # asked with the cap, refused, asked again with the other spelling —
+        # which carries the reasoning allowance on top, see the next test
         assert "max_tokens" in calls[0]
-        assert calls[1].get("max_completion_tokens") == SEED_MAX_TOKENS
+        assert (
+            calls[1].get("max_completion_tokens")
+            == SEED_MAX_TOKENS + REASONING_ALLOWANCE_TOKENS
+        )
         # and remembered: the next compact does not re-learn it
         assert t.capabilities.compact_cap_kwargs("test-model", SEED_MAX_TOKENS) == {
-            "max_completion_tokens": SEED_MAX_TOKENS
+            "max_completion_tokens": SEED_MAX_TOKENS + REASONING_ALLOWANCE_TOKENS
         }
+
+    def test_the_reasoning_spelling_gets_room_to_think(self):
+        """Live smoke 260913: every session cell on a reasoning model lost
+        its first compaction. `max_completion_tokens` budgets the
+        hidden reasoning *and* the reply, so a cap sized for the report alone
+        was spent thinking and the request came back empty — billed, no
+        report, the window kept and retried a paragraph later.
+
+        The allowance cannot loosen the seed bound: the client truncates
+        whatever arrives at SEED_CAP_TOKENS, so a larger completion cap costs
+        at most some completion tokens on one request per window.
+        """
+        t = _translator()
+        assert t.capabilities.compact_cap_kwargs("test-model", SEED_MAX_TOKENS) == {
+            "max_tokens": SEED_MAX_TOKENS  # non-reasoning endpoints: no thinking
+        }
+        t.capabilities.note_compact_cap_rejected("test-model")
+        assert t.capabilities.compact_cap_kwargs("test-model", SEED_MAX_TOKENS) == {
+            "max_completion_tokens": SEED_MAX_TOKENS + REASONING_ALLOWANCE_TOKENS
+        }
+        assert REASONING_ALLOWANCE_TOKENS > SEED_CAP_TOKENS
 
     @pytest.mark.parametrize(
         "message, verdict",
@@ -338,6 +445,15 @@ class TestTheCompactRequestAsksForALength:
                 "max_tokens exceeds what is left",
                 "other",
             ),
+            # codex review 260913, the residual: a *value* complaint worded
+            # with the same "not supported" the refusals use. The endpoint
+            # plainly understands the field, so the cap stays.
+            (
+                "Unsupported value: max_tokens=0 is not supported; must be "
+                "greater than zero",
+                "other",
+            ),
+            ("Invalid value for 'max_tokens': must be at least 1", "other"),
         ),
     )
     def test_only_a_refused_parameter_gives_the_cap_up(self, message, verdict):
@@ -852,6 +968,51 @@ class TestAJunkCompactReplyDegradesSafely:
         assert t.session.windows == 1
         assert t.session.estimated_tokens() > 0
         assert "handoff report failed" in capsys.readouterr().out
+
+    @pytest.mark.parametrize(
+        "reply",
+        (
+            "Boxer → 拳击手\nClover → 三叶草\n",
+            "## Summary\n\nBoxer → 拳击手\nClover → 三叶草\n",
+            "### Established renderings\n\nBoxer → 拳击手\n",
+        ),
+    )
+    @pytest.mark.parametrize("learning", (True, False))
+    def test_a_reply_of_only_loose_renderings_is_not_a_report(
+        self, tmp_path, reply, learning
+    ):
+        """Codex review 260913, the residual: the subtraction removed the
+        *tagged* block, so a reply of bare `term → translation` lines still
+        read as prose — and a good snapshot was overwritten with a summary
+        that had been parsed away to nothing.
+
+        Both guards are asserted, on and off the learning path, because they
+        fail in different places: `report_is_usable` refuses the reply, and
+        `has_summary` refuses to write a summary that is a heading and
+        nothing else. What they protect — a snapshot already on disk — is
+        not recoverable, so one guard is not enough.
+        """
+        assert not report_is_usable(reply, handoff_prompt(with_glossary=True))
+
+        path = tmp_path / "book_handoff.md"
+        HandoffReport(
+            window=1, summary="The good one.", glossary_lines="Napoleon → 拿破仑\n"
+        ).write_snapshot(path)
+        good = path.read_bytes()
+
+        t = _translator(["译文", reply], glossary_auto=learning, handoff_path=path)
+        assert t.get_translation("a" * 6000) == "译文"
+        assert path.read_bytes() == good
+        assert t.session.windows == 1
+        assert t.session.estimated_tokens() > 0
+
+    def test_a_summary_of_only_a_heading_is_never_written(self, tmp_path):
+        path = tmp_path / "book_handoff.md"
+        HandoffReport(window=1, summary="The good one.").write_snapshot(path)
+        assert HandoffReport(window=2, summary="## Summary").write_snapshot(path) is (
+            False
+        )
+        assert "The good one." in path.read_text(encoding="utf-8")
 
     def test_a_headed_glossary_with_no_prose_is_not_a_report(self, tmp_path):
         """Codex review 260913: the renderings block was left in the

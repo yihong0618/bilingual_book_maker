@@ -161,6 +161,21 @@ RUNG_REFUSAL_ERRORS = (
 # only caller (the session compact turn) truncates on this side anyway.
 COMPACT_CAP_FIELDS = ("max_tokens", "max_completion_tokens")
 
+# Headroom added to the cap under the `max_completion_tokens` spelling, and
+# only under it. That spelling is what the reasoning families answer to, and
+# on those the budget covers the reasoning *before* the reply: a cap sized for
+# the report alone is spent thinking, and the request comes back with an empty
+# message. Measured live (260913 smoke matrix, gpt-5.6-luna): every session
+# cell lost its first compaction to exactly this — a billed request answering
+# nothing, the window kept, the report retried on the next unit.
+#
+# CHOSEN, not measured: 1500 covers the reasoning budgets observed there with
+# room over. It cannot make the seed bigger — the client truncates at
+# SEED_CAP_TOKENS whatever arrives — so the whole cost of being generous here
+# is some completion tokens on one request per window, against a wasted
+# request per run if it is too small.
+REASONING_ALLOWANCE_TOKENS = 1500
+
 # How an endpoint says it does not know a field, as opposed to not liking the
 # value in it. The difference decides whether a cap is given up for the rest
 # of the run: "max_tokens is too large: 500 > limit" and "max_tokens exceeds
@@ -176,6 +191,17 @@ PARAMETER_REFUSAL_PHRASES = (
     "is not supported",
     "not supported with",
     "no longer supported",
+)
+
+# ...except when the endpoint is refusing the VALUE in the field, which it
+# can only do by understanding the field. These overlap in wording — a real
+# 400 reads "Unsupported value: max_tokens=0 is not supported; must be
+# greater than zero" — so a value complaint wins over a refusal phrase
+# outright, and the cap survives to be sent again with a sane number.
+PARAMETER_VALUE_COMPLAINTS = re.compile(
+    r"unsupported value|invalid value|must be (greater|less|at least|no more)"
+    r"|too large|too small|maximum|minimum|greater than|less than",
+    re.IGNORECASE,
 )
 
 # One garbled response from a proxy must not cost the whole book its structured
@@ -277,8 +303,10 @@ def classify_bad_request(error):
         return "temperature"
     if "response_format" in text or "json_schema" in text:
         return "schema"
-    if any(field in text for field in COMPACT_CAP_FIELDS) and any(
-        phrase in text for phrase in PARAMETER_REFUSAL_PHRASES
+    if (
+        any(field in text for field in COMPACT_CAP_FIELDS)
+        and any(phrase in text for phrase in PARAMETER_REFUSAL_PHRASES)
+        and not PARAMETER_VALUE_COMPLAINTS.search(text)
     ):
         return "max_tokens"
     return "other"
@@ -575,12 +603,20 @@ class CapabilityLedger:
         which is not a failure: the caller's own truncation is what the seed
         bound actually rests on, and a cap the endpoint applies only saves
         paying for output that would be cut anyway.
+
+        The `max_completion_tokens` spelling gets REASONING_ALLOWANCE_TOKENS
+        on top: the endpoints that insist on it spend that budget on hidden
+        reasoning before the reply, so a cap sized for the report alone buys
+        thinking and an empty message.
         """
         with self.lock:
             index = self.compact_cap_field.get(model, 0)
         if index >= len(COMPACT_CAP_FIELDS):
             return {}
-        return {COMPACT_CAP_FIELDS[index]: cap}
+        field = COMPACT_CAP_FIELDS[index]
+        if field == "max_completion_tokens":
+            return {field: cap + REASONING_ALLOWANCE_TOKENS}
+        return {field: cap}
 
     def note_compact_cap_rejected(self, model):
         """Remember that `model` refused this spelling; name the next, if any."""

@@ -527,14 +527,26 @@ class Base(ABC):
         meet again on the very next request, carrying the same history.
         """
         self._compact_failures += 1
-        # Give up on attempts, or as soon as the window has outgrown its
-        # budget badly enough that retrying is the wrong bet: a compact that
-        # fails because the history is too long will keep failing, and the
+        # Give up on attempts, or once the window has outgrown its budget
+        # badly enough that retrying is the wrong bet: a compact that fails
+        # because the history is too long will keep failing, and the
         # translation requests carrying that history fail with it.
+        #
+        # The size arm only arms from the SECOND failure on, because at a
+        # small budget the window can be past twice it through granularity
+        # alone — a grouped exchange runs ~2400 estimated tokens, so a single
+        # unit can clear 2 x MIN_COMPACT_BUDGET without anything being wrong.
+        # Giving up there would throw the window away on one flaky request,
+        # which is exactly what the retry exists to prevent. A genuinely
+        # oversized history fails again on the next unit, and the second
+        # failure is what settles it.
         give_up = (
             force_give_up
             or self._compact_failures >= self.COMPACT_ATTEMPTS
-            or self.session.estimated_tokens() > 2 * budget
+            or (
+                self._compact_failures >= 2
+                and self.session.estimated_tokens() > 2 * budget
+            )
         )
         print(
             f"[yellow]ℹ handoff report failed ({reason}); "

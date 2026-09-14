@@ -238,6 +238,31 @@ def _has_substance(lines) -> bool:
     return any(line.strip() and not _is_block_label(line) for line in lines)
 
 
+def _fit_to_cap(lines, cap_tokens: int) -> str:
+    """These lines joined, shrunk until the joined text itself fits the cap.
+
+    The last word on the size, and the only place the postcondition is
+    established: every path above assembles a candidate out of parts it
+    measured separately, and separately-measured parts do not add up — each
+    is rounded on its own and the newlines joining them are counted by
+    neither. `"## Summary\\n" + 3000 CJK characters` came back at 513
+    against a cap of 512 that way.
+
+    Shrinks in the order that loses least: a heading or a blank line at the
+    head buys nothing once the body under it has to be cut, so those go
+    first; only then is the text itself cut, bisected on the joined string.
+    """
+    kept = list(lines)
+    while len(kept) > 1 and estimate_tokens("\n".join(kept).rstrip()) > cap_tokens:
+        if kept[0].strip() and not _is_block_label(kept[0]):
+            break
+        kept.pop(0)
+    text = "\n".join(kept).rstrip()
+    if estimate_tokens(text) <= cap_tokens:
+        return text
+    return _prefix_within(text, cap_tokens)
+
+
 def truncate_seed(text: str, cap_tokens: int) -> str:
     """`text` cut to `cap_tokens` estimated tokens, head first.
 
@@ -247,6 +272,11 @@ def truncate_seed(text: str, cap_tokens: int) -> str:
     next window is never seeded with half a sentence — unless keeping whole
     lines would leave the seed saying nothing, which is worse than a cut
     sentence.
+
+    Postcondition, absolute and established by `_fit_to_cap`: the result's
+    own estimate is at most `cap_tokens`, for every input. The layers above
+    this one can be ignored by a model; this one cannot be, so it may not
+    have exceptions of its own.
     """
     if not text or cap_tokens <= 0 or estimate_tokens(text) <= cap_tokens:
         seed_truncations.note(False)
@@ -263,20 +293,19 @@ def truncate_seed(text: str, cap_tokens: int) -> str:
         # Nothing fitted, or only headings and blank lines did — a report
         # that opens `## Summary` on one long paragraph hits the second case,
         # and used to seed the next window with the heading and no summary
-        # under it. Give it the head of the first line that says something,
-        # cut mid-sentence, which is the lesser loss.
+        # under it. Give it the first line that says something, cut
+        # mid-sentence by `_fit_to_cap`, which is the lesser loss.
         first = next(
             (line for line in lines if line.strip() and not _is_block_label(line)),
             lines[0],
         )
-        room = cap_tokens - estimate_tokens("\n".join(kept))
-        head = _prefix_within(first, room)
-        kept = kept + [head] if head else [_prefix_within(first, cap_tokens)]
-    result = "\n".join(kept).rstrip()
+        kept = kept + [first]
+    result = _fit_to_cap(kept, cap_tokens)
     print(
         f"[yellow]ℹ the handoff report ran to {estimate_tokens(text)} "
         f"estimated tokens, over the {cap_tokens}-token seed cap; the next "
-        f"window is seeded with its first {len(kept)} line(s)[/yellow]"
+        f"window is seeded with its first "
+        f"{len(result.splitlines()) if result else 0} line(s)[/yellow]"
     )
     return result
 
@@ -745,9 +774,15 @@ def report_is_usable(report_text: str, prompt: str) -> bool:
     that are only a section label, and what is left is the answer. If there
     is nothing left, the reply was the question.
 
-    The renderings go first because they are not a summary and are not
-    stored as one: a reply of `## Summary` with nothing under it and a full
-    block beneath used to pass, on the strength of the heading's own words.
+    The renderings go too, tagged or not, because they are not a summary and
+    are not stored as one: a reply of `## Summary` with nothing under it and
+    a full block beneath used to pass on the strength of the heading's own
+    words, and a reply of nothing but bare `term → translation` lines passed
+    on the strength of the terms. Both then overwrote a good snapshot with a
+    summary that was empty. The loose lines are recognised with the same
+    guard the fallback parse uses, so this refuses exactly what that would
+    have harvested.
+
     Not a quality judgement otherwise — a short or unhelpful summary is
     still a summary, and this only asks whether there is one.
     """
@@ -764,7 +799,9 @@ def report_is_usable(report_text: str, prompt: str) -> bool:
     return any(
         re.search(r"\w", line)
         for line in _RENDERINGS.sub("", unasked).splitlines()
-        if line.strip() and not _is_block_label(line)
+        if line.strip()
+        and not _is_block_label(line)
+        and not _line_entries(line, strict=False)
     )
 
 
@@ -900,8 +937,15 @@ class HandoffReport:
         report with no summary is not a cheaper handoff, it is a failed one —
         callers take the failed-compact path rather than seeding a window
         with boilerplate and overwriting a good snapshot with it.
+
+        Asked of the summary as it will be *stored*, headings and all, which
+        is why a lone `## Summary` does not count: that is what a reply of
+        pure renderings leaves behind once they have been parsed out of it.
+        This is the second of two guards on the same failure (the first is
+        `report_is_usable`, on the raw reply), because the thing it protects
+        — a good snapshot already on disk — cannot be recovered.
         """
-        return bool(self.summary and re.search(r"\w", self.summary))
+        return bool(self.summary) and _has_substance(self.summary.splitlines())
 
     def seed_text(self, cap_tokens: int = SEED_CAP_TOKENS) -> str:
         """The next window's opening message: the report's summary, capped.
