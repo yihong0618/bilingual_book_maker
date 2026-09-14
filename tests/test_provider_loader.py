@@ -398,3 +398,14 @@ class TestShippedExample:
         assert config, "the shipped example should be present in a checkout"
         for name, entry in config["providers"].items():
             validate_provider(name, entry)
+
+    def test_the_shipped_atlascloud_route_is_openai_compatible(self, monkeypatch):
+        shipped = Path(__file__).resolve().parent.parent / "bbm_providers.example.json"
+        monkeypatch.setattr(provider_loader, "EXAMPLE_CONFIG_PATH", shipped)
+
+        route = resolve_provider("atlascloud")
+
+        assert route.api_format == "openai"
+        assert route.api_base == "https://api.atlascloud.ai/v1"
+        assert route.models == ["openai/gpt-5.6-luna"]
+        assert route.env_key == "ATLASCLOUD_API_KEY"
