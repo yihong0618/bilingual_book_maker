@@ -420,7 +420,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 - `--glossary` / `--terminology`:
 
   一个 `term → translation` 术语文件（每行一条，`#` 之后是注释，txt格式）。
-  仅 openai 系与 codex 路由、且书籍为 EPUB 或 Markdown 时生效。
+  仅 openai 系与 codex 路由、且书籍为 EPUB、Markdown 或 PDF 时生效。
   
   钉住一个术语就等于让译文照此表述，所以只钉你能负责的译法。
 

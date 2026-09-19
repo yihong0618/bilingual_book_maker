@@ -184,7 +184,7 @@ class TestSessionOnlyWarnings:
 
 
 class TestUnsupportedLoaderWarning:
-    """txt, srt and pdf never hand context to the model, so a session budget
+    """txt and srt never hand context to the model, so a session budget
     is reported as ignored rather than silently dropped."""
 
     def _warn(self, capsys, tmp_path, *args):
