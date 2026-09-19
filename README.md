@@ -487,7 +487,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   A file of `term → translation` lines — one per line, `#` starts a note or a
   comment, plain text.
-  Read by the openai- and codex-shaped routes for EPUB and Markdown books.
+  Read by the openai- and codex-shaped routes for EPUB, Markdown, and PDF books.
 
   A pinned term makes the translation say what you pinned, so pin only
   renderings you can stand behind.

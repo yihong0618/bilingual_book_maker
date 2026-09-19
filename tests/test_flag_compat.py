@@ -513,7 +513,7 @@ WARN_FIXTURES = [
         # read and then reaches nothing
         "C19",
         ["--api_format", "google", "--glossary", str(GLOSSARY)],
-        {"api_format": "google"},
+        {"api_format": "google", "book_type": "pdf"},
         "The google route does not",
     ),
     (
@@ -532,11 +532,11 @@ WARN_FIXTURES = [
         "keeps no session to compact",
     ),
     (
-        # C21: txt, srt and pdf loaders forward no context at all
+        # C21: txt and srt loaders forward no context at all
         "C21",
         ["--glossary", str(GLOSSARY)],
         {"book_type": "txt"},
-        "forwarded by the epub and markdown loaders only",
+        "forwarded by the epub, markdown, and pdf loaders only",
     ),
     (
         # C22: only the epub format carries the record file
@@ -557,7 +557,7 @@ WARN_FIXTURES = [
         # a renderings block — auto-learning has nothing to read
         "C24",
         ["--glossary-auto", "on", "--use_context", "session"],
-        {"api_format": "anthropic"},
+        {"api_format": "anthropic", "book_type": "pdf"},
         "never asks its report",
     ),
 ]
@@ -604,6 +604,22 @@ class TestNoiseGuard:
         assert tripped(f) == []
         check_compatibility(f)
         assert capsys.readouterr().out == ""
+
+    def test_pdf_context_and_glossary_are_not_reported_as_ignored(self):
+        f = facts(
+            [
+                "--book_name",
+                "b.pdf",
+                "--key",
+                "sk-test",
+                "--use_context",
+                "--glossary",
+                str(GLOSSARY),
+            ],
+            book_type="pdf",
+        )
+        assert "C5" not in tripped(f)
+        assert "C21" not in tripped(f)
 
     def test_the_usual_test_run_trips_nothing(self, capsys):
         f = facts(

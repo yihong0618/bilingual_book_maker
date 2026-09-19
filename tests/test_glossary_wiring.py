@@ -745,6 +745,56 @@ class TestTheLoaderForwardsIt:
         assert _CapturingModel.kwargs["glossary"] == pinned
         assert _CapturingModel.kwargs["glossary_auto"] is True
 
+    def test_the_pdf_loader_hands_context_and_both_halves_to_the_translator(
+        self, tmp_path
+    ):
+        import fitz
+
+        from book_maker.loader.pdf_loader import PDFBookLoader
+
+        source = tmp_path / "book.pdf"
+        with fitz.open() as document:
+            document.new_page().insert_text((72, 72), "Winston went home.")
+            document.save(source)
+        pinned = Glossary.parse("Winston → 温斯顿\n")
+        PDFBookLoader(
+            str(source),
+            _CapturingModel,
+            "k",
+            False,
+            language="Chinese",
+            context_flag=True,
+            context_paragraph_limit=7,
+            context_mode="session",
+            context_compact_at=1500,
+            no_context_compact=True,
+            glossary=pinned,
+            glossary_auto=True,
+        )
+
+        assert {
+            key: _CapturingModel.kwargs[key]
+            for key in (
+                "context_flag",
+                "context_paragraph_limit",
+                "context_mode",
+                "context_compact_at",
+                "no_context_compact",
+                "glossary",
+                "glossary_auto",
+                "handoff_path",
+            )
+        } == {
+            "context_flag": True,
+            "context_paragraph_limit": 7,
+            "context_mode": "session",
+            "context_compact_at": 1500,
+            "no_context_compact": True,
+            "glossary": pinned,
+            "glossary_auto": True,
+            "handoff_path": tmp_path / "book_handoff.md",
+        }
+
 
 def test_the_fixture_file_is_a_readable_glossary():
     # the compatibility fixtures point --glossary at it; a file the parser

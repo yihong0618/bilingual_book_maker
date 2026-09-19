@@ -139,7 +139,7 @@ LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1", "0.0.0.0", "host.docker.internal
 # The loaders that actually forward context settings into the translator. The
 # others accept `context_flag` and drop it, so a session budget passed with
 # them would silently do nothing.
-CONTEXT_AWARE_BOOK_TYPES = ("epub", "md", "markdown")
+CONTEXT_AWARE_BOOK_TYPES = ("epub", "md", "markdown", "pdf")
 
 # LLM formats that can resolve a model on their own, so --model is optional.
 MODEL_OPTIONAL_FORMATS = ("codex",)
@@ -1239,7 +1239,7 @@ COMPAT_RULES = (
         and bool(_b12_given_compact_flags(f)),
         lambda f: (
             f"{' and '.join(_b12_given_compact_flags(f))} reach the "
-            f"translator for epub and markdown books only; on a "
+            f"translator for epub, markdown, and pdf books only; on a "
             f"{f.book_type} book the codex thread keeps its own default "
             f"budget."
         ),
@@ -1406,8 +1406,8 @@ COMPAT_RULES = (
         lambda f: bool(f.options.glossary_path)
         and f.book_type not in CONTEXT_AWARE_BOOK_TYPES,
         lambda f: (
-            f"{_glossary_flag(f)} is forwarded by the epub and markdown "
-            f"loaders only; a {f.book_type} run sends the model no glossary "
+            f"{_glossary_flag(f)} is forwarded by the epub, markdown, and "
+            f"pdf loaders only; a {f.book_type} run sends the model no glossary "
             f"block, and the file will be ignored."
         ),
     ),
@@ -2065,7 +2065,7 @@ off. Minimum 1.
         "request are sent with it, so a long file costs nothing on the "
         "paragraphs it does not touch. A term pinned here says what the "
         "translation says, so pin only renderings you can stand behind. Read "
-        "by the openai- and codex-shaped routes for epub and markdown books",
+        "by the openai- and codex-shaped routes for epub, markdown, and pdf books",
     )
     parser.add_argument(
         "--glossary-auto",
@@ -2515,7 +2515,7 @@ def main():
             glossary_auto=glossary_auto_flag(options.glossary_auto),
         )
     elif options.context_mode == "session":
-        # txt, srt and pdf never hand context to the model, so a session
+        # txt and srt never hand context to the model, so a session
         # budget would quietly do nothing at all.
         print(
             f"[bold yellow]Warning:[/bold yellow] --use_context session is "
