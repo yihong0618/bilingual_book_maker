@@ -16,6 +16,12 @@ from book_maker.translator.base_translator import (
 )
 from book_maker.translator.capabilities import CapabilityLedger
 from book_maker.translator.chatgptapi_translator import ChatGPTAPI
+from book_maker.translator.output_validation import TranslationContamination
+
+CONTAMINATED = (
+    "译文开头。}]} Wait source last has opening Japanese quote and no close? "
+    "It ends `"
+)
 
 
 class SyncOnlyTranslator(Base):
@@ -162,6 +168,42 @@ def test_chatgpt_native_async_translation_keeps_context_explicit(monkeypatch):
     assert context.source_texts == ("chapter source",)
     assert translator.context_list == ["legacy source"]
     assert client.closed is False
+
+
+def test_chatgpt_async_retries_contamination_without_polluting_context(monkeypatch):
+    translator = _chatgpt_for_async_test()
+    client = FakeAsyncClient("unused")
+    clean = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="干净译文"))]
+    )
+    dirty = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=CONTAMINATED))]
+    )
+    client.chat.completions.create.side_effect = [dirty, clean]
+    monkeypatch.setattr(translator, "_create_async_client", lambda key: client)
+    context = TranslationContext(("previous",), ("前文",))
+
+    result = asyncio.run(translator.translate_async("current", context=context))
+
+    assert result.text == "干净译文"
+    assert result.context.source_texts == ("previous", "current")
+    assert result.context.translated_texts == ("前文", "干净译文")
+    assert CONTAMINATED not in result.context.translated_texts
+    assert client.chat.completions.create.await_count == 2
+
+
+def test_chatgpt_async_stops_after_two_contaminated_corrections(monkeypatch):
+    translator = _chatgpt_for_async_test()
+    client = FakeAsyncClient(CONTAMINATED)
+    monkeypatch.setattr(translator, "_create_async_client", lambda key: client)
+    context = TranslationContext(("previous",), ("前文",))
+
+    with pytest.raises(TranslationContamination, match="after 2 correction"):
+        asyncio.run(translator.translate_async("current", context=context))
+
+    assert context.source_texts == ("previous",)
+    assert context.translated_texts == ("前文",)
+    assert client.chat.completions.create.await_count == 3
 
 
 def test_chatgpt_async_retries_without_rejected_temperature(monkeypatch):

@@ -286,6 +286,29 @@ class TestResumeRunFingerprint:
         second.accumulated_num = 1600
         assert first._run_fingerprint() == second._run_fingerprint()
 
+    @pytest.mark.parametrize(
+        "version_name",
+        [
+            "PROMPT_POLICY_VERSION",
+            "CONTAMINATION_DETECTOR_VERSION",
+            "RETRANSLATION_POLICY_VERSION",
+        ],
+    )
+    def test_output_safety_version_change_refuses_old_checkpoint(
+        self, tmp_path, monkeypatch, version_name
+    ):
+        import book_maker.loader.epub_loader as loader_module
+
+        source = _write_epub(tmp_path / "book.epub")
+        _write_checkpoint(source)
+        monkeypatch.setattr(loader_module, version_name, "next-policy-version")
+
+        resumed = EPUBBookLoader(
+            str(source), Model, key="", resume=True, language="zh-hans"
+        )
+        with pytest.raises(SystemExit):
+            resumed._check_resume_run_fingerprint()
+
 
 class TestTheFingerprintIsOfTheRunAsResolved:
     """The command is not the run. A prompt settles out of the flag, the

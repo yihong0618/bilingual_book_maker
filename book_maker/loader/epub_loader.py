@@ -96,6 +96,12 @@ from .markers import (
     split_on_markers,
 )
 from ..translator.base_translator import BatchMismatch
+from ..translator.output_validation import (
+    CONTAMINATION_DETECTOR_VERSION,
+    PROMPT_POLICY_VERSION,
+    RETRANSLATION_POLICY_VERSION,
+    TranslationContamination,
+)
 from .classify import (
     PlanClassifyError,
     PlanUnresolvedError,
@@ -1353,6 +1359,9 @@ class EPUBBookLoader(BaseBookLoader):
                         "prompt": self._resolved_prompt(),
                         "model": self._configured_models(),
                         "glossary": self._pinned_glossary_lines(),
+                        "prompt_policy_version": PROMPT_POLICY_VERSION,
+                        "contamination_detector_version": CONTAMINATION_DETECTOR_VERSION,
+                        "retranslation_policy_version": RETRANSLATION_POLICY_VERSION,
                     },
                     sort_keys=True,
                     default=str,
@@ -2391,6 +2400,26 @@ class EPUBBookLoader(BaseBookLoader):
             )
             self._note_misalign_recovery()
             return self._divide_and_translate(texts, translator, units)
+        except TranslationContamination as e:
+            locations = {}
+            if units:
+                for item_index in e.item_issues:
+                    if item_index >= len(units) or units[item_index] is None:
+                        continue
+                    unit = units[item_index]
+                    element = getattr(unit, "element", None)
+                    anchor = "(no-id)"
+                    if element is not None and hasattr(element, "get"):
+                        anchor = element.get("id") or anchor
+                        if anchor == "(no-id)" and hasattr(element, "find"):
+                            descendant = element.find(attrs={"id": True})
+                            if descendant is not None:
+                                anchor = descendant.get("id") or anchor
+                    locations[item_index] = (
+                        getattr(unit, "file_name", "(unknown-member)"),
+                        anchor,
+                    )
+            raise e.with_locations(locations)
         except Exception as e:
             if translator._fatal_error_detected:
                 # a clone's fatal flag must reach the shared model, or the
