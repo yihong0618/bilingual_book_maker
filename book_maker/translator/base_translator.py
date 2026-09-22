@@ -20,6 +20,12 @@ from ..session_context import (
     split_handoff_sections,
     trim_handoff_prose,
 )
+from .output_validation import (
+    BATCH_CONTINUITY_CONTRACT,
+    TRANSLATION_OUTPUT_CONTRACT,
+    TranslationContamination,
+    high_confidence_issues,
+)
 
 from ..structured import (
     extract_json_object,
@@ -826,6 +832,7 @@ class Base(ABC):
         """
         parts = (
             self._augment_system_content(self._system_message()),
+            TRANSLATION_OUTPUT_CONTRACT,
             self.style_section(),
         )
         return "\n\n".join(part for part in parts if part)
@@ -972,8 +979,11 @@ class Base(ABC):
         The one place a route asks for them, so a new contract is added here
         rather than at each site that assembles a user turn.
         """
-        return self._marker_preamble(request_text) + self._structure_preamble(
-            request_text, batched
+        continuity = f"{BATCH_CONTINUITY_CONTRACT}\n\n" if batched else ""
+        return (
+            self._marker_preamble(request_text)
+            + self._structure_preamble(request_text, batched)
+            + continuity
         )
 
     def warn_if_extras_refused(self, error):
@@ -1211,6 +1221,22 @@ class Base(ABC):
             )
         return None
 
+    def _repair_contaminated_batch_items(self, texts, replies):
+        """Return clean replies and repaired indexes, or stop before caching.
+
+        Routes that can make a targeted correction request override this.
+        The shared fallback still detects contamination, but never attempts
+        to delete or truncate it and never lets it enter context.
+        """
+        item_issues = {
+            index: issues
+            for index, (source, output) in enumerate(zip(texts, replies))
+            if (issues := high_confidence_issues(str(source), str(output)))
+        }
+        if item_issues:
+            raise TranslationContamination(item_issues)
+        return list(replies), set()
+
     async def translate_async(
         self, text: str, *, context: TranslationContext | None = None
     ) -> TranslationResult:
@@ -1408,6 +1434,8 @@ class Base(ABC):
             and getattr(self, "session", None) is not None
         )
         translated_paragraphs = None
+        repaired_indices = set()
+        previous_batch_state = getattr(self, "_batch_translation_in_progress", False)
 
         try:
             # Set batch values
@@ -1421,13 +1449,19 @@ class Base(ABC):
             if per_line or session_batch:
                 self.context_flag = False
 
+            self._batch_translation_in_progress = True
             translated_text = translate_func(batch_text)
             if translated_text:
                 translated_paragraphs = self._extract_paragraphs(
                     translated_text, plist_len
                 )
                 self._check_batch(text_list, translated_paragraphs)
-                if session_batch:
+                translated_paragraphs, repaired_indices = (
+                    self._repair_contaminated_batch_items(
+                        text_list, translated_paragraphs
+                    )
+                )
+                if session_batch and not repaired_indices:
                     self._save_session_context(batch_text, translated_text)
         finally:
             # Restore original values
@@ -1440,6 +1474,7 @@ class Base(ABC):
                 setattr(self, sys_msg_attr, original_sys_msg)
             if per_line or session_batch:
                 self.context_flag = True
+            self._batch_translation_in_progress = previous_batch_state
 
         # Handle None or empty response
         if not translated_text:
@@ -1449,6 +1484,11 @@ class Base(ABC):
             raise Exception("Translation API returned empty response")
 
         if per_line:
+            for original, translated in zip(text_list, translated_paragraphs):
+                self.save_context(str(original).strip(), translated)
+        elif session_batch and repaired_indices:
+            # The raw batch reply contains rejected text and must not enter
+            # the append-only session.  Record only the clean per-item pairs.
             for original, translated in zip(text_list, translated_paragraphs):
                 self.save_context(str(original).strip(), translated)
 

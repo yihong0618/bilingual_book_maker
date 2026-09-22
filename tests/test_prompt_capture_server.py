@@ -39,6 +39,7 @@ from book_maker.translator.chatgptapi_translator import (
     batch_field_name,
     single_field_name,
 )
+from book_maker.translator.output_validation import TRANSLATION_OUTPUT_CONTRACT
 
 REPO = Path(__file__).resolve().parent.parent
 BOOK = REPO / "test_books" / "animal_farm.epub"
@@ -433,8 +434,11 @@ class TestTheDefaultPrompt:
         for text in run.user_messages():
             assert ChatGPTAPI.STYLE_HEADING not in text
         # `$OPENAI_API_SYS_MSG` is unset and no --prompt was given, so the
-        # system message carries nothing of the operator's.
-        assert all(text == "" for text in run.system_messages())
+        # The only system content is the stable output-safety contract; no
+        # operator system section or style was added.
+        assert all(
+            text == TRANSLATION_OUTPUT_CONTRACT for text in run.system_messages()
+        )
 
 
 # ------------------------------------------------- the sections, in each mode

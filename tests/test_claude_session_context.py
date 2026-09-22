@@ -20,6 +20,7 @@ import pytest
 
 from book_maker.session_context import handoff_prompt
 from book_maker.translator.claude_translator import Claude, _strip_outer_fence
+from book_maker.translator.output_validation import TRANSLATION_OUTPUT_CONTRACT
 
 # A phrase unique to the compact turn, taken from the real prompt so the tests
 # cannot drift from it.
@@ -136,7 +137,8 @@ class TestPrefixStability:
         t = _translator(["一", "二"], prompt_sys_msg="be terse")
         t.translate("one")
         t.translate("two")
-        assert t.sent[0]["system"] == t.sent[1]["system"] == "be terse"
+        expected = f"be terse\n\n{TRANSLATION_OUTPUT_CONTRACT}"
+        assert t.sent[0]["system"] == t.sent[1]["system"] == expected
 
 
 class TestPromptCaching:

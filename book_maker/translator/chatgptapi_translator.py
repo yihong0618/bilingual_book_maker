@@ -38,6 +38,10 @@ from .base_translator import (
     TranslationContext,
     TranslationResult,
 )
+from .output_validation import (
+    TranslationContamination,
+    high_confidence_issues,
+)
 from .capabilities import (
     ENTRY_RUNG,
     RUNG_REFUSAL_ERRORS,
@@ -532,6 +536,7 @@ class ChatGPTAPI(Base):
         self.batch_text_list = []
         self.batch_info_cache = None
         self.result_content_cache = {}
+        self.content_validation_events = []
         self._api_lock = Lock()
         self._async_clients = {}
         self.extra_body = extra_body or {}
@@ -931,24 +936,59 @@ class ChatGPTAPI(Base):
         )
         client = self._get_async_client(key)
 
-        async def create(sampling):
+        async def create(request_messages, sampling):
             return await client.chat.completions.create(
                 model=model,
-                messages=messages,
+                messages=request_messages,
                 extra_body=self.extra_body if self.extra_body else None,
                 **sampling,
             )
 
-        try:
-            completion = await create(self._sampling_kwargs(model))
-        except BadRequestError as e:
-            if classify_bad_request(e) != "temperature":
-                raise
-            self._note_temperature_rejected(model)
-            completion = await create({})
+        async def issue(request_messages):
+            try:
+                return await create(request_messages, self._sampling_kwargs(model))
+            except BadRequestError as e:
+                if classify_bad_request(e) != "temperature":
+                    raise
+                self._note_temperature_rejected(model)
+                return await create(request_messages, {})
+
+        completion = await issue(messages)
 
         self._note_usage(completion, model)
         translated = completion.choices[0].message.content or ""
+        issues = high_confidence_issues(text, translated)
+        for attempt in (1, 2):
+            if not issues:
+                break
+            self._note_contamination(
+                0, issues, attempt, "retrying only this async item"
+            )
+            template = self._contamination_retry_template(
+                before=(
+                    current_context.source_texts[-1]
+                    if (attempt == 2 and current_context.source_texts)
+                    else None
+                ),
+                final=attempt == 2,
+            )
+            retry_content = self._functional_preamble(text) + template.format(
+                text=text, language=self.language, crlf="\n"
+            )
+            block = self.glossary.prompt_block(text) if self.glossary else ""
+            if block:
+                retry_content = f"{block}\n\n{retry_content}"
+            retry_messages = [
+                {"role": "system", "content": self.standing_instructions()},
+                *self.create_context_messages(current_context),
+                {"role": "user", "content": retry_content},
+            ]
+            completion = await issue(retry_messages)
+            self._note_usage(completion, model)
+            translated = completion.choices[0].message.content or ""
+            issues = high_confidence_issues(text, translated)
+        if issues:
+            raise TranslationContamination({0: issues}, attempts=2)
         if self.context_flag:
             current_context = current_context.append(
                 text, translated, self.context_paragraph_limit
@@ -1187,16 +1227,8 @@ class ChatGPTAPI(Base):
                 )
         self.session.reset(seed=report.seed_text(seed_cap(budget)))
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=60),
-        retry=retry_if_exception_type((RateLimitError, Exception)),
-        reraise=True,
-    )
-    def get_translation(self, text):
-        self.rotate_key()
-        self.rotate_model()  # rotate all the model to avoid the limit
-
+    def _translate_single_once(self, text):
+        """One paid single-unit attempt, without context mutation."""
         if self._ensure_structured_support():
             try:
                 t_text = self._structured_single_translation(text)
@@ -1226,6 +1258,141 @@ class ChatGPTAPI(Base):
                 t_text = self._plain_translation(text)
         else:
             t_text = self._plain_translation(text)
+        return t_text
+
+    @staticmethod
+    def _contamination_retry_template(before=None, after=None, final=False):
+        context = []
+        if before is not None:
+            context.append(
+                "Previous paragraph (read-only context, do not translate): "
+                + json.dumps(str(before), ensure_ascii=False)
+            )
+        if after is not None:
+            context.append(
+                "Next paragraph (read-only context, do not translate): "
+                + json.dumps(str(after), ensure_ascii=False)
+            )
+        context_block = "\n".join(context)
+        if context_block:
+            context_block += "\n\n"
+        final_note = "This is the final correction attempt. " if final else ""
+        return (
+            f"{final_note}The previous answer was rejected because it included "
+            "model analysis or self-check text. The source may contain "
+            "quotations that intentionally continue across paragraph "
+            "boundaries. Treat this as valid. Return only the translation. "
+            "Do not output analysis, self-checks, explanations, JSON "
+            "fragments, schema text, or comments about punctuation.\n\n"
+            f"{context_block}Translate only this current source into "
+            "{{language}}:\n{{text}}"
+        )
+
+    def _note_contamination(self, item_index, issues, attempt, status):
+        rules = sorted({issue.rule for issue in issues})
+        excerpt = issues[0].excerpt if issues else ""
+        event = {
+            "item": item_index,
+            "rules": rules,
+            "attempt": attempt,
+            "status": status,
+            "excerpt": excerpt[:240],
+        }
+        if not hasattr(self, "content_validation_events"):
+            self.content_validation_events = []
+        self.content_validation_events.append(event)
+        print(
+            f"[bold yellow]translation output rejected for item {item_index} "
+            f"({', '.join(rules)}); {status}, correction attempt "
+            f"{attempt}/2. Snippet: {escape(excerpt[:160])}[/bold yellow]"
+        )
+
+    def _retry_contaminated_item(
+        self, source, output, *, item_index=0, before=None, after=None
+    ):
+        issues = high_confidence_issues(str(source), str(output))
+        if not issues:
+            return output, False
+
+        original_prompt = self.prompt_template
+        last_issues = issues
+        try:
+            for attempt in (1, 2):
+                self._note_contamination(
+                    item_index,
+                    last_issues,
+                    attempt,
+                    "retrying only this item",
+                )
+                self.prompt_template = self._contamination_retry_template(
+                    before=before if attempt == 2 else None,
+                    after=after if attempt == 2 else None,
+                    final=attempt == 2,
+                )
+                candidate = self._translate_single_once(source)
+                last_issues = high_confidence_issues(str(source), str(candidate))
+                if not last_issues:
+                    if not hasattr(self, "content_validation_events"):
+                        self.content_validation_events = []
+                    self.content_validation_events.append(
+                        {
+                            "item": item_index,
+                            "rules": sorted({issue.rule for issue in issues}),
+                            "attempt": attempt,
+                            "status": "retranslated",
+                            "excerpt": "",
+                        }
+                    )
+                    return candidate, True
+        finally:
+            self.prompt_template = original_prompt
+
+        if not hasattr(self, "content_validation_events"):
+            self.content_validation_events = []
+        self.content_validation_events.append(
+            {
+                "item": item_index,
+                "rules": sorted({issue.rule for issue in last_issues}),
+                "attempt": 2,
+                "status": "failed",
+                "excerpt": last_issues[0].excerpt[:240],
+            }
+        )
+        raise TranslationContamination({item_index: last_issues}, attempts=2)
+
+    def _repair_contaminated_batch_items(self, texts, replies):
+        clean = list(replies)
+        repaired = set()
+        for index, (source, output) in enumerate(zip(texts, replies)):
+            if not high_confidence_issues(str(source), str(output)):
+                continue
+            clean[index], did_repair = self._retry_contaminated_item(
+                source,
+                output,
+                item_index=index,
+                before=texts[index - 1] if index else None,
+                after=texts[index + 1] if index + 1 < len(texts) else None,
+            )
+            if did_repair:
+                repaired.add(index)
+        return clean, repaired
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=60),
+        retry=(
+            retry_if_exception_type(Exception)
+            & retry_if_not_exception_type(TranslationContamination)
+        ),
+        reraise=True,
+    )
+    def get_translation(self, text):
+        self.rotate_key()
+        self.rotate_model()  # rotate all the model to avoid the limit
+
+        t_text = self._translate_single_once(text)
+        if not getattr(self, "_batch_translation_in_progress", False):
+            t_text, _ = self._retry_contaminated_item(text, t_text)
 
         if self.context_flag:
             self.save_context(text, t_text)
@@ -1440,13 +1607,23 @@ class ChatGPTAPI(Base):
         # same model the same question again mostly buys the same answer at
         # the same price. The loader's ladder halves the chunk instead.
         paragraphs = self._align_batch_items(text_list, items)
+        paragraphs, repaired_indices = self._repair_contaminated_batch_items(
+            text_list, paragraphs
+        )
 
         if self.context_flag:
             if self.session is not None:
-                # One exchange, exactly what the endpoint saw: N synthetic
-                # pairs that were never sent make the next request's prefix
-                # diverge from the cached one.
-                self._record_session_exchange(user_content, raw_reply)
+                if repaired_indices:
+                    # The wire reply contains a rejected item. It must never
+                    # enter the append-only session or a later compact turn.
+                    # Record only the clean pairs after targeted correction.
+                    for orig, trans in zip(text_list, paragraphs):
+                        self.save_context(orig, trans)
+                else:
+                    # One exchange, exactly what the endpoint saw: N synthetic
+                    # pairs that were never sent make the next request's prefix
+                    # diverge from the cached one.
+                    self._record_session_exchange(user_content, raw_reply)
             else:
                 for orig, trans in zip(text_list, paragraphs):
                     self.save_context(orig, trans)
@@ -1760,11 +1937,23 @@ class ChatGPTAPI(Base):
             if line.strip():
                 result = json.loads(line)
                 if result["custom_id"] == custom_id:
-                    return self._read_batch_choice(
+                    translated = self._read_batch_choice(
                         result["response"]["body"]["choices"][0],
                         custom_id,
                         self.field_language,
                     )
+                    source = next(
+                        (
+                            item["text"]
+                            for item in self.batch_text_list
+                            if item["book_index"] == book_index
+                        ),
+                        "",
+                    )
+                    translated, _ = self._retry_contaminated_item(
+                        source, translated, item_index=book_index
+                    )
+                    return translated
 
         raise ValueError(f"No result found for custom_id {custom_id}")
 

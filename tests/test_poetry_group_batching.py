@@ -19,6 +19,7 @@ import pytest
 from book_maker.translator.base_translator import BATCH_DELIMITER, BatchMismatch
 from book_maker.translator.claude_translator import Claude
 from book_maker.translator.codex_translator import Codex
+from book_maker.translator.output_validation import TRANSLATION_OUTPUT_CONTRACT
 
 STANZA = ["Tyger Tyger", "burning bright", "In the forests", "of the night"]
 
@@ -255,7 +256,8 @@ def test_claude_session_keeps_the_system_message_byte_identical():
     claude.translate_list(STANZA)
     claude.translate("of the night")
 
-    assert [c["system"] for c in calls] == ["be terse"] * 3
+    expected = f"be terse\n\n{TRANSLATION_OUTPUT_CONTRACT}"
+    assert [c["system"] for c in calls] == [expected] * 3
 
 
 def test_claude_session_still_states_the_batch_contract():
