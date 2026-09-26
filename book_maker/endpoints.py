@@ -390,14 +390,13 @@ def _key(explicit, bound, choice, run, with_key, flag):
         if jev_keyless(choice.api_base):
             return ""
         where = (
-            f"set one of: {', '.join(names)}"
+            f"Pass {flag}, or set one of: {', '.join(names)}."
             if names
-            else f"{choice.api_base} is not a typesafe.ai address, so "
-            f"{' and '.join(JEV_ENV_KEYS)} are not sent there"
+            else f"Pass {flag}: {choice.api_base} is not a typesafe.ai "
+            f"address, so {' and '.join(JEV_ENV_KEYS)} are not sent there."
         )
         raise SystemExit(
-            f"No API key for the jev classifier at {choice.api_base}. Pass "
-            f"{flag}, or {where}."
+            f"No API key for the jev classifier at {choice.api_base}. {where}"
         )
     if run.key and _same_address(
         choice.api_base, choice.api_format, run.api_base, run.api_format

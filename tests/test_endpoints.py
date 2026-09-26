@@ -352,6 +352,12 @@ class TestJevIsAClassifyEndpoint:
         with pytest.raises(SystemExit, match="--classify-key") as refused:
             resolve_classify_endpoint(_opts(**gateway), _run(), None)
         assert "jev-secret" not in str(refused.value)
+        # the action first, then why no variable is sent (smoke 260926)
+        assert str(refused.value).endswith(
+            "Pass --classify-key: https://ai-gateway.vercel.sh/typesafe is not "
+            "a typesafe.ai address, so JEV_API_KEY and TYPESAFE_API_KEY are "
+            "not sent there."
+        )
         choice = resolve_classify_endpoint(
             _opts(**gateway, classify_key="vck-flag"), _run(), None
         )
