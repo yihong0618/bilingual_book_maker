@@ -6,9 +6,12 @@ on:
     paths:
       - "docs/**"
       - "mkdocs.yml"
+      - "tools/docs_to_wiki.py"
       - ".github/workflows/docs.yaml"
   workflow_dispatch:
 
+# The job's token pushes to this repository's own wiki (contents: write
+# covers <repo>.wiki.git); it is read-only on a pull request from a fork.
 permissions:
   contents: write
 
@@ -17,19 +20,46 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  wiki:
     runs-on: ubuntu-latest
-    env:
-      # The site follows the repository it is built in, so a fork publishes
-      # to its own Pages and upstream to its own, from one mkdocs.yml.
-      DOCS_SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
-      DOCS_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
-      DOCS_REPO_NAME: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      # The strict build is the link and nav check for docs/; the site
+      # itself is not published, the wiki is.
       - run: pip install mkdocs-material==9.7.7
       - run: mkdocs build --strict
-      - run: mkdocs gh-deploy --force
+      # A wiki repository exists only once a first page was made in the
+      # web UI. A fork without one skips the sync instead of failing.
+      - name: Look for the wiki
+        id: wiki
+        run: |
+          if git ls-remote --exit-code -h "${{ github.server_url }}/${{ github.repository }}.wiki.git" >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::${{ github.repository }} has no wiki yet; create its first page to publish the docs there."
+          fi
+      - uses: actions/checkout@v6
+        if: steps.wiki.outputs.present == 'true'
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki
+      - name: Generate the pages
+        if: steps.wiki.outputs.present == 'true'
+        run: python tools/docs_to_wiki.py wiki
+      - name: Push
+        if: steps.wiki.outputs.present == 'true'
+        working-directory: wiki
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "wiki already matches docs/"
+            exit 0
+          fi
+          git commit -m "docs: sync from ${GITHUB_SHA}"
+          git push

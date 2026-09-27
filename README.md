@@ -7,7 +7,7 @@
 
 The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist users in creating multi-language versions of epub/txt/md/srt/pdf files and books. Use it only with material you have the right to translate — works for which you hold the necessary rights, suitably licensed or permitted works, public-domain books, or uses otherwise allowed by applicable law. Before using this tool, please review the project's **[disclaimer](./disclaimer.md)**.
 
-Guides for every file type and option, and the measurements behind the defaults, are on the [documentation site](https://yihong0618.github.io/bilingual_book_maker/).
+Guides for every file type and option, and the measurements behind the defaults, are on the [wiki](https://github.com/yihong0618/bilingual_book_maker/wiki).
 
 [![Stars](https://img.shields.io/github/stars/yihong0618/bilingual_book_maker)](https://github.com/yihong0618/bilingual_book_maker/stargazers)
 [![CI](https://github.com/yihong0618/bilingual_book_maker/actions/workflows/make_test_ebook.yaml/badge.svg)](https://github.com/yihong0618/bilingual_book_maker/actions/workflows/make_test_ebook.yaml)
@@ -39,7 +39,7 @@ Epub tags classification is auto enabled on JSON-schema endpoints, and on any en
 
 Older flags (`--model gpt4o`,
 `--model gemini`, `--openai_key`, …) still work: see
-[Models and languages](https://yihong0618.github.io/bilingual_book_maker/model_lang/).
+[Models and languages](https://github.com/yihong0618/bilingual_book_maker/wiki/Model-and-language-notes).
 
 ## Preparation
 
@@ -109,7 +109,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   (`--glossary-auto on`, off by default) — the recommended mode on
   OpenAI-compatible endpoints, and what the examples below use.
 - The old preset names and key flags still work, see
-  [Migrating from the old flags](https://yihong0618.github.io/bilingual_book_maker/migration/).
+  [Migrating from the old flags](https://github.com/yihong0618/bilingual_book_maker/wiki/Migrating-from-old-flags).
 
 ## Supported translation services
 * DeepL
@@ -303,7 +303,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   | `qwen-mt-turbo` | `qwen` | the default there, on DashScope |
   | `llama-3.3-70b-versatile` | `groq` | Groq's own address |
 
-  The old preset values still parse and are rewritten to a real model id with a note; [Migrating from the old flags](https://yihong0618.github.io/bilingual_book_maker/migration/) lists them. Anything else is an endpoint: `--api_base <url> --key <key> --model <id>`, or a `--provider` entry (see the Custom API Provider section).
+  The old preset values still parse and are rewritten to a real model id with a note; [Migrating from the old flags](https://github.com/yihong0618/bilingual_book_maker/wiki/Migrating-from-old-flags) lists them. Anything else is an endpoint: `--api_base <url> --key <key> --model <id>`, or a `--provider` entry (see the Custom API Provider section).
 
 - `--key`:
 
@@ -341,7 +341,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--language`:
 
-  Set the target language: a tag (`--language zh-hant`), a name (`--language "Traditional Chinese"`), or both at once — `--language "zh-hant:Traditional Chinese"`. The tag names the JSON structured-output field; the name is what the model is asked for. Default `zh-hans`. See also [available tags](https://yihong0618.github.io/bilingual_book_maker/languages/).
+  Set the target language: a tag (`--language zh-hant`), a name (`--language "Traditional Chinese"`), or both at once — `--language "zh-hant:Traditional Chinese"`. The tag names the JSON structured-output field; the name is what the model is asked for. Default `zh-hans`. See also [available tags](https://github.com/yihong0618/bilingual_book_maker/wiki/Language-tags).
 
 - `--source_lang`:
 
@@ -700,15 +700,15 @@ python3 make_book.py --book_name my_book.epub --plan-dry-run
 python3 make_book.py --book_name my_book.epub --key ${key} --plan-classify agent
 ```
 
-`--plan-dry-run` honours `--only_filelist` / `--exclude_filelist`. `--classify-model` lets another model classify, `jev` for the Jev classifier; `--classify-base-url`, `--classify-key` and `--classify-min-confidence` go with it. More: [Plan mode](https://yihong0618.github.io/bilingual_book_maker/features/plan-mode/), [Recommended settings for EPUB](https://yihong0618.github.io/bilingual_book_maker/features/recommended-epub/).
+`--plan-dry-run` honours `--only_filelist` / `--exclude_filelist`. `--classify-model` lets another model classify, `jev` for the Jev classifier; `--classify-base-url`, `--classify-key` and `--classify-min-confidence` go with it. More: [Plan mode](https://github.com/yihong0618/bilingual_book_maker/wiki/Plan-mode), [Recommended settings for EPUB](https://github.com/yihong0618/bilingual_book_maker/wiki/Recommended-settings-for-EPUB).
 
 ### Session mode
 
-`--use_context session` keeps one conversation for the whole book, so names and style stay consistent. The history is re-read at the cache price and, once it reaches `--context-compact-at` (default 8192 tokens), compacted into a short handoff report; `--no-context-compact` starts the next window empty instead. Best on endpoints with prompt caching. More: [Session mode](https://yihong0618.github.io/bilingual_book_maker/features/session-mode/).
+`--use_context session` keeps one conversation for the whole book, so names and style stay consistent. The history is re-read at the cache price and, once it reaches `--context-compact-at` (default 8192 tokens), compacted into a short handoff report; `--no-context-compact` starts the next window empty instead. Best on endpoints with prompt caching. More: [Session mode](https://github.com/yihong0618/bilingual_book_maker/wiki/Session-mode).
 
 ### PDF to **bilingual** EPUB (experimental)
 
-`--to-epub` turns a PDF into a reflowable bilingual EPUB with a table of contents: every paragraph followed by its translation, figures and display formulas kept as pictures. It needs the PDF extra, installed from a clone, and [Pandoc](https://pandoc.org/installing.html) 3.1.12 or newer; see [Installing the PDF extra](https://yihong0618.github.io/bilingual_book_maker/installation-pdf/).
+`--to-epub` turns a PDF into a reflowable bilingual EPUB with a table of contents: every paragraph followed by its translation, figures and display formulas kept as pictures. It needs the PDF extra, installed from a clone, and [Pandoc](https://pandoc.org/installing.html) 3.1.12 or newer; see [Installing the PDF extra](https://github.com/yihong0618/bilingual_book_maker/wiki/Installing-the-PDF-extra).
 
 ```shell
 pip install ".[pdf]"
@@ -722,7 +722,7 @@ python3 make_book.py --book_name paper.pdf --to-epub --key ${key} --use_context 
 
 #### Scans (OCR)
 
-`--pdf-ocr` reads pages that have no text layer. `--ocr-lang` names the languages to read (`iso:zh`, `iso:ja`, …), `--ocr-engine` picks the engine (`auto`, `rapidocr`, `ocrmac`, `easyocr`, `tesseract`), and `--ocr-replace-layer` reads every page again when the embedded text is wrong. More: [Which OCR engine](https://yihong0618.github.io/bilingual_book_maker/features/pdf-ocr-engines/).
+`--pdf-ocr` reads pages that have no text layer. `--ocr-lang` names the languages to read (`iso:zh`, `iso:ja`, …), `--ocr-engine` picks the engine (`auto`, `rapidocr`, `ocrmac`, `easyocr`, `tesseract`), and `--ocr-replace-layer` reads every page again when the embedded text is wrong. More: [Which OCR engine](https://github.com/yihong0618/bilingual_book_maker/wiki/Which-OCR-engine).
 
 ```shell
 python3 make_book.py --book_name scan.pdf --to-epub --pdf-ocr --ocr-lang iso:zh --key ${key}
@@ -736,7 +736,7 @@ python3 make_book.py --book_name scan.pdf --to-epub --pdf-ocr --ocr-lang iso:zh 
 
 `--img-model MODEL` shows each page to a vision model that corrects what the layout detector got wrong, such as headings, captions and code; `--img-base-url` and `--img-key` point it at another endpoint. `--device` picks where the extraction models run (`auto`, `cpu`, `cuda`, `mps`, `xpu`).
 
-More: [PDF to bilingual EPUB](https://yihong0618.github.io/bilingual_book_maker/features/pdf-to-epub/), [Recommended settings for PDF](https://yihong0618.github.io/bilingual_book_maker/features/recommended-pdf/).
+More: [PDF to bilingual EPUB](https://github.com/yihong0618/bilingual_book_maker/wiki/PDF-to-bilingual-EPUB), [Recommended settings for PDF](https://github.com/yihong0618/bilingual_book_maker/wiki/Recommended-settings-for-PDF).
 
 ## Docker
 
@@ -789,7 +789,7 @@ For a GPU, find your machine:
 - Mac (Apple silicon): Docker cannot reach the GPU; install the tool natively instead.
 - arm64 Linux with an NVIDIA card: also add `--platform linux/amd64`.
 
-More: [Docker](https://yihong0618.github.io/bilingual_book_maker/docker/).
+More: [Docker](https://github.com/yihong0618/bilingual_book_maker/wiki/Docker).
 
 To build the image yourself instead of pulling:
 

@@ -6,7 +6,7 @@
 
 bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制作多语言版本的 epub/txt/md/srt/pdf 文件和图书。请仅将其用于您有权翻译的内容——您持有必要权利的作品、许可或授权允许您翻译的作品、公有领域图书，或适用法律另行允许的使用方式。请在使用之前阅读项目的 **[免责声明](./disclaimer.md)**。
 
-各类文件的使用指南、全部参数，以及默认值背后的测量，见[文档站](https://yihong0618.github.io/bilingual_book_maker/)。
+各类文件的使用指南、全部参数，以及默认值背后的测量，见 [wiki](https://github.com/yihong0618/bilingual_book_maker/wiki)。
 
 [![Stars](https://img.shields.io/github/stars/yihong0618/bilingual_book_maker)](https://github.com/yihong0618/bilingual_book_maker/stargazers)
 [![CI](https://github.com/yihong0618/bilingual_book_maker/actions/workflows/make_test_ebook.yaml/badge.svg)](https://github.com/yihong0618/bilingual_book_maker/actions/workflows/make_test_ebook.yaml)
@@ -35,7 +35,7 @@ epub 标签分类在支持 JSON Schema 的接口上自动开启，在其他任�
 因此诗歌等内容可能不会被翻译。详见[计划模式](#计划模式)。
 
 旧参数（`--model gpt4o`、`--model gemini`、`--openai_key` 等）仍然可用：详见
-[模型与语言](https://yihong0618.github.io/bilingual_book_maker/model_lang/)。
+[模型与语言](https://github.com/yihong0618/bilingual_book_maker/wiki/Model-and-language-notes)。
 
 ## 准备
 
@@ -96,7 +96,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   SiliconFlow、OpenRouter）：复制为 `bbm_providers.json`，并修改其中的key，
   例如`--provider gemini` 就是使用其中 Gemini 的api。
 - `--use_context session` 使用会话模式翻译；历史默认在 8k 时压缩（`--context-compact-at` 可改）。它维护一份缓存的历史以保持前后一致，使人名、术语全书统一，也可以从交接报告中积累术语表（`--glossary-auto on`，默认关闭）——是 OpenAI 兼容接口的推荐用法，下方示例均已带上。
-- 旧的预设名和 key 参数仍然可用，见 [从旧参数迁移](https://yihong0618.github.io/bilingual_book_maker/migration/)。
+- 旧的预设名和 key 参数仍然可用，见 [从旧参数迁移](https://github.com/yihong0618/bilingual_book_maker/wiki/Migrating-from-old-flags)。
 
 ## 支持的翻译服务
 * DeepL
@@ -270,7 +270,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   | `claude-sonnet-4-6` | `anthropic` | Anthropic 官方地址 |
   | `gpt-4o-mini` | `openai` | OpenAI |
 
-  旧的预设值仍然可以写，会被改写成真实模型 ID 并打印说明，对照表见[从旧参数迁移](https://yihong0618.github.io/bilingual_book_maker/migration/)。其他任何接口：`--api_base <url> --key <key> --model <id>`，或一条 `--provider` 配置（见「自定义 API Provider」章节）。
+  旧的预设值仍然可以写，会被改写成真实模型 ID 并打印说明，对照表见[从旧参数迁移](https://github.com/yihong0618/bilingual_book_maker/wiki/Migrating-from-old-flags)。其他任何接口：`--api_base <url> --key <key> --model <id>`，或一条 `--provider` 配置（见「自定义 API Provider」章节）。
 
 - `--key`:
 
@@ -609,15 +609,15 @@ python3 make_book.py --book_name my_book.epub --plan-dry-run
 python3 make_book.py --book_name my_book.epub --key ${key} --plan-classify agent
 ```
 
-`--plan-dry-run` 同时遵守 `--only_filelist` / `--exclude_filelist`。`--classify-model` 让另一个模型来分类，填 `jev` 使用 Jev 分类器；`--classify-base-url`、`--classify-key`、`--classify-min-confidence` 与它配合。更多：[计划模式](https://yihong0618.github.io/bilingual_book_maker/features/plan-mode/)、[EPUB 推荐设置](https://yihong0618.github.io/bilingual_book_maker/features/recommended-epub/)。
+`--plan-dry-run` 同时遵守 `--only_filelist` / `--exclude_filelist`。`--classify-model` 让另一个模型来分类，填 `jev` 使用 Jev 分类器；`--classify-base-url`、`--classify-key`、`--classify-min-confidence` 与它配合。更多：[计划模式](https://github.com/yihong0618/bilingual_book_maker/wiki/Plan-mode)、[EPUB 推荐设置](https://github.com/yihong0618/bilingual_book_maker/wiki/Recommended-settings-for-EPUB)。
 
 ### 会话模式
 
-`--use_context session` 整本书保持一段对话，人名和文风前后一致。历史按缓存价重读，达到 `--context-compact-at`（默认 8192 token）时压缩成一份简短的交接报告；`--no-context-compact` 则让下一个窗口从空白开始。在支持提示缓存的接口上最合适。更多：[会话模式](https://yihong0618.github.io/bilingual_book_maker/features/session-mode/)。
+`--use_context session` 整本书保持一段对话，人名和文风前后一致。历史按缓存价重读，达到 `--context-compact-at`（默认 8192 token）时压缩成一份简短的交接报告；`--no-context-compact` 则让下一个窗口从空白开始。在支持提示缓存的接口上最合适。更多：[会话模式](https://github.com/yihong0618/bilingual_book_maker/wiki/Session-mode)。
 
 ### PDF 转 **双语** EPUB (实验性)
 
-`--to-epub` 把 PDF 变成可重排、带目录的双语 EPUB：每段后面紧跟译文，图和行间公式保留为图片。需要从代码库安装 PDF 依赖，以及 [Pandoc](https://pandoc.org/installing.html) 3.1.12 或更新版本，见[安装 PDF 依赖](https://yihong0618.github.io/bilingual_book_maker/installation-pdf/)。
+`--to-epub` 把 PDF 变成可重排、带目录的双语 EPUB：每段后面紧跟译文，图和行间公式保留为图片。需要从代码库安装 PDF 依赖，以及 [Pandoc](https://pandoc.org/installing.html) 3.1.12 或更新版本，见[安装 PDF 依赖](https://github.com/yihong0618/bilingual_book_maker/wiki/Installing-the-PDF-extra)。
 
 ```shell
 pip install ".[pdf]"
@@ -631,7 +631,7 @@ python3 make_book.py --book_name paper.pdf --to-epub --key ${key} --use_context 
 
 #### 扫描件（OCR）
 
-`--pdf-ocr` 读取没有文字层的页面。`--ocr-lang` 指定要识别的语言（`iso:zh`、`iso:ja` 等），`--ocr-engine` 选择引擎（`auto`、`rapidocr`、`ocrmac`、`easyocr`、`tesseract`），`--ocr-replace-layer` 在自带文字层有误时重读每一页。更多：[选哪个 OCR 引擎](https://yihong0618.github.io/bilingual_book_maker/features/pdf-ocr-engines/)。
+`--pdf-ocr` 读取没有文字层的页面。`--ocr-lang` 指定要识别的语言（`iso:zh`、`iso:ja` 等），`--ocr-engine` 选择引擎（`auto`、`rapidocr`、`ocrmac`、`easyocr`、`tesseract`），`--ocr-replace-layer` 在自带文字层有误时重读每一页。更多：[选哪个 OCR 引擎](https://github.com/yihong0618/bilingual_book_maker/wiki/Which-OCR-engine)。
 
 ```shell
 python3 make_book.py --book_name scan.pdf --to-epub --pdf-ocr --ocr-lang iso:zh --key ${key}
@@ -645,7 +645,7 @@ python3 make_book.py --book_name scan.pdf --to-epub --pdf-ocr --ocr-lang iso:zh 
 
 `--img-model MODEL` 把每一页交给视觉模型，纠正版面识别出错的地方，比如标题、图题和代码；`--img-base-url`、`--img-key` 指向另一个接口。`--device` 选择提取模型在哪里运行（`auto`、`cpu`、`cuda`、`mps`、`xpu`）。
 
-更多：[PDF 转双语 EPUB](https://yihong0618.github.io/bilingual_book_maker/features/pdf-to-epub/)、[PDF 推荐设置](https://yihong0618.github.io/bilingual_book_maker/features/recommended-pdf/)。
+更多：[PDF 转双语 EPUB](https://github.com/yihong0618/bilingual_book_maker/wiki/PDF-to-bilingual-EPUB)、[PDF 推荐设置](https://github.com/yihong0618/bilingual_book_maker/wiki/Recommended-settings-for-PDF)。
 
 ## Docker
 
@@ -698,7 +698,7 @@ docker run --rm -v "${folder_path}":/book -v bbm-models:/root/.cache ghcr.io/yih
 - Mac（Apple 芯片）：Docker 用不到 GPU，请直接在本机安装运行。
 - 带 NVIDIA 显卡的 arm64 Linux：再加 `--platform linux/amd64`。
 
-更多：[Docker](https://yihong0618.github.io/bilingual_book_maker/docker/)。
+更多：[Docker](https://github.com/yihong0618/bilingual_book_maker/wiki/Docker)。
 
 如果想自己构建镜像而不是拉取：
 
