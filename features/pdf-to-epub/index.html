@@ -1,0 +1,2560 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://yihong0618.github.io/bilingual_book_maker/features/pdf-to-epub/">
+      
+      
+        <link rel="prev" href="../../evaluation/plan-classifier-jev/">
+      
+      
+        <link rel="next" href="../recommended-pdf/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>PDF to bilingual EPUB - bilingual book maker</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#pdf-to-bilingual-epub" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="bilingual book maker" class="md-header__button md-logo" aria-label="bilingual book maker" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            bilingual book maker
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              PDF to bilingual EPUB
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/yihong0618/bilingual_book_maker" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    yihong0618/bilingual_book_maker
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="bilingual book maker" class="md-nav__button md-logo" aria-label="bilingual book maker" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    bilingual book maker
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/yihong0618/bilingual_book_maker" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    yihong0618/bilingual_book_maker
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Installation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EPUB
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    EPUB
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../formats/epub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Translate an EPUB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recommended-epub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recommended settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plan-mode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plan mode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-mode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session mode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Evaluation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation/grouping-batch-size/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why 16 units per request
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation/session-compact-budget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why the session compacts at 8192
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation/structured-output-ladder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why the tool probes the endpoint
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation/plan-classifier-jev/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Jev as the plan classifier
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PDF
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    PDF
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PDF to bilingual EPUB
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PDF to bilingual EPUB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#correcting-region-roles-with-a-vision-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Correcting region roles with a vision model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mend-a-translation-by-hand" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mend a translation by hand
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recommended-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-can-go-wrong" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What can go wrong
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What can go wrong">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#before-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before extraction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#during-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        During extraction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#after-extraction-before-translation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        After extraction, before translation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#translation-and-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Translation and export
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#after-the-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        After the run
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limits-to-know" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limits to know
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recommended-pdf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recommended settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pdf-ocr-engines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Which OCR engine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation-pdf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installing the PDF extra
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../formats/pdf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PDF flags and the text route
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_6" id="__nav_5_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Evaluation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation/pdf-heading-levels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why heading levels come from the page
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation/pdf-formulas-as-images/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why formulas are pictures
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation/pdf-ocr-llm-vs-local/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why a vision model reads scans better
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation/pdf-ocr-engines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Which OCR engine reads a scan best
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation/pdf-page-render-backend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why docling-parse stays
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation/pdf-structure-llm-roles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Where an LLM fixes layout
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation/pdf-extraction-corpus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How extraction was checked
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluation/pdf-parser-choice/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why docling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Other formats
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Other formats
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../formats/txt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TXT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../formats/srt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SRT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../formats/md/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Markdown
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../book_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Which page for which file
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Endpoints and models
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Endpoints and models
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../llm-args/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Translating with an LLM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provider file and extra models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../machine-args/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Machine translation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../env_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Environment variables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../prompt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompt files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../model_lang/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model and language notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../languages/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Language tags
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating from old flags
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../evaluation/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_8" id="__nav_8_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cmd/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Command line options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../disclaimer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Disclaimer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#correcting-region-roles-with-a-vision-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Correcting region roles with a vision model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mend-a-translation-by-hand" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mend a translation by hand
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recommended-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-can-go-wrong" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What can go wrong
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What can go wrong">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#before-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before extraction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#during-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        During extraction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#after-extraction-before-translation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        After extraction, before translation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#translation-and-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Translation and export
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#after-the-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        After the run
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limits-to-know" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limits to know
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="pdf-to-bilingual-epub">PDF to bilingual EPUB<a class="headerlink" href="#pdf-to-bilingual-epub" title="Permanent link">&para;</a></h1>
+<p>If you want a PDF as a bilingual book with a table of contents, read two pages first, then run the whole file:</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>make_book.py<span class="w"> </span>--book_name<span class="w"> </span>paper.pdf<span class="w"> </span>--to-epub<span class="w"> </span>--pages<span class="w"> </span><span class="m">1</span>-2<span class="w"> </span>--test
+python<span class="w"> </span>make_book.py<span class="w"> </span>--book_name<span class="w"> </span>paper.pdf<span class="w"> </span>--to-epub<span class="w"> </span>--use_context<span class="w"> </span>session
+</code></pre></div>
+<p>Read <code>paper_pages-1-2_book/source.md</code> between the two. <a href="../recommended-pdf/">Recommended settings for PDF</a> has the command for each kind of document and each system.</p>
+<p>This route is experimental. It has been checked on arXiv papers and a set of books, scans and browser-saved pages, not on every PDF shape. Issues and pull requests are welcome; attach the PDF if it can be shared, or the page of <code>source.md</code> that came out wrong.</p>
+<h2 id="what-it-does">What it does<a class="headerlink" href="#what-it-does" title="Permanent link">&para;</a></h2>
+<p><code>--to-epub</code> reads the PDF with <a href="https://github.com/docling-project/docling">docling</a>'s layout and table models into Markdown, translates that Markdown with the Markdown loader, and has Pandoc build a reflowable bilingual EPUB. Every paragraph is followed by its translation, and the table of contents follows the headings. Heading levels are read from the page itself: numbering first (<code>1.</code>, <code>1.1</code>, <code>I.</code>, <code>A.</code>), then font size and weight. Figures stay pictures, and each display formula is cropped from the page as a picture and placed where it stood. Pages with no text layer, a scan, are read by the OCR models only when you pass <code>--pdf-ocr</code>; a scan whose text layer is wrong can have it replaced with <code>--ocr-replace-layer</code>. If you name a vision model with <code>--img-model</code>, it looks at each page and corrects the roles docling gave the regions (a heading that is really an author line, a code listing read as footnotes) before the Markdown is written.</p>
+<p>Everything lives in a working folder beside the PDF, <code>&lt;name&gt;_book/</code>: <code>source.md</code> (the extraction), <code>images/</code>, <code>book_bilingual.md</code> (the translation) and a manifest. The finished book is copied out as <code>&lt;name&gt;_bilingual.epub</code>. Rerunning the same command reuses the extraction and a finished translation, so you can stop, read <code>source.md</code>, fix a heading, and go on without paying twice. A PDF is a page description, not a document: it stores glyphs at positions and knows nothing of paragraphs or headings, so every extractor guesses the structure back. A heading one level off or a table that arrives as prose is the format showing through, and a minute's edit in <code>source.md</code>.</p>
+<p><code>source.md</code> marks where each page starts with a comment, <code>&lt;!-- page N --&gt;</code>. N is the page's number in the PDF file, counted from 1: the numbers <code>--pages</code> takes, not the number printed on the page. A page with nothing on it keeps its marker, so the numbering never slips. Rarely, docling returns an item with no page. Such items are written once, at the end of <code>source.md</code>, under <code>&lt;!-- unplaced --&gt;</code>, and the run says how many. Their place in the reading order is lost: move them where they belong, or delete them, before you translate.</p>
+<p><img alt="A translated arXiv paper open in Apple Books: the contents list on the left, Chinese text beside the original figure and caption" src="../../img/pdf_reading_edition.jpg" /></p>
+<p><em>An arXiv paper after the route, open in Apple Books. The contents come from the paper's headings.</em></p>
+<h2 id="setup">Setup<a class="headerlink" href="#setup" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Install the PDF extra from a clone of the repository, <code>pip install ".[pdf]"</code> (Linux without an NVIDIA card and Windows with one add PyTorch's own index: <a href="../../installation-pdf/">Installing the PDF extra</a>). You also need Pandoc <strong>3.1.12 or newer</strong> on PATH. No Java.</li>
+<li>The models (about 500 MB) download on the first run.</li>
+<li>Read the first two pages before anything longer, and read <code>source.md</code>, the headings at least, before you pay for the full translation. They become the table of contents.</li>
+</ol>
+<p>The route's flags:</p>
+<table>
+<thead>
+<tr>
+<th>flag</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--to-epub</code></td>
+<td>Take this route.</td>
+</tr>
+<tr>
+<td><code>--pdf-ocr</code></td>
+<td>Read pages that have no text layer. Off by default: a born-digital PDF is already readable, and OCR costs several times the time without changing what is read. Layout, heading and table detection run either way.</td>
+</tr>
+<tr>
+<td><code>--ocr-replace-layer</code></td>
+<td>With <code>--pdf-ocr</code>: OCR every page and use that text instead of the text layer the PDF carries. Off by default: a layer is kept and only pages without one are OCR'd. For a scan whose layer is wrong (another language, or garbage from a poor OCR); on a clean scan the layer reads better than the local engine. Turning it on or off reads the PDF again on the next run.</td>
+</tr>
+<tr>
+<td><code>--ocr-lang LANGS</code></td>
+<td>With <code>--pdf-ocr</code>: the languages the OCR engine reads, in its own codes. <code>auto</code> picks ocrmac on a Mac and rapidocr elsewhere; the pdf extra installs both, and neither downloads anything. <a href="../pdf-ocr-engines/">Which OCR engine</a> has the measurement. The codes: rapidocr <code>ch</code>, <code>en</code>, <code>latin</code>; easyocr <code>ch_sim</code>, <code>ja</code>, <code>ko</code>; ocrmac <code>zh-Hans</code>, <code>ja-JP</code>. A BCP-47 tag behind <code>iso:</code> (<code>iso:zh</code>, <code>iso:ja</code>, <code>iso:zh-Hant</code>) works on every engine, so it is the safe choice when you do not know which one will run. rapidocr has no <code>ch_sim</code>: for Chinese write <code>iso:zh</code>. rapidocr reads one language per run and uses the first. The run prints the engine and languages it used.</td>
+</tr>
+<tr>
+<td><code>--ocr-engine ENGINE</code></td>
+<td>With <code>--pdf-ocr</code>: which OCR engine reads the pages: <code>auto</code> (default; the first installed of ocrmac, rapidocr, easyocr), <code>rapidocr</code>, <code>ocrmac</code> (macOS), <code>easyocr</code> or <code>tesseract</code>. An engine that is not installed is refused before any page is read. Which to choose, measured: <a href="../pdf-ocr-engines/">Which OCR engine</a>.</td>
+</tr>
+<tr>
+<td><code>--device auto\|cpu\|cuda\|mps\|xpu</code></td>
+<td>Where the models run. <code>auto</code> detects CUDA or MPS and falls back to the CPU. The CPU gives the same text, only slower.</td>
+</tr>
+<tr>
+<td><code>--pages 12-30</code></td>
+<td>Only these pages, numbered from 1 (<code>1,3,5-7</code> works too). The book gets its own names: <code>&lt;name&gt;_pages-12-30_book/</code>, <code>&lt;name&gt;_pages-12-30_bilingual.epub</code>.</td>
+</tr>
+<tr>
+<td><code>--no-formula-images</code></td>
+<td>Leave display formulas as <code>&lt;!-- formula-not-decoded --&gt;</code> placeholders. Almost never what you want: the parser never reads equations, so without the pictures the mathematics is missing.</td>
+</tr>
+<tr>
+<td><code>--pdf-image-dpi N</code></td>
+<td>How sharp the figures are, in dots per inch of the PDF's own page size (72 to 600). Default 200: sharp on a tablet or a high-density e-reader; 150 for a smaller book, 300 for figures with tiny labels. A rerun at another value redraws the figures only; the extraction and the translation are kept. Formulas keep their own resolution. A figure that is a single embedded picture keeps that picture's own resolution when it is lower, and no figure goes above 5.6 megapixels.</td>
+</tr>
+<tr>
+<td><code>--img-model MODEL</code></td>
+<td>A vision model that corrects region roles from the page image. Off unless named here or as the provider entry's <code>img_model</code>; never the translating model by fallback. <code>none</code> turns an entry's model off. See <a href="#correcting-region-roles-with-a-vision-model">Correcting region roles</a>.</td>
+</tr>
+<tr>
+<td><code>--img-base-url URL</code></td>
+<td>Where that model is served, when it is not the run's endpoint (OpenAI-compatible only).</td>
+</tr>
+<tr>
+<td><code>--img-key KEY</code></td>
+<td>The key for <code>--img-base-url</code>. Defaults to the run's key on the run's own endpoint.</td>
+</tr>
+</tbody>
+</table>
+<p>Every Markdown-loader flag works unchanged: <code>--use_context session</code> (recommended), <code>--glossary</code>, <code>--parallel-workers</code> (not with a session), <code>--no-thinking</code>, <code>--test</code>. The full list is on <a href="../../formats/pdf/">PDF</a>. A combination the translation would refuse, such as <code>--no-thinking</code> on the codex route, is refused before the extraction starts, so nothing is paid for first. <code>--classify-model</code> does nothing on this route yet; the run warns.</p>
+<h2 id="correcting-region-roles-with-a-vision-model">Correcting region roles with a vision model<a class="headerlink" href="#correcting-region-roles-with-a-vision-model" title="Permanent link">&para;</a></h2>
+<p>docling cuts each page into regions and labels them: text, heading, title, caption, footnote, code, table, picture. Some labels are wrong, and the book shows it: an author line in the table of contents, a code listing printed as prose, a figure label promoted to a section. With <code>--img-model</code>, each page is shown to the model with docling's regions drawn and numbered on it. The model answers one role per region (text, heading, title, caption, footnote, code) or abstains. Accepted answers replace the labels before the Markdown is written, so the contents and the code blocks come out right. The text itself is never rewritten.</p>
+<ul>
+<li><strong>What it cannot fix.</strong> Lists, tables, pictures, formulas and running headers and footers are not asked about. A scanned page that docling has shattered into fragments is not rebuilt by relabeling them.</li>
+<li><strong>What it costs.</strong> About 3,000 prompt tokens per page; 2.7 to 10.6 s per page in the study. In the study behind it, the model fixed 40 of 66 wrong labels on 12 pages; see <a href="../../evaluation/pdf-structure-llm-roles/">Where an LLM fixes layout</a>.</li>
+<li><strong>What it needs.</strong> An OpenAI-compatible endpoint that accepts images. The run checks once that the model can read a picture. If it cannot, the run says so and extracts with docling's own labels.</li>
+<li><strong>The model is named, never assumed.</strong> The step runs only on a model you name with <code>--img-model</code> or in the provider entry's <code>img_model</code>. The shipped <code>openai</code> entry names <code>gpt-5.6-luna</code>, so <code>--provider openai</code> turns the step on; <code>--img-model none</code> turns it off. An on-device translating model is never asked to read a page.</li>
+<li><strong>Changing it extracts again.</strong> The image model and its address are part of what the extraction is compared against, so adding, changing or dropping <code>--img-model</code> reads the PDF again. A bundle whose role pass did not finish is also read again when a run asks for the pass.</li>
+</ul>
+<p>The decisions are kept in <code>&lt;name&gt;_book/.work/extraction/decisions.json</code>. At the end of the extraction the run prints the pass's token usage on its own line: <code>Image model (&lt;model&gt; at &lt;address&gt;): …</code>.</p>
+<h2 id="mend-a-translation-by-hand">Mend a translation by hand<a class="headerlink" href="#mend-a-translation-by-hand" title="Permanent link">&para;</a></h2>
+<p>If a translated paragraph is wrong, correct it in <code>&lt;name&gt;_book/book_bilingual.md</code>, then take two steps:</p>
+<ol>
+<li>Run <code>python tools/pdf_to_book.py export path/to/&lt;name&gt;_book</code> from the repository folder. It rebuilds <code>&lt;name&gt;_book/book_bilingual.epub</code> from your edit; nothing is extracted or translated again, and no key is needed.</li>
+<li>Copy <code>&lt;name&gt;_book/book_bilingual.epub</code> over <code>&lt;name&gt;_bilingual.epub</code> beside the PDF. The export writes only inside the working folder, so the book beside the PDF keeps the old text until you copy it.</li>
+</ol>
+<h2 id="recommended-commands">Recommended commands<a class="headerlink" href="#recommended-commands" title="Permanent link">&para;</a></h2>
+<p>Every PDF starts with two pages and a few translated blocks (<code>--pages 1-2 --test</code>), then a read of <code>source.md</code>. The command for a novel, a textbook, a paper, a scanned book, a scan with a bad text layer and a Chinese scan, and the install and device for macOS, Linux with NVIDIA, Windows, a CPU-only machine and Docker, are on <a href="../recommended-pdf/">Recommended settings for PDF</a>.</p>
+<h2 id="what-can-go-wrong">What can go wrong<a class="headerlink" href="#what-can-go-wrong" title="Permanent link">&para;</a></h2>
+<p>Every failure on this route prints one line starting with <code>Error:</code>, before anything is paid for where it can. These are the lines, and what to do.</p>
+<h3 id="before-extraction">Before extraction<a class="headerlink" href="#before-extraction" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>Pandoc is required for --to-epub. Install it and make sure pandoc is on PATH.</code></strong> Install Pandoc 3.1.12 or newer from <a href="https://pandoc.org/installing.html">pandoc.org</a>.</li>
+<li><strong><code>pandoc 3.1.3 is too old for EPUB export; Pandoc 3.1.12 or newer is required …</code></strong> Your Pandoc came from apt (Ubuntu 24.04 ships 3.1.3, Debian 13 ships 3.1.11). Install the release and put it first on PATH; the line names the harness <code>tools/pdf_to_book.py --pandoc PATH</code> as the other way.</li>
+<li><strong><code>reading a PDF needs the pdf extra, which is not installed.</code></strong> From a clone, <code>pip install ".[pdf]"</code> (step 3 of <a href="../../installation-pdf/">Installing the PDF extra</a>). Not <code>pip install "bbook_maker[pdf]"</code>.</li>
+<li><strong><code>--device cuda was asked for, but the installed PyTorch is a CPU-only build.</code></strong> Reinstall through the CUDA route. <strong><code>… but this machine has no cuda accelerator available.</code></strong> Use <code>--device cpu</code> or <code>--device auto</code>.</li>
+<li><strong><code>--parallel-workers is not supported with --use_context session …</code></strong> Choose one.</li>
+<li><strong><code>--no-thinking has no request to travel in on the codex route: …</code></strong> Drop <code>--no-thinking</code> on codex.</li>
+<li><strong><code>--img-model needs an OpenAI-compatible endpoint; … resolves to the … format.</code></strong> The image model is asked at the run's endpoint, or at <code>--img-base-url</code>, and that endpoint is not OpenAI-shaped. Give an OpenAI-compatible <code>--img-base-url</code> (and <code>--img-key</code>), or drop <code>--img-model</code>.</li>
+<li><strong><code>--img-base-url names where --img-model is served, and no --img-model was given. …</code></strong> Name the model too.</li>
+<li><strong><code>--ocr-replace-layer re-reads pages that already carry a text layer with the OCR engine, so it needs --pdf-ocr.</code></strong> Add <code>--pdf-ocr</code>.</li>
+</ul>
+<h3 id="during-extraction">During extraction<a class="headerlink" href="#during-extraction" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>N of M selected pages have no text layer (page(s) …); rerun with --pdf-ocr to read them with the OCR models.</code></strong> The PDF (or part of it) is a scan. Add <code>--pdf-ocr</code>.</li>
+<li><strong><code>No --ocr-lang given: the OCR engine reads its own default languages, which may not be the pages'; …</code></strong> Then <strong><code>OCR engine: rapidocr (docling's choice on this install), languages: the engine's defaults.</code></strong> Check <code>source.md</code>. If the scan is not in Chinese or English, rerun with <code>--ocr-lang</code>; the bundle is read again.</li>
+<li><strong><code>The parser produced no text for a document whose pages have no text layer; the OCR pass returned pictures only.</code></strong> or <strong><code>Warning: no text was recognised on page(s) …</code></strong> The engine could not read the script. Rerun with <code>--ocr-lang</code> for the page's language.</li>
+<li><strong><code>The parser returned no text for this PDF; there is nothing to translate. If its pages are scans, rerun with --pdf-ocr.</code></strong> As it says.</li>
+<li><strong><code>Warning: page N extracted C characters, several times what a printed page holds; inspect source.md before translating.</code></strong> Something on that page, usually a figure, carries far more text than it shows. A page whose Markdown is thousands of lines is junk, not a long page. Remove it from <code>source.md</code> or leave the page out with <code>--pages</code>.</li>
+<li><strong><code>The PDF carries JBIG2 image masks, which docling-parse renders wrongly (docling issue #4329); page images are rendered by pypdfium2 instead, the text layer still by docling-parse.</code></strong> Information. Scans from the Internet Archive and ABBYY FineReader often use such masks, and docling-parse would draw the page as a smear. The run takes the page image from pypdfium2 for the whole document. See <a href="../../evaluation/pdf-page-render-backend/">Why docling-parse stays</a>.</li>
+<li><strong><code>N of M selected pages carry only an invisible OCR text layer (a scanned book with recognised text underneath); that layer is kept as the page's text …</code></strong> Information. With <code>--pdf-ocr</code> the layer may be mixed with what the OCR engine reads, so name the language with <code>--ocr-lang</code>; in the wrong language a readable page turns to garbage. If the layer itself is garbage, rerun with <code>--pdf-ocr --ocr-replace-layer</code> and the language.</li>
+<li><strong><code>OCR: replacing the embedded text layer on every page (--ocr-replace-layer)</code></strong> Information. Without <code>--ocr-lang</code> the language hint follows.</li>
+<li><strong><code>page N: the OCR engine read nothing where the PDF carried a text layer; …</code></strong> With <code>--ocr-replace-layer</code>, that page came back empty and stays an empty page: its layer is not used in its place. The line also goes into the manifest's limitations; past ten pages the rest are counted (<code>... and N more</code>). Rerun with <code>--ocr-lang</code> for the page's language, or without <code>--ocr-replace-layer</code> to keep the layer.</li>
+<li><strong><code>The OCR engine read nothing on any selected page, and with --ocr-replace-layer the PDF's text layer is not used, so there is nothing to translate; …</code></strong> The run stops before any translation is paid for. The manifest records the failed attempt: the reason, the empty pages and the settings used. The usual cause is the wrong <code>--ocr-lang</code>, or none on a scan outside the engine's default languages. Rerun with the right one, or without <code>--ocr-replace-layer</code> to keep the layer.</li>
+<li><strong><code>N item(s) carry no page number; they are placed after the last page in source.md.</code></strong> Rare. docling returned items without a page. They are at the end of <code>source.md</code>, under <code>&lt;!-- unplaced --&gt;</code>, and their place in the reading order is lost. Move them where they belong, or delete them, before you translate.</li>
+<li><strong><code>… has no model for the OCR language 'ch_sim'. …</code></strong> The engine does not know that code; the message lists the ones it does. On rapidocr, write <code>iso:zh</code> for Chinese. Nothing was read.</li>
+<li><strong><code>… did not read the probe image (…); image steps are skipped this run.</code></strong> The image model cannot see pictures at that endpoint. The extraction goes on with docling's own labels.</li>
+<li><strong><code>Region roles: A of B asked items changed by &lt;model&gt; (… kept, … rejected, … pages with many changes); overlay at &lt;path&gt;.</code></strong> Information: what the image model changed. <strong><code>Region roles: C of D asked items on page N changed; read that page in source.md before translating.</code></strong> Most of a page changed; the changes are kept, so look at it. <strong><code>Region roles: …; the detector's own labels stand there.</code></strong> Part of the pass did not finish (a budget ran out, an answer was rejected, a region went unanswered); those regions keep docling's labels.</li>
+<li><strong><code>Extracting again: the bundle's region-role pass is &lt;status&gt;; this run asks for --img-model …, which only a complete pass satisfies.</code></strong> Information. The earlier pass did not finish, so the PDF is read again.</li>
+<li><strong><code>--img-model &lt;model&gt; failed: …</code></strong> The image endpoint answered with an error that waiting does not fix, such as a rejected key. The run stops. Fix the key (<code>--img-key</code>) or the address.</li>
+</ul>
+<h3 id="after-extraction-before-translation">After extraction, before translation<a class="headerlink" href="#after-extraction-before-translation" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>The document does not open with a top-level heading, so a heading "&lt;name&gt;" was added above its text; …</code></strong> The EPUB's contents need a level-1 heading at the start. Rename it in <code>source.md</code> before translating if you like.</li>
+<li><strong><code>Page 12: the selection starts inside a section, so a heading "Page 12" was added above its prose; …</code></strong> The same, for a <code>--pages</code> range that starts mid-section.</li>
+<li><strong><code>The page selection is not one run of pages, so pages 1-7 were read and the ones outside the selection dropped afterwards; …</code></strong> A range with a gap reads everything it spans. A single range reads fewer pages.</li>
+<li><strong><code>Display formulas kept as images: N. …</code></strong> Information: the equations are pictures and are not translated.</li>
+<li><strong><code>Warning: a formula region on page N covers S% of the page, which is a layout mistake rather than an equation; …</code></strong> That region stays a placeholder instead of a picture of the whole page. The other <code>Warning: … formula …</code> lines mean one formula could not be placed; its placeholder stays.</li>
+<li><strong><code>Extraction: removed N control character(s) that docling read from glyphs on page(s) …; they are not text and would break the EPUB.</code></strong> Information. docling read some symbols (often a minus or an approximately-equal sign) as invisible control characters, and they were taken out of <code>source.md</code>. The symbol they stood for is missing on those pages; put it back in <code>source.md</code> if it matters.</li>
+<li><strong><code>Unsupported Markdown structure: control character U+0000 at line N. …</code></strong> <code>source.md</code> still holds a control character (a bundle extracted before the line above existed, or an edit). Delete it and rerun; nothing has been translated yet.</li>
+<li><strong><code>Unsupported Markdown structure: raw tex '\s' at block 29 … Normalize the source before translation.</code></strong> The extractor does not escape Markdown in prose, so a sentence containing <code>\s</code>, <code>[u](y)</code> or <code>&lt;k&gt;</code> reads as raw TeX, a link or HTML. Escape it in <code>source.md</code> and rerun; the extraction is not repeated.</li>
+<li><strong><code>Reusing the extraction made with docling … on …; this run would use docling … on …. Delete the bundle directory to extract again.</code></strong> Information. The extraction came from another device or docling version.</li>
+</ul>
+<h3 id="translation-and-export">Translation and export<a class="headerlink" href="#translation-and-export" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>Translation reused: … (same source and settings; delete it to translate again).</code></strong> Information. Delete <code>book_bilingual.md</code> to translate again.</li>
+<li><strong><code>Error: translate failed: Source or translation settings changed; start a new translation bundle.</code></strong> You changed the model, the language or <code>source.md</code> after a partial translation. Rerun with the original settings, or move the bundle aside and start over.</li>
+<li><strong><code>Error: … Bilingual Markdown was edited; rebuild the EPUB from it with: python tools/pdf_to_book.py export &lt;name&gt;_book, then copy &lt;name&gt;_book/book_bilingual.epub over &lt;name&gt;_bilingual.epub.</code></strong> You edited <code>book_bilingual.md</code> by hand. That is allowed, but the run will not overwrite it. Take the two steps the line names (it carries the full paths): the export rebuilds the book in the working folder from your edit, and the copy puts it beside the PDF; see <a href="#mend-a-translation-by-hand">Mend a translation by hand</a>. To translate again instead, delete <code>book_bilingual.md</code>.</li>
+<li><strong><code>EPUB navigation is invalid: …</code></strong> The headings do not form a usable table of contents. Fix the heading levels in <code>source.md</code> (one <code>#</code> title, then <code>##</code>, <code>###</code>) and rerun.</li>
+<li><strong><code>Interrupted. Rerun the same command to resume.</code></strong> Ctrl+C. Rerun; the stages that finished are not repeated.</li>
+</ul>
+<h3 id="after-the-run">After the run<a class="headerlink" href="#after-the-run" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>Image model (&lt;model&gt; at &lt;address&gt;): tokens: …</code></strong> The image model's own usage, printed after the extraction, apart from the translation's.</li>
+<li><strong><code>Nothing on this route classifies yet, so --classify-model is ignored on a … book.</code></strong> A classify flag or a provider's <code>classify_model</code> reached the translation of <code>source.md</code>, where nothing classifies. Harmless.</li>
+</ul>
+<h3 id="limits-to-know">Limits to know<a class="headerlink" href="#limits-to-know" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Figures stay pictures and their labels are not translated.</li>
+<li>The EPUB carries no <code>bbm_translation_metadata.json</code>, and <code>--no_disclosure</code> is not honored on this route yet: the credit line is always added.</li>
+<li><code>--glossary-auto</code> learns only when a compaction happens, so a short paper at the default budget learns nothing.</li>
+<li><code>--ocr-replace-layer</code> on a scan with a good visible layer reads worse than the layer (fewer characters, visible misreadings), so keep it for a layer that is wrong. On a scan with an invisible layer the two give nearly the same text.</li>
+<li>With an invisible layer, <code>--pdf-ocr</code> alone already has the OCR engine read the page, which is why the Chinese numbers above are close. Keeping such a layer untouched while OCR is on is not possible yet.</li>
+<li>The manifest records a failed attempt only for the all-empty stop.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../../evaluation/plan-classifier-jev/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Jev as the plan classifier">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Jev as the plan classifier
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../recommended-pdf/" class="md-footer__link md-footer__link--next" aria-label="Next: Recommended settings">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Recommended settings
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.indexes", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

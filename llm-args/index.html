@@ -1,0 +1,2633 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://yihong0618.github.io/bilingual_book_maker/llm-args/">
+      
+      
+        <link rel="prev" href="../book_source/">
+      
+      
+        <link rel="next" href="../providers/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Translating with an LLM - bilingual book maker</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#translating-with-an-llm" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="bilingual book maker" class="md-header__button md-logo" aria-label="bilingual book maker" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            bilingual book maker
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Translating with an LLM
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/yihong0618/bilingual_book_maker" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    yihong0618/bilingual_book_maker
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="bilingual book maker" class="md-nav__button md-logo" aria-label="bilingual book maker" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    bilingual book maker
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/yihong0618/bilingual_book_maker" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    yihong0618/bilingual_book_maker
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Installation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EPUB
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    EPUB
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../formats/epub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Translate an EPUB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/recommended-epub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recommended settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/plan-mode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plan mode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/session-mode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session mode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Evaluation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/grouping-batch-size/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why 16 units per request
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/session-compact-budget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why the session compacts at 8192
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/structured-output-ladder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why the tool probes the endpoint
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/plan-classifier-jev/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Jev as the plan classifier
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PDF
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    PDF
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/pdf-to-epub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PDF to bilingual EPUB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/recommended-pdf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recommended settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/pdf-ocr-engines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Which OCR engine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation-pdf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installing the PDF extra
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../formats/pdf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PDF flags and the text route
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_6" id="__nav_5_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Evaluation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/pdf-heading-levels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why heading levels come from the page
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/pdf-formulas-as-images/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why formulas are pictures
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/pdf-ocr-llm-vs-local/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why a vision model reads scans better
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/pdf-ocr-engines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Which OCR engine reads a scan best
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/pdf-page-render-backend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why docling-parse stays
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/pdf-structure-llm-roles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Where an LLM fixes layout
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/pdf-extraction-corpus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How extraction was checked
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/pdf-parser-choice/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why docling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Other formats
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Other formats
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../formats/txt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TXT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../formats/srt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SRT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../formats/md/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Markdown
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../book_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Which page for which file
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Endpoints and models
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Endpoints and models
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Translating with an LLM
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Translating with an LLM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-route-model-endpoint-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The route: model, endpoint, format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#one-command-per-vendor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One command per vendor
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keys
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-provider-file-and-extra-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The provider file and extra models
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#language" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Language
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-prompt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The prompt
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-runs-and-resuming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test runs and resuming
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retries-what-patient-means" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retries: what "patient" means
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#on-device-models-ollama-llamacpp-lm-studio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On-device models (Ollama, llama.cpp, LM Studio)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#other-request-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other request options
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provider file and extra models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../machine-args/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Machine translation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../env_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Environment variables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../prompt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompt files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../model_lang/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model and language notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../languages/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Language tags
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating from old flags
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../evaluation/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_8" id="__nav_8_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cmd/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Command line options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../disclaimer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Disclaimer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-route-model-endpoint-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The route: model, endpoint, format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#one-command-per-vendor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One command per vendor
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keys
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-provider-file-and-extra-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The provider file and extra models
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#language" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Language
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-prompt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The prompt
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-runs-and-resuming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test runs and resuming
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retries-what-patient-means" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retries: what "patient" means
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#on-device-models-ollama-llamacpp-lm-studio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On-device models (Ollama, llama.cpp, LM Studio)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#other-request-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other request options
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="translating-with-an-llm">Translating with an LLM<a class="headerlink" href="#translating-with-an-llm" title="Permanent link">&para;</a></h1>
+<p>If you have an OpenAI key, the default route needs nothing else:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">OPENAI_API_KEY</span><span class="o">=</span>sk-...
+bbook_maker<span class="w"> </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span>--use_context<span class="w"> </span>session
+</code></pre></div>
+<p>This page covers the flags that decide <em>where</em> the requests go and <em>what</em> they ask for. They work the same for every input format. What each format adds is on the <a href="../formats/epub/">Formats</a> pages.</p>
+<h2 id="the-route-model-endpoint-format">The route: model, endpoint, format<a class="headerlink" href="#the-route-model-endpoint-format" title="Permanent link">&para;</a></h2>
+<p>A route is an endpoint, not a model name. Three flags name it.</p>
+<table>
+<thead>
+<tr>
+<th>flag</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--model</code> (<code>-m</code>)</td>
+<td>The model id, exactly as the endpoint names it: <code>gpt-5-mini</code>, <code>claude-sonnet-4-6</code>, <code>openai/gpt-5-mini</code>. Default <code>gpt-5.6-luna</code> on the <code>openai</code> format. The <code>anthropic</code> format needs one.</td>
+</tr>
+<tr>
+<td><code>--api_base</code></td>
+<td>The endpoint URL. Defaults to the format's official host. An OpenAI-shaped endpoint ends in <code>/v1</code>. A pasted <code>…/v1/chat/completions</code> or a trailing slash is trimmed.</td>
+</tr>
+<tr>
+<td><code>--api_format</code></td>
+<td>The API the endpoint speaks: <code>openai</code>, <code>anthropic</code>, <code>codex</code>, <code>gemini</code>, <code>qwen</code>, <code>groq</code>, <code>xai</code>, <code>litellm</code>, or a <a href="../machine-args/">machine-translation</a> engine. Inferred from <code>--api_base</code> when you leave it out: an Anthropic host means <code>anthropic</code>, everything else <code>openai</code>. A <code>claude-*</code> model id with no <code>--api_base</code> also selects <code>anthropic</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Examples, one per common case:</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:5"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><input id="__tabbed_1_4" name="__tabbed_1" type="radio" /><input id="__tabbed_1_5" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">OpenAI</label><label for="__tabbed_1_2">Anthropic</label><label for="__tabbed_1_3">Any OpenAI-compatible endpoint</label><label for="__tabbed_1_4">Gemini</label><label for="__tabbed_1_5">Codex (ChatGPT plan)</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code>bbook_maker<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>gpt-5.6-luna<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--use_context<span class="w"> </span>session
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code>bbook_maker<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>claude-sonnet-4-6<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--use_context<span class="w"> </span>session
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code>bbook_maker<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--api_base<span class="w"> </span>https://gateway.example.com/v1<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>provider/model-id<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--use_context<span class="w"> </span>session
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code>bbook_maker<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--api_format<span class="w"> </span>gemini<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>gemini-flash-latest<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--use_context
+</code></pre></div>
+<p>Gemini keeps its own chat history, so it takes window mode (<code>--use_context</code>), not a session. <code>--interval</code> sets the pause between requests; this is how you stay under the free tier's rate limit.</p>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>make_book.py<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--api_format<span class="w"> </span>codex
+</code></pre></div>
+<p>Spends your ChatGPT plan through the <a href="https://developers.openai.com/codex/cli">Codex CLI</a>, which must be installed and signed in (<code>codex login</code>). It runs <code>gpt-5.6-luna</code>; add <code>--model &lt;id&gt;</code> for another. The thread is the context, so no <code>--use_context</code> is needed. It ignores <code>--api_base</code> and <code>--key</code>. When Codex answers that the selected model is at capacity, the run prints a <code>codex: … retrying in 60 s</code> line and asks again; that answer is usually Codex rate-limiting a network it distrusts, and another network or account helps.</p>
+</div>
+</div>
+</div>
+<p>A gateway that serves Claude models usually speaks the OpenAI shape. If a gateway answers 404 to the anthropic shape, the run stops and names <code>--api_format openai</code> as the fix.</p>
+<p><code>--api_format groq</code>, <code>xai</code> and <code>litellm</code> are the OpenAI shape at Groq, xAI and a LiteLLM proxy (<code>http://localhost:4000</code>). Each knows its address, so the format, a key and <code>--model</code> are the whole route. <code>--model</code> is required there.</p>
+<p><code>--model orcarouter</code> sends the run to the OrcaRouter gateway and its <code>orcarouter/auto</code> model. The key comes from <code>--key</code> or <code>BBM_ORCAROUTER_API_KEY</code>.</p>
+<h2 id="one-command-per-vendor">One command per vendor<a class="headerlink" href="#one-command-per-vendor" title="Permanent link">&para;</a></h2>
+<p>If your vendor is listed here, this is the whole command (the key can also come from the environment, see <a href="#keys">Keys</a>):</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Claude: a claude-* model id selects the anthropic format on its own</span>
+bbook_maker<span class="w"> </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span>--model<span class="w"> </span>claude-sonnet-4-6<span class="w"> </span>--key<span class="w"> </span><span class="si">${</span><span class="nv">claude_key</span><span class="si">}</span><span class="w"> </span>--use_context<span class="w"> </span>session
+<span class="c1"># Gemini, over the Gemini API; --interval paces the free tier</span>
+bbook_maker<span class="w"> </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span>--api_format<span class="w"> </span>gemini<span class="w"> </span>--key<span class="w"> </span><span class="si">${</span><span class="nv">gemini_key</span><span class="si">}</span><span class="w"> </span>--model<span class="w"> </span>gemini-flash-latest<span class="w"> </span>--use_context
+<span class="c1"># Qwen-MT on DashScope: a translation model with a source/target pair</span>
+bbook_maker<span class="w"> </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span>--api_format<span class="w"> </span>qwen<span class="w"> </span>--key<span class="w"> </span><span class="si">${</span><span class="nv">qwen_key</span><span class="si">}</span><span class="w"> </span>--model<span class="w"> </span>qwen-mt-turbo<span class="w"> </span>--language<span class="w"> </span><span class="s2">"Simplified Chinese"</span>
+<span class="c1"># xAI</span>
+bbook_maker<span class="w"> </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span>--api_format<span class="w"> </span>xai<span class="w"> </span>--key<span class="w"> </span><span class="si">${</span><span class="nv">xai_key</span><span class="si">}</span><span class="w"> </span>--model<span class="w"> </span>grok-4.3<span class="w"> </span>--use_context<span class="w"> </span>session
+<span class="c1"># Groq: --model is required, pick a current id from console.groq.com/docs/models</span>
+bbook_maker<span class="w"> </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span>--api_format<span class="w"> </span>groq<span class="w"> </span>--key<span class="w"> </span><span class="si">${</span><span class="nv">groq_key</span><span class="si">}</span><span class="w"> </span>--model<span class="w"> </span>llama-3.3-70b-versatile<span class="w"> </span>--use_context<span class="w"> </span>session
+<span class="c1"># a LiteLLM proxy on this machine: --model is the name its config gives a backend</span>
+bbook_maker<span class="w"> </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span>--api_format<span class="w"> </span>litellm<span class="w"> </span>--model<span class="w"> </span><span class="si">${</span><span class="nv">name_in_your_litellm_config</span><span class="si">}</span><span class="w"> </span>--use_context<span class="w"> </span>session
+<span class="c1"># OrcaRouter's smart routing (orcarouter/auto); --provider orcarouter --model &lt;id&gt; pins one model</span>
+bbook_maker<span class="w"> </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span>--model<span class="w"> </span>orcarouter<span class="w"> </span>--key<span class="w"> </span><span class="si">${</span><span class="nv">orcarouter_key</span><span class="si">}</span><span class="w"> </span>--use_context<span class="w"> </span>session
+<span class="c1"># Ollama; point --api_base at another host if the server is not local</span>
+bbook_maker<span class="w"> </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span>--api_base<span class="w"> </span>http://localhost:11434/v1<span class="w"> </span>--model<span class="w"> </span><span class="si">${</span><span class="nv">ollama_model_name</span><span class="si">}</span><span class="w"> </span>--use_context<span class="w"> </span>session
+<span class="c1"># any other OpenAI-compatible endpoint: base URL, key, and the model id it uses</span>
+bbook_maker<span class="w"> </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span>--api_base<span class="w"> </span><span class="s2">"https://api.lingyiwanwu.com/v1"</span><span class="w"> </span>--key<span class="w"> </span><span class="si">${</span><span class="nv">key</span><span class="si">}</span><span class="w"> </span>--model<span class="w"> </span>yi-34b-chat-0205<span class="w"> </span>--use_context<span class="w"> </span>session
+<span class="c1"># Azure OpenAI: the deployment's OpenAI-compatible URL, the deployment name as the model</span>
+bbook_maker<span class="w"> </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span>--api_base<span class="w"> </span><span class="s1">'https://example-endpoint.openai.azure.com/openai/v1'</span><span class="w"> </span>--key<span class="w"> </span><span class="si">${</span><span class="nv">azure_key</span><span class="si">}</span><span class="w"> </span>--model<span class="w"> </span><span class="s1">'deployment-name'</span><span class="w"> </span>--use_context<span class="w"> </span>session
+<span class="c1"># your ChatGPT plan through the Codex CLI (codex login first)</span>
+bbook_maker<span class="w"> </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span>--api_format<span class="w"> </span>codex<span class="w"> </span>--language<span class="w"> </span>zh-hans
+</code></pre></div>
+<p>Machine-translation services (Google, DeepL, Caiyun, Tencent, a custom API) are on <a href="../machine-args/">Machine translation</a>. A vendor you use often belongs in the <a href="../providers/">provider file</a>.</p>
+<h2 id="keys">Keys<a class="headerlink" href="#keys" title="Permanent link">&para;</a></h2>
+<p>The key is looked up in this order:</p>
+<ol>
+<li><code>--key</code> (<code>--api_key</code> is the same flag). Several comma-separated keys are rotated, to go past per-key rate limits.</li>
+<li><code>BBM_API_KEY</code>.</li>
+<li>The format's own variable: <code>OPENAI_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>, <code>BBM_GOOGLE_GEMINI_KEY</code>, <code>BBM_QWEN_API_KEY</code>, <code>BBM_GROQ_API_KEY</code>, <code>BBM_XAI_API_KEY</code>.</li>
+</ol>
+<p>An endpoint on localhost needs no key. A key on the command line is visible to other users of the machine in the process list; prefer the environment. The tool does not read <code>.env</code> files itself. Load one first:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">set</span><span class="w"> </span>-a<span class="p">;</span><span class="w"> </span><span class="nb">source</span><span class="w"> </span>.env<span class="p">;</span><span class="w"> </span><span class="nb">set</span><span class="w"> </span>+a
+</code></pre></div>
+<p>More variables are on <a href="../env_settings/">Environment variables</a>.</p>
+<h2 id="the-provider-file-and-extra-models">The provider file and extra models<a class="headerlink" href="#the-provider-file-and-extra-models" title="Permanent link">&para;</a></h2>
+<p><code>--provider NAME</code> takes the route from a JSON file instead of flags: <code>bbm_providers.json</code> in the directory you run from, or <code>~/.bbm/providers.json</code>. A name in neither falls back to the shipped <code>bbm_providers.example.json</code>, and the run says so.</p>
+<div class="highlight"><pre><span></span><code>bbook_maker<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--provider<span class="w"> </span>siliconflow<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--use_context<span class="w"> </span>session
+</code></pre></div>
+<p>Two steps can use a model other than the translating one:</p>
+<table>
+<thead>
+<tr>
+<th>flag</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--classify-model MODEL</code></td>
+<td>The model that decides an EPUB's plan, or a Jev-compatible classifier (<code>jev</code> for TypeSafe's). Default: the entry's <code>classify_model</code>, else the translating model. <code>--plan-classify-model</code> is its old name.</td>
+</tr>
+<tr>
+<td><code>--classify-base-url URL</code>, <code>--classify-key KEY</code></td>
+<td>Where that model is served and its key, when it is not the run's endpoint: an OpenAI-compatible address, or a Jev-compatible classifier's URL.</td>
+</tr>
+<tr>
+<td><code>--img-model MODEL</code></td>
+<td>A vision model for the steps that look at a page image (today: correcting region roles on the <a href="../features/pdf-to-epub/">PDF route</a>). Default: the entry's <code>img_model</code>, else off. Never the translating model by fallback. <code>none</code> turns an entry's image model off.</td>
+</tr>
+<tr>
+<td><code>--img-base-url URL</code>, <code>--img-key KEY</code></td>
+<td>Where that model is served and its key (OpenAI-compatible only).</td>
+</tr>
+</tbody>
+</table>
+<p>The fields, the shipped entries, which key is sent where, and Jev and Jev-compatible classifiers are on <a href="../providers/">Provider file and extra models</a>. Note that the shipped <code>openai</code> entry names an image model, so <code>--provider openai</code> turns the PDF route's image step on.</p>
+<h2 id="language">Language<a class="headerlink" href="#language" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>flag</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--language</code></td>
+<td>The target language. A tag (<code>zh-hant</code>), a name (<code>"Traditional Chinese"</code>), or <code>TAG:NAME</code> when the tables miss the language (<code>--language "zh-hant:Traditional Chinese"</code>). The tag is stamped on the output; the name is what the model is asked for. Default <code>zh-hans</code>. The full list is on <a href="../languages/">Language tags</a>.</td>
+</tr>
+<tr>
+<td><code>--source_lang</code></td>
+<td>The source language, stated rather than detected. Named in the prompt on every LLM route. Default: detect.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="the-prompt">The prompt<a class="headerlink" href="#the-prompt" title="Permanent link">&para;</a></h2>
+<p><code>--prompt</code> takes a template string, a JSON string, or a <code>.json</code>, <code>.txt</code> or <code>.md</code> file. It has three sections:</p>
+<ul>
+<li><code>user</code>: the template. Required. It must contain <code>{text}</code>; <code>{language}</code> and <code>{crlf}</code> are filled in too. Any other placeholder is refused when the run starts.</li>
+<li><code>system</code>: the system message.</li>
+<li><code>style</code>: a note on register and voice. It is said once where a context window starts, and handed on to every window in session mode.</li>
+</ul>
+<p>A bare string or a <code>.txt</code> file is the <code>user</code> template. The run prints which sections it used and where. The format is on <a href="../prompt/">Prompt files</a>.</p>
+<div class="highlight"><pre><span></span><code>bbook_maker<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--prompt<span class="w"> </span>prompt_template.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--use_context<span class="w"> </span>session
+</code></pre></div>
+<h2 id="test-runs-and-resuming">Test runs and resuming<a class="headerlink" href="#test-runs-and-resuming" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>flag</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--test</code></td>
+<td>Translate only the first paragraphs, to check the setup.</td>
+</tr>
+<tr>
+<td><code>--test_num N</code></td>
+<td>How many (default 10).</td>
+</tr>
+<tr>
+<td><code>--resume</code></td>
+<td>Continue an interrupted run from its checkpoint. An EPUB checkpoint records the language, prompt and model; a mismatch stops the resume.</td>
+</tr>
+</tbody>
+</table>
+<p>Always run <code>--test</code> once on a new endpoint. It costs almost nothing and shows you the output format and the route the run chose.</p>
+<h2 id="retries-what-patient-means">Retries: what "patient" means<a class="headerlink" href="#retries-what-patient-means" title="Permanent link">&para;</a></h2>
+<p>Many people run this tool against providers that are slow or rate-limited, where the first token or a 429 backoff can take minutes. So the tool never gives up on an error that could clear by waiting.</p>
+<ul>
+<li>A timeout, a dropped connection, a 429 or a 5xx is retried with no attempt limit. The wait starts at 1 second, doubles, and stops growing at 5 minutes.</li>
+<li>Every retry prints one line, so a long wait does not look like a hang:
+  <code>retrying after RateLimitError (…) — attempt 4, waiting 8s</code></li>
+<li>An error that will not clear by waiting stops the run at once: a rejected key, a permission error, a request the endpoint refuses, a model that does not exist.</li>
+<li>Ctrl+C always stops the run, even during a long wait. The progress is saved; rerun with <code>--resume</code>.</li>
+</ul>
+<p>If you see the same retry line for a long time, the provider is down or rate-limiting you. The run will continue by itself when it comes back.</p>
+<h2 id="on-device-models-ollama-llamacpp-lm-studio">On-device models (Ollama, llama.cpp, LM Studio)<a class="headerlink" href="#on-device-models-ollama-llamacpp-lm-studio" title="Permanent link">&para;</a></h2>
+<p>A local model is an OpenAI-compatible endpoint on your own machine. Point <code>--api_base</code> at it; no key is needed.</p>
+<div class="highlight"><pre><span></span><code>bbook_maker<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--api_base<span class="w"> </span>http://localhost:11434/v1<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>qwen3:8b<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--use_context<span class="w"> </span>session
+</code></pre></div>
+<p>What to expect from an 8B or 16B model:</p>
+<ul>
+<li><strong>No strict JSON schema.</strong> Most local servers do not enforce one. The run notices this with a one-request probe and switches to a delimiter format, printing a line such as <code>doesn't apply JSON schema … using delimiter method</code>. This is not an error.</li>
+<li><strong>Smaller requests.</strong> On an endpoint without a strict schema, each request carries at most 8 units, half of the default 16, and outside session mode about 800 tokens of text. The run prints the numbers it chose. The defaults are chosen so that a small model can hold them.</li>
+<li><strong>Plan classification by one word.</strong> Plan mode asks the model <code>skip</code> or <code>translate</code> for five kinds of block per turn. If the model misses the reply format twice in a row, the run asks three per turn, then one. If it still misses, classification stops and the rest is translated. Anything unreadable is treated as <code>translate</code>, so a weak model translates too much rather than too little. You can also hand classification to a hosted model with <code>--classify-model</code> and keep translating locally; see <a href="../providers/#examples">Provider file and extra models</a>.</li>
+<li><strong>Short context.</strong> Set <code>--context-compact-at</code> to the model's input limit (minimum 1500) so a session window never overflows it.</li>
+<li><strong>Thinking models.</strong> A model that reasons before it answers can be told not to with <code>--no-thinking</code>. The run finds the request field the server accepts from the server's own rejections. If your server needs a field of its own, <code>--extra_body</code> wins, for example <code>--extra_body '{"chat_template_kwargs": {"enable_thinking": false}}'</code>.</li>
+<li><strong>No image step.</strong> The PDF route's image step runs only on a model you name with <code>--img-model</code>, so a local model is never asked to read a page.</li>
+</ul>
+<p>Flags to avoid on a small model:</p>
+<ul>
+<li><code>--glossary-auto on</code>. It needs a model that answers with names, not prose.</li>
+<li>Raising <code>--accumulated_num</code> or <code>--max-batch-units</code>. Lower them instead when the run prints <code>misaligned batches this run</code>.</li>
+<li><code>--model_list</code>. Each model keeps its own cache, and mixing models in one conversation hurts consistency.</li>
+</ul>
+<p>If plan classification keeps failing on your model, <code>--plan-classify all</code> skips it and translates every block. See <a href="../features/plan-mode/">Plan mode</a>.</p>
+<h2 id="other-request-options">Other request options<a class="headerlink" href="#other-request-options" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>flag</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--temperature</code></td>
+<td>Sampling temperature. The anthropic format always sends it; the openai format leaves it out when it equals the API default or when the model rejects one; codex ignores it.</td>
+</tr>
+<tr>
+<td><code>--no-thinking</code></td>
+<td>Ask the model not to reason before answering; thinking buys nothing on a paragraph and costs tokens and time. On the OpenAI-shaped routes the request field is found from the endpoint's own rejections and remembered; if the endpoint refuses every spelling, the run warns once and goes on without it. On anthropic it is <code>thinking: {"type": "disabled"}</code>. Refused on codex. Image requests carry it too.</td>
+</tr>
+<tr>
+<td><code>--extra_body JSON</code></td>
+<td>Extra fields on every request body (openai and anthropic routes). A field here beats the flag for it, <code>--no-thinking</code> included.</td>
+</tr>
+<tr>
+<td><code>--extra_headers JSON</code></td>
+<td>Extra HTTP headers on every request (openai and anthropic routes).</td>
+</tr>
+<tr>
+<td><code>--model_list IDS</code></td>
+<td>Several models to rotate across, to spread rate limits. Refused with <code>--use_context session</code>.</td>
+</tr>
+<tr>
+<td><code>--interval SECONDS</code></td>
+<td>Pause between requests. Only the gemini format uses it.</td>
+</tr>
+<tr>
+<td><code>-p</code>, <code>--proxy URL</code></td>
+<td>An HTTP proxy for the run, for example <code>http://127.0.0.1:7890</code>.</td>
+</tr>
+<tr>
+<td><code>--batch</code>, <code>--batch-use</code></td>
+<td>OpenAI's Batch API: submit a job, then build the book from it later. Not on EPUB.</td>
+</tr>
+</tbody>
+</table>
+<p>Common <code>--extra_body</code> and <code>--extra_headers</code> values:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># openai route: turn off a local/vLLM chat template's thinking block</span>
+--extra_body<span class="w"> </span><span class="s1">'{"chat_template_kwargs": {"enable_thinking": false}}'</span>
+<span class="c1"># openai route (chat completions): reasoning effort and a token ceiling, neither of which has a flag</span>
+--extra_body<span class="w"> </span><span class="s1">'{"reasoning_effort": "low", "max_completion_tokens": 2000}'</span>
+<span class="c1"># anthropic route: keep extended thinking off</span>
+--extra_body<span class="w"> </span><span class="s1">'{"thinking": {"type": "disabled"}}'</span>
+<span class="c1"># OpenRouter attribution, shown on its dashboard</span>
+--extra_headers<span class="w"> </span><span class="s1">'{"HTTP-Referer": "https://example.com", "X-Title": "bilingual_book_maker"}'</span>
+<span class="c1"># a gateway's own auth or routing header</span>
+--extra_headers<span class="w"> </span><span class="s1">'{"X-API-Key": "sk-gateway-..."}'</span>
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../book_source/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Which page for which file">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Which page for which file
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../providers/" class="md-footer__link md-footer__link--next" aria-label="Next: Provider file and extra models">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Provider file and extra models
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.indexes", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

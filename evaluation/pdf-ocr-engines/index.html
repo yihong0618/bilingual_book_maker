@@ -1,0 +1,2884 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://yihong0618.github.io/bilingual_book_maker/evaluation/pdf-ocr-engines/">
+      
+      
+        <link rel="prev" href="../pdf-ocr-llm-vs-local/">
+      
+      
+        <link rel="next" href="../pdf-page-render-backend/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Which OCR engine reads a scan best - bilingual book maker</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#which-local-ocr-engine-reads-a-scan-best-rapidocr-ocrmac-easyocr-and-tesseract" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="bilingual book maker" class="md-header__button md-logo" aria-label="bilingual book maker" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            bilingual book maker
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Which OCR engine reads a scan best
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/yihong0618/bilingual_book_maker" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    yihong0618/bilingual_book_maker
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="bilingual book maker" class="md-nav__button md-logo" aria-label="bilingual book maker" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    bilingual book maker
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/yihong0618/bilingual_book_maker" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    yihong0618/bilingual_book_maker
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Installation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EPUB
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    EPUB
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../formats/epub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Translate an EPUB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/recommended-epub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recommended settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/plan-mode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plan mode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/session-mode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session mode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Evaluation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../grouping-batch-size/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why 16 units per request
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-compact-budget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why the session compacts at 8192
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../structured-output-ladder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why the tool probes the endpoint
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plan-classifier-jev/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Jev as the plan classifier
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PDF
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    PDF
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/pdf-to-epub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PDF to bilingual EPUB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/recommended-pdf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recommended settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/pdf-ocr-engines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Which OCR engine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation-pdf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installing the PDF extra
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../formats/pdf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PDF flags and the text route
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5_6" id="__nav_5_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Evaluation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pdf-heading-levels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why heading levels come from the page
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pdf-formulas-as-images/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why formulas are pictures
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pdf-ocr-llm-vs-local/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why a vision model reads scans better
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Which OCR engine reads a scan best
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Which OCR engine reads a scan best
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#abstract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Abstract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Results
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limits
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pdf-page-render-backend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why docling-parse stays
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pdf-structure-llm-roles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Where an LLM fixes layout
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pdf-extraction-corpus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How extraction was checked
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pdf-parser-choice/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why docling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Other formats
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Other formats
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../formats/txt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TXT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../formats/srt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SRT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../formats/md/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Markdown
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../book_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Which page for which file
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Endpoints and models
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Endpoints and models
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../llm-args/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Translating with an LLM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provider file and extra models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../machine-args/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Machine translation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../env_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Environment variables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../prompt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompt files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../model_lang/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model and language notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../languages/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Language tags
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating from old flags
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_8" id="__nav_8_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cmd/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Command line options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../disclaimer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Disclaimer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#abstract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Abstract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Results
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limits
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="which-local-ocr-engine-reads-a-scan-best-rapidocr-ocrmac-easyocr-and-tesseract">Which local OCR engine reads a scan best: rapidocr, ocrmac, easyocr and tesseract<a class="headerlink" href="#which-local-ocr-engine-reads-a-scan-best-rapidocr-ocrmac-easyocr-and-tesseract" title="Permanent link">&para;</a></h1>
+<p>Since this measurement, the <code>pdf</code> extra installs onnxruntime, and ocrmac on macOS, so rapidocr and ocrmac download nothing on a fresh install; the install notes below describe the install as it was measured.</p>
+<h2 id="abstract">Abstract<a class="headerlink" href="#abstract" title="Permanent link">&para;</a></h2>
+<p><code>--ocr-engine</code> picks the engine docling runs on pages with no text layer. The four engines docling can run locally were measured on the same 20 scanned pages (14 English, 6 Chinese), with the same scorer and the same language asked of each, all on the CPU. On English, tesseract had the lowest error (mean CER 0.104) and ocrmac came next (0.136); rapidocr (0.169) and easyocr (0.267) trailed. On simplified Chinese, rapidocr was best (mean Han CER 0.054 over five pages, against ocrmac 0.097 and tesseract 0.116); on the one traditional page ocrmac and rapidocr were close (0.043 and 0.060). easyocr was last almost everywhere, took three times as long and up to 6.6 GB of memory, and dropped text on Chinese pages. ocrmac, Apple's own engine, was the fastest (median 6 s per two pages) and needs nothing downloaded.</p>
+<p>The default stays <code>auto</code>. This page is the evidence behind <a href="../../features/pdf-ocr-engines/">Which OCR engine</a>.</p>
+<h2 id="setup">Setup<a class="headerlink" href="#setup" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Route:</strong> the PDF route's own extraction, run through the staged harness (<code>tools/pdf_to_book.py extract</code>), docling 2.129.0, <code>--pdf-ocr --device cpu --pages 1-2</code>, default OCR mode (a page's embedded layer is kept where docling keeps it). One conversion at a time, each under a memory cap, <code>HF_HUB_OFFLINE=1</code>.</li>
+<li><strong>Engines:</strong> rapidocr 3.9.2 on onnxruntime 1.23.2 (PP-OCRv6 small models, shipped inside the rapidocr package); ocrmac 1.0.1 (Apple Vision, macOS 26); easyocr 1.7.2 on PyTorch 2.9.0 (CPU); tesseract 5.5.3 (Homebrew) with the <code>tessdata_fast</code> language files (<code>eng</code>, <code>chi_sim</code>, <code>chi_tra</code>, <code>osd</code>).</li>
+<li><strong>Languages:</strong> the same <code>iso:</code> tag for every engine, which docling maps onto each engine's own code: <code>iso:en</code> for the English pages, <code>iso:zh-Hans</code> for simplified Chinese, <code>iso:zh-Hant</code> for traditional. The run's own line confirmed the engine and the languages in every cell.</li>
+<li><strong>Device:</strong> <code>--device cpu</code> on every cell, so the layout and table models ran on the CPU for all four arms. rapidocr (onnxruntime), easyocr (PyTorch) and tesseract ran on the CPU; ocrmac runs inside Apple's Vision framework, which chooses its own hardware.</li>
+<li><strong>Machine:</strong> Apple silicon, 16 GB, Python 3.12.12.</li>
+<li><strong>Pages:</strong> two-page cuts; the scored pages are the ones with ground truth:</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>fixture</th>
+<th>scored page(s)</th>
+<th>what it is</th>
+<th>language flag</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>scan_cia_typewriter</td>
+<td>1, 2</td>
+<td>degraded typewriter scan (CCITT)</td>
+<td><code>iso:en</code></td>
+</tr>
+<tr>
+<td>scan_cia_typewriter_mid</td>
+<td>2</td>
+<td>typewriter scan, mid-document</td>
+<td><code>iso:en</code></td>
+</tr>
+<tr>
+<td>scan_forward1963</td>
+<td>1</td>
+<td>1963 magazine, two columns, footnotes</td>
+<td><code>iso:en</code></td>
+</tr>
+<tr>
+<td>scan_en_degraded_1_mid</td>
+<td>1</td>
+<td>colour pamphlet with a table</td>
+<td><code>iso:en</code></td>
+</tr>
+<tr>
+<td>scan_en_degraded_2_mid</td>
+<td>1</td>
+<td>bitonal old novel page</td>
+<td><code>iso:en</code></td>
+</tr>
+<tr>
+<td>scan_zh_hans_qm_mid</td>
+<td>1</td>
+<td>Internet Archive book scan, simplified Chinese, invisible OCR layer, JBIG2 masks</td>
+<td><code>iso:zh-Hans</code></td>
+</tr>
+<tr>
+<td>zh_hant_scan_2_mid</td>
+<td>2</td>
+<td>traditional Chinese, horizontal, with a table</td>
+<td><code>iso:zh-Hant</code></td>
+</tr>
+<tr>
+<td>syn_arxiv_1706_03762_{clean,deg}</td>
+<td>1, 2</td>
+<td>born-digital paper rendered as a scan</td>
+<td><code>iso:en</code></td>
+</tr>
+<tr>
+<td>syn_wps_eula_{clean,deg}</td>
+<td>1, 2</td>
+<td>WPS licence document rendered as a scan</td>
+<td><code>iso:en</code></td>
+</tr>
+<tr>
+<td>syn_web_zh_report_chrome_{clean,deg}</td>
+<td>1, 2</td>
+<td>Chinese web report rendered as a scan</td>
+<td><code>iso:zh-Hans</code></td>
+</tr>
+</tbody>
+</table>
+<p>Synthetic scans: 200 dpi; clean is a lossless PNG, degraded is grayscale, rotated 1.5°, blurred (r=0.8) and JPEG q40. Their ground truth is exact (the source page's text layer). The real scans' ground truth was typed from the page image. The Chinese book scan carries JBIG2 masks, so its page images came from pypdfium2 on every arm (the run printed the JBIG2 line).</p>
+<ul>
+<li><strong>Scorer:</strong> the one used for <a href="../pdf-ocr-llm-vs-local/">the vision-model study</a>, unchanged. Normalisation: Markdown syntax stripped (image links, comments, <code>#</code>, table pipes and rules, <code>**</code>, escapes, list bullets), HTML unescaped, NFKC, every quote variant mapped to <code>"</code>, every hyphen and dash removed, whitespace collapsed (removed entirely for Chinese). <strong>CER</strong> is order-sensitive: a paragraph read in another order counts as errors. <strong>Han CER</strong> is CER over the Han characters only. <strong>line_err</strong> ignores order: the length-weighted mean of (1 − partial match) over ground-truth lines, so it measures recognition and detection alone. The heading the route adds above an extraction that does not open with one (<code># &lt;file name&gt;</code>) was removed before scoring.</li>
+</ul>
+<p>Commands, one per cell (<code>$E</code> is the evaluation directory, <code>$ENGINE</code> one of the four, <code>$LANG</code> from the table above):</p>
+<div class="highlight"><pre><span></span><code><span class="nv">HF_HUB_OFFLINE</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">TESSDATA_PREFIX</span><span class="o">=</span><span class="nv">$E</span>/tessdata<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>python<span class="w"> </span>tools/pdf_to_book.py<span class="w"> </span>extract<span class="w"> </span><span class="nv">$E</span>/fixtures/p12/scan_cia_typewriter.pdf<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output<span class="w"> </span><span class="nv">$E</span>/runs/K/<span class="nv">$ENGINE_cia</span>/bundle<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--pdf-ocr<span class="w"> </span>--ocr-engine<span class="w"> </span><span class="nv">$ENGINE</span><span class="w"> </span>--ocr-lang<span class="w"> </span>iso:en<span class="w"> </span>--device<span class="w"> </span>cpu<span class="w"> </span>--pages<span class="w"> </span><span class="m">1</span>-2
+</code></pre></div>
+<p>and the same with <code>--ocr-engine auto</code> on one fixture per script, to see what <code>auto</code> picks.</p>
+<h2 id="results">Results<a class="headerlink" href="#results" title="Permanent link">&para;</a></h2>
+<p>CER per page, lower is better; Chinese pages also give the Han-only CER:</p>
+<table>
+<thead>
+<tr>
+<th>page</th>
+<th>rapidocr</th>
+<th>ocrmac</th>
+<th>easyocr</th>
+<th>tesseract</th>
+<th>auto</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>cia p1</td>
+<td>0.158</td>
+<td>0.119</td>
+<td>0.073</td>
+<td>0.120</td>
+<td>0.119</td>
+</tr>
+<tr>
+<td>cia p2</td>
+<td>0.272</td>
+<td>0.109</td>
+<td>0.148</td>
+<td>0.110</td>
+<td>0.109</td>
+</tr>
+<tr>
+<td>ciamid p2</td>
+<td>0.188</td>
+<td>0.029</td>
+<td>0.080</td>
+<td>0.017</td>
+<td>-</td>
+</tr>
+<tr>
+<td>fwd p1</td>
+<td>0.251</td>
+<td>0.231</td>
+<td>0.260</td>
+<td>0.212</td>
+<td>-</td>
+</tr>
+<tr>
+<td>deg1 p1</td>
+<td>0.355</td>
+<td>0.360</td>
+<td>0.965</td>
+<td>0.046</td>
+<td>-</td>
+</tr>
+<tr>
+<td>deg2 p1</td>
+<td>0.543</td>
+<td>0.491</td>
+<td>0.602</td>
+<td>0.408</td>
+<td>-</td>
+</tr>
+<tr>
+<td>zh p1</td>
+<td>0.112 (Han 0.009)</td>
+<td>0.210 (Han 0.056)</td>
+<td>0.390 (Han 0.235)</td>
+<td>0.201 (Han 0.036)</td>
+<td>0.210 (Han 0.056)</td>
+</tr>
+<tr>
+<td>hant2 p2</td>
+<td>0.069 (Han 0.060)</td>
+<td>0.041 (Han 0.043)</td>
+<td>0.670 (Han 0.724)</td>
+<td>0.322 (Han 0.350)</td>
+<td>0.041 (Han 0.043)</td>
+</tr>
+<tr>
+<td>synarxc p1</td>
+<td>0.051</td>
+<td>0.050</td>
+<td>0.124</td>
+<td>0.051</td>
+<td>-</td>
+</tr>
+<tr>
+<td>synarxc p2</td>
+<td>0.040</td>
+<td>0.003</td>
+<td>0.056</td>
+<td>0.004</td>
+<td>-</td>
+</tr>
+<tr>
+<td>synarxd p1</td>
+<td>0.142</td>
+<td>0.055</td>
+<td>0.431</td>
+<td>0.169</td>
+<td>-</td>
+</tr>
+<tr>
+<td>synarxd p2</td>
+<td>0.002</td>
+<td>0.269</td>
+<td>0.534</td>
+<td>0.272</td>
+<td>-</td>
+</tr>
+<tr>
+<td>syneulac p1</td>
+<td>0.015</td>
+<td>0.014</td>
+<td>0.071</td>
+<td>0.015</td>
+<td>-</td>
+</tr>
+<tr>
+<td>syneulac p2</td>
+<td>0.171</td>
+<td>0.008</td>
+<td>0.028</td>
+<td>0.008</td>
+<td>-</td>
+</tr>
+<tr>
+<td>syneulad p1</td>
+<td>0.110</td>
+<td>0.163</td>
+<td>0.215</td>
+<td>0.014</td>
+<td>-</td>
+</tr>
+<tr>
+<td>syneulad p2</td>
+<td>0.066</td>
+<td>0.008</td>
+<td>0.153</td>
+<td>0.008</td>
+<td>-</td>
+</tr>
+<tr>
+<td>synzhc p1</td>
+<td>0.042 (Han 0.000)</td>
+<td>0.040 (Han 0.003)</td>
+<td>0.564 (Han 0.514)</td>
+<td>0.077 (Han 0.019)</td>
+<td>-</td>
+</tr>
+<tr>
+<td>synzhc p2</td>
+<td>0.076 (Han 0.053)</td>
+<td>0.045 (Han 0.000)</td>
+<td>0.656 (Han 0.611)</td>
+<td>0.085 (Han 0.021)</td>
+<td>-</td>
+</tr>
+<tr>
+<td>synzhd p1</td>
+<td>0.188 (Han 0.191)</td>
+<td>0.167 (Han 0.163)</td>
+<td>0.799 (Han 0.862)</td>
+<td>0.193 (Han 0.171)</td>
+<td>-</td>
+</tr>
+<tr>
+<td>synzhd p2</td>
+<td>0.136 (Han 0.018)</td>
+<td>0.312 (Han 0.262)</td>
+<td>0.800 (Han 0.848)</td>
+<td>0.390 (Han 0.333)</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<p>line_err per page (order ignored):</p>
+<table>
+<thead>
+<tr>
+<th>page</th>
+<th>rapidocr</th>
+<th>ocrmac</th>
+<th>easyocr</th>
+<th>tesseract</th>
+<th>auto</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>cia p1</td>
+<td>0.085</td>
+<td>0.001</td>
+<td>0.045</td>
+<td>0.003</td>
+<td>0.001</td>
+</tr>
+<tr>
+<td>cia p2</td>
+<td>0.181</td>
+<td>0.076</td>
+<td>0.110</td>
+<td>0.078</td>
+<td>0.076</td>
+</tr>
+<tr>
+<td>ciamid p2</td>
+<td>0.093</td>
+<td>0.007</td>
+<td>0.036</td>
+<td>0.000</td>
+<td>-</td>
+</tr>
+<tr>
+<td>fwd p1</td>
+<td>0.009</td>
+<td>0.020</td>
+<td>0.054</td>
+<td>0.007</td>
+<td>-</td>
+</tr>
+<tr>
+<td>deg1 p1</td>
+<td>0.010</td>
+<td>0.043</td>
+<td>0.559</td>
+<td>0.033</td>
+<td>-</td>
+</tr>
+<tr>
+<td>deg2 p1</td>
+<td>0.054</td>
+<td>0.118</td>
+<td>0.291</td>
+<td>0.019</td>
+<td>-</td>
+</tr>
+<tr>
+<td>zh p1</td>
+<td>0.036</td>
+<td>0.144</td>
+<td>0.142</td>
+<td>0.119</td>
+<td>0.144</td>
+</tr>
+<tr>
+<td>hant2 p2</td>
+<td>0.050</td>
+<td>0.037</td>
+<td>0.536</td>
+<td>0.272</td>
+<td>0.037</td>
+</tr>
+<tr>
+<td>synarxc p1</td>
+<td>0.034</td>
+<td>0.033</td>
+<td>0.057</td>
+<td>0.033</td>
+<td>-</td>
+</tr>
+<tr>
+<td>synarxc p2</td>
+<td>0.025</td>
+<td>0.002</td>
+<td>0.034</td>
+<td>0.004</td>
+<td>-</td>
+</tr>
+<tr>
+<td>synarxd p1</td>
+<td>0.035</td>
+<td>0.034</td>
+<td>0.265</td>
+<td>0.082</td>
+<td>-</td>
+</tr>
+<tr>
+<td>synarxd p2</td>
+<td>0.001</td>
+<td>0.003</td>
+<td>0.316</td>
+<td>0.007</td>
+<td>-</td>
+</tr>
+<tr>
+<td>syneulac p1</td>
+<td>0.001</td>
+<td>0.000</td>
+<td>0.047</td>
+<td>0.001</td>
+<td>-</td>
+</tr>
+<tr>
+<td>syneulac p2</td>
+<td>0.109</td>
+<td>0.002</td>
+<td>0.018</td>
+<td>0.002</td>
+<td>-</td>
+</tr>
+<tr>
+<td>syneulad p1</td>
+<td>0.001</td>
+<td>0.041</td>
+<td>0.117</td>
+<td>0.000</td>
+<td>-</td>
+</tr>
+<tr>
+<td>syneulad p2</td>
+<td>0.047</td>
+<td>0.002</td>
+<td>0.085</td>
+<td>0.002</td>
+<td>-</td>
+</tr>
+<tr>
+<td>synzhc p1</td>
+<td>0.031</td>
+<td>0.030</td>
+<td>0.482</td>
+<td>0.062</td>
+<td>-</td>
+</tr>
+<tr>
+<td>synzhc p2</td>
+<td>0.059</td>
+<td>0.035</td>
+<td>0.563</td>
+<td>0.067</td>
+<td>-</td>
+</tr>
+<tr>
+<td>synzhd p1</td>
+<td>0.089</td>
+<td>0.043</td>
+<td>0.693</td>
+<td>0.074</td>
+<td>-</td>
+</tr>
+<tr>
+<td>synzhd p2</td>
+<td>0.047</td>
+<td>0.044</td>
+<td>0.719</td>
+<td>0.117</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<p>Means per class, CER (Han CER for Chinese) / line_err:</p>
+<table>
+<thead>
+<tr>
+<th>class</th>
+<th>n</th>
+<th>rapidocr</th>
+<th>ocrmac</th>
+<th>easyocr</th>
+<th>tesseract</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>typewriter scan, English (cia p1, p2, ciamid p2)</td>
+<td>3</td>
+<td>0.206 / 0.120</td>
+<td>0.086 / 0.028</td>
+<td>0.100 / 0.064</td>
+<td>0.082 / 0.027</td>
+</tr>
+<tr>
+<td>magazine and old print, English (fwd, deg1, deg2)</td>
+<td>3</td>
+<td>0.383 / 0.024</td>
+<td>0.361 / 0.060</td>
+<td>0.609 / 0.301</td>
+<td>0.222 / 0.020</td>
+</tr>
+<tr>
+<td>synthetic scan, English, clean</td>
+<td>4</td>
+<td>0.069 / 0.042</td>
+<td>0.019 / 0.009</td>
+<td>0.070 / 0.039</td>
+<td>0.019 / 0.010</td>
+</tr>
+<tr>
+<td>synthetic scan, English, degraded</td>
+<td>4</td>
+<td>0.080 / 0.021</td>
+<td>0.124 / 0.020</td>
+<td>0.333 / 0.196</td>
+<td>0.116 / 0.023</td>
+</tr>
+<tr>
+<td>book scan, simplified Chinese (zh, JBIG2)</td>
+<td>1</td>
+<td>0.009 / 0.036</td>
+<td>0.056 / 0.144</td>
+<td>0.235 / 0.142</td>
+<td>0.036 / 0.119</td>
+</tr>
+<tr>
+<td>scan, traditional Chinese, horizontal (hant2)</td>
+<td>1</td>
+<td>0.060 / 0.050</td>
+<td>0.043 / 0.037</td>
+<td>0.724 / 0.536</td>
+<td>0.350 / 0.272</td>
+</tr>
+<tr>
+<td>synthetic scan, simplified Chinese, clean</td>
+<td>2</td>
+<td>0.027 / 0.045</td>
+<td>0.001 / 0.033</td>
+<td>0.562 / 0.523</td>
+<td>0.020 / 0.065</td>
+</tr>
+<tr>
+<td>synthetic scan, simplified Chinese, degraded</td>
+<td>2</td>
+<td>0.105 / 0.068</td>
+<td>0.213 / 0.044</td>
+<td>0.855 / 0.706</td>
+<td>0.252 / 0.096</td>
+</tr>
+</tbody>
+</table>
+<p>Per engine:</p>
+<table>
+<thead>
+<tr>
+<th>engine</th>
+<th>pages</th>
+<th>mean CER, English (n)</th>
+<th>mean Han CER, Chinese (n)</th>
+<th>mean line_err, English</th>
+<th>mean line_err, Chinese</th>
+<th>median extraction s per two-page cell</th>
+<th>peak memory MB (max)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>rapidocr</td>
+<td>20</td>
+<td>0.169 (14)</td>
+<td>0.055 (6)</td>
+<td>0.049</td>
+<td>0.052</td>
+<td>12</td>
+<td>2248</td>
+</tr>
+<tr>
+<td>ocrmac</td>
+<td>20</td>
+<td>0.136 (14)</td>
+<td>0.088 (6)</td>
+<td>0.027</td>
+<td>0.056</td>
+<td>6</td>
+<td>1661</td>
+</tr>
+<tr>
+<td>easyocr</td>
+<td>20</td>
+<td>0.267 (14)</td>
+<td>0.632 (6)</td>
+<td>0.145</td>
+<td>0.523</td>
+<td>37</td>
+<td>6596</td>
+</tr>
+<tr>
+<td>tesseract</td>
+<td>20</td>
+<td>0.104 (14)</td>
+<td>0.155 (6)</td>
+<td>0.019</td>
+<td>0.119</td>
+<td>10</td>
+<td>1902</td>
+</tr>
+<tr>
+<td>auto</td>
+<td>4</td>
+<td>0.114 (2)</td>
+<td>0.050 (2)</td>
+<td>0.039</td>
+<td>0.090</td>
+<td>12</td>
+<td>1977</td>
+</tr>
+</tbody>
+</table>
+<p>Extraction time is the run's own <code>PDF extracted: 2 pages, …, N s.</code> line: model loading plus layout, tables and OCR for two pages. Per cell: rapidocr 9–19 s, ocrmac 4–11 s, tesseract 7–21 s, easyocr 32–90 s (the 90 s cell includes its first-use model download).</p>
+<p><strong>What <code>auto</code> picked:</strong> ocrmac in 3 of 3 cells (<code>OCR engine: ocrmac (docling's choice on this install), …</code>), because ocrmac was installed; its text was identical to the ocrmac cells.</p>
+<p><strong>Reading order, not recognition, explains several CER gaps.</strong> synarxd p2: ocrmac and tesseract CER 0.269 and 0.272 against rapidocr's 0.002, but line_err 0.003 and 0.007: the text is right, a block was placed elsewhere. deg1: rapidocr and ocrmac CER 0.355 and 0.360 with line_err 0.010 and 0.043. For a book, a paragraph in the wrong place is a real defect, so CER is the primary score; line_err says whether the words themselves were read.</p>
+<p><strong>easyocr dropped text.</strong> On the Chinese synthetic pages it returned 108 to 370 of 753 Han characters; on deg1 it returned 133 characters of 3,518. It is also the only engine over 4 GB of memory: the simplified Chinese cell passed 6,000 MB and was killed by the cap, and the retry at an 8,000 MB cap peaked at 6,596 MB.</p>
+<p><strong>Install and first-use download</strong>, measured on this machine:</p>
+<table>
+<thead>
+<tr>
+<th>engine</th>
+<th>installed beyond the <code>pdf</code> extra</th>
+<th>downloaded on first use</th>
+<th>runs off-line afterwards</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>rapidocr</td>
+<td>nothing: rapidocr 3.9.2 (31 MB) is in the extra, its onnxruntime models are inside the package; <strong>onnxruntime (62 MB) is not in the extra</strong></td>
+<td>nothing with onnxruntime (no file appeared during the sweep, for <code>iso:en</code>, <code>iso:zh-Hans</code> or <code>iso:zh-Hant</code>); on PyTorch (what <code>auto</code> falls back to without onnxruntime): 9.8 + 0.6 + 20.3 MB of models from modelscope.cn, observed once</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>ocrmac</td>
+<td>ocrmac 1.0.1 and pyobjc (28 MB), macOS only</td>
+<td>nothing: Apple's Vision framework is part of macOS</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>easyocr</td>
+<td>easyocr 1.7.2 (15 MB) plus opencv-python-headless (98 MB), scikit-image (28 MB), networkx (7 MB) and smaller ones: about 150 MB</td>
+<td>the detector <code>craft_mlt_25k.pth</code> (83 MB) always, then one recognizer per script: <code>english_g2.pth</code> 15 MB, <code>latin_g2.pth</code> 15 MB, <code>zh_sim_g2.pth</code> 22 MB, <code>chinese.pth</code> (traditional) 226 MB, downloaded during this sweep. From GitHub, by easyocr itself: <code>HF_HUB_OFFLINE</code> does not stop it</td>
+<td>yes, from <code>~/.EasyOCR/model</code></td>
+</tr>
+<tr>
+<td>tesseract</td>
+<td>the tesseract program (Homebrew: 25 MB plus leptonica 7 MB and about 35 libraries it depends on)</td>
+<td>nothing: language files are installed by hand, <code>tessdata_fast</code> sizes <code>eng</code> 4.1 MB, <code>chi_sim</code> 2.5 MB, <code>chi_tra</code> 2.4 MB, <code>osd</code> 10.6 MB</td>
+<td>yes</td>
+</tr>
+</tbody>
+</table>
+<h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
+<ul>
+<li>The default stays <code>auto</code>: docling takes the first installed of ocrmac, rapidocr and easyocr, and names the one it used. <code>--ocr-engine</code> names one explicitly; an engine that is not installed, or ocrmac off macOS, is refused before any page is read, with the line that installs it.</li>
+<li>The recommendations on <a href="../../features/pdf-ocr-engines/">Which OCR engine</a> follow the class table: tesseract or ocrmac for English (tesseract ahead on old print), rapidocr for simplified Chinese, ocrmac or rapidocr for traditional Chinese, easyocr only when nothing else reads the script.</li>
+<li>The <code>pdf</code> extra installs ocrmac on macOS, so <code>auto</code> picks it with nothing to download, and installs onnxruntime, so rapidocr runs on its bundled models instead of downloading PyTorch ones.</li>
+</ul>
+<h2 id="limits">Limits<a class="headerlink" href="#limits" title="Permanent link">&para;</a></h2>
+<ul>
+<li>20 pages, one to four per class; the real Chinese rows are one page each. Differences under about 0.02 CER between two engines on one class are within what a different page would change, so they are called ties. The engines are deterministic: rapidocr reproduced the earlier study's CIA numbers (0.158, 0.272) exactly, and <code>auto</code> reproduced the ocrmac cells exactly.</li>
+<li>Japanese, Korean and other scripts were not measured. Vertical Chinese was not measured here.</li>
+<li>One run per cell; no GPU. On a GPU, easyocr's time would drop; its memory would not.</li>
+<li>rapidocr was measured on onnxruntime. On PyTorch (the <code>auto</code> fallback of an install without onnxruntime) it was not scored: the one check stopped after the downloads.</li>
+<li>tesseract needs its <code>configs</code> folder beside the language files: with <code>TESSDATA_PREFIX</code> pointing at a folder of <code>.traineddata</code> files alone, every tesseract cell failed (<code>KeyError: 'text'</code>, tesseract printing <code>read_params_file: Can't open tsv</code>). Linking Homebrew's <code>configs</code> and <code>tessconfigs</code> folders into it fixed that; the numbers above are from the rerun.</li>
+<li>Default OCR mode: on the simplified Chinese scan, whose invisible OCR layer docling reads alongside, the engine's text is mixed with the layer's. <code>--ocr-replace-layer</code> was not measured here.</li>
+<li>Ground truth for the real scans was typed by one person.</li>
+</ul>
+<p>Source: docs/260925-eval-PDF_OCR_ENGINES.md (repository, dated records); scorer and ground truth as in docs/260923-eval-PDF_OCR_LUNA_VS_LOCAL_BASELINE.md</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../pdf-ocr-llm-vs-local/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Why a vision model reads scans better">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Why a vision model reads scans better
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../pdf-page-render-backend/" class="md-footer__link md-footer__link--next" aria-label="Next: Why docling-parse stays">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Why docling-parse stays
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.indexes", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

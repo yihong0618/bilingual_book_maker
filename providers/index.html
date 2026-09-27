@@ -1,0 +1,2734 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://yihong0618.github.io/bilingual_book_maker/providers/">
+      
+      
+        <link rel="prev" href="../llm-args/">
+      
+      
+        <link rel="next" href="../machine-args/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Provider file and extra models - bilingual book maker</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#provider-file-and-extra-models" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="bilingual book maker" class="md-header__button md-logo" aria-label="bilingual book maker" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            bilingual book maker
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Provider file and extra models
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/yihong0618/bilingual_book_maker" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    yihong0618/bilingual_book_maker
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="bilingual book maker" class="md-nav__button md-logo" aria-label="bilingual book maker" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    bilingual book maker
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/yihong0618/bilingual_book_maker" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    yihong0618/bilingual_book_maker
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Installation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EPUB
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    EPUB
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../formats/epub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Translate an EPUB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/recommended-epub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recommended settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/plan-mode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plan mode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/session-mode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session mode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Evaluation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/grouping-batch-size/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why 16 units per request
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/session-compact-budget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why the session compacts at 8192
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/structured-output-ladder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why the tool probes the endpoint
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/plan-classifier-jev/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Jev as the plan classifier
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PDF
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    PDF
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/pdf-to-epub/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PDF to bilingual EPUB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/recommended-pdf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recommended settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/pdf-ocr-engines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Which OCR engine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation-pdf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installing the PDF extra
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../formats/pdf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PDF flags and the text route
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_6" id="__nav_5_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Evaluation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/pdf-heading-levels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why heading levels come from the page
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/pdf-formulas-as-images/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why formulas are pictures
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/pdf-ocr-llm-vs-local/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why a vision model reads scans better
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/pdf-ocr-engines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Which OCR engine reads a scan best
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/pdf-page-render-backend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why docling-parse stays
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/pdf-structure-llm-roles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Where an LLM fixes layout
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/pdf-extraction-corpus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How extraction was checked
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/pdf-parser-choice/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why docling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Other formats
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Other formats
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../formats/txt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TXT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../formats/srt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SRT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../formats/md/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Markdown
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../book_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Which page for which file
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Endpoints and models
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Endpoints and models
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../llm-args/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Translating with an LLM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provider file and extra models
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provider file and extra models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-provider-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The provider file
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The provider file">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-shipped-openai-entry-turns-the-image-step-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The shipped openai entry turns the image step on
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-two-extra-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The two extra models
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The two extra models">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#where-each-model-comes-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where each model comes from
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#where-each-model-is-asked" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where each model is asked
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#which-key-goes-where" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which key goes where
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#jev-and-jev-compatible-classifiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Jev and Jev-compatible classifiers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Jev and Jev-compatible classifiers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-gate-a-doubtful-skip-is-translated" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The gate: a doubtful skip is translated
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#in-a-provider-entry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        In a provider entry
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-run-prints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the run prints
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../machine-args/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Machine translation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../env_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Environment variables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../prompt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompt files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../model_lang/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model and language notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../languages/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Language tags
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating from old flags
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../evaluation/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_8" id="__nav_8_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cmd/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Command line options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../disclaimer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Disclaimer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-provider-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The provider file
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The provider file">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-shipped-openai-entry-turns-the-image-step-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The shipped openai entry turns the image step on
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-two-extra-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The two extra models
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The two extra models">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#where-each-model-comes-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where each model comes from
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#where-each-model-is-asked" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where each model is asked
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#which-key-goes-where" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which key goes where
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#jev-and-jev-compatible-classifiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Jev and Jev-compatible classifiers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Jev and Jev-compatible classifiers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-gate-a-doubtful-skip-is-translated" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The gate: a doubtful skip is translated
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#in-a-provider-entry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        In a provider entry
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-run-prints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the run prints
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="provider-file-and-extra-models">Provider file and extra models<a class="headerlink" href="#provider-file-and-extra-models" title="Permanent link">&para;</a></h1>
+<p>A run translates through one endpoint. Two kinds of step can use a second one:</p>
+<ul>
+<li><strong>Classification.</strong> Plan mode asks a model which kinds of block in an EPUB are worth translating. By default that is the translating model. You can name another with <code>--classify-model</code>.</li>
+<li><strong>Steps that look at a page image.</strong> Today there is one: on the <a href="../features/pdf-to-epub/">PDF route</a>, a vision model can correct the roles docling gives the regions of a page. It runs only when you name a model with <code>--img-model</code>.</li>
+</ul>
+<p>You can name both on the command line or in a provider entry. This page covers the provider file, the two extra models, and which key goes where.</p>
+<h2 id="the-provider-file">The provider file<a class="headerlink" href="#the-provider-file" title="Permanent link">&para;</a></h2>
+<p><code>--provider NAME</code> takes the route from a JSON file instead of flags. The run reads three files. A later one wins on a shared name:</p>
+<ol>
+<li><code>bbm_providers.example.json</code>, shipped next to <code>make_book.py</code>. The run uses it only for a name that is in neither of the other two files, and it says so every time, with the address and the key variable it used. Its <code>FILL-ME</code> entries are templates and are never used.</li>
+<li><code>~/.bbm/providers.json</code>.</li>
+<li><code>bbm_providers.json</code> in the directory you run from.</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"providers"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"siliconflow"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"api_style"</span><span class="p">:</span><span class="w"> </span><span class="s2">"openai"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"base_url"</span><span class="p">:</span><span class="w"> </span><span class="s2">"https://api.siliconflow.cn/v1"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"default_models"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"Qwen/Qwen2.5-72B-Instruct"</span><span class="p">],</span>
+<span class="w">      </span><span class="nt">"env_key"</span><span class="p">:</span><span class="w"> </span><span class="s2">"BBM_SILICONFLOW_API_KEY"</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>bbook_maker<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--provider<span class="w"> </span>siliconflow<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--use_context<span class="w"> </span>session
+</code></pre></div>
+<p>Flags you pass yourself win over the entry.</p>
+<h3 id="fields">Fields<a class="headerlink" href="#fields" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>field</th>
+<th>required</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>api_style</code></td>
+<td>yes</td>
+<td><code>openai</code>, <code>anthropic</code>, <code>gemini</code>, <code>qwen</code>, <code>groq</code>, <code>xai</code> or <code>litellm</code></td>
+</tr>
+<tr>
+<td><code>base_url</code></td>
+<td>no</td>
+<td>the address; defaults to the style's own</td>
+</tr>
+<tr>
+<td><code>default_models</code></td>
+<td>no</td>
+<td>models to use; required if you do not pass <code>--model</code></td>
+</tr>
+<tr>
+<td><code>env_key</code></td>
+<td>no</td>
+<td>the environment variable holding the key; required if you do not pass <code>--key</code></td>
+</tr>
+<tr>
+<td><code>prices</code></td>
+<td>no</td>
+<td>per million tokens, per model: <code>{"&lt;model&gt;": {"input": …, "output": …, "cached_input": …}}</code>. With a price for every model in the run, the progress bar shows money spent (<code>spent=$0.012</code>) instead of token counts</td>
+</tr>
+<tr>
+<td><code>currency</code></td>
+<td>no</td>
+<td>default <code>USD</code>; <code>EUR</code>, <code>GBP</code>, <code>CNY</code>, <code>JPY</code> print with their symbol</td>
+</tr>
+<tr>
+<td><code>img_model</code></td>
+<td>no</td>
+<td>the vision model for page-image steps. Stands in for <code>--img-model</code></td>
+</tr>
+<tr>
+<td><code>img_base_url</code></td>
+<td>no</td>
+<td>where <code>img_model</code> is served, when it is not this entry's own address. OpenAI-compatible only</td>
+</tr>
+<tr>
+<td><code>img_env_key</code></td>
+<td>no</td>
+<td>the variable holding the key for <code>img_model</code>'s address</td>
+</tr>
+<tr>
+<td><code>classify_model</code></td>
+<td>no</td>
+<td>the model for classification. Stands in for <code>--classify-model</code></td>
+</tr>
+<tr>
+<td><code>classify_base_url</code></td>
+<td>no</td>
+<td>where <code>classify_model</code> is served, when it is not this entry's own address. OpenAI-compatible, or a <a href="#jev-and-jev-compatible-classifiers">Jev-compatible</a> classifier's URL</td>
+</tr>
+<tr>
+<td><code>classify_env_key</code></td>
+<td>no</td>
+<td>the variable holding the key for <code>classify_model</code>'s address</td>
+</tr>
+</tbody>
+</table>
+<p>The spent amount is an estimate from the usage each request reports; the vendor's bill is the number that counts.</p>
+<h3 id="the-shipped-openai-entry-turns-the-image-step-on">The shipped <code>openai</code> entry turns the image step on<a class="headerlink" href="#the-shipped-openai-entry-turns-the-image-step-on" title="Permanent link">&para;</a></h3>
+<p>The example file's <code>openai</code> entry sets <code>"img_model": "gpt-5.6-luna"</code>. So <code>--provider openai</code> on a PDF with <code>--to-epub</code> runs the region-role pass on every page by default. That also holds when you have no <code>bbm_providers.json</code>, because the run then falls back to the example. The pass costs about 3,000 prompt tokens per page: 43,443 prompt and 4,319 completion tokens for 12 pages in the study behind it (<a href="../evaluation/pdf-structure-llm-roles/">Where an LLM fixes layout</a>). To run without it, pass <code>--img-model none</code>, or copy the file and delete the line.</p>
+<p>The <code>openai-jev</code> entry is the same <code>openai</code> entry plus <code>"classify_model": "jev"</code> with <code>JEV_API_KEY</code>, so <code>--provider openai-jev</code> translates with gpt-5.6-luna and classifies an EPUB's plan with <a href="#jev-and-jev-compatible-classifiers">Jev</a>. The <code>jev</code> entry is Jev on its own: it classifies and never translates, so <code>--provider jev</code> is refused with a hint to use <code>--classify-model</code>. No other entry names an image model or a classify model.</p>
+<h2 id="the-two-extra-models">The two extra models<a class="headerlink" href="#the-two-extra-models" title="Permanent link">&para;</a></h2>
+<h3 id="where-each-model-comes-from">Where each model comes from<a class="headerlink" href="#where-each-model-comes-from" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>step</th>
+<th>first</th>
+<th>then</th>
+<th>last</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>image (<code>--img-model</code>)</td>
+<td>the flag</td>
+<td>the entry's <code>img_model</code></td>
+<td><strong>off</strong></td>
+</tr>
+<tr>
+<td>classification (<code>--classify-model</code>)</td>
+<td>the flag</td>
+<td>the entry's <code>classify_model</code></td>
+<td>the run's own model</td>
+</tr>
+</tbody>
+</table>
+<p>The image step never falls back to the translating model. It runs only when a model is named for it, by the flag or by the entry, so no default needs a model that reads images. <code>--img-model none</code> turns an entry's image model off for one run.</p>
+<p><code>--plan-classify-model</code> is the old name of <code>--classify-model</code>. It still works and is not in <code>--help</code>. If you type both, <code>--classify-model</code> wins.</p>
+<h3 id="where-each-model-is-asked">Where each model is asked<a class="headerlink" href="#where-each-model-is-asked" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Without a base URL</strong>, the model is asked at the run's own endpoint, with the run's format and key.<ul>
+<li>An image model needs that endpoint to be OpenAI-shaped. On any other format the run stops before it starts: <code>--img-model needs an OpenAI-compatible endpoint; … resolves to the … format.</code></li>
+<li>A classify model works on any LLM route that can hold a conversation, the anthropic and codex routes included.</li>
+<li>On a <a href="../machine-args/">machine-translation</a> run there is no model to share an endpoint with. A classify model named without a base is then asked at the host its id implies: <code>--classify-model gpt-5.6-luna</code> goes to OpenAI.</li>
+</ul>
+</li>
+<li><strong>With <code>--img-base-url</code> or <code>--classify-base-url</code></strong>, the model is asked there. The address must speak the OpenAI shape, or, for a classifier, the <a href="#jev-and-jev-compatible-classifiers">Jev protocol</a>; anything else is refused before anything is paid for.</li>
+<li>A base URL without its model stops the run: <code>--img-base-url names where --img-model is served, and no --img-model was given.</code> (and the same for <code>--classify-base-url</code>).</li>
+</ul>
+<p>A named classify model always gets its own client, even on the run's address, so its tokens are counted apart from the translation's.</p>
+<p>Before the image step runs, the run checks once that the model can read a picture. If it cannot, the run says <code>… did not read the probe image (…); image steps are skipped this run.</code> and goes on without the step.</p>
+<h3 id="which-key-goes-where">Which key goes where<a class="headerlink" href="#which-key-goes-where" title="Permanent link">&para;</a></h3>
+<p>A key is bound to an address. It is never sent to a host it was not meant for. For the image model and the classify model, the key is found in this order:</p>
+<ol>
+<li><code>--img-key</code> or <code>--classify-key</code>.</li>
+<li>The run's key, but only when the model is asked at the run's own address. The run's address is the one after any <code>--api_base</code>.</li>
+<li>The entry's <code>img_env_key</code> or <code>classify_env_key</code>, but only at the address that entry names for the model: its <code>img_base_url</code> or <code>classify_base_url</code>, else the entry's <code>base_url</code>. An <code>--api_base</code> that moves the run elsewhere does not carry the entry's key with it.</li>
+<li>The variable the address's format reads, as for the run (see <a href="../llm-args/#keys">Keys</a>).</li>
+</ol>
+<p>When none of these holds a key, the run stops and names the flag to pass.</p>
+<p><code>--extra_body</code> and <code>--extra_headers</code> reach the image or classify model only when it is asked at the run's own address. Headers often carry a gateway's credential, so they never travel to another host.</p>
+<h3 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h3>
+<p>Translate on a local model, and let a hosted model classify the plan and read page images:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"providers"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"local-with-helpers"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"api_style"</span><span class="p">:</span><span class="w"> </span><span class="s2">"openai"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"base_url"</span><span class="p">:</span><span class="w"> </span><span class="s2">"http://localhost:11434/v1"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"default_models"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"qwen3:8b"</span><span class="p">],</span>
+<span class="w">      </span><span class="nt">"classify_model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"gpt-5.6-luna"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"classify_base_url"</span><span class="p">:</span><span class="w"> </span><span class="s2">"https://api.openai.com/v1"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"classify_env_key"</span><span class="p">:</span><span class="w"> </span><span class="s2">"OPENAI_API_KEY"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"img_model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"gpt-5.6-luna"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"img_base_url"</span><span class="p">:</span><span class="w"> </span><span class="s2">"https://api.openai.com/v1"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"img_env_key"</span><span class="p">:</span><span class="w"> </span><span class="s2">"OPENAI_API_KEY"</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>The same with flags:</p>
+<div class="highlight"><pre><span></span><code>bbook_maker<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--api_base<span class="w"> </span>http://localhost:11434/v1<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>qwen3:8b<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--classify-model<span class="w"> </span>gpt-5.6-luna<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--classify-base-url<span class="w"> </span>https://api.openai.com/v1<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--classify-key<span class="w"> </span><span class="s2">"</span><span class="nv">$OPENAI_API_KEY</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--use_context<span class="w"> </span>session
+</code></pre></div>
+<p>A local server needs no key, so the run's key is empty here; the classifier's key must be named.</p>
+<h2 id="jev-and-jev-compatible-classifiers">Jev and Jev-compatible classifiers<a class="headerlink" href="#jev-and-jev-compatible-classifiers" title="Permanent link">&para;</a></h2>
+<p>Jev is TypeSafe's classifier: a model built to answer typed questions, not to write. Plan mode's question for each kind of block, translate it or keep it, is that kind of question, and Jev answers a page of them in one cheap round trip. It translates nothing, so it can only be the classify model. Jev-compatible servers speak the same protocol; Featherless's Simple Jev, an open reimplementation on open models, is one.</p>
+<h3 id="the-commands">The commands<a class="headerlink" href="#the-commands" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>classifier</th>
+<th>flags</th>
+<th>key</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TypeSafe's Jev</td>
+<td><code>--classify-model jev</code></td>
+<td><code>JEV_API_KEY</code> or <code>TYPESAFE_API_KEY</code>, sent only to <code>api.typesafe.ai</code></td>
+</tr>
+<tr>
+<td>Jev through a gateway</td>
+<td><code>--classify-model typesafe-ai/jev --classify-base-url https://ai-gateway.vercel.sh/typesafe --classify-key "$GATEWAY_KEY"</code></td>
+<td>named with <code>--classify-key</code></td>
+</tr>
+<tr>
+<td>Simple Jev at Featherless</td>
+<td><code>--classify-model featherless-ai/Qwen3.8-27B-classifier</code></td>
+<td><code>FEATHERLESS_API_KEY</code>; the address defaults to <code>https://api.featherless.ai/v1/classifier</code></td>
+</tr>
+<tr>
+<td>Simple Jev's keyless demo</td>
+<td><code>--classify-model featherless-ai/Qwen3.8-27B-classifier --classify-base-url https://simple-jev-demo-api.featherless.ai/v1/classifier</code></td>
+<td>none</td>
+</tr>
+</tbody>
+</table>
+<p>For example, translating with gpt-5.6-luna and classifying with Jev:</p>
+<div class="highlight"><pre><span></span><code>bbook_maker<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--book_name<span class="w"> </span>my_book.epub<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>gpt-5.6-luna<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--classify-model<span class="w"> </span>jev
+</code></pre></div>
+<h3 id="the-rules">The rules<a class="headerlink" href="#the-rules" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>A key is read from the environment only for its own host.</strong> <code>JEV_API_KEY</code> and <code>TYPESAFE_API_KEY</code> go only to a typesafe.ai address, <code>FEATHERLESS_API_KEY</code> only to a featherless.ai one. Anywhere else, a gateway included, name the key with <code>--classify-key</code> or the entry's <code>classify_env_key</code>.</li>
+<li><strong>A base URL that already ends in <code>/systemone</code> or <code>/classifier</code> is used as it is.</strong> Any other base gets the server's own path added: <code>/classifier</code> on featherless.ai, <code>/systemone</code> elsewhere, after a <code>/v1</code>.</li>
+<li><strong>Any other id ending in <code>-classifier</code> needs <code>--classify-base-url</code>.</strong> Only Featherless's ids have a known address; for another the run stops and asks for one.</li>
+<li><code>jev</code> alone asks for TypeSafe's current model, <code>jev-latest</code>.</li>
+</ul>
+<h3 id="the-gate-a-doubtful-skip-is-translated">The gate: a doubtful skip is translated<a class="headerlink" href="#the-gate-a-doubtful-skip-is-translated" title="Permanent link">&para;</a></h3>
+<p>Jev returns a probability with each answer. A <code>skip</code> below the gate is recorded as <code>translate</code>, so no content is lost to a skip Jev was unsure of. A <code>translate</code> is taken at any probability. The gate is 0.95 on the probability of the chosen answer, measured over 662 plan signatures from 45 EPUBs against gpt-5.6-luna. At that value about nine of ten of Jev's skips become <code>translate</code>, and what Jev still skips is apparatus: copyright lines, line numbers, note marks, index locators. So on that corpus Jev saves little over translating everything; see <a href="../evaluation/plan-classifier-jev/">Jev as the plan classifier</a>. The plan file shows each fallback on its row: <code>unnamed (jev verdict skip at confidence 0.61, below the gate: translate)</code>. <code>--classify-min-confidence P</code> (0 to 1) moves the gate for a run; <code>BBM_JEV_MIN_CONFIDENCE</code> does the same without the flag, and the flag wins. A lower value keeps more of Jev's skips: on the measured corpus those below 0.9 agreed with the reference 7–55% of the time, so the risk is yours.</p>
+<h3 id="in-a-provider-entry">In a provider entry<a class="headerlink" href="#in-a-provider-entry" title="Permanent link">&para;</a></h3>
+<p>If you want OpenAI to translate and Jev to classify, the shipped <code>openai-jev</code> entry already does it: <code>--provider openai-jev</code>. For any other pairing, write your own entry.</p>
+<p><code>classify_model</code>, <code>classify_base_url</code> and <code>classify_env_key</code> name a Jev classifier the same way the flags do:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"providers"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"openai-with-jev"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"api_style"</span><span class="p">:</span><span class="w"> </span><span class="s2">"openai"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"default_models"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"gpt-5.6-luna"</span><span class="p">],</span>
+<span class="w">      </span><span class="nt">"env_key"</span><span class="p">:</span><span class="w"> </span><span class="s2">"OPENAI_API_KEY"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"classify_model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"typesafe-ai/jev"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"classify_base_url"</span><span class="p">:</span><span class="w"> </span><span class="s2">"https://ai-gateway.vercel.sh/typesafe"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"classify_env_key"</span><span class="p">:</span><span class="w"> </span><span class="s2">"JEV_API_KEY"</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>An entry that names <code>JEV_API_KEY</code> for its own gateway address has named the key for that address, and it is honored. Without such an entry, the Jev variables are never sent to a gateway.</p>
+<p>Each Jev request sends the page's candidate lines once, with one short question per signature. See <a href="../evaluation/plan-classifier-jev/">Jev as the plan classifier</a>.</p>
+<h2 id="what-the-run-prints">What the run prints<a class="headerlink" href="#what-the-run-prints" title="Permanent link">&para;</a></h2>
+<p>A <code>--plan-dry-run</code> shows where each model would be asked, without a key:</p>
+<div class="highlight"><pre><span></span><code>Classifier: gpt-5.6-luna at the openai endpoint's default host (cli)
+Image model: off
+</code></pre></div>
+<p>The part in brackets is where the choice came from: <code>cli</code>, <code>provider</code> or <code>run</code>. Under <code>--plan-classify all</code> or <code>agent</code> the line reads <code>Classifier: none (--plan-classify agent asks nothing)</code>.</p>
+<p>At the end of the run, a model on a client of its own prints its own usage line under the translation's:</p>
+<div class="highlight"><pre><span></span><code>Classifier (gpt-5.6-luna at the endpoint's default host): tokens: in 7.6k, out 1.8k, cached 0 (3 requests)
+</code></pre></div>
+<p>The image model's line reads <code>Image model (&lt;model&gt; at &lt;address&gt;): …</code> and is printed after the extraction.</p>
+<p>These warnings mean a flag does nothing this run:</p>
+<ul>
+<li><strong><code>--img-model, --img-base-url and --img-key choose the vision model for the steps that look at a page image, and only the PDF route (--to-epub on a PDF) has one; …</code></strong> You named an image model on a book that is not a PDF on the <code>--to-epub</code> route.</li>
+<li><strong><code>--classify-model names a classifier, and --plan-classify all translates the whole partition without classifying anything; it is ignored this run.</code></strong> The same for <code>--plan-classify agent</code>: agent mode leaves every row to your agent and asks no model.</li>
+<li><strong><code>Nothing on this route classifies yet, so --classify-model is ignored on a … book.</code></strong> Only an EPUB has a classification step today.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../llm-args/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Translating with an LLM">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Translating with an LLM
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../machine-args/" class="md-footer__link md-footer__link--next" aria-label="Next: Machine translation">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Machine translation
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.indexes", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
