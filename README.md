@@ -7,7 +7,7 @@
 
 The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist users in creating multi-language versions of epub/txt/md/srt/pdf files and books. Use it only with material you have the right to translate — works for which you hold the necessary rights, suitably licensed or permitted works, public-domain books, or uses otherwise allowed by applicable law. Before using this tool, please review the project's **[disclaimer](./disclaimer.md)**.
 
-Guides for every file type and option, and the measurements behind the defaults, are on the [wiki](https://github.com/yihong0618/bilingual_book_maker/wiki).
+Guides for every file type and option, and the measurements behind the defaults, are on the [wiki](https://github.com/yihong0618/bilingual_book_maker/wiki). If you use a coding agent (Codex, Claude Code), the repository's skill translates a book for you: [Translate with an agent](https://github.com/yihong0618/bilingual_book_maker/wiki/Translate-with-an-agent).
 
 [![Stars](https://img.shields.io/github/stars/yihong0618/bilingual_book_maker)](https://github.com/yihong0618/bilingual_book_maker/stargazers)
 [![CI](https://github.com/yihong0618/bilingual_book_maker/actions/workflows/make_test_ebook.yaml/badge.svg)](https://github.com/yihong0618/bilingual_book_maker/actions/workflows/make_test_ebook.yaml)
