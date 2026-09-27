@@ -258,117 +258,6 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 - 翻译完会生成一本 `{book_name}_bilingual.epub` 的双语书；TXT、MD、SRT 输入分别生成 `{book_name}_bilingual.txt`、`{book_name}_bilingual.md`、`{book_name}_bilingual.srt`
 - 如果出现了错误或使用 `CTRL+C` 中断命令，不想接下来继续翻译了，会生成一本 `{book_name}_bilingual_temp.epub` 的书，直接改成你想要的名字就可以了
 
-## 功能
-
-这三个开关改变的是一本书被怎样读取和翻译，而不是请求发往哪里。每个都只是一个参数；本节说的是什么时候该用、用的时候盯着什么。
-
-### 计划模式
-
-**做什么。** EPUB 默认通过一份计划来翻译：加载器把整本书切分成翻译单元（段落、标题、列表项、表格单元格、引用块、诗行、图注，凡是带文字的块级元素），按标签签名分组，问模型哪些签名值得翻译，把答案写进 `<book>_plan.json`。随后连续的单元合并进同一个请求，直到 token 预算（`--accumulated_num`）或单元上限（`--max-batch-units`），诗行和短句因此变得便宜。没有计划时只翻译 `--translate-tags` 选中的标签，默认是 `<p>`，不在 `<p>` 里的诗歌或表格会悄悄留在原文。
-
-**什么时候用。** 只要是 EPUB 加 LLM 路由，就一直用：它是默认值，不需要参数。书不寻常时（教材、双语版、正文不在 `<p>` 里的书）先预览：`--plan-dry-run` 打印按签名分组的覆盖表并写出计划文件，不需要 key，不翻译任何东西，付费之前就能看到哪些会被跳过；它遵守 `--only_filelist` / `--exclude_filelist`。想要和旧的 `--translate-tags` 完全一样的行为，用 `--plan-classify none` 关掉。
-
-```shell
-# 预览：哪些会翻、哪些会跳过（不需要 key）
-python3 make_book.py --book_name my_book.epub --plan-dry-run
-# 默认运行：用翻译模型分类，然后翻译
-python3 make_book.py --book_name my_book.epub --key ${key}
-# 不分类：翻译分区里的每一个单元
-python3 make_book.py --book_name my_book.epub --key ${key} --plan-classify all
-# 自己决定计划，或交给 coding agent：写出计划、打印指引后停下；
-# 之后再跑同一条命令即翻译
-python3 make_book.py --book_name my_book.epub --key ${key} --plan-classify agent
-```
-
-- `--plan-classify` 决定计划怎么判定：`auto`（默认：由翻译模型判定，在能验证接口严格执行 JSON schema 时走结构化输出，否则走普通对话，要求精确回答 `skip`/`translate`/`unsure`；unsure 和解析不了的行一律翻译）、`none`、`all`、`model`（同 auto，但有未判定的行时停止而不是回退）、`agent`。`--classify-model X` 用另一个模型分类（旧名 `--plan-classify-model`），或用一个 Jev 兼容的分类器（默认 TypeSafe 的 Jev；Simple Jev 用它的 URL），`--classify-min-confidence` 调整门槛（默认 0.95，实测值）；显式指定后，分类失败会中止而不是回退。`--classify-base-url URL` 与 `--classify-key KEY` 让它在另一个 OpenAI 兼容端点上判定。
-- `--plan-min-coverage`（默认 0.5）：计划覆盖的正文比例低于该值时中止。`0` 关闭该闸门；高于 0.9 的值多半会在分类已付费之后才中止。
-- `<book>_plan.json` 会被同一本书之后的每次运行复用，`--test` 也一样；想重新分类先删掉它。`--test` 分类的是整本书而不是那一小段，运行时会说明。
-
-**注意事项。**
-
-- 仅限 EPUB。Markdown、txt、srt 没有标签可以规划，计划参数在那里会被报告为忽略。
-- 不能对话的路由（`google`、`deepl`、`caiyun`、`tencent`、`customapi`）没有模型可问，运行回退到 `--translate-tags` 选中的标签；在这些路由上要求 `--plan-classify model` 会直接停止。
-- 自动开启的计划在建不起来时、或续跑一个标签模式写下的断点时，会打印原因并退回标签模式；显式要求的计划则停止。`--retranslate`、`--batch`、`--sentence_mode` 与计划相矛盾，不能同用。
-- 小模型和本地模型：普通对话分类只要求一个词的回答，其余一律按策略翻译，所以弱模型的偏差是翻得太多，不是翻得太少。它判定的行在计划文件里标为 `unnamed (…)`。分类反复失败时，`--plan-classify all` 跳过分类。合并请求的默认值也出于同一原因刻意偏小；强端点上可以调高 `--accumulated_num` 和 `--max-batch-units`，运行开始打印错位恢复提示时再调回去。
-- `--parallel-workers` 加合并请求（`--accumulated_num` 大于 1）不记录进度，`--resume` 无从续跑；三者同用会被拒绝。
-
-更多：[计划模式](https://yihong0618.github.io/bilingual_book_maker/features/plan-mode/)、[EPUB 推荐设置](https://yihong0618.github.io/bilingual_book_maker/features/recommended-epub/)。
-
-### 会话模式
-
-**做什么。** `--use_context session` 为整本书维护一份只追加的对话，而不是每次请求重发最近几对原译文（不带值的 `--use_context`，即 window 模式）。每个请求都带着整段历史，所以在支持提示缓存的端点上，模型以缓存价重读大约一章的内容，人名、语域和术语得以前后一致。历史达到 `--context-compact-at`（默认 `8192` 估算 token，含种子）时，模型写一份约 300 token 的交接报告，其摘要开启下一个窗口；`<book>_handoff.md` 保存最新一份，`--resume` 会读回它。
-
-**什么时候用。** 小说和任何同一批名字、术语反复出现的长文本，且端点支持提示缓存（OpenAI、Anthropic，以及它们前面的多数网关）。PDF 路由上翻译论文也应当用它，PDF 会被提取成大量短块。端点没有缓存、模型上下文很小、或者想用 `--parallel-workers` 时，用 window 模式。codex 路由不论是否要求都是会话：它的线程就是历史。
-
-```shell
-python3 make_book.py --book_name my_book.epub --key ${key} --use_context session
-# 输入上限很小的模型：把窗口限制到它的上限（最小 1500）
-python3 make_book.py --book_name my_book.epub --key ${key} --use_context session --context-compact-at 4000
-# 不写交接报告直接滚动（更省，接缝处没有连续性）
-python3 make_book.py --book_name my_book.epub --key ${key} --use_context session --no-context-compact
-```
-
-- `--context-compact-at N`：整个窗口的预算，含交接种子，所以可以直接设成模型的输入上限。最小 `1500`；再小的窗口几乎全是种子和接缝，改用 window 模式。在通过普通对话分类计划的端点上，它也限制分类器自己的线程（那里只重启，没有交接）。
-- `--no-context-compact`：从不索要报告；下一个窗口从空白开始。
-- `--glossary-auto on` 保留每份交接报告确立的译法，让反复出现的名字跨过接缝。它依赖模型准确报告自己的译法，所以需要一个够强的模型；摘要本身已经带着反复出现的名字，`--glossary` 可以钉住要紧的那几个，两者都不需要。
-
-**注意事项。**
-
-- 盯着进度条上的 `cached=`。十几个请求之后仍是 0，说明端点没有提示缓存，每个请求都在按全价付整段历史：Ctrl+C，改用 window 模式重跑。
-- 与 `--parallel-workers` 同用会被拒绝（一条历史不能在 worker 之间共享），与 `--model_list` 同用也会（缓存按模型计，一场对话会由几个模型来写）。
-- 仅限 EPUB、Markdown 和 PDF；txt 和 srt 加载器不带上下文，压缩参数在那里会被报告为忽略。
-- 计划模式之外（Markdown 书，或 `--plan-classify none`）不合并请求，每个段落单独一个请求，每次都重读整段历史。调高 `--accumulated_num` 让几个段落共用一个请求；运行开始时会警告这一点。
-- 交接报告由模型来写。小模型写出的报告可能很差；压缩之后译文漂移，就用 `--glossary` 钉住术语，或者加 `--no-context-compact` 接受一个空白的接缝。
-- Ctrl+C 留下常规断点；`--resume` 续跑并读回 `<book>_handoff.md`，下一个窗口仍然继承摘要。
-
-更多：[会话模式](https://yihong0618.github.io/bilingual_book_maker/features/session-mode/)。
-
-### PDF 转 **双语** EPUB (实验性)
-
-**做什么。** `--to-epub` 用 [docling](https://github.com/docling-project/docling) 的版面和表格模型把 PDF 读成 Markdown，用 Markdown 加载器翻译它，再由 Pandoc 生成一本可重排的**双语** EPUB，导航跟随标题：论文的每一段后面紧跟它的译文，成书可以重排、带目录。工作目录 `<name>_book/` 在 PDF 旁边：`source.md`、提取出的图片、`book_bilingual.md` 和一份清单；成书复制为 `<name>_bilingual.epub`。重跑同一条命令会复用提取结果和已完成的翻译；想重新翻译删掉 `book_bilingual.md`，想改原文就在翻译之前编辑 `source.md`。不加该参数时 PDF 走旧路由，输出双语 `.txt` 和 `--pdf_layout` 的版式。
-
-**什么时候用。** 想在电子书阅读器上读、带目录的论文或文字版书籍。该路由原样接受 Markdown 加载器的全部参数：`--use_context session`（推荐，PDF 会被提取成大量短块）、`--glossary`、`--parallel-workers`（不能与会话同用）、`--test` 用来便宜地看一眼。
-
-```shell
-# 先看一眼：提取后只翻译开头几个块
-python3 make_book.py --book_name paper.pdf --to-epub --key ${key} --test
-# 完整运行
-python3 make_book.py --book_name paper.pdf --to-epub --key ${key} --use_context session
-# 扫描版 PDF，或者表格要紧的文字版 PDF
-python3 make_book.py --book_name scan.pdf --to-epub --pdf-ocr --key ${key} --use_context session
-# 只要一章：第 12 到 30 页，成书是 paper_pages-12-30_bilingual.epub
-python3 make_book.py --book_name paper.pdf --to-epub --pages 12-30 --key ${key} --use_context session
-# 中文扫描件：告诉 OCR 模型要认的文字
-python3 make_book.py --book_name scan.pdf --to-epub --pdf-ocr --ocr-lang iso:zh --key ${key} --use_context session
-```
-
-- `--pdf-ocr` 读取**没有文字层**的页面，也就是扫描件。不加它时这样的页面会被拒绝，绝不会被悄悄跳过。默认关闭：原生数字版 PDF 本来就能读，OCR 会让耗时翻上几倍，读到的东西却没有变化。版面、标题和表格识别无论加不加它都会运行——OCR 并不是提取质量的来源。
-- `--device` 决定模型在哪里运行：`auto`（默认）自动检测加速器——NVIDIA CUDA，或本机安装下 Apple 芯片的 MPS——没有时自行回退到 CPU。`--device cpu` 强制用处理器。**CPU 是完整支持的，产出的文字完全一样**，只是更慢，区别仅此而已。在无法提供 CUDA 的机器或 PyTorch 构建上使用 `--device cuda` 会被明确拒绝，并区分这两种情况。
-- `--ocr-lang` 指定 OCR 引擎在没有文字层的页面上识别的语言，逗号分隔，可以写通用的 `iso:` 标签（`iso:zh-Hans` 简体、`iso:zh-Hant` 繁体、`iso:ja`、`iso:ko`、`iso:en`），也可以写引擎自己的代码。引擎由 `--ocr-engine` 决定（见下条），每次 OCR 运行都会打印用了哪个引擎、哪些语言。rapidocr 默认认中文和英文，一次只用一种语言（取第一个代码），所以日文、韩文、西里尔或阿拉伯文的扫描件需要这个参数，不加会识别成空白或错字；遇到扫描页而没有这个参数时，运行会提醒。Mac 上的引擎 ocrmac 默认认英、西、法、德文，所以在 Mac 上读中文扫描件要加 `--ocr-lang iso:zh`。rapidocr 和 ocrmac 不下载任何东西；easyocr 在某种语言第一次使用时下载模型。引擎没有模型的代码在读任何页面之前就被拒绝，消息里附引擎自己的列表。文字版 PDF 上它不起作用；换语言重跑扫描件，或改变 `--pdf-ocr`，都会重新提取。
-- `--ocr-engine`（需同时加 `--pdf-ocr`）选择 OCR 引擎：`auto`（默认）依次取已安装的 ocrmac、rapidocr、easyocr。`pdf` 依赖自带 rapidocr，在 macOS 上还带苹果自己的 ocrmac，所以 Mac 上是 ocrmac，其他系统是 rapidocr；`easyocr` 需要 `pip install easyocr`，`tesseract` 需要 PATH 上的 tesseract 程序。指定的引擎没有安装时，在读任何页面之前就会被拒绝。怎么选：[选哪个 OCR 引擎](https://yihong0618.github.io/bilingual_book_maker/features/pdf-ocr-engines/)。
-- `--ocr-replace-layer`（需同时加 `--pdf-ocr`）让 OCR 引擎重读每一页，丢弃 PDF 自带的文字层。默认关闭：已有文字层会保留。实测它不如完好的文字层，只在文字层本身有误时使用。引擎在某页什么也没读到时，该页留空，终端会逐页指出。
-- `--pages` 只读指定的页，从 1 数起（`12-30`，或 `1,3,5-7`）；PDF 其余部分不进书，也不会被提取或付费。页码选择会写进文件名，所以单章运行和整本运行并排放着，不会互相覆盖：`<name>_pages-12-30_book/` 和 `<name>_pages-12-30_bilingual.epub`。用同一选择重跑会续用那个工作目录。目录只剩这些页里的标题；选择从某一节中间开始时，第一个标题之前的正文会得到一个以页码命名的标题（`Page 12`），在翻译前就写进 `source.md`，想改名就在那里改。
-- **行间公式以图片保留。** 解析器能找到公式但读不出它，所以每个公式都会从页面上裁下来，放回原来的位置；公式周围的正文照常翻译，公式本身不翻译。数学书能走通这条路全靠这一点——否则每个行间公式都只是一个 `<!-- formula-not-decoded -->` 占位符，数学内容会整个消失。它不需要模型、不联网，耗时可以忽略。`--no-formula-images` 可以关掉它，退回占位符。段落**行内**的数学不属于公式区域，不在覆盖范围内：扫描件上它是 OCR 认成什么就是什么。
-- **插图按 PDF 自身页面尺寸的 200 DPI 绘制。** `--pdf-image-dpi N`（72–600）可以改：标签很小的图用 300，小一点的书用 150。换个值重跑只重绘插图，提取和翻译都保留。
-- **视觉模型可以纠正版面识别器的区块角色**（`--img-model MODEL`，或 provider 条目里的 `img_model`；不指定就不用，绝不会悄悄拿本次运行的翻译模型来看图；`--img-model none` 关掉 provider 里指定的图像模型）。docling 有时把作者行当成标题、把代码清单的行当成脚注、把图题当成小节；加上这个参数后，每一页会连同识别器画出的框一起交给指定模型，由它给每个区块一个角色（正文、标题、书名、图题、脚注、代码，或弃权）。采纳的答案在导出前应用，目录和代码块因此正确；文字本身从不改写。需要一个接受图片输入的 OpenAI 兼容端点（本次运行的端点，或 `--img-base-url URL` 加 `--img-key KEY`；只探测一次）；模型弃权或端点看不到页面时，保留识别器原来的标签并在终端说明。在 gpt-5.6-luna 上测得：66 处已登记的标签错误修好 40 处，每页约 3k 提示词 token。
-- 需要：**`pdf` extra**，它不在基础安装里。已发布的包里还没有这个路由，请从代码库安装——`pip install ".[pdf]"`，已经装好的 PyTorch 会被沿用。它会带来 docling 和 PyTorch，所以在没有 NVIDIA 显卡的 Linux 上请从 PyTorch 的 CPU 源安装（约 380 MB，而不是约 3.2 GB）；而在**有 NVIDIA 显卡的 Windows** 上要从 CUDA 源安装——PyPI 的 Windows wheel 只有 CPU 版，直接装会不声不响地让你留在处理器上，这种情况还需要装 NVIDIA 驱动（<https://www.nvidia.com/en-us/drivers/>）。macOS 上没得选。模型本身（约 500 MB）在首次运行时下载。**[安装 PDF 依赖](https://yihong0618.github.io/bilingual_book_maker/installation-pdf/) 给出了每种情况的准确命令。** 另外 PATH 中要有 [Pandoc](https://pandoc.org/installing.html) **3.1.12 或更新版本**（`pandoc -v` 检查；Ubuntu 24.04 和 Debian 13 的 apt 版本太旧，请从 pandoc.org 下载发行版）。**不需要 Java**——这条路由曾经用过的 Java 引擎已于 2026 年 9 月退役。缺哪个，都会在打开 PDF 之前被拒绝，消息里指明是哪一个。
-
-**注意事项。**
-
-- **付费翻译整本之前先读 `source.md`**，至少读标题：它们会变成目录。标题识别在论文上不错，在其他生成器上要弱得多；Word 导出的 PDF 可能几乎没有标题。在工作目录里改好 Markdown 再重跑，提取不会重做。
-- 图表保留为图片，图中标注不翻译。一页提取出的文字远超印刷页容量时会警告，检查那一页。
-- 提取器不转义正文里的 Markdown 语法。含 `\s`、`[u](y)` 或 `<k>` 的句子可能在翻译前被当作原始 TeX、缺失的链接目标或原始 HTML 而拒绝；消息会指出是哪一块。在 `source.md` 里转义后重跑。
-- EPUB 不带 `bbm_translation_metadata.json`，也不内嵌术语表（书由 Pandoc 生成），`--no_disclosure` 在该路由上暂未生效：署名行总会加上。`--glossary-auto` 只在压缩发生时学习，短论文在默认预算下学不到任何东西。
-- 除 `--to-epub` 外的每个 PDF 参数在没走该路由时都会被报告为忽略；在非 PDF 书上加 `--to-epub` 会停止运行。
-
-该路由仍是实验性的：只在 arXiv 论文和少数几种其他生成器的 PDF 上核过，并未覆盖所有 PDF 形态。欢迎提 issue 和 PR；能分享的话请附上 PDF，或者 `source.md` 里出错的那一页。
-
-对结果的预期要按格式来定。PDF 是页面描述，不是文档：它只存字形和坐标，不知道什么是段落、标题、分栏和阅读顺序，所有提取器都只能把结构猜回来。能从中得到一本可重排、目录能用的双语 EPUB，已经是很好的结果；某个标题差了一级、某张表格变成了正文，是格式本身的局限，不是这次运行出了错，两者在 `source.md` 里改一下也就一分钟的事。
-
-![一篇 arXiv 论文的阅读版：按标题生成的目录、双语正文、保留为图片的图表](./docs/img/pdf_reading_edition.webp)
-
-更多：[PDF 转双语 EPUB](https://yihong0618.github.io/bilingual_book_maker/features/pdf-to-epub/)、[PDF 推荐设置](https://yihong0618.github.io/bilingual_book_maker/features/recommended-pdf/)、[选哪个 OCR 引擎](https://yihong0618.github.io/bilingual_book_maker/features/pdf-ocr-engines/)。
-
 ## 参数说明
 
 - `--model`:
@@ -443,7 +332,7 @@ python3 make_book.py --book_name scan.pdf --to-epub --pdf-ocr --ocr-lang iso:zh 
 
 - `--plan-classify`（仅 epub）、`--plan-dry-run`、`--plan-min-coverage`、`--max-batch-units`：
 
-  计划模式：整本书切分后由模型决定哪些标签签名要翻译。EPUB 默认开启；取值、预览和注意事项见[计划模式](#计划模式)。
+  计划模式：整本书切分后由模型决定哪些标签签名要翻译。EPUB 默认开启；见[计划模式](#计划模式)。
 
 - `--exclude-translate-tags`:
 
@@ -495,7 +384,7 @@ python3 make_book.py --book_name scan.pdf --to-epub --pdf-ocr --ocr-lang iso:zh 
 
 - `--use_context session`、`--context-compact-at`、`--no-context-compact`：
 
-  会话模式：一份不断增长的历史代替重发的窗口，达到预算时压缩成交接报告。何时划算、何时不划算见[会话模式](#会话模式)。
+  会话模式：一份不断增长的历史代替重发的窗口，达到预算时压缩成交接报告。见[会话模式](#会话模式)。
 
 - `--glossary` / `--terminology`:
 
@@ -543,7 +432,7 @@ python3 make_book.py --book_name scan.pdf --to-epub --pdf-ocr --ocr-lang iso:zh 
 
 - `--to-epub`、`--pdf-ocr`、`--ocr-lang`、`--ocr-engine`、`--ocr-replace-layer`、`--pages`、`--device`、`--pdf-image-dpi`（仅限 PDF）：
 
-  PDF 阅读版：文字层变成 Markdown，Markdown 变成带导航的双语 EPUB。工作目录、OCR 以及 `source.md` 里该核对什么，见 [PDF 转双语 EPUB](#pdf-转-双语-epub-实验性)。
+  把 PDF 变成带目录的双语 EPUB，见 [PDF 转双语 EPUB](#pdf-转-双语-epub-实验性)。
 
 - `--sentence_mode`:
 
@@ -581,12 +470,7 @@ python3 make_book.py --book_name scan.pdf --to-epub --pdf-ocr --ocr-lang iso:zh 
 
 - `--no-thinking`:
 
-  让模型回答前不要先思考——翻译一段散文，思考带不来质量，只多花 token 和时间。各家
-  端点关闭思考的字段名互不相同且互相拒绝，因此在 OpenAI 请求格式的路径上，字段由端点
-  自己的报错协商得出并在本次运行中记住；若全部被拒，会提示一次并照常继续（不带该字
-  段）。`anthropic` 路径上固定为 `thinking: {"type": "disabled"}`。`codex` 路径会直接
-  拒绝该选项——它以子进程方式调用 codex CLI，没有可写入的请求体。你在 `--extra_body`
-  里自己写的字段优先于本选项。
+  让推理模型回答前不要先思考：翻译一段散文，思考带不来质量，只多花 token 和时间。
 
   ```shell
   python3 make_book.py --book_name book.epub --no-thinking
@@ -712,6 +596,57 @@ python3 make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'http
 python make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'https://example-endpoint.openai.azure.com/openai/v1' --model 'deployment-name' --use_context session
 ```
 
+## 功能
+
+### 计划模式
+
+EPUB 默认按计划翻译：整本书切分成单元，由模型按标签签名决定翻译哪些，诗歌、列表、表格单元格都不会漏掉，相邻单元合成一次请求。`--plan-classify` 决定由谁判断：`auto`（默认）、`agent`（你自己或编码代理，通过计划文件）、`all` 或 `none`。
+
+```shell
+# 预览哪些会翻译、哪些跳过（不需要 key）
+python3 make_book.py --book_name my_book.epub --plan-dry-run
+# 自己或让编码代理决定计划，然后重跑同一条命令开始翻译
+python3 make_book.py --book_name my_book.epub --key ${key} --plan-classify agent
+```
+
+`--plan-dry-run` 同时遵守 `--only_filelist` / `--exclude_filelist`。`--classify-model` 让另一个模型来分类，填 `jev` 使用 Jev 分类器；`--classify-base-url`、`--classify-key`、`--classify-min-confidence` 与它配合。更多：[计划模式](https://yihong0618.github.io/bilingual_book_maker/features/plan-mode/)、[EPUB 推荐设置](https://yihong0618.github.io/bilingual_book_maker/features/recommended-epub/)。
+
+### 会话模式
+
+`--use_context session` 整本书保持一段对话，人名和文风前后一致。历史按缓存价重读，达到 `--context-compact-at`（默认 8192 token）时压缩成一份简短的交接报告；`--no-context-compact` 则让下一个窗口从空白开始。在支持提示缓存的接口上最合适。更多：[会话模式](https://yihong0618.github.io/bilingual_book_maker/features/session-mode/)。
+
+### PDF 转 **双语** EPUB (实验性)
+
+`--to-epub` 把 PDF 变成可重排、带目录的双语 EPUB：每段后面紧跟译文，图和行间公式保留为图片。需要从代码库安装 PDF 依赖，以及 [Pandoc](https://pandoc.org/installing.html) 3.1.12 或更新版本，见[安装 PDF 依赖](https://yihong0618.github.io/bilingual_book_maker/installation-pdf/)。
+
+```shell
+pip install ".[pdf]"
+# 先翻两页，核对 paper_pages-1-2_book/source.md 里的标题
+python3 make_book.py --book_name paper.pdf --to-epub --pages 1-2 --key ${key} --use_context session
+# 再翻整个文件
+python3 make_book.py --book_name paper.pdf --to-epub --key ${key} --use_context session
+```
+
+![一篇 arXiv 论文的阅读版：按标题生成的目录、双语正文、保留为图片的图表](./docs/img/pdf_reading_edition.webp)
+
+#### 扫描件（OCR）
+
+`--pdf-ocr` 读取没有文字层的页面。`--ocr-lang` 指定要识别的语言（`iso:zh`、`iso:ja` 等），`--ocr-engine` 选择引擎（`auto`、`rapidocr`、`ocrmac`、`easyocr`、`tesseract`），`--ocr-replace-layer` 在自带文字层有误时重读每一页。更多：[选哪个 OCR 引擎](https://yihong0618.github.io/bilingual_book_maker/features/pdf-ocr-engines/)。
+
+```shell
+python3 make_book.py --book_name scan.pdf --to-epub --pdf-ocr --ocr-lang iso:zh --key ${key}
+```
+
+#### 页码、插图和公式
+
+`--pages 12-30`（或 `1,3,5-7`）只翻译这些页，输出 `paper_pages-12-30_bilingual.epub`。插图按 200 DPI 绘制，`--pdf-image-dpi 300` 让细小的标注更清楚。行间公式保留为图片，`--no-formula-images` 关掉这一点。
+
+#### 版面与硬件
+
+`--img-model MODEL` 把每一页交给视觉模型，纠正版面识别出错的地方，比如标题、图题和代码；`--img-base-url`、`--img-key` 指向另一个接口。`--device` 选择提取模型在哪里运行（`auto`、`cpu`、`cuda`、`mps`、`xpu`）。
+
+更多：[PDF 转双语 EPUB](https://yihong0618.github.io/bilingual_book_maker/features/pdf-to-epub/)、[PDF 推荐设置](https://yihong0618.github.io/bilingual_book_maker/features/recommended-pdf/)。
+
 ## Docker
 
 如果不想配置本地环境，可以直接使用 [Docker](https://www.docker.com/)。每次合并到 `main`（对应 `latest` 标签）以及每次发布版本标签时，都会自动构建镜像并发布到 GitHub Container Registry：
@@ -750,17 +685,20 @@ docker run --rm -v /home/user/my_books:/book ghcr.io/yihong0618/bilingual_book_m
 
 容器以 root 运行，所以往挂载的文件夹里写东西总是可以的；在 Linux 上写出的文件归 root 所有（事后 `chown` 一下，或者加 `--user $(id -u)`）。API key 也可以用环境变量传入（`-e OPENAI_API_KEY=sk-XXX`）来代替 `--key`。
 
-**Docker 里的 PDF 路由是 `pdf` 标签。** 默认镜像（`latest`，也发布为 `basic`）没有 Pandoc 和 PDF 相关的包，跑不了这条路由，所以只有几百 MB。`ghcr.io/yihong0618/bilingual_book_maker:pdf` 把 Pandoc 和 PDF 运行时都加上——docling 和 PyTorch，在 amd64 上是 CUDA 版，有好几个 GB，`--to-epub` 加不加 `--pdf-ocr` 都能跑：
+`pdf` 标签加上了 `--to-epub` 需要的 Pandoc 和 PDF 相关的包，有好几个 GB：
 
 ```shell
 docker run --rm -v "${folder_path}":/book -v bbm-models:/root/.cache ghcr.io/yihong0618/bilingual_book_maker:pdf --book_name /book/paper.pdf --to-epub --key "${openai_key}" --use_context session
 ```
 
-具名卷 `bbm-models` 让 docling 模型在多次运行之间保留下来；模型在第一次 `--to-epub` 运行时下载。用之前要知道两个限制：
+要用 GPU，按你的机器看：
 
-- **GPU** 指的只有 NVIDIA CUDA，**Linux 和 Windows 都可以**，macOS 不行。Linux 上宿主机装好 NVIDIA Container Toolkit，再加 `--gpus all`；torch 的 wheel 自带 CUDA 运行时，别的不用装。Windows 上通过 Docker Desktop 的 **WSL2 后端**同样可用，NVIDIA 驱动装在 Windows 本身而不是 WSL 里面，同样不需要 CUDA Toolkit；Windows 容器模式则做不到。macOS 上容器不管传什么都只用 CPU，因为 Docker 跑在一个看不见 Metal 加速器的 Linux 虚拟机里。想用 Apple 芯片加速，请在本机直接运行。
-- **arm64 上这个镜像没有 GPU**，哪怕机器上有显卡。镜像两种架构都发布，但 PyPI 的 PyTorch 只有 x86_64 才是 CUDA 版——2.7.1 在那边是 821.0 MB，而 aarch64 只有 98.9 MB，完全不含 CUDA kernel。所以带显卡的 arm64 Linux 主机（GH200、Jetson）默认拉到的是 arm64 镜像，`--gpus` 传多少都还是跑在处理器上。那里要加 `--platform linux/amd64` 才能拉到 CUDA 镜像。
-- **codex 路由**两个镜像里都没有：它驱动的是宿主机上已登录的 `codex` 程序，程序和登录状态都不在容器里。Docker 里请用 API 路由。
+- 带 NVIDIA 显卡的 Linux：装好 NVIDIA Container Toolkit，加 `--gpus all`。
+- 带 NVIDIA 显卡的 Windows：一样，通过 Docker Desktop 的 WSL2 后端。
+- Mac（Apple 芯片）：Docker 用不到 GPU，请直接在本机安装运行。
+- 带 NVIDIA 显卡的 arm64 Linux：再加 `--platform linux/amd64`。
+
+更多：[Docker](https://yihong0618.github.io/bilingual_book_maker/docker/)。
 
 如果想自己构建镜像而不是拉取：
 
