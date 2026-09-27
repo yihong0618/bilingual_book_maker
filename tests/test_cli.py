@@ -239,27 +239,27 @@ def test_classify_flag_rejects_non_epub_books(tmp_path):
     assert "epub-only" in proc.stdout
 
 
-def test_agent_mode_rejects_a_classifier_model(tmp_path):
-    proc, _ = _run(
+def test_agent_mode_accepts_a_classifier_model(tmp_path):
+    # PIN (owner 260924): agent mode never pre-fills; a pre-filled plan makes the agent less accurate. Record: docs/260923-feat-ENDPOINT_OVERRIDES_CLASSIFIER_JEV.md
+    # So a named classifier is accepted and not resolved at all: no key is
+    # demanded for it, and the plan is written and handed over.
+    proc, plan = _run(
         tmp_path, "--plan-classify", "agent", "--plan-classify-model", "gpt-4o"
     )
-    assert proc.returncode == 1
-    assert "cannot be combined" in proc.stdout
+    assert "cannot be combined" not in proc.stdout
+    assert plan.exists(), proc.stdout + proc.stderr
 
 
-def test_all_mode_rejects_a_classifier_model(tmp_path):
-    # 'all' explicitly skips classification; naming a classifier alongside
-    # it is a contradiction, not a preference to resolve silently
-    proc, _ = _run(
-        tmp_path, "--plan-classify", "all", "--plan-classify-model", "gpt-4o"
-    )
-    assert proc.returncode == 1
-    assert "cannot be combined" in proc.stdout
+# 'all' with a classifier: row C32's warn, fixtures in test_flag_compat.py
+# (a CLI run here would translate the whole book).
 
 
 def test_classify_model_flag_implies_model_mode(tmp_path):
     # naming a classifier is asking for model mode; it must not silently
-    # sit in none mode doing nothing
+    # sit in none mode doing nothing. On a fixed engine (google) the named
+    # model is asked at the host its id implies (lead ruling 260923, Codex
+    # finding 4), so with no key for it the run stops, naming the flag,
+    # before anything is parsed or written.
     proc, plan = _run(
         tmp_path,
         "--plan-classify-model",
@@ -268,19 +268,92 @@ def test_classify_model_flag_implies_model_mode(tmp_path):
         "--test_num",
         "1",
     )
-    # google translates through one fixed engine with no model to ask, and a
-    # classifier that cannot run must block rather than degrade into
-    # translating undecided rows. Refused at the CLI now (audit row A10):
-    # the run used to parse the whole book and write a plan file nothing had
-    # decided before dying in the classifier.
     assert proc.returncode == 1
     flat = " ".join(proc.stdout.split())
-    assert "--plan-classify-model" in flat
-    assert "no model to ask" in flat
-    # and it must say what to do instead, not just what failed
-    assert "--plan-classify agent" in flat
-    # nothing was parsed or written on the way to the refusal
+    assert "No API key for the openai endpoint" in flat
+    assert "pass --classify-key" in flat
+    assert "no model to ask" not in flat  # A10 does not fire: a classifier exists
     assert not plan.exists()
+
+
+def _fixed_engine_with_a_provider_classifier(tmp_path, *extra):
+    """A google run whose provider entry supplies the classifier (Codex
+    finding 4): the entry is an OpenAI gateway with a classify_model at an
+    address of its own, and the run's --api_format moves translation to the
+    fixed engine."""
+    src = _provider_book(
+        tmp_path,
+        api_style="openai",
+        base_url="https://gw.example/v1",
+        classify_model="cls-model",
+        classify_base_url="https://cls.example/v1",
+        classify_env_key="BBM_TEST_CLS_KEY",
+    )
+    return _cli_in(
+        tmp_path,
+        "--book_name",
+        str(src),
+        "--provider",
+        "p",
+        "--api_format",
+        "google",
+        "--test",
+        "--test_num",
+        "1",
+        *extra,
+        BBM_TEST_CLS_KEY="sk-cls",
+    )
+
+
+@pytest.mark.parametrize("mode", [[], ["--plan-classify", "model"]])
+def test_a_fixed_engine_plans_with_the_provider_s_classifier(tmp_path, mode):
+    """PIN (lead ruling 260923, Codex finding 4): A10 and `auto` read the
+    resolved classify choice. A fixed-engine run with a provider classifier
+    is not stopped, and in auto it plans; the classifier (the offline
+    OpenAI stand-in at the entry's classify address) is what is asked."""
+    proc = _fixed_engine_with_a_provider_classifier(tmp_path, *mode)
+    out = " ".join(proc.stdout.split())
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "no model to ask" not in out
+    assert "classifier: cls-model at https://cls.example/v1" in out
+    assert "offline model list: ['cls-model']" in out
+    assert "llm classification:" in out
+    # PIN: lead 260925, skill field test,
+    # docs/260925-docs-SKILL_FIELD_TEST_FRICTIONS.md -- the same line on
+    # every path a separate classifier plans the book, once.
+    assert out.count("plan mode: on (classified by cls-model") == 1
+    plan = json.loads((tmp_path / f"{BOOK.stem}_plan.json").read_text())
+    assert {row["decided_by"] for row in plan["signatures"]} <= {"llm", "rule"}
+    assert any(row["decided_by"] == "llm" for row in plan["signatures"])
+
+
+# PIN: lead 260925, skill field test, docs/260925-docs-SKILL_FIELD_TEST_FRICTIONS.md
+# -- `--classify-model` typed on the command line printed only the
+# `classifier:` line, while a provider entry's classifier also printed
+# `plan mode: on (classified by ...)`. Both paths say the plan-mode line.
+def test_a_classifier_typed_on_the_command_line_says_plan_mode_is_on(tmp_path):
+    src = tmp_path / BOOK.name
+    src.write_bytes(BOOK.read_bytes())
+    proc = _cli_in(
+        tmp_path,
+        "--book_name",
+        str(src),
+        "--api_format",
+        "google",
+        "--classify-model",
+        "cls-model",
+        "--classify-base-url",
+        "https://cls.example/v1",
+        "--classify-key",
+        "sk-cls",
+        "--test",
+        "--test_num",
+        "1",
+    )
+    out = " ".join(proc.stdout.split())
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "classifier: cls-model at https://cls.example/v1" in out
+    assert out.count("plan mode: on (classified by cls-model") == 1
 
 
 def test_naming_a_model_for_a_fixed_engine_fails_loud(tmp_path):
@@ -1746,12 +1819,70 @@ def test_help_advertises_only_the_new_spelling(shared_help):
 
 
 def test_batch_units_defaults_to_the_measured_cap(shared_run):
-    # half the level the 260905 fault-emergence sweep measured faults at
+    # a quarter of the level the 260905 fault-emergence sweep measured faults at
     from book_maker.loader.plan import GENERAL_GROUP_MAX_UNITS
 
     proc, plan = shared_run("--plan-dry-run")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert json.loads(plan.read_text())["batch_units"] == GENERAL_GROUP_MAX_UNITS
+
+
+def _help_of(parser, dest):
+    return next(a.help for a in parser._actions if a.dest == dest)
+
+
+def test_accumulated_num_help_is_formatted_from_the_budget_constants(monkeypatch):
+    # PIN (owner ruling 260907, AGENTS.md "Model choice in evals"; packet H
+    # 260924, docs/260923-docs-WIKI_MODERNIZE.md "Findings for the owner"):
+    # the help said "1600 ... up to 2000" long after the constants moved to
+    # 1200 / 1600 / 800. It is formatted from plan.py's constants so it
+    # cannot drift again: patched values must show up in the help.
+    import book_maker.cli as cli
+    from book_maker.loader.plan import (
+        SESSION_BUDGET_CEILING,
+        SESSION_BUDGET_FLOOR,
+        SUBSTRICT_BUDGET_FLOOR,
+    )
+
+    text = " ".join(_help_of(cli.build_parser(), "accumulated_num").split())
+    assert f"{SESSION_BUDGET_FLOOR} with the stock prompts" in text
+    assert f"up to {SESSION_BUDGET_CEILING} under a fat custom" in text
+    assert f"(floor {SUBSTRICT_BUDGET_FLOOR})" in text
+    assert f"{SESSION_BUDGET_FLOOR}-{SESSION_BUDGET_CEILING} is their" in text
+    assert "2000" not in text
+
+    monkeypatch.setattr(cli, "SESSION_BUDGET_FLOOR", 1111)
+    monkeypatch.setattr(cli, "SESSION_BUDGET_CEILING", 2222)
+    monkeypatch.setattr(cli, "SUBSTRICT_BUDGET_FLOOR", 333)
+    text = " ".join(_help_of(cli.build_parser(), "accumulated_num").split())
+    assert "1111 with the stock prompts" in text
+    assert "up to 2222 under a fat custom" in text
+    assert "(floor 333)" in text
+    assert "1111-2222 is their" in text
+
+
+def test_max_batch_units_help_says_a_quarter_of_the_onset():
+    # PIN (packet H 260924): the default is 16, a quarter of the 64-unit
+    # fault onset (plan.py GENERAL_GROUP_MAX_UNITS), not half of it
+    from book_maker.cli import build_parser
+
+    text = " ".join(_help_of(build_parser(), "batch_units").split())
+    assert "a quarter of the level" in text
+    assert "half the level" not in text
+
+
+def test_ocr_lang_help_names_iso_tags_and_the_replace_layer_scope():
+    # PIN (packet H items 1 and 13, 260924): docling 2.129 takes iso: tags,
+    # rapidocr (the default engine on macOS/CPU) reads the first language
+    # and refuses ch_sim (measured 260924,
+    # docs/260924-feat-PDF_OCR_REPLACE_LAYER.md), and --ocr-replace-layer
+    # has every page read
+    from book_maker.cli import build_parser
+
+    text = " ".join(_help_of(build_parser(), "ocr_lang").split())
+    assert "on pages with no text layer (every page with --ocr-replace-layer)" in text
+    assert "or as iso: tags (iso:zh)" in text
+    assert "reads only the first language and takes iso:zh, not ch_sim" in text
 
 
 def test_an_untyped_accumulated_num_reaches_the_parser_as_none():

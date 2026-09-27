@@ -7,6 +7,8 @@
 
 The bilingual_book_maker is an AI translation tool that uses ChatGPT to assist users in creating multi-language versions of epub/txt/md/srt/pdf files and books. Use it only with material you have the right to translate — works for which you hold the necessary rights, suitably licensed or permitted works, public-domain books, or uses otherwise allowed by applicable law. Before using this tool, please review the project's **[disclaimer](./disclaimer.md)**.
 
+Guides for every file type and option, and the measurements behind the defaults, are on the [documentation site](https://yihong0618.github.io/bilingual_book_maker/).
+
 [![Stars](https://img.shields.io/github/stars/yihong0618/bilingual_book_maker)](https://github.com/yihong0618/bilingual_book_maker/stargazers)
 [![CI](https://github.com/yihong0618/bilingual_book_maker/actions/workflows/make_test_ebook.yaml/badge.svg)](https://github.com/yihong0618/bilingual_book_maker/actions/workflows/make_test_ebook.yaml)
 [![PyPI](https://img.shields.io/pypi/v/bbook-maker.svg)](https://pypi.org/project/bbook-maker/)
@@ -33,11 +35,11 @@ if you want to use your Codex quota instead.
 `--provider` is an alternative way to pass credentials, through a JSON config file
 `bbm_providers.json`. 
 
-Epub tags classification is auto enabled on JSON-schema endpoints, and on any endpoint that can hold a conversation — the codex route and plain reseller proxies included — where the model is asked for exact `skip`/`translate` verdicts instead. Only routes with no conversation at all (the MT engines) fall back to translating `p` tags only, so some poetry or verse may be omitted there. See plan mode for details.
+Epub tags classification is auto enabled on JSON-schema endpoints, and on any endpoint that can hold a conversation — the codex route and plain reseller proxies included — where the model is asked for exact `skip`/`translate` verdicts instead. Only routes with no conversation at all (the MT engines) fall back to translating `p` tags only, so some poetry or verse may be omitted there. See [Plan mode](#plan-mode) for details.
 
 Older flags (`--model gpt4o`,
 `--model gemini`, `--openai_key`, …) still work: see
-[Models and languages](./docs/model_lang.md).
+[Models and languages](https://yihong0618.github.io/bilingual_book_maker/model_lang/).
 
 ## Preparation
 
@@ -102,12 +104,12 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   Gemini API from it.
 - `--use_context session` translates in session mode; the history compacts
   at 8k by default (`--context-compact-at` overrides). It keeps one cached
-  history for consistency and learns a glossary from its own handoff
-  reports (`--glossary-auto`), so recurring names stay stable across the
-  book — the recommended mode on OpenAI-compatible endpoints, and what the
-  examples below use.
+  history for consistency, so recurring names stay stable across the book,
+  and can also learn a glossary from its own handoff reports
+  (`--glossary-auto on`, off by default) — the recommended mode on
+  OpenAI-compatible endpoints, and what the examples below use.
 - The old preset names and key flags still work, see
-  [Migrating from the old flags](./docs/migration.md).
+  [Migrating from the old flags](https://yihong0618.github.io/bilingual_book_maker/migration/).
 
 ## Supported translation services
 * DeepL
@@ -283,7 +285,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 ## Usage
 
-- Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated for EPUB inputs; for TXT/MD/SRT inputs a bilingual text (or subtitle) file named `${book_name}_bilingual.txt` (or `_bilingual.srt`) will be generated. For **PDF inputs** the tool will produce a bilingual `.txt` fallback and will also attempt to create `${book_name}_bilingual.epub` — if EPUB creation fails, the TXT fallback remains so you do not need to retranslate.
+- Once the translation is complete, a bilingual book named `${book_name}_bilingual.epub` would be generated for EPUB inputs; for TXT, MD and SRT inputs a bilingual file named `${book_name}_bilingual.txt`, `${book_name}_bilingual.md` or `${book_name}_bilingual.srt` will be generated. For **PDF inputs** the tool will produce a bilingual `.txt` fallback and will also attempt to create `${book_name}_bilingual.epub` — if EPUB creation fails, the TXT fallback remains so you do not need to retranslate.
 - If there are any errors or you wish to interrupt the translation by pressing `CTRL+C`, a temporary bilingual file (for example `{book_name}_bilingual_temp.epub` or `{book_name}_bilingual_temp.txt`) would be generated. You can simply rename it to any desired name.
 
 ## Params
@@ -301,7 +303,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   | `qwen-mt-turbo` | `qwen` | the default there, on DashScope |
   | `llama-3.3-70b-versatile` | `groq` | Groq's own address |
 
-  The old preset values still parse and are rewritten to a real model id with a note; [Migrating from the old flags](./docs/migration.md) lists them. Anything else is an endpoint: `--api_base <url> --key <key> --model <id>`, or a `--provider` entry (see the Custom API Provider section).
+  The old preset values still parse and are rewritten to a real model id with a note; [Migrating from the old flags](https://yihong0618.github.io/bilingual_book_maker/migration/) lists them. Anything else is an endpoint: `--api_base <url> --key <key> --model <id>`, or a `--provider` entry (see the Custom API Provider section).
 
 - `--key`:
 
@@ -339,7 +341,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--language`:
 
-  Set the target language: a tag (`--language zh-hant`), a name (`--language "Traditional Chinese"`), or both at once — `--language "zh-hant:Traditional Chinese"`. The tag names the JSON structured-output field; the name is what the model is asked for. Default `zh-hans`. See also [available tags](./docs/languages.md).
+  Set the target language: a tag (`--language zh-hant`), a name (`--language "Traditional Chinese"`), or both at once — `--language "zh-hant:Traditional Chinese"`. The tag names the JSON structured-output field; the name is what the model is asked for. Default `zh-hans`. See also [available tags](https://yihong0618.github.io/bilingual_book_maker/languages/).
 
 - `--source_lang`:
 
@@ -364,31 +366,9 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   Use `--translate-tags` to specify tags need for translation. Use comma to separate multiple tags.
   For example: `--translate-tags h1,h2,h3,p,div`
 
-- `--plan-classify` (epub only):
+- `--plan-classify` (epub only), `--plan-dry-run`, `--plan-min-coverage`, `--max-batch-units`:
 
-  **Plan mode**: classify epub tags with the translating model, or with codex / claude code.
-
-  The value decides how is translation decision of each tag made:
-
-  - `auto` (default): when the book is an epub, ask the LLM what to translate. Only when the route cannot hold a conversation, and when the plan fails, translate the `--translate-tags` selection instead. Rows decided over a plain session appear in `<book>_plan.json` with an `unnamed (…)` content type naming how the verdict was reached rather than what the content is.
-  - `none`: no plan; only the `--translate-tags` selection — unselected, that defaults to `p`, most body text.
-  - `all`: translate the whole partition, no classification.
-  - `model`: the translating LLM judges, then translates. `--plan-classify-model X` picks the model that classifies.
-  - `agent`: writes the classification plan for the book and prints instructions to paste into your coding tool for classification. 
-  (or you could also do it by hand). Then run the translation with `--plan-classify agent` again.
-
-  - `--plan-dry-run`: print the per-signature table, write `<book>_plan.json`, and exit. Honors `--only_filelist` / `--exclude_filelist`.
-  - `<book>_plan.json`: the translation plan; delete it to classify again.
-  - `--plan-min-coverage` (default 0.5, range 0–1): plan mode aborts if the plan covers less than this fraction of the text. `0` disables the guard and values above `0.9` usually abort after classification is already paid for — both warn.
-
-  - `--max-batch-units`: the most units one grouped request may carry. Raise it together with `--accumulated_num` for fewer, larger (cheaper) requests; lower them once the run prints degradation warnings such as the misalignment-recovery hint. Content is also bounded by the token budget (`--accumulated_num`).
-
-  ```shell
-  # let the model judge which tags need translating
-  python3 make_book.py --book_name my_book.epub --key ${key} --plan-classify model
-  # or hand it to an agent: stops, prints instructions, then you give them to your AI
-  python3 make_book.py --book_name my_book.epub --key ${key} --plan-classify agent
-  ```
+  Plan mode: the whole book is partitioned and the model decides which tag signatures to translate. On by default for EPUBs; see [Plan mode](#plan-mode).
 
 - `--exclude-translate-tags`:
 
@@ -460,28 +440,9 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   Use `--context_paragraph_limit` to set a limit on the number of context paragraphs when using the `--use_context` option. This applies to window mode only.
 
-- `--use_context session`:
+- `--use_context session`, `--context-compact-at`, `--no-context-compact`:
 
-  Session mode keeps one append-only history and re-reads it at the cache
-  price, so on endpoints that support caching the context can grow to about
-  a chapter. When the history reaches the compact budget, the model writes
-  a short handoff report (the run asks for ~300 tokens and truncates
-  anything runaway), whose summary seeds the next window; `<book>_handoff.md`
-  holds the latest snapshot, overwritten at each compaction.
-  Watch the progress bar's `cached=`: if it is still zero after a dozen
-  requests, the endpoint may not have a cache; Ctrl+C and switch to window
-  mode.
-
-  - `--context-compact-at`:
-
-    Session mode only. The estimated-token budget the whole window — the
-    inherited seed included — may reach before it is compacted into a
-    handoff report. Default `8192`, minimum `1500`: a window shorter than
-    that is mostly seed and seams, so below it use window mode instead.
-
-  - `--no-context-compact`:
-
-    Session mode only. Skip the handoff report. The window still rolls over at the budget, but the next one starts empty instead of inheriting a summary. Cheaper, at the cost of continuity across the seam.
+  Session mode: one growing history instead of a re-sent window, compacted into a handoff report at the budget. See [Session mode](#session-mode).
 
 - `--glossary` / `--terminology`:
 
@@ -542,6 +503,10 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   extra PDF; `all` attempts both top-bottom and side-by-side layouts. The bilingual TXT and
   EPUB outputs are unaffected.
 
+- `--to-epub`, `--pdf-ocr`, `--ocr-lang`, `--ocr-engine`, `--ocr-replace-layer`, `--pages`, `--device`, `--pdf-image-dpi` (PDF only):
+
+  Turn a PDF into a bilingual EPUB with a table of contents. See [PDF to bilingual EPUB](#pdf-to-bilingual-epub-experimental).
+
 - `--sentence_mode`:
 
   Translate EPUB text sentence by sentence instead of translating each paragraph as one
@@ -571,6 +536,15 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   ```shell
   python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which' ''
+  ```
+
+- `--no-thinking`:
+
+  Ask a reasoning model not to think before answering; on a paragraph of
+  prose it buys nothing and costs tokens and time.
+
+  ```shell
+  python3 make_book.py --book_name test_books/animal_farm.epub --key ${openai_key} --no-thinking
   ```
 
 - `--extra_body`:
@@ -713,6 +687,57 @@ python3 make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'http
 python make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'https://example-endpoint.openai.azure.com/openai/v1' --model 'deployment-name' --use_context session
 ```
 
+## Features
+
+### Plan mode
+
+An EPUB is translated through a plan by default: the book is split into units, the model decides by tag signature what to translate, so verse, lists and table cells are not missed, and neighbouring units share one request. `--plan-classify` chooses who decides: `auto` (the default), `agent` (you or your coding agent, through the plan file), `all` or `none`.
+
+```shell
+# preview what would be translated and what skipped (no key needed)
+python3 make_book.py --book_name my_book.epub --plan-dry-run
+# decide the plan yourself or with a coding agent, then rerun the same command to translate
+python3 make_book.py --book_name my_book.epub --key ${key} --plan-classify agent
+```
+
+`--plan-dry-run` honours `--only_filelist` / `--exclude_filelist`. `--classify-model` lets another model classify, `jev` for the Jev classifier; `--classify-base-url`, `--classify-key` and `--classify-min-confidence` go with it. More: [Plan mode](https://yihong0618.github.io/bilingual_book_maker/features/plan-mode/), [Recommended settings for EPUB](https://yihong0618.github.io/bilingual_book_maker/features/recommended-epub/).
+
+### Session mode
+
+`--use_context session` keeps one conversation for the whole book, so names and style stay consistent. The history is re-read at the cache price and, once it reaches `--context-compact-at` (default 8192 tokens), compacted into a short handoff report; `--no-context-compact` starts the next window empty instead. Best on endpoints with prompt caching. More: [Session mode](https://yihong0618.github.io/bilingual_book_maker/features/session-mode/).
+
+### PDF to **bilingual** EPUB (experimental)
+
+`--to-epub` turns a PDF into a reflowable bilingual EPUB with a table of contents: every paragraph followed by its translation, figures and display formulas kept as pictures. It needs the PDF extra, installed from a clone, and [Pandoc](https://pandoc.org/installing.html) 3.1.12 or newer; see [Installing the PDF extra](https://yihong0618.github.io/bilingual_book_maker/installation-pdf/).
+
+```shell
+pip install ".[pdf]"
+# two pages first; check the headings in paper_pages-1-2_book/source.md
+python3 make_book.py --book_name paper.pdf --to-epub --pages 1-2 --key ${key} --use_context session
+# then the whole file
+python3 make_book.py --book_name paper.pdf --to-epub --key ${key} --use_context session
+```
+
+![An arXiv paper as a reading edition: the table of contents built from the headings, the bilingual text, and a figure kept as a picture](./docs/img/pdf_reading_edition.webp)
+
+#### Scans (OCR)
+
+`--pdf-ocr` reads pages that have no text layer. `--ocr-lang` names the languages to read (`iso:zh`, `iso:ja`, …), `--ocr-engine` picks the engine (`auto`, `rapidocr`, `ocrmac`, `easyocr`, `tesseract`), and `--ocr-replace-layer` reads every page again when the embedded text is wrong. More: [Which OCR engine](https://yihong0618.github.io/bilingual_book_maker/features/pdf-ocr-engines/).
+
+```shell
+python3 make_book.py --book_name scan.pdf --to-epub --pdf-ocr --ocr-lang iso:zh --key ${key}
+```
+
+#### Pages, figures and formulas
+
+`--pages 12-30` (or `1,3,5-7`) translates only those pages, into `paper_pages-12-30_bilingual.epub`. Figures are drawn at 200 DPI; `--pdf-image-dpi 300` sharpens tiny labels. Display formulas are kept as pictures; `--no-formula-images` turns that off.
+
+#### Layout and hardware
+
+`--img-model MODEL` shows each page to a vision model that corrects what the layout detector got wrong, such as headings, captions and code; `--img-base-url` and `--img-key` point it at another endpoint. `--device` picks where the extraction models run (`auto`, `cpu`, `cuda`, `mps`, `xpu`).
+
+More: [PDF to bilingual EPUB](https://yihong0618.github.io/bilingual_book_maker/features/pdf-to-epub/), [Recommended settings for PDF](https://yihong0618.github.io/bilingual_book_maker/features/recommended-pdf/).
+
 ## Docker
 
 You can use [Docker](https://www.docker.com/) if you don't want to deal with setting up the environment. Prebuilt images are published to GitHub Container Registry on every merge to `main` (as `latest`) and on every release tag:
@@ -749,7 +774,22 @@ For example, a quick test needing no key at all, over the free Google route:
 docker run --rm -v /home/user/my_books:/book ghcr.io/yihong0618/bilingual_book_maker:latest --book_name /book/animal_farm.epub --api_format google --test --test_num 1 --language zh-hant
 ```
 
-The container runs as a non-root user (uid 1000). On Linux, if the mounted folder is not writable for that uid, add `--user $(id -u)` (uid only — the image keeps its internal directories group-writable for exactly this case). API keys can also be passed as environment variables (`-e OPENAI_API_KEY=sk-XXX`) instead of `--key`.
+The container runs as root, so writing into the mounted folder always works; on Linux the files it writes there belong to root (`chown` them afterwards, or add `--user $(id -u)`). API keys can also be passed as environment variables (`-e OPENAI_API_KEY=sk-XXX`) instead of `--key`.
+
+The `pdf` tag adds Pandoc and the PDF packages for `--to-epub`, and runs to several gigabytes:
+
+```shell
+docker run --rm -v "${folder_path}":/book -v bbm-models:/root/.cache ghcr.io/yihong0618/bilingual_book_maker:pdf --book_name /book/paper.pdf --to-epub --key "${openai_key}" --use_context session
+```
+
+For a GPU, find your machine:
+
+- Linux with an NVIDIA card: install the NVIDIA Container Toolkit and add `--gpus all`.
+- Windows with an NVIDIA card: the same, through Docker Desktop's WSL2 backend.
+- Mac (Apple silicon): Docker cannot reach the GPU; install the tool natively instead.
+- arm64 Linux with an NVIDIA card: also add `--platform linux/amd64`.
+
+More: [Docker](https://yihong0618.github.io/bilingual_book_maker/docker/).
 
 To build the image yourself instead of pulling:
 

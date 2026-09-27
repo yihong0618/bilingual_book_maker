@@ -53,8 +53,7 @@ give the vendor's OpenAI-compatible `--api_base` and get the `openai` route.
 `codex` is not an endpoint at all: it drives a local `codex app-server`
 sidecar and bills the run to your ChatGPT plan, so it takes no `--key` and no
 `--api_base`, and `--model` is optional (default `gpt-5.6-luna`). It is never
-inferred; name it explicitly. See the Codex entry under "Translate Service"
-in the README.
+inferred; name it explicitly. See [Translating with an LLM](llm-args.md).
 
 Inference goes in this order: an explicit `--api_format` wins; then the
 `--api_base` host (`anthropic.com` means the anthropic shape, anything else
@@ -185,8 +184,10 @@ rather than a silent no-op.
 | `caiyun` | required |
 | `deepl` | required (RapidAPI DeepL Translator) |
 
-They translate text and nothing else: no context window, no structured
-output, and no plan classification. `--source_lang` reaches `customapi`
+They translate text and nothing else: no context window and no structured
+output. They cannot classify an EPUB for plan mode themselves; with
+`--classify-model` naming a model that can, an EPUB gets plan mode on these
+engines too. `--source_lang` reaches `customapi`
 (it goes into the request body); the other engines detect the source
 themselves. (On the LLM routes the flag reaches the prompt — see
 Languages below.)

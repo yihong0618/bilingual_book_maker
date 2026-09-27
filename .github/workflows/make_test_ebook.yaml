@@ -22,6 +22,58 @@ jobs:
         uses: crate-ci/typos@v1.16.6
         with:
           config: ./typos.toml
+  # The PDF reading edition (--to-epub), which is an OPTIONAL install: the
+  # base job above must keep passing without any of it. Its own job so the
+  # base one never pays for PyTorch.
+  pdf-route:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - name: install the base requirements
+        run: pip install -r requirements.txt
+
+      # The CPU route. requirements-pdf-cpu.txt names PyTorch's CPU index in
+      # the file itself, so no flag is passed here -- if that line is ever
+      # dropped, the assertion below fails rather than quietly downloading
+      # 1.6 GB of CUDA.
+      - name: install the PDF route (CPU build)
+        run: pip install -r requirements-pdf-cpu.txt
+
+      # The packaging promise, as a test. A CPU install that drags in CUDA
+      # wheels is the failure this whole split exists to prevent, and it is
+      # invisible in every other check.
+      - name: the CPU route carries no CUDA
+        run: |
+            python -c "import torch; print(torch.__version__)"
+            python -c "import torch, sys; sys.exit(0 if torch.version.cuda is None else 'a CUDA build was installed by the CPU route')"
+            if pip list --format=freeze | grep -E '^(nvidia-|triton==)'; then
+              echo "::error::the CPU route installed CUDA packages"; exit 1
+            fi
+            echo "no nvidia packages, as intended"
+
+      # A pinned release, not apt: the route needs Pandoc 3.1.12 or newer
+      # (its EPUB contents point at headings), and Ubuntu 24.04 ships 3.1.3.
+      - name: install Pandoc (the EPUB builder)
+        run: |
+          curl -sSL -o /tmp/pandoc.deb https://github.com/jgm/pandoc/releases/download/3.11/pandoc-3.11-1-amd64.deb
+          sudo apt-get install -y -qq /tmp/pandoc.deb
+          pandoc --version | head -1
+
+      # The route end to end on a two-page typed PDF built by the test
+      # helper, its text checked in the extracted Markdown. Not hermetic:
+      # docling downloads its models on this first run (~500 MB), which is
+      # why this is one job and one smoke rather than a matrix.
+      - name: PDF route smoke (two pages, no OCR)
+        run: |
+            python -c "from pathlib import Path; from tests.pipeline_helpers import write_pdf; write_pdf(Path('ci_smoke.pdf'), pages=('The first page of a typed PDF, with a full sentence of prose on it.', 'The second page of it, also a sentence long.'))"
+            python tools/pdf_to_book.py extract ci_smoke.pdf --output ci_smoke_book --pages 1-2 --device cpu
+            grep -q "first page" ci_smoke_book/source.md
+            grep -q "second page" ci_smoke_book/source.md
+
   testing:
     runs-on: ubuntu-latest
     steps:

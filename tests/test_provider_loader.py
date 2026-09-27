@@ -398,3 +398,67 @@ class TestShippedExample:
         assert config, "the shipped example should be present in a checkout"
         for name, entry in config["providers"].items():
             validate_provider(name, entry)
+
+
+class TestEndpointFields:
+    """`img_*` / `classify_*` (packet F, 260923): an entry may name the
+    vision model and the classify model beside its own endpoint."""
+
+    FIELDS = (
+        "img_model",
+        "img_base_url",
+        "img_env_key",
+        "classify_model",
+        "classify_base_url",
+        "classify_env_key",
+    )
+
+    def test_the_six_fields_are_accepted_and_ride_on_the_route(self, configs):
+        entry = {**DEEPSEEK, **{field: f"{field}-value" for field in self.FIELDS}}
+        _write(configs.local_file, {"p": entry})
+        route = resolve_provider("p")
+        for field in self.FIELDS:
+            assert getattr(route, field) == f"{field}-value"
+
+    def test_absent_fields_are_empty(self, configs):
+        _write(configs.local_file, {"p": DEEPSEEK})
+        route = resolve_provider("p")
+        assert all(getattr(route, field) == "" for field in self.FIELDS)
+
+    @pytest.mark.parametrize("field", FIELDS)
+    @pytest.mark.parametrize("value", ["", "   ", 7, None, ["x"]])
+    def test_a_blank_or_non_string_value_is_refused(self, field, value):
+        with pytest.raises(ValueError, match=f"{field} must be a non-blank string"):
+            validate_provider("p", {**DEEPSEEK, field: value})
+
+    def test_an_unknown_field_is_still_refused(self):
+        with pytest.raises(ValueError, match="unknown fields"):
+            validate_provider("p", {**DEEPSEEK, "image_model": "x"})
+
+    def test_a_jev_entry_validates_but_cannot_be_the_run_s_provider(self, configs):
+        entry = {"api_style": "jev", "env_key": "JEV_API_KEY"}
+        validate_provider("jev", entry)
+        _write(configs.local_file, {"jev": entry})
+        with pytest.raises(ValueError, match="cannot translate"):
+            resolve_provider("jev")
+
+    def test_the_shipped_openai_entry_names_an_image_model(self):
+        shipped = Path(__file__).resolve().parent.parent / "bbm_providers.example.json"
+        entry = json.loads(shipped.read_text(encoding="utf-8"))["providers"]["openai"]
+        assert entry["img_model"] == "gpt-5.6-luna"
+
+
+def test_the_skill_s_example_is_the_shipped_one_byte_for_byte():
+    # PIN (packet F, 260923): the bbm-plan skill ships a copy of the example
+    # for operators who install the skill alone; the two must not drift.
+    root = Path(__file__).resolve().parent.parent
+    shipped = (root / "bbm_providers.example.json").read_bytes()
+    skill = (
+        root
+        / ".agents"
+        / "skills"
+        / "bbm-plan"
+        / "assets"
+        / "bbm_providers.example.json"
+    ).read_bytes()
+    assert skill == shipped

@@ -11,6 +11,7 @@ from anthropic import (
 )
 
 from .base_translator import Base
+from .reasoning import ANTHROPIC_NO_THINKING
 from ..config import config
 from ..session_context import (
     SEED_MAX_TOKENS,
@@ -272,6 +273,18 @@ class Claude(Base):
         """
         return self.session is None
 
+    def request_extra_body(self, model=None):
+        """See `Base.request_extra_body`.
+
+        One spelling, no negotiation: `thinking` is part of the anthropic
+        wire format itself rather than a vendor extension, so every endpoint
+        that speaks the format takes the field and there is nothing to learn
+        by being refused. `--extra_body` still wins the merge.
+        """
+        if not self.no_thinking:
+            return self.extra_body or None
+        return {**ANTHROPIC_NO_THINKING, **self.extra_body}
+
     def set_request_extras(self, extra_body=None, extra_headers=None):
         """See `Base.set_request_extras`. Headers ride on the client."""
         self.extra_body = extra_body or {}
@@ -474,7 +487,7 @@ class Claude(Base):
                 system=self.standing_instructions(),
                 temperature=self.temperature,
                 model=self.model,
-                extra_body=self.extra_body or None,
+                extra_body=self.request_extra_body(),
                 **self._cache_kwargs(),
             )
             self._note_usage(r)
@@ -540,7 +553,7 @@ class Claude(Base):
                 max_tokens=4096,
                 model=model or self.model,
                 messages=[{"role": "user", "content": prompt}],
-                extra_body=self.extra_body or None,
+                extra_body=self.request_extra_body(),
             )
         except (BadRequestError, UnprocessableEntityError) as e:
             self.warn_if_extras_refused(e)
@@ -563,7 +576,7 @@ class Claude(Base):
                 system=self.standing_instructions(),
                 temperature=self.temperature,
                 model=self.model,
-                extra_body=self.extra_body or None,
+                extra_body=self.request_extra_body(),
                 **self._cache_kwargs(),
             )
         except APIStatusError as e:

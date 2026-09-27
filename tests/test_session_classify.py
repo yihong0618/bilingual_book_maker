@@ -2,9 +2,14 @@
 
 The contract: an endpoint whose structured-output verdict is below
 `json_object` but which can hold a conversation now *plans* instead of
-dropping to tag mode. It is asked for three verdicts per turn, in one
-append-only session, and every reply is checked verbatim — no fuzzy
-matching, no JSON anywhere.
+dropping to tag mode. It is asked for one comma-separated verdict per
+signature, in one append-only session, and every reply is checked verbatim
+— no fuzzy matching, no JSON anywhere.
+
+How many signatures a turn carries is a ladder, 5 → 3 → 1 → none, walked
+down by the endpoint's own replies: two *consecutive* mis-shaped turns at a
+rung degrade exactly one step. That replaced the two rate breakers the first
+version shipped with, so nothing here counts failure rates any more.
 
 The schema-capable path is not this file's subject and must not move:
 `test_structured_classify.py` and `test_translation_plan.py` pin it, and
@@ -17,23 +22,25 @@ import pytest
 from book_maker.loader.classify import (
     can_session_classify,
     classify_plan,
-    session_classify_engaged,
 )
 from book_maker.loader.classify.model import PlanClassifyFatal
 from book_maker.loader.classify.session import (
     ENGAGE_WARNING,
     EXAMPLE_REPLY,
-    FORMAT_WARNING,
+    FAILS_BEFORE_DEGRADING,
     NAMED_BY_SESSION,
     NAMED_UNANSWERED,
     NAMED_UNSURE,
+    PROGRESS_DESC,
+    RUNGS,
     TRUNK,
-    UNITS_PER_TURN,
     build_example_turn,
     build_trunk,
     classify_over_session,
+    degrade_line,
     parse_verdicts,
     render_turn,
+    stop_line,
     trunk_with_inline_example,
 )
 from book_maker.loader.ledger import Ledger
@@ -121,14 +128,56 @@ def scripted(verdicts, unknown="translate"):
     return reply
 
 
-def _run(signatures, reply, budget=8000):
+def _run(signatures, reply, budget=8000, quiet=True):
     session = FakeSession(reply, budget=budget)
     translator = SessionOnly(session)
+    # the progress bar is a separate subject (TestTheProgressLine); silenced
+    # here so every other test reads a stderr it did not have to filter
+    translator.quiet = quiet
     decisions, candidates = classify_over_session(_ledger_with(signatures), translator)
     return decisions, candidates, session
 
 
 SIX = ["p.a", "p.b", "p.c", "p.d", "p.e", "p.f"]
+
+
+def _many(n):
+    return [f"p.s{i:02d}" for i in range(n)]
+
+
+def _sizes(session):
+    """How many signatures each turn carried, in order."""
+    return [text.count("occurrence(s)") for text in session.asks]
+
+
+class Endpoint:
+    """Answers every turn in the asked shape, except the group turns named.
+
+    `fail_on` holds *group-turn* ordinals, 1-based — the turns the ladder
+    itself asks. The singles a failed 5- or 3-group is recovered with are
+    not group turns and always answer, so a test can name "the second turn
+    failed" without counting the recovery behind the first.
+    """
+
+    def __init__(self, fail_on=(), bad="no idea"):
+        self.fail_on = set(fail_on)
+        self.bad = bad
+        self.groups = 0
+        self.group_sizes = []
+        self._owed_singles = 0
+
+    def __call__(self, text):
+        asked = text.count("occurrence(s)")
+        if self._owed_singles:
+            self._owed_singles -= 1
+            return "skip"
+        self.groups += 1
+        self.group_sizes.append(asked)
+        if self.groups in self.fail_on:
+            if asked > 1:
+                self._owed_singles = asked
+            return self.bad
+        return ",".join(["skip"] * asked)
 
 
 # ------------------------------------------------- 1. the route now plans
@@ -163,24 +212,20 @@ class TestEngaging:
                 return "{}"
 
         assert not can_session_classify(PromptOnly("k", "zh-hans"))
-        assert not session_classify_engaged(PromptOnly("k", "zh-hans"))
 
-    def test_three_units_per_turn(self):
+    def test_the_ladder_opens_at_five_units_per_turn(self):
         _decisions, _candidates, session = _run(
-            SIX, scripted({key_of(s): "translate" for s in SIX})
+            _many(10), scripted({key_of(s): "translate" for s in _many(10)})
         )
-        assert UNITS_PER_TURN == 3
-        assert len(session.asks) == 2
-        for turn in session.asks:
-            assert turn.count("occurrence(s)") == 3
+        assert RUNGS == (5, 3, 1, None)
+        assert _sizes(session) == [5, 5]
 
     def test_a_final_partial_turn_asks_for_that_many_verdicts(self):
-        signatures = SIX[:4]
+        signatures = _many(7)
         _decisions, _candidates, session = _run(
             signatures, scripted({key_of(s): "skip" for s in signatures})
         )
-        assert len(session.asks) == 2
-        assert session.asks[-1].count("occurrence(s)") == 1
+        assert _sizes(session) == [5, 2]
 
 
 class TestTheLedgerTakesWhatComesBack:
@@ -194,18 +239,20 @@ class TestTheLedgerTakesWhatComesBack:
         def reply(text):
             state["turns"] += 1
             if state["turns"] == 1:
-                return "skip,unsure,translate"
-            return "not a verdict"  # the second triple, and its singles
+                return "skip,unsure,translate,skip,translate"
+            # the tail turn carries one signature, so there is no smaller
+            # shape to re-ask it in: it is translated by policy
+            return "not a verdict"
 
         ledger = _ledger_with(SIX)
-        decisions, _candidates = classify_over_session(
-            ledger, SessionOnly(FakeSession(reply))
-        )
+        translator = SessionOnly(FakeSession(reply))
+        translator.quiet = True
+        decisions, _candidates = classify_over_session(ledger, translator)
         for key, (verdict, content_type) in decisions.items():
             ledger.decide(key, verdict, "llm", content_type)
         assert not ledger.undecided_keys()
         assert sorted(row["content_type"] for row in ledger.rows.values()) == sorted(
-            [NAMED_BY_SESSION, NAMED_UNSURE, NAMED_BY_SESSION] + [NAMED_UNANSWERED] * 3
+            [NAMED_BY_SESSION] * 4 + [NAMED_UNSURE, NAMED_UNANSWERED]
         )
 
 
@@ -270,8 +317,47 @@ class TestParser:
         assert parse_verdicts("nope", 1) is None
 
 
+class TestEveryRungHasItsOwnReplyLength:
+    """One shape for all three asking rungs: that many comma-joined verdicts.
+
+    The 5-rung was ruled (260920 amendment) to reuse the 3-rung's form rather
+    than the earlier `content_class,verdict` lines, so there is exactly one
+    parser and exactly one thing the trunk has to teach.
+    """
+
+    @pytest.mark.parametrize(
+        "size, reply, expected",
+        (
+            (
+                5,
+                "skip,translate,unsure,translate,skip",
+                ["skip", "translate", "unsure", "translate", "skip"],
+            ),
+            (3, "skip,translate,unsure", ["skip", "translate", "unsure"]),
+            (1, "translate", ["translate"]),
+        ),
+    )
+    def test_a_group_of_that_size_parses_that_many_verdicts(
+        self, size, reply, expected
+    ):
+        assert parse_verdicts(reply, size) == expected
+
+    @pytest.mark.parametrize("size", (5, 3, 1))
+    def test_the_wrong_number_of_verdicts_is_refused_at_every_rung(self, size):
+        assert parse_verdicts(",".join(["skip"] * (size + 1)), size) is None
+        if size > 1:
+            assert parse_verdicts(",".join(["skip"] * (size - 1)), size) is None
+
+    def test_the_rung_that_is_asked_is_the_rung_that_is_parsed(self):
+        # the sizes the ladder asks at, driven end to end: 5 while the
+        # endpoint holds the format, 3 after one pair of misses, 1 after two
+        endpoint = Endpoint(fail_on={1, 2, 3, 4})
+        _decisions, _candidates, _session = _run(_many(20), endpoint)
+        assert endpoint.group_sizes == [5, 5, 3, 3, 1, 1, 1, 1]
+
+
 class TestMalformedFallsBackToSingles:
-    def _run_with_one_bad_triple(self, bad_reply="I could not decide"):
+    def _run_with_one_bad_group(self, bad_reply="I could not decide"):
         state = {"turns": 0}
 
         def reply(text):
@@ -282,13 +368,12 @@ class TestMalformedFallsBackToSingles:
 
         return _run(SIX[:3], reply)
 
-    def test_a_malformed_triple_is_re_asked_one_unit_at_a_time(self):
-        decisions, candidates, session = self._run_with_one_bad_triple()
-        # the triple, then one turn per unit, all in the same session
-        assert len(session.asks) == 1 + 3
+    def test_a_malformed_group_is_re_asked_one_unit_at_a_time(self):
+        decisions, candidates, session = self._run_with_one_bad_group()
+        # the group, then one turn per unit, all in the same session
+        assert _sizes(session) == [3, 1, 1, 1]
         assert session.starts == [build_trunk()]
         for turn in session.asks[1:]:
-            assert turn.count("occurrence(s)") == 1
             assert turn.startswith("1. ")
         assert {v for v, _ in decisions.values()} == {"skip"}
         assert all(name == NAMED_BY_SESSION for _, name in decisions.values())
@@ -298,9 +383,22 @@ class TestMalformedFallsBackToSingles:
             return "no idea"
 
         decisions, _candidates, session = _run(SIX[:3], reply)
-        assert len(session.asks) == 1 + 3
+        assert _sizes(session) == [3, 1, 1, 1]
         assert {v for v, _ in decisions.values()} == {"translate"}
         assert all(name == NAMED_UNANSWERED for _, name in decisions.values())
+
+    def test_a_failed_single_is_not_re_asked_at_all(self):
+        # at the 1-rung there is no smaller shape, so the signature is
+        # translated by policy rather than bought a second time
+        endpoint = Endpoint(fail_on={1, 2, 3, 4, 5})
+        decisions, _candidates, session = _run(_many(17), endpoint)
+        # 5-group + 5 singles, 5-group + 5 singles, 3-group + 3 singles,
+        # 3-group + 3 singles, then one lone single and nothing after it
+        assert _sizes(session) == (
+            [5] + [1] * 5 + [5] + [1] * 5 + [3] + [1] * 3 + [3] + [1] * 3 + [1]
+        )
+        assert len(decisions) == 17
+        assert decisions[key_of("p.s16")] == ("translate", NAMED_UNANSWERED)
 
 
 # ------------------------------------------------------------- 3. the policy
@@ -406,7 +504,39 @@ class TestAppendOnly:
         trunk = build_trunk()
         for word in ("skip", "translate", "unsure"):
             assert f'"{word}"' in trunk
-        assert "skip,translate,unsure" in trunk
+        # the example the trunk prints and the example the session opens on
+        # are the same five verdicts, so the two cannot teach different forms
+        assert EXAMPLE_REPLY in trunk
+
+    def test_the_trunk_names_no_per_turn_count_it_could_be_contradicted_on(self):
+        """The rung changes mid-session; the history cannot be rewritten.
+
+        So the trunk states the *form* ("one verdict per signature") and the
+        count only inside its own example — which is the top rung's, with the
+        sentence that covers a shorter message right after it.
+        """
+        trunk = build_trunk()
+        assert "a few at a time" in trunk
+        assert "three at a time" not in trunk
+        assert (
+            "When a message lists fewer than five signatures, reply with "
+            "that many verdicts, in the same form." in trunk
+        )
+
+    def test_a_turn_carries_no_count_word_of_its_own(self):
+        # `render_turn` is numbered signatures and nothing else: a count in
+        # it would have to change with the rung inside an append-only history
+        candidate = {
+            "key": "block:p.a",
+            "units": 3,
+            "chars": 300,
+            "pct": 92.9,
+            "mean_chars": 100.0,
+            "samples": ["a sample"],
+        }
+        text = render_turn([candidate, dict(candidate, key="block:p.b")]).lower()
+        for word in ("five", "three", "verdict", "signature"):
+            assert word not in text
 
     def test_the_classifier_session_is_not_the_translation_history(self):
         # `--use_context session` neither enables nor disables this: the
@@ -475,7 +605,7 @@ class TestTheDemonstratedTurn:
     def test_the_example_reply_is_never_a_verdict(self):
         # the assistant turn is text this side wrote; only what the endpoint
         # said is parsed, so a session that answers "skip,skip,skip" decides
-        # three skips and nothing leaks out of "translate,skip,unsure"
+        # three skips and nothing leaks out of the demonstrated five
         translator, session = _openai_session(["skip,skip,skip"])
         decisions, candidates = classify_over_session(
             _ledger_with(SIX[:3]), SessionOnly(session), session=session
@@ -490,7 +620,7 @@ class TestTheDemonstratedTurn:
         # a budget no turn can stay under: every turn opens a fresh session,
         # and a fresh session with no demonstration is a fresh first turn
         translator, session = _openai_session(
-            ["skip,skip,skip", "skip,skip,skip"], compact_at=1
+            ["skip,skip,skip,skip,skip", "skip"], compact_at=1
         )
         classify_over_session(_ledger_with(SIX), SessionOnly(session), session=session)
 
@@ -509,8 +639,8 @@ class TestTheDemonstratedTurn:
         inline = trunk_with_inline_example()
         assert inline.startswith(build_trunk())
         assert build_example_turn() in inline
-        assert "translate,skip,unsure" in inline
-        assert inline.endswith("You reply exactly:\ntranslate,skip,unsure")
+        assert EXAMPLE_REPLY in inline
+        assert inline.endswith(f"You reply exactly:\n{EXAMPLE_REPLY}")
 
         # and the shared trunk is untouched: one source of truth, two shapes
         assert build_example_turn() not in TRUNK
@@ -538,21 +668,30 @@ class TestTheDemonstratedTurn:
         assert build_example_turn() == build_example_turn()
         assert trunk_with_inline_example() == trunk_with_inline_example()
 
-    def test_the_example_is_a_turn_in_the_shape_a_real_turn_has(self):
+    def test_the_example_is_a_turn_in_the_top_rungs_shape(self):
+        # the demonstration is the shape of the turn that follows it: five,
+        # the rung a session opens at
         text = build_example_turn()
         assert text.startswith("1. ")
-        assert text.count("occurrence(s)") == UNITS_PER_TURN
+        assert text.count("occurrence(s)") == RUNGS[0] == 5
         # rendered through render_turn, so it cannot drift from a real turn
         from book_maker.loader.classify.session import EXAMPLE_CANDIDATES
 
         assert text == render_turn(EXAMPLE_CANDIDATES)
 
     def test_the_example_demonstrates_all_three_tokens_and_parses(self):
-        assert parse_verdicts(EXAMPLE_REPLY, UNITS_PER_TURN) == [
+        assert parse_verdicts(EXAMPLE_REPLY, RUNGS[0]) == [
+            "skip",
+            "translate",
+            "unsure",
             "translate",
             "skip",
-            "unsure",
         ]
+        assert set(parse_verdicts(EXAMPLE_REPLY, RUNGS[0])) == {
+            "skip",
+            "translate",
+            "unsure",
+        }
 
     def test_the_example_signatures_are_visibly_synthetic(self):
         # a human reading a transcript must see a demonstration, not wonder
@@ -560,9 +699,11 @@ class TestTheDemonstratedTurn:
         from book_maker.loader.classify.session import EXAMPLE_CANDIDATES
 
         assert [c["key"] for c in EXAMPLE_CANDIDATES] == [
-            "block:p.example-body",
             "block:span.example-folio",
+            "block:p.example-body",
             "inline:abbr.example-ref",
+            "block:h2.example-chapter",
+            "block:p.example-runhead",
         ]
 
 
@@ -658,147 +799,279 @@ class TestRestartAtTheBudget:
         assert translator.classify_session(model="rules-on-the-plan").budget() == 2500
 
 
-# ------------------------------------------------------ 6. circuit breakers
+# ------------------------------------------------------------- 6. the ladder
+#
+# 5 → 3 → 1 → none, walked down by the endpoint's own replies. This section
+# replaced the two rate breakers (`FORMAT_WARNING` and the `stopped` one) and
+# their thresholds: a rate needs a floor of evidence before it means
+# anything, and below that floor the old pair either said nothing while the
+# run ground out three turns per signature, or abandoned a book's
+# classification on one flaky reply.
 
 
-def _many(n):
-    return [f"p.s{i:02d}" for i in range(n)]
+class TestTheLadderDegrades:
+    def test_one_failed_turn_alone_does_not_degrade(self):
+        # a single flaky reply is not evidence about an endpoint; the next
+        # turn is asked at the same rung it was
+        endpoint = Endpoint(fail_on={1})
+        _decisions, _candidates, _session = _run(_many(15), endpoint)
+        assert endpoint.group_sizes == [5, 5, 5]
 
-
-def _singles_answer(text):
-    """Every triple malformed, every single answered."""
-    return "skip" if text.count("occurrence(s)") == 1 else "no idea"
-
-
-class TestCircuitBreakers:
-    def test_repeated_format_misses_warn_once(self, capsys):
-        # 18 signatures = 6 triples, all malformed: the fifth is where the
-        # warning has seen enough to be worth printing
-        decisions, candidates, _session = _run(_many(18), _singles_answer)
+    def test_two_consecutive_failures_degrade_exactly_one_rung(self, capsys):
+        endpoint = Endpoint(fail_on={1, 2})
+        _decisions, _candidates, _session = _run(_many(16), endpoint)
+        # 5, 5, then the rest at 3 — never straight to 1
+        assert endpoint.group_sizes == [5, 5, 3, 3]
+        assert FAILS_BEFORE_DEGRADING == 2
         out = capsys.readouterr().out
-        assert out.count(FORMAT_WARNING) == 1
-        assert len(decisions) == len(candidates) == 18
-        assert {v for v, _ in decisions.values()} == {"skip"}
+        assert out.count(degrade_line(5, 3)) == 1
+        assert degrade_line(3, 1) not in out
 
-    def test_one_bad_triple_out_of_one_says_nothing(self, capsys):
-        # 100% of one triple is not evidence about an endpoint, and a run
-        # that warns on its first flaky reply teaches the operator to ignore
-        # the line
-        decisions, _candidates, _session = _run(SIX[:3], _singles_answer)
-        assert FORMAT_WARNING not in capsys.readouterr().out
-        assert {v for v, _ in decisions.values()} == {"skip"}
-
-    def test_the_warning_waits_for_five_triples(self, capsys):
-        from book_maker.loader.classify.session import MIN_TRIPLES_BEFORE_WARNING
-
-        assert MIN_TRIPLES_BEFORE_WARNING == 5
-        # four triples, all falling back to singles: still under the floor
-        _decisions, _candidates, session = _run(_many(12), _singles_answer)
-        assert len([t for t in session.asks if t.count("occurrence(s)") == 3]) == 4
-        assert FORMAT_WARNING not in capsys.readouterr().out
-
-        # the fifth is what earns it
-        _decisions, _candidates, _session = _run(_many(15), _singles_answer)
-        assert FORMAT_WARNING in capsys.readouterr().out
-
-    def test_the_format_warning_names_the_way_out(self):
-        assert FORMAT_WARNING == (
-            "plan: this endpoint keeps missing the reply format — singles "
-            "cost three times the turns; --plan-classify all skips "
-            "classification"
+    def test_the_degradation_line_is_the_one_the_operator_reads(self):
+        assert degrade_line(5, 3) == (
+            "plan: this endpoint missed the reply format twice at 5 per "
+            "turn; continuing at 3 per turn"
+        )
+        assert degrade_line(3, 1) == (
+            "plan: this endpoint missed the reply format twice at 3 per "
+            "turn; continuing at 1 per turn"
         )
 
-    def test_a_small_book_that_fails_wholesale_stops_at_once(self, capsys):
-        # nine signatures: the floor of 15 units can never be reached, so the
-        # evidence is that nothing asked has been answerable. Grinding
-        # singles through the rest buys three turns per signature and no
-        # verdicts.
-        def reply(text):
-            return "nothing parseable here"
-
-        decisions, candidates, session = _run(_many(9), reply)
-        # the first triple and its three singles; then the breaker trips and
-        # nothing more is bought
-        assert len(session.asks) == 4
-        assert len(decisions) == len(candidates) == 9
-        assert {v for v, _ in decisions.values()} == {"translate"}
-        assert all(name == NAMED_UNANSWERED for _, name in decisions.values())
-        out = capsys.readouterr().out
-        assert "classification stops here" in out
-        assert "the remaining 6 are translated" in out
-
-    def test_a_small_book_that_only_partly_fails_keeps_asking(self, capsys):
-        # the same nine signatures, but the first triple's first single
-        # answers: not "all of them failed", and 15 units are out of reach,
-        # so nothing stops
-        state = {"singles": 0}
-
-        def reply(text):
-            if text.count("occurrence(s)") == 1:
-                state["singles"] += 1
-                return "skip" if state["singles"] == 1 else "no idea"
-            return "no idea"
-
-        decisions, candidates, session = _run(_many(9), reply)
-        out = capsys.readouterr().out
-        assert "classification stops here" not in out
-        assert len(session.asks) == 3 * (1 + 3)
-        assert len(decisions) == len(candidates) == 9
-
-    def test_a_big_book_waits_for_fifteen_units(self, capsys):
-        from book_maker.loader.classify.session import MIN_UNITS_BEFORE_STOPPING
-
-        assert MIN_UNITS_BEFORE_STOPPING == 15
-
-        def reply(text):
-            return "nothing parseable here"
-
-        # 18 signatures: 15 units is reached at the end of the fifth triple,
-        # which is where the asking stops — four triples' worth of grinding
-        # was bought first, on purpose
-        decisions, candidates, session = _run(_many(18), reply)
-        assert len(session.asks) == 5 * (1 + 3)
-        assert len(decisions) == len(candidates) == 18
-        out = capsys.readouterr().out
-        assert "could not answer 15 of 15 signature(s)" in out
-        assert "the remaining 3 are translated" in out
-
-    def test_a_working_endpoint_trips_neither(self, capsys):
-        decisions, _candidates, _session = _run(
-            SIX, scripted({key_of(s): "skip" for s in SIX})
+    def test_the_last_step_says_classification_is_over(self):
+        assert stop_line(7) == (
+            "plan: this endpoint missed the reply format twice even one at "
+            "a time; classification stops here and the remaining 7 "
+            "signature(s) are translated"
         )
+
+    def test_the_last_step_with_nothing_left_names_no_remainder(self):
+        # PIN (lead, 260920): "the remaining 0 signature(s)" is not a sentence
+        # an operator should read; the clause is dropped when nothing remains.
+        assert stop_line(0) == (
+            "plan: this endpoint missed the reply format twice even one at "
+            "a time; classification stops here"
+        )
+
+    def test_a_success_between_two_failures_resets_the_counter(self):
+        # fail, success, fail: the two misses are not consecutive, so
+        # nothing degrades — this is the difference between a ladder and a
+        # failure count
+        endpoint = Endpoint(fail_on={1, 3})
+        _decisions, _candidates, _session = _run(_many(25), endpoint)
+        assert endpoint.group_sizes == [5] * 5
+
+    def test_a_fail_pair_is_spent_once(self, capsys):
+        # the pair that degraded 5→3 must not also count toward 3→1: the
+        # counter resets on the degradation, so the next step needs two
+        # fresh misses
+        # 22 = 5 + 5 + 3 + 3 + 3 + 3, so no turn is short of its rung
+        endpoint = Endpoint(fail_on={1, 2, 3})
+        _decisions, _candidates, _session = _run(_many(22), endpoint)
+        assert endpoint.group_sizes == [5, 5, 3, 3, 3, 3]
         out = capsys.readouterr().out
-        assert FORMAT_WARNING not in out
-        assert "classification stops here" not in out
-        assert len(decisions) == 6
+        assert degrade_line(5, 3) in out
+        assert degrade_line(3, 1) not in out
 
-    def test_an_occasional_miss_does_not_stop_anything(self, capsys):
-        # one bad triple in six, recovered by singles: under both thresholds
-        # by unit count, so the run keeps asking
-        eighteen = _many(18)
-        state = {"turns": 0}
-
-        def reply(text):
-            state["turns"] += 1
-            if state["turns"] == 4:
-                return "hmm"
-            asked = text.count("occurrence(s)")
-            return ",".join(["skip"] * asked)
-
-        decisions, candidates, session = _run(eighteen, reply)
+    def test_reaching_the_floor_takes_three_separate_pairs(self, capsys):
+        endpoint = Endpoint(fail_on={1, 2, 3, 4, 5, 6})
+        decisions, candidates, _session = _run(_many(20), endpoint)
+        assert endpoint.group_sizes == [5, 5, 3, 3, 1, 1]
         out = capsys.readouterr().out
-        assert "classification stops here" not in out
-        assert len(decisions) == len(candidates) == 18
+        assert degrade_line(5, 3) in out
+        assert degrade_line(3, 1) in out
+        # 20 - (5 + 5 + 3 + 3 + 1 + 1) = 2 never asked about
+        assert stop_line(2) in out
+        assert len(decisions) == len(candidates) == 20
+
+    def test_nothing_is_asked_after_the_floor(self):
+        endpoint = Endpoint(fail_on={1, 2, 3, 4, 5, 6})
+        decisions, _candidates, session = _run(_many(20), endpoint)
+        # the last turn is the sixth group turn; the two signatures left are
+        # decided without buying anything
+        assert endpoint.groups == 6
+        assert _sizes(session)[-1] == 1
+        for key in ("p.s18", "p.s19"):
+            assert decisions[key_of(key)] == ("translate", NAMED_UNANSWERED)
+
+    def test_the_rest_of_the_book_is_translated_by_policy_at_the_floor(self):
+        # the `--plan-classify all` outcome, reached because the endpoint
+        # could not answer rather than chosen: every row still comes back
+        # decided, and none of them comes back a skip
+        endpoint = Endpoint(fail_on=range(1, 20))
+        decisions, candidates, _session = _run(_many(30), endpoint)
+        assert len(decisions) == len(candidates) == 30
+        floor_rows = [decisions[key_of(f"p.s{i:02d}")] for i in range(18, 30)]
+        assert floor_rows == [("translate", NAMED_UNANSWERED)] * 12
+
+    def test_there_is_no_re_promotion(self):
+        # once degraded, a run of successes does not buy the rung back: an
+        # endpoint that lost the format at five is not asked to prove it
+        # again at the price of two more misses
+        endpoint = Endpoint(fail_on={1, 2})
+        _decisions, _candidates, _session = _run(_many(40), endpoint)
+        assert endpoint.group_sizes == [5, 5] + [3] * 10
+
+    def test_a_working_endpoint_never_leaves_the_top_rung(self, capsys):
+        endpoint = Endpoint()
+        decisions, candidates, _session = _run(_many(20), endpoint)
+        assert endpoint.group_sizes == [5, 5, 5, 5]
+        out = capsys.readouterr().out
+        assert "missed the reply format" not in out
+        assert len(decisions) == len(candidates) == 20
         assert {v for v, _ in decisions.values()} == {"skip"}
 
-    def test_plan_mode_survives_both(self):
-        # neither breaker raises: every row comes back decided, so the caller
+    def test_plan_mode_survives_the_whole_ladder(self):
+        # nothing here raises: every row comes back decided, so the caller
         # writes a plan and translates rather than stopping
         def reply(text):
             return "not a verdict"
 
         decisions, candidates, _session = _run(_many(18), reply)
         assert set(decisions) == {c["key"] for c in candidates}
+
+    def test_the_old_rate_breakers_are_gone(self):
+        # they are replaced, not merely unused: a module still exporting
+        # them would let a later change re-wire one in beside the ladder
+        import book_maker.loader.classify.session as mod
+
+        for name in (
+            "FORMAT_WARNING",
+            "FAILURE_RATE",
+            "MIN_TRIPLES_BEFORE_WARNING",
+            "MIN_UNITS_BEFORE_STOPPING",
+            "_enough_to_stop",
+            "UNITS_PER_TURN",
+        ):
+            assert not hasattr(mod, name), name
+
+
+# ------------------------------------------------------- 6b. the progress line
+
+
+class TestTheProgressLine:
+    """`Classifying epub tags 12/49...`, rewritten in place.
+
+    Classification runs before the first paragraph, so until this line
+    existed a slow endpoint asking a book's worth of questions was
+    indistinguishable from a stall.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_leftover_bars(self):
+        # tqdm stacks a new bar under any bar still alive in the process, with
+        # an extra newline and a cursor-up. Earlier tests that interrupt a
+        # loader run leave theirs in unreachable cycles (tqdm keeps only weak
+        # references), and in the full suite that shifted this bar down a row
+        # (port 260923: failed 1-in-suite, passed alone, on the source branch
+        # too). Collect them first; the assertions are about this bar alone.
+        import gc
+
+        gc.collect()
+
+    def test_it_counts_signatures_decided_against_candidates(self, capsys):
+        _decisions, _candidates, _session = _run(_many(12), Endpoint(), quiet=False)
+        err = capsys.readouterr().err
+        assert f"{PROGRESS_DESC} 0/12..." in err
+        assert f"{PROGRESS_DESC} 12/12..." in err
+
+    def test_it_is_rewritten_in_place_rather_than_line_by_line(self, capsys):
+        _decisions, _candidates, _session = _run(_many(12), Endpoint(), quiet=False)
+        err = capsys.readouterr().err
+        # carriage returns, and at most the one newline the bar closes with
+        assert "\r" in err
+        assert err.count("\n") <= 1
+
+    def test_the_rows_the_floor_defaults_still_count_as_done(self, capsys):
+        # the bar must reach total even when the last signatures were never
+        # asked about, or a run that degraded to the floor looks unfinished
+        _decisions, _candidates, _session = _run(
+            _many(20), Endpoint(fail_on=range(1, 20)), quiet=False
+        )
+        assert f"{PROGRESS_DESC} 20/20..." in capsys.readouterr().err
+
+    def test_quiet_silences_it(self, capsys):
+        # `--quiet` reaches this code on the translator, where the CLI sets
+        # it — no flag of this module's own
+        _decisions, _candidates, _session = _run(_many(12), Endpoint(), quiet=True)
+        captured = capsys.readouterr()
+        assert PROGRESS_DESC not in captured.err
+        assert PROGRESS_DESC not in captured.out
+        # and the rest of the plan narration is not silenced with it
+        assert ENGAGE_WARNING in captured.out
+
+
+# ---------------------------------------------------------------- 6c. metering
+
+
+class _FakeUsage:
+    def __init__(self, prompt, completion):
+        self.prompt_tokens = prompt
+        self.completion_tokens = completion
+        self.prompt_tokens_details = None
+
+
+class _FakeCompletion:
+    def __init__(self, text, prompt, completion):
+        self.usage = _FakeUsage(prompt, completion)
+        message = type("M", (), {"content": text, "refusal": None})()
+        self.choices = [type("C", (), {"message": message})()]
+
+
+def _metered_openai(reply, prompt=120, completion=7):
+    """A real ChatGPTAPI with a real `UsageMeter` and a stubbed transport.
+
+    Everything between `classify_over_session` and the meter is the shipped
+    code: `ClassifierSession.ask` -> `_classify_turn` -> `_note_usage`.
+    """
+    from book_maker.translator.base_translator import UsageMeter
+    from book_maker.translator.chatgptapi_translator import ChatGPTAPI
+
+    translator = ChatGPTAPI.__new__(ChatGPTAPI)
+    translator.model = "gpt-fake"
+    translator.context_compact_at = 8000
+    translator.extra_body = {}
+    translator.usage = UsageMeter()
+    translator.quiet = True
+    translator._request = lambda call, model=None: _FakeCompletion(
+        reply, prompt, completion
+    )
+    return translator
+
+
+class TestClassificationIsMetered:
+    """Classifier turns are paid context, billed to the translation meter.
+
+    They were invisible on the progress bar and in the closing summary, so a
+    book whose classification cost more than a chapter of translation showed
+    nothing at all.
+    """
+
+    def test_every_turn_lands_in_the_same_counter_translation_uses(self):
+        translator = _metered_openai("skip,skip,skip,skip,skip")
+        decisions, candidates = classify_over_session(
+            _ledger_with(_many(10)), translator
+        )
+        assert len(decisions) == len(candidates) == 10
+        # two turns of five, and the meter grew by exactly their usage
+        assert translator.usage.requests == 2
+        assert translator.usage.prompt == 2 * 120
+        assert translator.usage.completion == 2 * 7
+
+    def test_the_singles_a_failure_is_recovered_with_are_billed_too(self):
+        # the expensive case: one mis-shaped reply buys five more requests,
+        # and that is precisely what the operator needs to see
+        translator = _metered_openai("not a verdict")
+        classify_over_session(_ledger_with(_many(5)), translator)
+        # the group, then one single per signature
+        assert translator.usage.requests == 1 + 5
+        assert translator.usage.prompt == 6 * 120
+
+    def test_it_is_the_meter_the_progress_bar_and_the_summary_read(self):
+        translator = _metered_openai("skip,skip,skip,skip,skip")
+        assert translator.usage_summary() is None
+        classify_over_session(_ledger_with(_many(5)), translator)
+        assert translator.usage_postfix() is not None
+        assert translator.usage_summary() is not None
 
 
 class TestTransportFailuresAreTerminal:
@@ -843,25 +1116,12 @@ class TestSchemaCapableRoutesAreUntouched:
 
         session = FakeSession(reply)
         translator = SchemaCapable(session, verdict)
-        assert not session_classify_engaged(translator)
 
         decisions, _candidates = classify_plan(_ledger_with(SIX), translator)
         assert translator.asked_json
         assert translator.sessions_opened == 0
         assert not session.starts
         assert {v for v, _ in decisions.values()} == {"translate"}
-
-    @pytest.mark.parametrize("verdict", [False, "unsupported", "request rejected: 400"])
-    def test_anything_below_it_engages_the_session(self, verdict):
-        translator = SchemaCapable(FakeSession(lambda text: "skip"), verdict)
-        assert session_classify_engaged(translator)
-
-    def test_a_probe_that_raises_is_not_a_verdict(self):
-        class Broken(SchemaCapable):
-            def _probe_verdict(self, model=None):
-                raise RuntimeError("no route to host")
-
-        assert session_classify_engaged(Broken(FakeSession(lambda text: "skip")))
 
 
 class TestMTRoutesAreUntouched:
@@ -871,7 +1131,6 @@ class TestMTRoutesAreUntouched:
 
         translator = FORMAT_DICT[route].__new__(FORMAT_DICT[route])
         assert not can_session_classify(translator)
-        assert not session_classify_engaged(translator)
 
     def test_the_classifier_still_refuses_them_loudly(self):
         from book_maker.loader.classify.model import PlanClassifyError

@@ -19,12 +19,15 @@ from openai import (
     LengthFinishReasonError,
     OpenAI,
     RateLimitError,
+    UnprocessableEntityError,
 )
 from pydantic import ConfigDict, Field, ValidationError, create_model
 from rich import print
 from rich.markup import escape
 from tenacity import (
+    Retrying,
     retry,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
     retry_if_exception_type,
@@ -38,6 +41,7 @@ from .base_translator import (
     TranslationContext,
     TranslationResult,
 )
+from . import reasoning
 from .capabilities import (
     ENTRY_RUNG,
     RUNG_REFUSAL_ERRORS,
@@ -47,8 +51,21 @@ from .capabilities import (
     StructuredRefusal,
     classify_bad_request,
     describe_listing,
+    probe_model_route,
     probe_structured_output,
     verify_model_routes,
+)
+from .reasoning import NO_THINKING_FIELDS
+from .vision import (
+    VISION_REQUEST_PARAMS,
+    QuestionTimedOut,
+    VisionRequestFailed,
+    image_part,
+    names_image_refusal,
+    parts_with_schema,
+    probe_image,
+    refused_optional_param,
+    text_part,
 )
 from ..redaction import redact, remember
 from ..structured import (
@@ -328,9 +345,10 @@ class ClassifierSession:
     The same prefix discipline `session_context` keeps for translation, for
     the same reason: every turn is the previous request plus its reply plus
     the new signatures, so an endpoint with prompt caching re-reads the
-    trunk at its cache rate instead of buying it again three signatures at
-    a time. Nothing already sent is ever rewritten — the classifier
-    restarts a session rather than editing one.
+    trunk at its cache rate instead of buying it again a rung's worth of
+    signatures at a time. Nothing already sent is ever rewritten — the
+    classifier restarts a session rather than editing one, and it changes
+    rung by asking a smaller turn, never by rewriting the trunk above it.
 
     Kept apart from `self.session`, which is the *translation* history:
     `--use_context` decides whether that exists, and this one is planning
@@ -427,6 +445,10 @@ class ChatGPTAPI(Base):
     handoff_path = None
     context_compact_at = None
     no_context_compact = False
+    # Where this run's requests go. Set in __init__; class-level too, so an
+    # instance built without it (a subclass, a test double) still answers the
+    # one question `--no-thinking` asks of it — which endpoint is this?
+    api_base = None
     # Every model --model_list rotates through, not just the current one.
     _model_names = ()
     # Models not yet confirmed served, and the refusal if one was. One dict,
@@ -576,7 +598,12 @@ class ChatGPTAPI(Base):
             state["pending"] = None
 
             result = verify_model_routes(
-                self.openai_client, pending, extra_body=self.extra_body or None
+                self.openai_client,
+                pending,
+                extra_body=self.request_extra_body(),
+                # `--no-thinking` settles its spelling here, on the cheapest
+                # request of the run, rather than on a paid translate call.
+                probe=self._route_probe,
             )
             if not result["success"]:
                 listed = result["api_models"]
@@ -613,8 +640,11 @@ class ChatGPTAPI(Base):
         return self.capabilities.ensure_verdict(model, probe)
 
     def _probe(self, model):
+        # Not wrapped in `_negotiating`: this probe answers a rejection with a
+        # verdict string rather than an exception, and the route probe above
+        # has already settled the spelling by the time it runs.
         return probe_structured_output(
-            self.openai_client, model, extra_body=self.extra_body or None
+            self.openai_client, model, extra_body=self.request_extra_body(model)
         )
 
     def _ensure_structured_support(self, model=None):
@@ -682,16 +712,24 @@ class ChatGPTAPI(Base):
 
     def _completion_text(self, model, content, **kwargs):
         """One single-turn request, with shape refusals marked as such."""
-        try:
-            # Every rung and the schema probe come through here, so this is
-            # where --extra_body reaches them. `setdefault`: a caller that
-            # already built one owns it.
-            kwargs.setdefault("extra_body", self.extra_body or None)
-            completion = self.openai_client.chat.completions.create(
+        # Every rung and the schema probe come through here, so this is where
+        # --extra_body and the --no-thinking control reach them. A caller that
+        # built its own body owns it; everyone else gets a fresh one per
+        # attempt, which is how a renegotiated spelling reaches the retry.
+        owned = "extra_body" in kwargs
+
+        def attempt():
+            call = dict(kwargs)
+            if not owned:
+                call["extra_body"] = self.request_extra_body(model)
+            return self.openai_client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": content}],
-                **kwargs,
+                **call,
             )
+
+        try:
+            completion = self._negotiating(attempt, model=model)
         except RUNG_REFUSAL_ERRORS as e:
             self.warn_if_extras_refused(e)
             raise RungRejected(e) from e
@@ -721,6 +759,208 @@ class ChatGPTAPI(Base):
     def _chat_completion(self, prompt, model=None):
         return self._completion_text(model or self.model, prompt)
 
+    # ---- image evidence ---------------------------------------------------
+
+    def vision_verdict(self, model=None):
+        """Whether `model` reads images here: 'verified', 'unsupported', 'deferred'.
+
+        Its own probe and its own ledger entry, never the schema verdict's.
+        A subclass that does not route through `self.openai_client` is not
+        probed and answers 'unsupported'.
+        """
+        self._ensure_models_routable()
+        model = model or self.model
+        probe = self._probe_vision if self.SUPPORTS_STRUCTURED_OUTPUTS else None
+        return self.capabilities.ensure_vision(model, probe)
+
+    def _probe_vision(self, model):
+        # Graded on the request the run will make, --no-thinking control
+        # included (probe_image lets a 400 about any other field propagate,
+        # so a refused spelling reaches `_negotiating`, not the verdict).
+        return self._negotiating(
+            lambda: probe_image(
+                self.openai_client,
+                model,
+                extra_body=self.request_extra_body(model),
+                on_usage=lambda completion: self._note_usage(completion, model),
+            ),
+            model=model,
+        )
+
+    def structured_json_with_image(
+        self, prompt, schema, image_png, model=None, accept=None, deadline=None
+    ):
+        """`structured_json` with a PNG shown beside the prompt.
+
+        The same ladder, entered where the schema verdict says; the evidence
+        never changes while it descends: every rung sends the one image part,
+        and the lower rungs add the described schema as another text part.
+        Whether the model reads images at all is the caller's question
+        (`vision_verdict`), asked before this.
+
+        Raises `VisionRequestFailed` when the endpoint refuses the image,
+        without counting it against any rung or the schema verdict.
+
+        `deadline` (a `time.monotonic()` value) bounds the waiting: weather
+        is retried without an attempt cap until then, and the last
+        transport error is raised once it has passed. None waits as the
+        translate path does.
+        """
+        entry = ENTRY_RUNG.get(self._probe_verdict(model), "prompt")
+        target = model or self.model
+        parts = [text_part(prompt), image_part(image_png)]
+
+        def ask(content, **kwargs):
+            text = self._vision_completion_text(
+                target, content, deadline=deadline, **kwargs
+            )
+            return unwrap_schema_echo(
+                extract_json_object(text, schema_required_keys(schema))
+            )
+
+        described = parts_with_schema(parts, schema)
+        ladder = [
+            (
+                "json_schema",
+                lambda: ask(
+                    parts,
+                    response_format={"type": "json_schema", "json_schema": schema},
+                ),
+            ),
+            (
+                "json_object",
+                lambda: ask(described, response_format={"type": "json_object"}),
+            ),
+            ("prompt", lambda: ask(described)),
+        ]
+        start = next(i for i, (name, _) in enumerate(ladder) if name == entry)
+        return self._descend(ladder[start:], target, accept)
+
+    def _vision_completion_text(self, model, parts, *, deadline=None, **kwargs):
+        """One image request: patient on weather, image refusals kept apart.
+
+        A 400 naming an optional field is asked again without it (and the
+        field is not sent to this model again); one naming the image raises
+        `VisionRequestFailed`; one about the schema, or anything else, is a
+        rung refusal exactly as `_completion_text` makes it. `deadline` is
+        `_patiently`'s, and bounds the request in flight too: each attempt
+        is sent with the seconds left as its timeout (at least one) and
+        without the SDK's own retries, so a stalled call ends at the
+        deadline as a timeout rather than running on past it. The two
+        retries this loop makes itself (a refused optional field dropped, a
+        refused `--no-thinking` spelling advanced) are bounded the same way:
+        past the deadline they raise `QuestionTimedOut` instead of sending.
+        """
+        # As in `_completion_text`: a caller that built its own body owns it;
+        # otherwise the body (and so the --no-thinking spelling) is read
+        # fresh on every attempt, and a refusal of that spelling moves the
+        # ladder on and asks again.
+        owned = "extra_body" in kwargs
+        messages = [{"role": "user", "content": parts}]
+        client = self.openai_client
+        if deadline is not None and hasattr(client, "with_options"):
+            client = client.with_options(max_retries=0)
+
+        def send(optional, call):
+            bounded = {}
+            if deadline is not None:
+                bounded["timeout"] = max(1.0, deadline - time.monotonic())
+            return client.chat.completions.create(
+                model=model, messages=messages, **optional, **call, **bounded
+            )
+
+        def out_of_time(error, what):
+            if deadline is None or time.monotonic() < deadline:
+                return
+            raise QuestionTimedOut(
+                f"'{model}' refused {what} on an image request and the "
+                f"question's deadline had passed before it could be asked "
+                f"again: {redact(error)}"
+            ) from error
+
+        while True:
+            unsent = self.capabilities.vision_unsent.get(model, set())
+            optional = {
+                k: v for k, v in VISION_REQUEST_PARAMS.items() if k not in unsent
+            }
+            call = dict(kwargs)
+            if not owned:
+                call["extra_body"] = self.request_extra_body(model)
+                if call["extra_body"] and self._no_thinking_control(model):
+                    # The flag asked for no reasoning; the convenience
+                    # effort setting would be a second instruction about it.
+                    optional.pop("reasoning_effort", None)
+            try:
+                completion = self._patiently(
+                    lambda: send(optional, call), deadline=deadline
+                )
+            except RUNG_REFUSAL_ERRORS as e:
+                if (
+                    not owned
+                    and self._no_thinking_control(model)
+                    and reasoning.CONTROLS.rejected(self.api_base, model, e)
+                ):
+                    out_of_time(e, "the reasoning field")
+                    continue
+                field = refused_optional_param(e, optional)
+                if field is not None:
+                    with self.capabilities.lock:
+                        self.capabilities.vision_unsent.setdefault(model, set()).add(
+                            field
+                        )
+                    print(
+                        f"[yellow]ℹ '{model}' refused {field} on an image "
+                        f"request; asking without it[/yellow]"
+                    )
+                    out_of_time(e, field)
+                    continue
+                if classify_bad_request(e) != "schema" and names_image_refusal(e):
+                    raise VisionRequestFailed(
+                        f"'{model}' refused the image: {redact(e)}"
+                    ) from e
+                self.warn_if_extras_refused(e)
+                raise RungRejected(e) from e
+            self._note_usage(completion, model)
+            return completion.choices[0].message.content
+
+    @staticmethod
+    def _patiently(call, deadline=None):
+        """`call()`, waited out on weather exactly as the translate path is.
+
+        The loader's `translate_with_backoff` rules (owner ruling 260907, in
+        book_maker/loader/helper.py): no attempt cap, waits growing to
+        RETRY_WAIT_CAP, a line per retry, and only the fatal errors (auth, a
+        400, no such model) propagate at once. Imported here rather than at
+        module level: the loader package imports the translators.
+
+        `deadline`, a `time.monotonic()` value, is the one bound: no wait
+        runs past it, and the first failure at or after it is raised as it
+        is -- a caller with a budget gets its question back, still without
+        an attempt cap.
+        """
+        from ..loader.helper import RETRY_WAIT_CAP, _is_retryable, _say_retrying
+
+        backoff = wait_exponential(multiplier=1, min=1, max=RETRY_WAIT_CAP)
+
+        def wait(state):
+            pause = backoff(state)
+            if deadline is None:
+                return pause
+            return max(0.0, min(pause, deadline - time.monotonic()))
+
+        def stop(state):
+            return deadline is not None and time.monotonic() >= deadline
+
+        for attempt in Retrying(
+            retry=retry_if_exception(_is_retryable),
+            wait=wait,
+            stop=stop,
+            before_sleep=_say_retrying,
+            reraise=True,
+        ):
+            with attempt:
+                return call()
+
     def classify_session(self, model=None):
         """See `Base.classify_session`. One conversation, held in messages."""
         return ClassifierSession(self, model)
@@ -736,13 +976,69 @@ class ChatGPTAPI(Base):
             lambda sampling: self.openai_client.chat.completions.create(
                 model=model,
                 messages=messages,
-                extra_body=self.extra_body if self.extra_body else None,
+                extra_body=self.request_extra_body(),
                 **sampling,
             ),
             model=model,
         )
         self._note_usage(completion, model)
         return completion.choices[0].message.content or ""
+
+    # ---- --no-thinking ----------------------------------------------------
+
+    def _no_thinking_control(self, model=None):
+        """The reasoning-off field this route is currently sending, if any.
+
+        Empty when the flag is off, when the ladder has run out (the run was
+        told once, and carries on without one), and when `--extra_body`
+        already names a field the ladder writes: the operator said what to
+        send, and a flag quietly sending something else alongside it would be
+        two instructions about reasoning in one request.
+        """
+        if not self.no_thinking or NO_THINKING_FIELDS & set(self.extra_body):
+            return {}
+        return reasoning.CONTROLS.control(self.api_base, model or self.model)
+
+    def request_extra_body(self, model=None):
+        """See `Base.request_extra_body`. `--extra_body` wins the merge."""
+        return {**self._no_thinking_control(model), **self.extra_body} or None
+
+    def _negotiating(self, call, model=None):
+        """Run `call`, moving on when the endpoint rejects the field just sent.
+
+        The one loop the flag needs. Every request this route makes carries
+        the control, so any of them can be the one that finds out the
+        spelling is wrong; `call` re-reads `request_extra_body()` each time
+        round, so it sends the new spelling without knowing there was an old
+        one. Anything that is not this endpoint rejecting this field — an
+        unrelated 400, a refused schema, a rate limit — leaves the loop
+        untouched and propagates, which is the whole safety property.
+        """
+        if not self._no_thinking_control(model):
+            return call()
+        endpoint, model = self.api_base, model or self.model
+        while True:
+            try:
+                return call()
+            except (BadRequestError, UnprocessableEntityError) as e:
+                if not reasoning.CONTROLS.rejected(endpoint, model, e):
+                    raise
+
+    def _route_probe(self, client, model, extra_body=None):
+        """The route probe, with the `--no-thinking` spelling settled on it.
+
+        This is the first request a paid run makes, so it is where the
+        negotiation belongs: by the time the schema probe grades an answer,
+        the shape of the run's requests is known, and the verdict is about
+        the endpoint rather than about a field it was going to refuse anyway.
+        `extra_body` is ignored in favour of a fresh one per attempt.
+        """
+        return self._negotiating(
+            lambda: probe_model_route(
+                client, model, extra_body=self.request_extra_body(model)
+            ),
+            model=model,
+        )
 
     def set_request_extras(self, extra_body=None, extra_headers=None):
         """See `Base.set_request_extras`.
@@ -935,17 +1231,31 @@ class ChatGPTAPI(Base):
             return await client.chat.completions.create(
                 model=model,
                 messages=messages,
-                extra_body=self.extra_body if self.extra_body else None,
+                extra_body=self.request_extra_body(model),
                 **sampling,
             )
 
-        try:
-            completion = await create(self._sampling_kwargs(model))
-        except BadRequestError as e:
-            if classify_bad_request(e) != "temperature":
-                raise
-            self._note_temperature_rejected(model)
-            completion = await create({})
+        async def attempt():
+            try:
+                return await create(self._sampling_kwargs(model))
+            except BadRequestError as e:
+                if classify_bad_request(e) != "temperature":
+                    raise
+                self._note_temperature_rejected(model)
+                return await create({})
+
+        # The synchronous `_negotiating` in await form; the parallel path
+        # cannot borrow it, and a worker that never learned the spelling
+        # would refuse every chapter it was given.
+        while True:
+            try:
+                completion = await attempt()
+                break
+            except (BadRequestError, UnprocessableEntityError) as e:
+                if not self._no_thinking_control(model):
+                    raise
+                if not reasoning.CONTROLS.rejected(self.api_base, model, e):
+                    raise
 
         self._note_usage(completion, model)
         translated = completion.choices[0].message.content or ""
@@ -973,8 +1283,18 @@ class ChatGPTAPI(Base):
             )
 
     def _request(self, call, model=None):
-        """Issue an API call, retrying once without temperature if refused."""
+        """Issue an API call, retrying once without temperature if refused.
+
+        Also the door every paid request on this route goes through, so it is
+        where `--no-thinking` negotiates its spelling for the translate
+        calls, the batch rungs and the compact turn.
+        """
         model = model or self.model
+        return self._negotiating(
+            lambda: self._temperature_tolerant(call, model), model=model
+        )
+
+    def _temperature_tolerant(self, call, model):
         try:
             return call(self._sampling_kwargs(model))
         except BadRequestError as e:
@@ -991,7 +1311,7 @@ class ChatGPTAPI(Base):
             lambda sampling: self.openai_client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                extra_body=self.extra_body if self.extra_body else None,
+                extra_body=self.request_extra_body(),
                 **sampling,
             )
         )
@@ -1015,7 +1335,7 @@ class ChatGPTAPI(Base):
                     response_format=single_translation_model(
                         self.language, field_language=self.language_field_tag
                     ),
-                    extra_body=self.extra_body if self.extra_body else None,
+                    extra_body=self.request_extra_body(),
                     **sampling,
                 )
             )
@@ -1098,7 +1418,7 @@ class ChatGPTAPI(Base):
             return self.openai_client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                extra_body=self.extra_body if self.extra_body else None,
+                extra_body=self.request_extra_body(),
                 **cap,
                 **sampling,
             )
@@ -1542,7 +1862,7 @@ class ChatGPTAPI(Base):
                         self.source_language,
                         self.language_field_tag,
                     ),
-                    extra_body=self.extra_body if self.extra_body else None,
+                    extra_body=self.request_extra_body(),
                     **sampling,
                 )
             )
@@ -1590,7 +1910,7 @@ class ChatGPTAPI(Base):
                     model=self.model,
                     messages=messages,
                     response_format={"type": "json_object"},
-                    extra_body=self.extra_body if self.extra_body else None,
+                    extra_body=self.request_extra_body(),
                     **sampling,
                 )
             )

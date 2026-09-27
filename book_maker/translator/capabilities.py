@@ -413,7 +413,7 @@ def describe_listing(api_models, limit=LISTING_HINT_LIMIT):
     return f"{names[:limit]} and {len(names) - limit} more"
 
 
-def verify_model_routes(client, model_list, extra_body=None):
+def verify_model_routes(client, model_list, extra_body=None, probe=None):
     """Which of `model_list` this endpoint actually serves, in the order given.
 
     One route probe per model. A model that answers is usable; a model the
@@ -423,13 +423,18 @@ def verify_model_routes(client, model_list, extra_body=None):
 
     Returns success plus the split, in the order the caller asked for, so
     rotation order stays the order the user typed.
+
+    `probe` replaces `probe_model_route` for a caller that has something to
+    settle on this request — `--no-thinking` negotiates its field here,
+    because this is the cheapest request the run makes.
     """
+    probe = probe or probe_model_route
     model_list = list(model_list)
     # silent when every model answers: only a refusal is news
     available, unavailable = [], []
     for model_name in model_list:
         try:
-            probe_model_route(client, model_name, extra_body=extra_body)
+            probe(client, model_name, extra_body=extra_body)
         except ModelUnavailable as e:
             print(f"[red]{redact(e)}[/red]")
             unavailable.append(model_name)
@@ -499,6 +504,13 @@ class CapabilityLedger:
         # postponed by an outage (tracked only to keep the log to one line).
         self.failures = {}
         self.deferred = set()
+        # Image support, a separate question: "verified" | "unsupported".
+        # Its own dict and no streak — a schema demotion says nothing about
+        # images, and an image refusal never touches `verdicts`.
+        self.vision = {}
+        # Optional image-request fields (`vision.VISION_REQUEST_PARAMS`) a
+        # model refused once, so later requests stop sending them.
+        self.vision_unsent = {}
 
     def ensure_verdict(self, model, probe=None):
         """The model's graded schema support, probed at most once.
@@ -517,6 +529,33 @@ class CapabilityLedger:
                     except ProbeDeferred as e:
                         self.defer(model, e)
             return self.verdicts.get(model, False)
+
+    def ensure_vision(self, model, probe=None):
+        """Whether the model reads images here: 'verified', 'unsupported', 'deferred'.
+
+        Probed at most once per model, under the same lock as the schema
+        verdict so parallel workers issue one probe. `probe` takes the model
+        name (`vision.probe_image` bound to a client); None records
+        'unsupported' without a request. An outage records nothing and
+        answers 'deferred', so the next call asks again.
+        """
+        with self.lock:
+            if model not in self.vision:
+                if probe is None:
+                    self.vision[model] = "unsupported"
+                else:
+                    try:
+                        verdict = probe(model)
+                    except ProbeDeferred as e:
+                        print(
+                            f"[yellow]ℹ could not ask '{model}' about images "
+                            f"right now ({e}); asking again next time[/yellow]"
+                        )
+                        return "deferred"
+                    self.vision[model] = (
+                        "verified" if verdict == "verified" else "unsupported"
+                    )
+            return self.vision[model]
 
     def record(self, model, verdict):
         """Store the verdict string; False means no schema support at all."""

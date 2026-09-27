@@ -391,6 +391,10 @@ class EPUBBookLoader(BaseBookLoader):
         # not rule out, so "none" inside plan mode is refused, not defaulted.
         self.plan_classify = "none"
         self.plan_classify_model = None  # user-chosen classifier; failure blocks
+        # The run's `Classifier` (book_maker/classifier.py) when the CLI
+        # resolved one (`--classify-model`, the provider's classify_model);
+        # None asks the translating model, as plan mode always did.
+        self.classify_translator = None
         self._plan_css = None
         self._plan_overrides = None
         self._plan_partitions = {}  # file_name -> (soup, FilePlan), see _plan_partition
@@ -1885,7 +1889,7 @@ class EPUBBookLoader(BaseBookLoader):
         try:
             decisions, _candidates = classify_plan(
                 ledger,
-                self.translate_model,
+                self.classify_translator or self.translate_model,
                 model=self.plan_classify_model,
             )
         except PlanUnresolvedError as e:
@@ -2712,6 +2716,23 @@ class EPUBBookLoader(BaseBookLoader):
             summary = getattr(self.translate_model, "usage_summary", lambda: None)()
             if summary:
                 print(summary)
+        except Exception:
+            pass
+        # A classifier on a translator (or a service) of its own is metered
+        # apart, and billed on a line of its own.
+        classifier = getattr(self, "classify_translator", None)
+        if classifier is None or not getattr(classifier, "separate", False):
+            return
+        try:
+            from book_maker.endpoints import CLASSIFIER_USAGE
+
+            summary = classifier.usage.summary() if classifier.usage else None
+            if summary:
+                print(
+                    CLASSIFIER_USAGE.format(
+                        model=classifier.model, base=classifier.where(), summary=summary
+                    )
+                )
         except Exception:
             pass
 

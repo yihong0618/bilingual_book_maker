@@ -1,0 +1,69 @@
+{
+  "model": "typesafe-ai/jev",
+  "answers": {
+    "next_char": {
+      "type": "choice",
+      "choice": "5",
+      "confidence": 0.73,
+      "probabilities": {
+        "0": 0,
+        "1": 0.14,
+        "2": 0.01,
+        "3": 0.02,
+        "4": 0.02,
+        "5": 0.76,
+        "6": 0,
+        "7": 0.01,
+        "8": 0.01,
+        "9": 0.03,
+        ".": 0,
+        "END": 0
+      }
+    }
+  },
+  "usage": {
+    "input_tokens": 378,
+    "output_tokens": 102
+  },
+  "provider_metadata": {
+    "typesafe": {
+      "confidence": {
+        "next_char": 0.73
+      }
+    },
+    "gateway": {
+      "routing": {
+        "originalModelId": "typesafe-ai/jev",
+        "resolvedProvider": "typesafe-ai",
+        "fallbacksAvailable": [],
+        "planningReasoning": "System credentials planned for: typesafe-ai. Total execution order: typesafe-ai(system)",
+        "canonicalSlug": "typesafe-ai/jev",
+        "finalProvider": "typesafe-ai",
+        "modelAttemptCount": 1,
+        "modelAttempts": [
+          {
+            "canonicalSlug": "typesafe-ai/jev",
+            "success": true,
+            "providerAttemptCount": 1,
+            "providerAttempts": [
+              {
+                "provider": "typesafe-ai",
+                "credentialType": "system",
+                "success": true,
+                "startTime": 1790114798196,
+                "endTime": 1790114798394,
+                "statusCode": 200
+              }
+            ]
+          }
+        ],
+        "totalProviderAttemptCount": 1
+      },
+      "cost": "0",
+      "marketCost": "0.000015876",
+      "surchargeCost": "0",
+      "gatewayCost": "0",
+      "generationId": "gen_01M35JG6980Y50PYPKNGBM2A61"
+    }
+  }
+}

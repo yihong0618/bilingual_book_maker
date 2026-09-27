@@ -3,14 +3,33 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - ".github/workflows/docs.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-docs
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      # The site follows the repository it is built in, so a fork publishes
+      # to its own Pages and upstream to its own, from one mkdocs.yml.
+      DOCS_SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+      DOCS_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+      DOCS_REPO_NAME: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.10'
-      - run: pip install mkdocs mkdocs-material
+          python-version: "3.12"
+      - run: pip install mkdocs-material==9.7.7
+      - run: mkdocs build --strict
       - run: mkdocs gh-deploy --force

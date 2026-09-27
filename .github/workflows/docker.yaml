@@ -24,8 +24,24 @@ concurrency:
 
 jobs:
   build:
-    name: Build and push
+    name: Build and push (${{ matrix.target }})
     runs-on: ubuntu-latest
+    # Two images from one Dockerfile: `core` is the default image (`latest`,
+    # `basic`, `<version>`, `sha-…`); `pdf` adds the PDF route's Pandoc and
+    # docling/PyTorch runtime (`pdf`, `<version>-pdf`, `sha-…-pdf`), which on
+    # amd64 carries the CUDA wheels and runs to several gigabytes, so
+    # nobody pulls it by accident.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: core
+            rolling: latest
+            alias: basic
+            suffix: ""
+          - target: pdf
+            rolling: pdf
+            suffix: -pdf
 
     steps:
       - uses: actions/checkout@v6
@@ -51,18 +67,27 @@ jobs:
         with:
           # metadata-action lowercases the repository name for us.
           images: ghcr.io/${{ github.repository }}
+          # A semver tag would otherwise add `latest` implicitly, for both
+          # matrix entries, so a release could publish the PDF image as
+          # `latest`. The rolling tags are the explicit `raw` rule below and
+          # nothing else: `latest`/`pdf` follow the default branch, releases
+          # get `<version>` and `<version>-pdf`.
+          flavor: |
+            latest=false
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=semver,pattern={{version}}
-            type=sha
+            type=raw,value=${{ matrix.rolling }},enable={{is_default_branch}}
+            type=raw,value=${{ matrix.alias }},enable=${{ matrix.alias != '' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+            type=semver,pattern={{version}},suffix=${{ matrix.suffix }}
+            type=sha,suffix=${{ matrix.suffix }}
 
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
           context: .
+          target: ${{ matrix.target }}
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}

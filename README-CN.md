@@ -6,6 +6,8 @@
 
 bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制作多语言版本的 epub/txt/md/srt/pdf 文件和图书。请仅将其用于您有权翻译的内容——您持有必要权利的作品、许可或授权允许您翻译的作品、公有领域图书，或适用法律另行允许的使用方式。请在使用之前阅读项目的 **[免责声明](./disclaimer.md)**。
 
+各类文件的使用指南、全部参数，以及默认值背后的测量，见[文档站](https://yihong0618.github.io/bilingual_book_maker/)。
+
 [![Stars](https://img.shields.io/github/stars/yihong0618/bilingual_book_maker)](https://github.com/yihong0618/bilingual_book_maker/stargazers)
 [![CI](https://github.com/yihong0618/bilingual_book_maker/actions/workflows/make_test_ebook.yaml/badge.svg)](https://github.com/yihong0618/bilingual_book_maker/actions/workflows/make_test_ebook.yaml)
 [![PyPI](https://img.shields.io/pypi/v/bbook-maker.svg)](https://pypi.org/project/bbook-maker/)
@@ -30,10 +32,10 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 `--provider` 是另一种传凭据的方式，通过 JSON 配置文件 `bbm_providers.json`。
 
 epub 标签分类在支持 JSON Schema 的接口上自动开启，在其他任何能对话的接口（含 codex 路由和普通转售代理）上也会开启，改为让模型直接回答 `skip`/`translate`；只有完全不能对话的路由（机器翻译引擎）才只翻译 `p` 标签，
-因此诗歌等内容可能不会被翻译。详见计划模式。
+因此诗歌等内容可能不会被翻译。详见[计划模式](#计划模式)。
 
 旧参数（`--model gpt4o`、`--model gemini`、`--openai_key` 等）仍然可用：详见
-[模型与语言](./docs/model_lang.md)。
+[模型与语言](https://yihong0618.github.io/bilingual_book_maker/model_lang/)。
 
 ## 准备
 
@@ -93,8 +95,8 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 - 或使用`--provider`进行翻译: `bbm_providers.example.json` 里预设了以下厂家（Gemini、Qwen、xAI、Groq、OrcaRouter、Ollama、LiteLLM、
   SiliconFlow、OpenRouter）：复制为 `bbm_providers.json`，并修改其中的key，
   例如`--provider gemini` 就是使用其中 Gemini 的api。
-- `--use_context session` 使用会话模式翻译；历史默认在 8k 时压缩（`--context-compact-at` 可改）。它维护一份缓存的历史以保持前后一致，并自动从交接报告中积累术语表（`--glossary-auto`），使人名、术语全书统一——是 OpenAI 兼容接口的推荐用法，下方示例均已带上。
-- 旧的预设名和 key 参数仍然可用，见 [从旧参数迁移](./docs/migration.md)。
+- `--use_context session` 使用会话模式翻译；历史默认在 8k 时压缩（`--context-compact-at` 可改）。它维护一份缓存的历史以保持前后一致，使人名、术语全书统一，也可以从交接报告中积累术语表（`--glossary-auto on`，默认关闭）——是 OpenAI 兼容接口的推荐用法，下方示例均已带上。
+- 旧的预设名和 key 参数仍然可用，见 [从旧参数迁移](https://yihong0618.github.io/bilingual_book_maker/migration/)。
 
 ## 支持的翻译服务
 * DeepL
@@ -253,7 +255,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 ## 使用说明
 
-- 翻译完会生成一本 `{book_name}_bilingual.epub` 的双语书
+- 翻译完会生成一本 `{book_name}_bilingual.epub` 的双语书；TXT、MD、SRT 输入分别生成 `{book_name}_bilingual.txt`、`{book_name}_bilingual.md`、`{book_name}_bilingual.srt`
 - 如果出现了错误或使用 `CTRL+C` 中断命令，不想接下来继续翻译了，会生成一本 `{book_name}_bilingual_temp.epub` 的书，直接改成你想要的名字就可以了
 
 ## 参数说明
@@ -268,7 +270,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   | `claude-sonnet-4-6` | `anthropic` | Anthropic 官方地址 |
   | `gpt-4o-mini` | `openai` | OpenAI |
 
-  旧的预设值仍然可以写，会被改写成真实模型 ID 并打印说明，对照表见[从旧参数迁移](./docs/migration.md)。其他任何接口：`--api_base <url> --key <key> --model <id>`，或一条 `--provider` 配置（见「自定义 API Provider」章节）。
+  旧的预设值仍然可以写，会被改写成真实模型 ID 并打印说明，对照表见[从旧参数迁移](https://yihong0618.github.io/bilingual_book_maker/migration/)。其他任何接口：`--api_base <url> --key <key> --model <id>`，或一条 `--provider` 配置（见「自定义 API Provider」章节）。
 
 - `--key`:
 
@@ -328,30 +330,9 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
   指定需要翻译的标签，使用逗号分隔多个标签。epub 由 html 文件组成，默认情况下，只翻译 `<p>` 中的内容。例如: `--translate-tags h1,h2,h3,p,div`
 
-- `--plan-classify`
-  **计划模式（仅 epub）**：使用进行翻译的模型，或 codex / claude code，对 epub 标签进行分类。
+- `--plan-classify`（仅 epub）、`--plan-dry-run`、`--plan-min-coverage`、`--max-batch-units`：
 
-  取值决定每个标签的翻译与否如何判断：
-
-  - `auto`（默认）：书籍是 epub 时，问 LLM 该翻哪段。只有路由不能对话时，以及计划出错时，仅翻译 `--translate-tags` 选中的标签。经纯会话判定的行在 `<book>_plan.json` 中以 `unnamed (…)` 内容类型标注判定方式。
-  - `none`：不建计划，仅 `--translate-tags` 选中的标签，未选中则仅翻译`p`，即多数正文。
-  - `all`：翻译整个分区，不做分类。
-  - `model`：使用进行翻译的 LLM 进行判断，然后翻译。可用 `--plan-classify-model X` 指定分类用的模型。
-  - `agent`：对选中书籍输出分类计划。并输出指引，直接复制至你的coding tool进行分类
-  （也可以自己手工完成）。之后再次以 `--plan-classify agent` 运行翻译。
-
-  - `--plan-dry-run`：仅打印按标签签名分组的表格，写出 `<book>_plan.json` 后退出。同时遵守 `--only_filelist` / `--exclude_filelist`。
-  - `<book>_plan.json`：翻译计划；想重新分类请先删除该文件。
-  - `--plan-min-coverage`（默认 0.5，范围 0–1）：如果计划覆盖的正文比例低于该阈值，计划模式会直接报错退出。`0` 关闭该闸门，高于 `0.9` 的值多半会在分类已付费之后中止——两种情况都会警告。
-
-  - `--max-batch-units`:一个合并请求最多携带的段落数。想要更少、更大的请求（低成本）就把它和 `--accumulated_num` 一起调高。运行开始打印错位恢复等退化提示时则应调低。内容量同时由 token 预算（`--accumulated_num`）约束。
-
-  ```shell
-  # 使用模型判断哪些标签需要翻译
-  python3 make_book.py --book_name my_book.epub --key ${key} --plan-classify model
-  # 或交给 agent 判断：停下、打印指引，然后由你交给你的 AI
-  python3 make_book.py --book_name my_book.epub --key ${key} --plan-classify agent
-  ```
+  计划模式：整本书切分后由模型决定哪些标签签名要翻译。EPUB 默认开启；见[计划模式](#计划模式)。
 
 - `--exclude-translate-tags`:
 
@@ -401,21 +382,9 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
     使用`--use_context`选项时，使用`--context_paragraph_limit`设置上下文段落数限制（仅 window 模式）。
 
-- `--use_context session`:
+- `--use_context session`、`--context-compact-at`、`--no-context-compact`：
 
-  session 模式维护一份
-  只追加的历史，每次按缓存价重读，所以对于支持缓存的的端点，上下文可以长到约整章。历史达到压缩预算时，模型
-  写一份交接报告，用来播种下一个窗口，并追加到 `<book>_handoff.md`。
-  注意看进度条上的
-  `cached=`：若十几个请求之后仍是 0，说明端点可能没有缓存机制，可Ctrl+C后改用 window 模式。
-
-  - `--context-compact-at`:
-
-    仅 session 模式。历史在被压缩成交接报告前可以达到的估算 token 预算。默认 `8192`，最小值 `500`。
-
-  - `--no-context-compact`:
-
-    仅 session 模式。跳过交接报告：历史仍在达到预算时滚动，但下一个窗口从空白开始，不继承摘要。更省钱，代价是接缝处的连续性。
+  会话模式：一份不断增长的历史代替重发的窗口，达到预算时压缩成交接报告。见[会话模式](#会话模式)。
 
 - `--glossary` / `--terminology`:
 
@@ -461,6 +430,10 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   为 PDF 输入选择额外生成的双语 PDF 版式。默认 `none` 不额外生成 PDF；
   `all` 会同时尝试上下对照和左右对照。双语 TXT 和 EPUB 输出不受该参数影响。
 
+- `--to-epub`、`--pdf-ocr`、`--ocr-lang`、`--ocr-engine`、`--ocr-replace-layer`、`--pages`、`--device`、`--pdf-image-dpi`（仅限 PDF）：
+
+  把 PDF 变成带目录的双语 EPUB，见 [PDF 转双语 EPUB](#pdf-转-双语-epub-实验性)。
+
 - `--sentence_mode`:
 
   将 EPUB 的每个段落拆成句子逐句翻译，而不是整段翻译。与 EPUB 计划模式不兼容。
@@ -493,6 +466,14 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
   ```shell
   python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which' ''
+  ```
+
+- `--no-thinking`:
+
+  让推理模型回答前不要先思考：翻译一段散文，思考带不来质量，只多花 token 和时间。
+
+  ```shell
+  python3 make_book.py --book_name book.epub --no-thinking
   ```
 
 - `--extra_body`:
@@ -615,6 +596,57 @@ python3 make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'http
 python make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'https://example-endpoint.openai.azure.com/openai/v1' --model 'deployment-name' --use_context session
 ```
 
+## 功能
+
+### 计划模式
+
+EPUB 默认按计划翻译：整本书切分成单元，由模型按标签签名决定翻译哪些，诗歌、列表、表格单元格都不会漏掉，相邻单元合成一次请求。`--plan-classify` 决定由谁判断：`auto`（默认）、`agent`（你自己或编码代理，通过计划文件）、`all` 或 `none`。
+
+```shell
+# 预览哪些会翻译、哪些跳过（不需要 key）
+python3 make_book.py --book_name my_book.epub --plan-dry-run
+# 自己或让编码代理决定计划，然后重跑同一条命令开始翻译
+python3 make_book.py --book_name my_book.epub --key ${key} --plan-classify agent
+```
+
+`--plan-dry-run` 同时遵守 `--only_filelist` / `--exclude_filelist`。`--classify-model` 让另一个模型来分类，填 `jev` 使用 Jev 分类器；`--classify-base-url`、`--classify-key`、`--classify-min-confidence` 与它配合。更多：[计划模式](https://yihong0618.github.io/bilingual_book_maker/features/plan-mode/)、[EPUB 推荐设置](https://yihong0618.github.io/bilingual_book_maker/features/recommended-epub/)。
+
+### 会话模式
+
+`--use_context session` 整本书保持一段对话，人名和文风前后一致。历史按缓存价重读，达到 `--context-compact-at`（默认 8192 token）时压缩成一份简短的交接报告；`--no-context-compact` 则让下一个窗口从空白开始。在支持提示缓存的接口上最合适。更多：[会话模式](https://yihong0618.github.io/bilingual_book_maker/features/session-mode/)。
+
+### PDF 转 **双语** EPUB (实验性)
+
+`--to-epub` 把 PDF 变成可重排、带目录的双语 EPUB：每段后面紧跟译文，图和行间公式保留为图片。需要从代码库安装 PDF 依赖，以及 [Pandoc](https://pandoc.org/installing.html) 3.1.12 或更新版本，见[安装 PDF 依赖](https://yihong0618.github.io/bilingual_book_maker/installation-pdf/)。
+
+```shell
+pip install ".[pdf]"
+# 先翻两页，核对 paper_pages-1-2_book/source.md 里的标题
+python3 make_book.py --book_name paper.pdf --to-epub --pages 1-2 --key ${key} --use_context session
+# 再翻整个文件
+python3 make_book.py --book_name paper.pdf --to-epub --key ${key} --use_context session
+```
+
+![一篇 arXiv 论文的阅读版：按标题生成的目录、双语正文、保留为图片的图表](./docs/img/pdf_reading_edition.webp)
+
+#### 扫描件（OCR）
+
+`--pdf-ocr` 读取没有文字层的页面。`--ocr-lang` 指定要识别的语言（`iso:zh`、`iso:ja` 等），`--ocr-engine` 选择引擎（`auto`、`rapidocr`、`ocrmac`、`easyocr`、`tesseract`），`--ocr-replace-layer` 在自带文字层有误时重读每一页。更多：[选哪个 OCR 引擎](https://yihong0618.github.io/bilingual_book_maker/features/pdf-ocr-engines/)。
+
+```shell
+python3 make_book.py --book_name scan.pdf --to-epub --pdf-ocr --ocr-lang iso:zh --key ${key}
+```
+
+#### 页码、插图和公式
+
+`--pages 12-30`（或 `1,3,5-7`）只翻译这些页，输出 `paper_pages-12-30_bilingual.epub`。插图按 200 DPI 绘制，`--pdf-image-dpi 300` 让细小的标注更清楚。行间公式保留为图片，`--no-formula-images` 关掉这一点。
+
+#### 版面与硬件
+
+`--img-model MODEL` 把每一页交给视觉模型，纠正版面识别出错的地方，比如标题、图题和代码；`--img-base-url`、`--img-key` 指向另一个接口。`--device` 选择提取模型在哪里运行（`auto`、`cpu`、`cuda`、`mps`、`xpu`）。
+
+更多：[PDF 转双语 EPUB](https://yihong0618.github.io/bilingual_book_maker/features/pdf-to-epub/)、[PDF 推荐设置](https://yihong0618.github.io/bilingual_book_maker/features/recommended-pdf/)。
+
 ## Docker
 
 如果不想配置本地环境，可以直接使用 [Docker](https://www.docker.com/)。每次合并到 `main`（对应 `latest` 标签）以及每次发布版本标签时，都会自动构建镜像并发布到 GitHub Container Registry：
@@ -651,7 +683,22 @@ docker run --rm -v ${folder_path}:/book ghcr.io/yihong0618/bilingual_book_maker:
 docker run --rm -v /home/user/my_books:/book ghcr.io/yihong0618/bilingual_book_maker:latest --book_name /book/animal_farm.epub --api_format google --test --test_num 1 --language zh-hant
 ```
 
-容器以非 root 用户（uid 1000）运行。在 Linux 上，如果挂载的文件夹对该 uid 不可写，加上 `--user $(id -u)`（只写 uid 即可——镜像内部目录对组保持可写，正是为了这种情况）。API key 也可以用环境变量传入（`-e OPENAI_API_KEY=sk-XXX`）来代替 `--key`。
+容器以 root 运行，所以往挂载的文件夹里写东西总是可以的；在 Linux 上写出的文件归 root 所有（事后 `chown` 一下，或者加 `--user $(id -u)`）。API key 也可以用环境变量传入（`-e OPENAI_API_KEY=sk-XXX`）来代替 `--key`。
+
+`pdf` 标签加上了 `--to-epub` 需要的 Pandoc 和 PDF 相关的包，有好几个 GB：
+
+```shell
+docker run --rm -v "${folder_path}":/book -v bbm-models:/root/.cache ghcr.io/yihong0618/bilingual_book_maker:pdf --book_name /book/paper.pdf --to-epub --key "${openai_key}" --use_context session
+```
+
+要用 GPU，按你的机器看：
+
+- 带 NVIDIA 显卡的 Linux：装好 NVIDIA Container Toolkit，加 `--gpus all`。
+- 带 NVIDIA 显卡的 Windows：一样，通过 Docker Desktop 的 WSL2 后端。
+- Mac（Apple 芯片）：Docker 用不到 GPU，请直接在本机安装运行。
+- 带 NVIDIA 显卡的 arm64 Linux：再加 `--platform linux/amd64`。
+
+更多：[Docker](https://yihong0618.github.io/bilingual_book_maker/docker/)。
 
 如果想自己构建镜像而不是拉取：
 

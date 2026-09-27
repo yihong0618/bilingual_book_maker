@@ -1,24 +1,100 @@
 site_name: bilingual book maker
+# Path-independent: the same tree publishes from upstream and from any fork.
+# The publish workflow sets these three from the repository it runs in; a
+# local `mkdocs serve` or `mkdocs build` falls back to upstream's values.
+site_url: !ENV [DOCS_SITE_URL, "https://yihong0618.github.io/bilingual_book_maker/"]
+repo_url: !ENV [DOCS_REPO_URL, "https://github.com/yihong0618/bilingual_book_maker"]
+repo_name: !ENV [DOCS_REPO_NAME, "yihong0618/bilingual_book_maker"]
+edit_uri: edit/main/docs/
+
 theme:
   name: material
   features:
-    - navigation.tabs
-    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
     - content.code.copy
+    - content.tabs.link
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
 
-nav: 
-  - Home : index.md
-  - Getting started: 
-    - Installation: installation.md
-    - QuickStart: quickstart.md
-  - Usage:
-    - Model and languages: model_lang.md
-    - Language tags and names: languages.md
-    - Command line options: cmd.md
-    - Migrating from the old flags: migration.md
-    - Translate from different source: book_source.md
-    - Environment setting: env_settings.md
-    - Tweak the prompt: prompt.md
-    - Session grouping evaluation: session_grouping_eval.md
-  - Disclaimer: disclaimer.md
-    
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Quick start: quickstart.md
+  - Installation:
+      - Python: installation.md
+      - Docker: docker.md
+  - EPUB:
+      - Translate an EPUB: formats/epub.md
+      - Recommended settings: features/recommended-epub.md
+      - Plan mode: features/plan-mode.md
+      - Session mode: features/session-mode.md
+      - Evaluation:
+          - Why 16 units per request: evaluation/grouping-batch-size.md
+          - Why the session compacts at 8192: evaluation/session-compact-budget.md
+          - Why the tool probes the endpoint: evaluation/structured-output-ladder.md
+          - Jev as the plan classifier: evaluation/plan-classifier-jev.md
+  - PDF:
+      - PDF to bilingual EPUB: features/pdf-to-epub.md
+      - Recommended settings: features/recommended-pdf.md
+      - Which OCR engine: features/pdf-ocr-engines.md
+      - Installing the PDF extra: installation-pdf.md
+      - PDF flags and the text route: formats/pdf.md
+      - Evaluation:
+          - Why heading levels come from the page: evaluation/pdf-heading-levels.md
+          - Why formulas are pictures: evaluation/pdf-formulas-as-images.md
+          - Why a vision model reads scans better: evaluation/pdf-ocr-llm-vs-local.md
+          - Which OCR engine reads a scan best: evaluation/pdf-ocr-engines.md
+          - Why docling-parse stays: evaluation/pdf-page-render-backend.md
+          - Where an LLM fixes layout: evaluation/pdf-structure-llm-roles.md
+          - How extraction was checked: evaluation/pdf-extraction-corpus.md
+          - Why docling: evaluation/pdf-parser-choice.md
+  - Other formats:
+      - TXT: formats/txt.md
+      - SRT: formats/srt.md
+      - Markdown: formats/md.md
+      - Which page for which file: book_source.md
+  - Endpoints and models:
+      - Translating with an LLM: llm-args.md
+      - Provider file and extra models: providers.md
+      - Machine translation: machine-args.md
+      - Environment variables: env_settings.md
+      - Prompt files: prompt.md
+      - Model and language notes: model_lang.md
+      - Language tags: languages.md
+      - Migrating from old flags: migration.md
+  - Reference:
+      - Command line options: cmd.md
+      - All evaluations: evaluation/index.md
+      - Disclaimer: disclaimer.md
+
+not_in_nav: |
+  /session_grouping_eval.md

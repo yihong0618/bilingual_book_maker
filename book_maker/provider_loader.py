@@ -53,9 +53,27 @@ API_STYLES = {
     "litellm": "litellm",
 }
 
+# Styles that name a classifier rather than a translation route. TypeSafe's
+# System One models ("jev") answer typed questions and translate nothing, so
+# such an entry can describe the classify endpoint but never be the run's own
+# `--provider` (see `resolve_provider`).
+CLASSIFIER_STYLES = {"jev": "jev"}
+
 REQUIRED_FIELDS = {"api_style"}
 OPTIONAL_FIELDS = {"base_url", "default_models", "env_key", "prices", "currency"}
-ALL_VALID_FIELDS = REQUIRED_FIELDS | OPTIONAL_FIELDS
+# The two extra endpoints an entry may carry beside its own (packet F,
+# 260923): the vision model for the steps that look at a page image, and the
+# model for every classification step. Each is a model id, an optional
+# address (else the entry's own) and an optional key variable.
+ENDPOINT_FIELDS = {
+    "img_model",
+    "img_base_url",
+    "img_env_key",
+    "classify_model",
+    "classify_base_url",
+    "classify_env_key",
+}
+ALL_VALID_FIELDS = REQUIRED_FIELDS | OPTIONAL_FIELDS | ENDPOINT_FIELDS
 
 # `prices`: {model id: {"input", "output", optional "cached_input"}}, each a
 # price per million tokens in `currency` (default USD). With a price for
@@ -76,6 +94,13 @@ class ProviderRoute:
     env_key: str
     prices: dict = None
     currency: str = "USD"
+    # `--img-*` and `--classify-*` as the entry names them; "" when absent.
+    img_model: str = ""
+    img_base_url: str = ""
+    img_env_key: str = ""
+    classify_model: str = ""
+    classify_base_url: str = ""
+    classify_env_key: str = ""
 
 
 def _load_json_file(path):
@@ -155,18 +180,20 @@ def validate_provider(name, provider):
         raise ValueError(f"provider {name!r} has unknown fields: {sorted(unknown)}")
 
     api_style = provider["api_style"]
-    if api_style not in API_STYLES:
+    if api_style not in API_STYLES and api_style not in CLASSIFIER_STYLES:
         # Almost always a vendor name for a host that speaks the OpenAI
         # shape, so the fix is worth printing rather than describing.
         raise ValueError(
             f"provider {name!r} has unsupported api_style {api_style!r}. "
-            f"Supported: {', '.join(sorted(API_STYLES))}. A host that serves "
+            f"Supported: {', '.join(sorted({**API_STYLES, **CLASSIFIER_STYLES}))}. "
+            f"A host that serves "
             f"the OpenAI shape at its own address is:\n"
             f'  "api_style": "openai",\n'
             f'  "base_url": "{provider.get("base_url") or "https://..."}"'
         )
 
     _validate_prices(name, provider)
+    _validate_endpoint_fields(name, provider)
 
     models = provider.get("default_models")
     if models is None:
@@ -181,6 +208,21 @@ def validate_provider(name, provider):
         raise ValueError(
             f"provider {name!r}: default_models must not contain a blank name"
         )
+
+
+def _validate_endpoint_fields(name, provider):
+    """`img_*` / `classify_*`: each a non-blank string when present.
+
+    A blank model would read as "not set" and quietly fall through to the
+    next source in the chain, which is not what an entry that names the field
+    asked for.
+    """
+    for field in sorted(ENDPOINT_FIELDS):
+        if field not in provider:
+            continue
+        value = provider[field]
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"provider {name!r}: {field} must be a non-blank string")
 
 
 def _validate_prices(name, provider):
@@ -254,6 +296,13 @@ def get_provider(name):
 def resolve_provider(name):
     """`name` as endpoint settings: format, base, models to rotate, key variable."""
     provider = get_provider(name)
+    if provider["api_style"] in CLASSIFIER_STYLES:
+        raise ValueError(
+            f"--provider {name} is a {provider['api_style']} entry: it "
+            f"classifies and cannot translate. Name the classifier with "
+            f"--classify-model {provider['api_style']} (or a translation "
+            f"entry's classify_model) instead."
+        )
     return ProviderRoute(
         api_format=API_STYLES[provider["api_style"]],
         api_base=provider.get("base_url") or "",
@@ -261,4 +310,5 @@ def resolve_provider(name):
         env_key=provider.get("env_key") or "",
         prices=provider.get("prices") or None,
         currency=(provider.get("currency") or "USD").strip(),
+        **{field: provider.get(field, "").strip() for field in ENDPOINT_FIELDS},
     )

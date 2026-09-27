@@ -5,9 +5,22 @@
       "base_url": "https://api.openai.com/v1",
       "default_models": ["gpt-5.6-luna"],
       "env_key": "OPENAI_API_KEY",
+      "img_model": "gpt-5.6-luna",
       "prices": {
         "gpt-5.6-luna": {"input": 0.20, "output": 1.20, "cached_input": 0.02}
       }
+    },
+    "openai-jev": {
+      "api_style": "openai",
+      "base_url": "https://api.openai.com/v1",
+      "default_models": ["gpt-5.6-luna"],
+      "env_key": "OPENAI_API_KEY",
+      "img_model": "gpt-5.6-luna",
+      "prices": {
+        "gpt-5.6-luna": {"input": 0.20, "output": 1.20, "cached_input": 0.02}
+      },
+      "classify_model": "jev",
+      "classify_env_key": "JEV_API_KEY"
     },
     "anthropic": {
       "api_style": "anthropic",
@@ -71,6 +84,12 @@
       "base_url": "https://FILL-ME.example.com/v1",
       "default_models": ["FILL-ME-model-id"],
       "env_key": "GATEWAY_API_KEY"
+    },
+    "jev": {
+      "api_style": "jev",
+      "base_url": "https://api.typesafe.ai",
+      "default_models": ["jev"],
+      "env_key": "JEV_API_KEY"
     }
   }
 }

@@ -708,7 +708,6 @@ class TestTheHarvestIsBounded:
             ("Rebellion → 起义／反叛（依语境）", "a choice of renderings, not one"),
             ("Beasts of England → 英格兰兽／英伦兽歌", "the same with no qualifier"),
             ("whale → 鲸 / 鲸鱼", "the ascii spelling of the same thing"),
-            ("shore → 海岸（视语境）", "a hedge rather than a rendering"),
         ),
     )
     def test_a_pair_that_makes_no_single_substitution_is_dropped(self, line, why):
@@ -722,20 +721,46 @@ class TestTheHarvestIsBounded:
         assert parsed.dropped == 1
 
     @pytest.mark.parametrize(
-        "line, term",
+        "line, term, rendering",
         (
-            ("WHO → Organisation mondiale de la santé (OMS)", "WHO"),
-            ("Manor Farm → 庄园农场（曼诺农场）", "Manor Farm"),
+            (
+                "WHO → Organisation mondiale de la santé (OMS)",
+                "WHO",
+                "Organisation mondiale de la santé (OMS)",
+            ),
+            ("Manor Farm → 庄园农场（曼诺农场）", "Manor Farm", "庄园农场（曼诺农场）"),
+            # PIN: owner decision 260914 — "we don't deal with it".
+            # docs/260914-docs-OSS_BACKLOG_QUEUED_RULINGS.md item 3. The
+            # qualifier regex (`依语境|视语境|…|context|depending`) and its
+            # branch in `_is_usable_rendering` are gone: a trailing hedge is
+            # stored verbatim instead of costing the pair. Reason: the model
+            # reading the block understands the hedge, the term end still
+            # matches the grounding window, and the old branch had to guess
+            # which parenthetical was a hedge and which an abbreviation.
+            # This row is the owner's own example, inverted from a drop.
+            ("Rebellion → 起义（依语境）", "Rebellion", "起义（依语境）"),
+            ("shore → 海岸（视语境）", "shore", "海岸（视语境）"),
+            (
+                "farm → ferme (depending on context)",
+                "farm",
+                "ferme (depending on context)",
+            ),
         ),
     )
-    def test_a_parenthesised_name_is_not_a_hedge(self, line, term):
-        """Codex review 260913: any trailing parenthetical was read as a
-        qualifier, which threw away renderings that carry their own
-        abbreviation — exactly the names most worth keeping unified. The
-        parenthetical has to say it is context-dependent to count."""
+    def test_a_trailing_parenthetical_never_costs_the_pair(self, line, term, rendering):
+        """A parenthetical is kept, whatever it says.
+
+        Codex review 260913 had already narrowed this from "any trailing
+        parenthetical" to "one that reads as context-dependent", because the
+        wide version threw away renderings carrying their own abbreviation.
+        Owner ruling 260914 removed the narrow version too — see the PIN
+        above. Nothing here rewrites the rendering either: it is stored the
+        way the model wrote it.
+        """
         text = f"They walked.\n\n<renderings>\n{line}\n</renderings>\n"
         parsed = parse_handoff_glossary(text, target_language="French")
         assert parsed.glossary.lookup(term) is not None
+        assert parsed.glossary.lookup(term).translation == rendering
         assert parsed.dropped == 0
 
 

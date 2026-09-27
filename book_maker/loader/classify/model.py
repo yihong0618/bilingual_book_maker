@@ -9,6 +9,7 @@ Only signature-level decisions are made here. Node-level residue (a roman
 numeral inside a prose sentence) has no override mechanism.
 """
 
+from ...classifier import Classifier, Question
 from ...structured import StructuredJSONFailed
 from .candidates import gather_candidates
 
@@ -130,21 +131,7 @@ def build_prompt(candidates):
         "You are preparing a bilingual EPUB. For each content signature "
         "below, decide whether it is better to translate its text or keep "
         "it as is.",
-        'Answer "translate" for book content a reader wants translated: '
-        "prose, verse, dialogue, headings, captions.",
-        'Answer "skip" for text to keep as is: running heads, page or line '
-        "numbers, manuscript sigla, cross-reference labels, publisher "
-        "boilerplate, decorative markers.",
-        'Answer "unsure" only if the samples genuinely do not settle it. '
-        "When they are merely thin, prefer translate: translating something "
-        "unnecessary is cheap, losing content is not.",
-        "If the samples show more than one kind of content, answer "
-        "translate — a signature verdict applies to every occurrence, and "
-        "there is no per-occurrence override.",
-        'A "block:" signature is a block of text of that shape. An '
-        '"inline:" signature is markup *inside* a sentence; skipping it '
-        "leaves its text in place, untranslated, and splits the sentence "
-        "around it — so skip one only when it is genuinely apparatus.",
+        *verdict_rules(),
         "",
     ]
     for i, c in enumerate(candidates, 1):
@@ -269,15 +256,148 @@ class _Budget:
             )
 
 
-def _ask_page(structured, page, model):
+# A backend that asks one short typed question per signature over a shared
+# state (jev) is sent these instead of `build_prompt`'s paragraph (packet J,
+# 260924): the state is the numbered signatures alone (`build_context`), each
+# question points at one of them (`candidate_pointer`), and each answer is
+# described by the prompt's own words (`CRITERIA`, from which `build_prompt`
+# and the session trunk build their answer sentences; the assembled texts are
+# pinned in tests/test_classify_prompt_pin.py). `build_prompt` is what the
+# schema backend sends, and it is audited
+# (docs/260920-feat-CLASSIFY_LADDER_PROMPT_AUDIT.md). There is no "unsure"
+# option on that channel: a low-confidence answer falls back instead.
+CRITERIA = {
+    "translate": (
+        "book content a reader wants translated: prose, verse, dialogue, "
+        "headings, captions"
+    ),
+    "skip": (
+        "text to keep as is: running heads, page or line numbers, manuscript "
+        "sigla, cross-reference labels, publisher boilerplate, decorative "
+        "markers"
+    ),
+}
+
+
+def verdict_rules():
+    """The lines after the opening sentence that every plan-classifier
+    prompt carries: `build_prompt` (the schema channel) and the session
+    `TRUNK`. The two answer sentences are `CRITERIA`'s own words, so a Jev
+    option and the prompt cannot describe an answer differently.
+    """
+    return [
+        *(f'Answer "{label}" for {words}.' for label, words in CRITERIA.items()),
+        'Answer "unsure" only if the samples genuinely do not settle it. '
+        "When they are merely thin, prefer translate: translating something "
+        "unnecessary is cheap, losing content is not.",
+        "If the samples show more than one kind of content, answer "
+        "translate — a signature verdict applies to every occurrence, and "
+        "there is no per-occurrence override.",
+        'A "block:" signature is a block of text of that shape. An '
+        '"inline:" signature is markup *inside* a sentence; skipping it '
+        "leaves its text in place, untranslated, and splits the sentence "
+        "around it — so skip one only when it is genuinely apparatus.",
+    ]
+
+
+POINTER = (
+    'Signature {index} ("{key}"): translate its text, or skip it (keep it as '
+    "is)? Answer translate when its samples are thin or show more than one "
+    "kind of content."
+)
+# Appended to POINTER for an "inline:" signature only.
+POINTER_INLINE = (
+    " It is markup inside a sentence: skip it only when it is genuinely " "apparatus."
+)
+
+
+def build_context(candidates):
+    """The signatures as `build_prompt` numbers them, without its paragraph."""
+    lines = []
+    for i, c in enumerate(candidates, 1):
+        lines.extend(describe_candidate(i, c))
+    return "\n".join(lines)
+
+
+def candidate_pointer(index, c):
+    """The short question about signature `index` of `build_context`."""
+    text = POINTER.format(index=index, key=c["key"])
+    if c["key"].startswith("inline:"):
+        text += POINTER_INLINE
+    return text
+
+
+def page_question(page):
+    """The page as a `Question`: this module's prompt and schema, verbatim.
+
+    Each candidate may answer with a `{content_type, verdict}` object whose
+    `verdict` is one of `VERDICTS`; `unsure` is the answer that settles
+    nothing. `context`, `per_candidate` and `criteria` are the lean form a
+    backend that asks one question per candidate over a shared state reads
+    (jev); the other backends send `prompt`.
+    """
+    return Question(
+        prompt=build_prompt(page),
+        schema=build_schema(page),
+        candidates={c["key"]: tuple(VERDICTS) for c in page},
+        field="verdict",
+        abstain="unsure",
+        accept=lambda obj: _answers_all(obj, page),
+        per_candidate={
+            c["key"]: candidate_pointer(i, c) for i, c in enumerate(page, 1)
+        },
+        context=build_context(page),
+        criteria=dict(CRITERIA),
+        # a wrong translate costs tokens, a wrong skip loses content
+        fallback="translate",
+    )
+
+
+# What a row's content_type says when the backend names nothing (jev answers
+# with a label and a probability, no words): how the verdict was reached,
+# which is what the plan JSON is audited on.
+NAMED_BY_JEV = "unnamed (jev verdict {verdict}, confidence {confidence:.2f})"
+# The same, for an answer the backend's confidence gate replaced with the
+# question's fallback: what jev chose, how sure it was, what was recorded.
+NAMED_BY_JEV_FELL_BACK = (
+    "unnamed (jev verdict {choice} at confidence {confidence:.2f}, below the "
+    "gate: {verdict})"
+)
+
+
+def _named(answer):
+    """`answer`'s values as `{key: {content_type, verdict}}` entries.
+
+    A backend that returns bare labels (jev) gets its content_type written
+    from its own probability; an object answer is passed through, and the
+    values the shared lint set aside as invalid ride along so the name a
+    reply gave an out-of-enum verdict is still recorded as evidence.
+    """
+    entries = {**answer.values, **answer.invalid}
+    fell_back = getattr(answer.raw, "fell_back", None) or {}
+
+    def name(key, value):
+        confidence = answer.confidence.get(key, 0.0)
+        if key in fell_back:
+            return NAMED_BY_JEV_FELL_BACK.format(
+                choice=fell_back[key], confidence=confidence, verdict=value
+            )
+        return NAMED_BY_JEV.format(verdict=value, confidence=confidence)
+
+    return {
+        key: (
+            value
+            if isinstance(value, dict)
+            else {"verdict": value, "content_type": name(key, value)}
+        )
+        for key, value in entries.items()
+    }
+
+
+def _ask_page(classifier, page, model=None):
     """One classification request. Returns (parsed result or None, why not)."""
     try:
-        result = structured(
-            build_prompt(page),
-            build_schema(page),
-            model=model,
-            accept=lambda obj: _answers_all(obj, page),
-        )
+        answer = classifier.ask(page_question(page))
     except StructuredJSONFailed as e:
         # Every rung was tried and none produced JSON. Not terminal yet: a
         # smaller page is an easier request, so the caller divides first.
@@ -288,19 +408,23 @@ def _ask_page(structured, page, model):
         # Auth, quota, transport, a model that does not exist: dividing cannot
         # help and would multiply the failure by the page count.
         raise PlanClassifyFatal(f"classification request failed: {e}") from e
-    return result, None
+    if not isinstance(answer.raw, dict):
+        # a reply that is not an object at all: `lint_verdicts` names it
+        return answer.raw, None
+    return _named(answer), None
 
 
-def _resolve(structured, page, model, budget):
+def _resolve(classifier, page, model, budget):
     """Verdicts for every signature in `page`, dividing until they are had.
 
-    Composes with the rung ladder underneath: `structured` descends rungs for
+    Composes with the rung ladder underneath: the classifier's schema
+    backend descends rungs for
     one request, this divides the request. Only a single signature that
     survives both is terminal — at that point the model has been shown one
     property described in prose, which is the easiest question we can ask.
     """
     budget.charge()
-    result, note = _ask_page(structured, page, model)
+    result, note = _ask_page(classifier, page, model)
     verdicts, answered = ({}, set())
     if result is not None:
         verdicts, answered = lint_verdicts(result, page)
@@ -320,7 +444,7 @@ def _resolve(structured, page, model, budget):
     failures = []
     for part in _split(page, unanswered):
         try:
-            resolved.update(_resolve(structured, part, model, budget))
+            resolved.update(_resolve(classifier, part, model, budget))
         except PlanClassifyError as e:
             # A branch that failed may still have answered some of what it
             # was asked before it got stuck. Those answers were requested,
@@ -373,7 +497,7 @@ def classify_plan(ledger, translator, model=None):
     candidates = gather_candidates(ledger)
     if not candidates:
         return {}, []
-    structured = _structured_json(translator)
+    classifier = _classifier(translator, model)
 
     pages = list(_pages(candidates))
     if len(pages) > 1:
@@ -389,7 +513,7 @@ def classify_plan(ledger, translator, model=None):
     failed = []
     for page in pages:
         try:
-            verdicts.update(_resolve(structured, page, model, budget))
+            verdicts.update(_resolve(classifier, page, model, budget))
         except PlanClassifyError as e:
             # whatever this page did answer before it got stuck
             verdicts.update(e.verdicts)
@@ -431,18 +555,23 @@ def classify_plan(ledger, translator, model=None):
     return decisions, candidates
 
 
-def _structured_json(translator):
-    """The translator's structured-question channel, or a loud refusal.
+def _classifier(translator, model=None):
+    """The classifier to ask, or a loud refusal when nothing can answer.
 
-    Every LLM-backed translator has one now (the bottom rung is a plain
+    `translator` is a `Classifier` (the run's classify endpoint) or a bare
+    translator, which is asked through its own backends. Every LLM-backed
+    translator has a structured channel now (the bottom rung is a plain
     prompt). Dedicated MT engines — google, deepl, caiyun, tencent transmart,
     qwen-mt, a custom translate endpoint — do not and never will: handing them
     a question returns a translation of the question.
     """
-    structured = getattr(translator, "structured_json", None)
-    supports = getattr(translator, "supports_structured_json", None)
-    if structured is None or (supports is not None and not supports()):
+    if isinstance(translator, Classifier):
+        classifier = translator
+    else:
+        classifier = Classifier(translator, model)
+    if classifier.backend("schema") is None and classifier.backend("jev") is None:
         raise PlanClassifyError(
-            f"{type(translator).__name__} has no structured-output support"
+            f"{type(classifier.translator).__name__} has no structured-output "
+            f"support"
         )
-    return structured
+    return classifier

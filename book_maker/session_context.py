@@ -628,17 +628,8 @@ def _is_sane_entry(entry) -> bool:
 # A rendering offering a choice rather than making one. Measured (260913
 # prompt-variant eval): `Rebellion → 起义／反叛（依语境）`, `Beasts of England →
 # 英格兰兽／英伦兽歌`. The block is a verbatim-substitution instruction, so it
-# cannot carry alternatives or a "depending on context" qualifier — there is
-# nothing downstream that could choose.
+# cannot carry alternatives — there is nothing downstream that could choose.
 _ALTERNATIVES = re.compile(r"／|\s/\s")
-_TRAILING_PAREN = re.compile(r"[（(]([^（()）]*)[)）]\s*$")
-# What makes a trailing parenthetical a hedge rather than part of the name.
-# A parenthesis alone is not evidence of one: `Organisation mondiale de la
-# santé (OMS)` is a rendering, abbreviation included, and refusing it would
-# throw away exactly the names most worth keeping unified.
-_QUALIFIER_WORDS = re.compile(
-    r"依语境|视语境|视上下文|按语境|看语境|context|depending", re.IGNORECASE
-)
 
 
 def _is_usable_rendering(entry) -> bool:
@@ -648,13 +639,19 @@ def _is_usable_rendering(entry) -> bool:
     do what it would do anyway, and both sides of the 260913 eval produced
     them. So is a rendering that offers a choice instead of making one —
     there is nothing downstream that could choose.
+
+    A trailing qualifier is *not* refused (owner ruling 260914, item 3 of
+    docs/260914-docs-OSS_BACKLOG_QUEUED_RULINGS.md). `Rebellion →
+    起义（依语境）` is stored as written: the model reading the block
+    understands the hedge, and the pair still grounds and still matches,
+    because the term end is what the window is checked against. The regex
+    that used to drop it had to keep guessing which trailing parenthetical
+    was a hedge and which was an abbreviation (`WHO → Organisation mondiale
+    de la santé (OMS)`), and that guess is not worth making.
     """
     if entry.term.lower() == entry.translation.lower():
         return False
-    if _ALTERNATIVES.search(entry.translation):
-        return False
-    trailing = _TRAILING_PAREN.search(entry.translation)
-    return not (trailing and _QUALIFIER_WORDS.search(trailing.group(1)))
+    return not _ALTERNATIVES.search(entry.translation)
 
 
 # Target languages written in CJK script, by name and by tag. The one script

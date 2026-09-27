@@ -23,6 +23,7 @@ from pathlib import Path
 from threading import Lock
 
 from rich import print
+from rich.markup import escape
 
 from ..codex_client import (
     CodexAppServer,
@@ -77,6 +78,27 @@ MAX_WAIT_SECONDS = 6 * 60 * 60
 # Depletion is expected to clear on the first wait. Allowing a couple more
 # covers a reset that lands late; beyond that something else is wrong.
 MAX_WAITS_PER_TURN = 3
+
+# How long to sit out a "selected model is at capacity" refusal before asking
+# again. An owner-chosen patience interval, not a measured optimum: capacity
+# comes back when Codex stops throttling the network, and nothing in the
+# protocol says when that is.
+CAPACITY_RETRY_SECONDS = 60
+
+# The prefix `codex_client._turn_text` puts in front of the server's own
+# message; stripped so the warning reads as the server's words, not ours.
+_TURN_FAILED_PREFIX = "the codex turn did not complete: "
+
+
+def _server_message(exc):
+    return str(exc).removeprefix(_TURN_FAILED_PREFIX)
+
+
+def _is_at_capacity(exc):
+    """Codex refusing the model for want of capacity, rather than a real
+    turn failure. Deliberately narrow: every other `CodexTurnFailed` keeps
+    its existing behaviour."""
+    return "at capacity" in str(exc).lower()
 
 
 class ClassifierThread:
@@ -270,9 +292,9 @@ class Codex(Base):
             return None
         plan = f" ({limits.plan_type} plan)" if limits.plan_type else ""
         self._last_remaining = limits.remaining_percent
-        if self.quiet and limits.used_percent < QUOTA_WARN_PERCENT:
-            # --quiet keeps warnings and errors; a healthy window is neither.
-            return limits
+        # One line, printed under --quiet too: during a paid run the share
+        # of the window left matters (lead 260925, skill field test). The
+        # per-unit line in `_report_quota` stays quiet.
         if limits.used_percent >= QUOTA_WARN_PERCENT:
             print(
                 f"[bold yellow]Warning:[/bold yellow] only "
@@ -346,29 +368,53 @@ class Codex(Base):
         return True
 
     def _run_turn(self, thread_id, payload):
-        """One turn, sitting out a spent quota window rather than failing."""
-        for attempt in range(MAX_WAITS_PER_TURN + 1):
+        """One turn, sitting out the two non-fatal refusals rather than failing.
+
+        A spent quota window is bounded by `MAX_WAITS_PER_TURN`: the snapshot
+        says when it resets, so a third wait that still does not clear it
+        means the cause is something else. "Selected model is at capacity" is
+        not bounded — it is Codex throttling, carrying no reset time and no
+        attempt that could be the last useful one — so it is retried for as
+        long as it keeps coming, which is what the retry philosophy asks of a
+        non-fatal error. The two counters stay separate so capacity waiting
+        never eats the quota path's allowance.
+        """
+        quota_waits = 0
+        while True:
             limits = self.server.latest_rate_limits()
             # Proactive: a pushed update may already say we are out.
-            if limits is not None and limits.depleted and attempt < MAX_WAITS_PER_TURN:
-                if self._wait_out_reset(limits):
-                    continue
+            if (
+                limits is not None
+                and limits.depleted
+                and quota_waits < MAX_WAITS_PER_TURN
+                and self._wait_out_reset(limits)
+            ):
+                quota_waits += 1
+                continue
             try:
                 return self.server.run_turn(thread_id, payload)
-            except CodexTurnFailed:
+            except CodexTurnFailed as exc:
+                if _is_at_capacity(exc):
+                    print(
+                        f"[yellow]codex: {escape(_server_message(exc))} — usually "
+                        f"Codex rate-limiting a suspicious network, not a missing "
+                        f"model; retrying in {CAPACITY_RETRY_SECONDS} s. If you see "
+                        f"this often, try switching to a residential network or "
+                        f"another account.[/yellow]"
+                    )
+                    self._sleep(CAPACITY_RETRY_SECONDS)
+                    continue
                 # Only treat this as a quota stop if the quota says so —
                 # a failed turn has many other causes.
                 limits = self.server.latest_rate_limits()
                 if (
-                    attempt >= MAX_WAITS_PER_TURN
+                    quota_waits >= MAX_WAITS_PER_TURN
                     or limits is None
                     or not limits.depleted
                     or not self._wait_out_reset(limits)
                 ):
                     raise
-        raise CodexTurnFailed(
-            "the codex quota was still spent after waiting for its reset"
-        )
+                quota_waits += 1
 
     def close(self):
         if self._started:

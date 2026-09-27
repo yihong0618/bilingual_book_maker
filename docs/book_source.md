@@ -1,21 +1,23 @@
-# Translate from Different Sources
+# Which page for which file
 
-## txt/srt
-Txt files and srt files are plain text files. This program can translate plain text.
+The file's extension picks how it is read. Find yours:
 
-    python3 make_book.py --book_name test_books/the_little_prince.txt --test --language zh-hans
+| if your file is… | start with | then read |
+|---|---|---|
+| an EPUB | `bbook_maker --book_name book.epub --use_context session` | [EPUB](formats/epub.md), [Recommended settings for EPUB](features/recommended-epub.md) |
+| a PDF | `python make_book.py --book_name book.pdf --to-epub --pages 1-2 --test` | [PDF to bilingual EPUB](features/pdf-to-epub.md), [Recommended settings for PDF](features/recommended-pdf.md) |
+| a plain-text file | `bbook_maker --book_name book.txt --batch_size 20` | [TXT](formats/txt.md) |
+| subtitles | `bbook_maker --book_name talk.srt --accumulated_num 400` | [SRT](formats/srt.md) |
+| a Markdown document | `bbook_maker --book_name doc.md --prompt prompt_md.json --use_context session` | [Markdown](formats/md.md) |
 
-## markdown
-Markdown files can be translated directly with `--book_name your_doc.md`; use `--prompt prompt_md.json` for the Markdown-specific prompt.
+A PromptDown `.md` file is a prompt, not a book: it goes to `--prompt`, and a Markdown book goes to `--book_name`.
 
-    python3 make_book.py --book_name your_doc.md --key ${openai_key} --model gpt-5-mini --prompt prompt_md.json
+## An EPUB without a plan
 
-PromptDown `.md` files go to `--prompt`; Markdown books go to `--book_name`.
+If you want only chosen tags translated, turn the plan off and name the tags:
 
-## epub
-epub is made of html files. By default, we only translate contents in `<p>`. Use `--translate-tags` to specify tags need for translation. Use comma to separate multiple tags. For example: `--translate-tags h1,h2,h3,p,div`
+```bash
+bbook_maker --book_name test_books/animal_farm.epub --plan-classify none --translate-tags div,p
+```
 
-    bbook_maker --book_name test_books/animal_farm.epub --key ${openai_key} --model gpt-5-mini --translate-tags div,p
-
-If you want to translate strings in an e-book that aren't labeled with any tags, you can use the `--allow_navigable_strings` parameter. This will add the strings to the translation queue. <br>
-**Note that it's best to look for e-books that are more standardized if possible.**
+If a book keeps text outside any tag, `--allow_navigable_strings` adds it too. A plan already covers both, so these are for books where you want exact control. A well-formed EPUB gives better results either way.

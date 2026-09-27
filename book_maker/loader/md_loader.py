@@ -21,12 +21,16 @@ from .helper import translate_list_or_singles
 class MarkdownBlock:
     text: str
     translatable: bool = True
+    # 1-based line in the source file where the block starts: the block's
+    # stable identity for anything reported back to the operator.
+    line: int | None = None
 
 
 @dataclass(frozen=True)
 class MarkdownBatch:
     block_texts: list[str]
     breadcrumb: str = ""
+    block_lines: tuple = ()
 
 
 class MarkdownBookLoader(BaseBookLoader):
@@ -54,6 +58,8 @@ class MarkdownBookLoader(BaseBookLoader):
         parallel_workers=1,
     ) -> None:
         self.md_name = md_name
+        # What --language asked for, as the translator is given it.
+        self.target_language = language
         self.translate_model = model(
             key,
             language,
@@ -91,11 +97,31 @@ class MarkdownBookLoader(BaseBookLoader):
             raise Exception("can not load file") from e
 
         self.resume = resume
-        self.bin_path = f"{Path(md_name).parent}/.{Path(md_name).stem}.temp.bin"
+        self.bin_path = self._state_path(md_name)
         if self.resume:
             self.load_state()
 
         self.process_markdown_content()
+
+    def _state_path(self, md_name):
+        """Where the resume file lives. A hidden sibling of the book.
+
+        Overridable so a caller that owns a directory layout of its own (the
+        PDF/Markdown bundle harness) can put the resume file where the rest
+        of its working state is, without this loader knowing about bundles.
+        """
+        return f"{Path(md_name).parent}/.{Path(md_name).stem}.temp.bin"
+
+    def _output_path(self):
+        """The bilingual Markdown this run writes, named after the source."""
+        return f"{Path(self.md_name).parent}/{Path(self.md_name).stem}_bilingual.md"
+
+    def _temp_output_path(self):
+        """Where an interrupted run leaves what it had translated so far."""
+        return (
+            f"{Path(self.md_name).parent}/"
+            f"{Path(self.md_name).stem}_bilingual_temp.txt"
+        )
 
     def process_markdown_content(self):
         """Split Markdown into translatable prose blocks and pass-through blocks."""
@@ -106,61 +132,70 @@ class MarkdownBookLoader(BaseBookLoader):
         if len(lines) >= 2 and lines[0].strip() == "---":
             for end in range(1, len(lines)):
                 if lines[end].strip() == "---":
-                    self._append_block(lines[: end + 1], translatable=False)
+                    self._append_block(lines[: end + 1], translatable=False, line=1)
                     i = end + 1
                     break
 
         current_paragraph = []
+
+        def flush(end):
+            # A paragraph is the run of lines just before `end`, so its first
+            # line is known without tracking it separately.
+            self._flush_paragraph(
+                current_paragraph, line=end - len(current_paragraph) + 1
+            )
 
         while i < len(lines):
             line = lines[i]
             stripped = line.strip()
 
             if self._is_fence_start(stripped):
-                self._flush_paragraph(current_paragraph)
+                flush(i)
                 current_paragraph = []
+                start = i
                 fence_lines, i = self._collect_fence(lines, i)
-                self._append_block(fence_lines, translatable=False)
+                self._append_block(fence_lines, translatable=False, line=start + 1)
                 continue
 
             if self._is_table_start(lines, i):
-                self._flush_paragraph(current_paragraph)
+                flush(i)
                 current_paragraph = []
+                start = i
                 table_lines, i = self._collect_table(lines, i)
-                self._append_block(table_lines, translatable=False)
+                self._append_block(table_lines, translatable=False, line=start + 1)
                 continue
 
             if self._is_pass_through_line(stripped):
-                self._flush_paragraph(current_paragraph)
+                flush(i)
                 current_paragraph = []
-                self._append_block([line], translatable=False)
+                self._append_block([line], translatable=False, line=i + 1)
                 i += 1
                 continue
 
             if not line.strip():
                 if current_paragraph:
-                    self._flush_paragraph(current_paragraph)
+                    flush(i)
                     current_paragraph = []
             elif line.strip().startswith("#"):
                 if current_paragraph:
-                    self._flush_paragraph(current_paragraph)
+                    flush(i)
                     current_paragraph = []
-                self._append_block([line], translatable=True)
+                self._append_block([line], translatable=True, line=i + 1)
             else:
                 current_paragraph.append(line)
             i += 1
 
         if current_paragraph:
-            self._flush_paragraph(current_paragraph)
+            flush(i)
 
-    def _append_block(self, lines, translatable=True):
+    def _append_block(self, lines, translatable=True, line=None):
         text = "\n".join(lines)
-        block = MarkdownBlock(text=text, translatable=translatable)
+        block = MarkdownBlock(text=text, translatable=translatable, line=line)
         self.md_blocks.append(block)
 
-    def _flush_paragraph(self, current_paragraph):
+    def _flush_paragraph(self, current_paragraph, line=None):
         if current_paragraph:
-            self._append_block(current_paragraph, translatable=True)
+            self._append_block(current_paragraph, translatable=True, line=line)
 
     @staticmethod
     def _is_fence_start(stripped_line):
@@ -226,10 +261,7 @@ class MarkdownBookLoader(BaseBookLoader):
                 translate_missing=True
             )
 
-            out_path = (
-                f"{Path(self.md_name).parent}/"
-                f"{Path(self.md_name).stem}_bilingual.md"
-            )
+            out_path = self._output_path()
             self.save_file(out_path, self.bilingual_result)
             self.announce_saved_book(out_path)
 
@@ -272,7 +304,13 @@ class MarkdownBookLoader(BaseBookLoader):
                 return
 
             batch_index = len(batches)
-            batches.append(MarkdownBatch(batch_texts, batch_breadcrumb))
+            batches.append(
+                MarkdownBatch(
+                    batch_texts,
+                    batch_breadcrumb,
+                    tuple(block.line for block in batch),
+                )
+            )
             render_items.append(("batch", batch_index))
 
             translated_count += len(batch)
@@ -551,7 +589,7 @@ class MarkdownBookLoader(BaseBookLoader):
         result = []
         for item_type, value in render_items:
             if item_type == "text":
-                result.append(value)
+                self._emit_pass_through(result, value)
                 continue
 
             batch = batches[value]
@@ -565,13 +603,30 @@ class MarkdownBookLoader(BaseBookLoader):
                     else [batch_text]
                 )
                 for source_text, translated_text in zip(source_items, translated_texts):
-                    if not self.single_translate:
-                        result.append(source_text)
-                    result.append(translated_text)
+                    self._emit_pair(result, source_text, translated_text)
             elif not self.single_translate:
-                result.append(batch_text)
+                self._emit_untranslated(result, batch_text)
 
         return result
+
+    # The three places a rendered file gets its pieces. Split out so a
+    # reading-edition subclass can decide how a pair is laid out (blank
+    # lines, heading identifiers, a language region around the translation)
+    # without reimplementing the walk that pairs source with target — the
+    # one thing that must never be guessed back from the rendered text.
+    def _emit_pass_through(self, result, text):
+        """A block that was never sent to the model, once, as it stood."""
+        result.append(text)
+
+    def _emit_pair(self, result, source_text, translated_text):
+        """One source block and the translation that belongs to it."""
+        if not self.single_translate:
+            result.append(source_text)
+        result.append(translated_text)
+
+    def _emit_untranslated(self, result, source_text):
+        """A batch with no translation yet: the source keeps its place."""
+        result.append(source_text)
 
     @staticmethod
     def _contiguous_results(results):
@@ -725,7 +780,4 @@ class MarkdownBookLoader(BaseBookLoader):
             translate_missing=False
         )
 
-        self.save_file(
-            f"{Path(self.md_name).parent}/{Path(self.md_name).stem}_bilingual_temp.txt",
-            self.bilingual_temp_result,
-        )
+        self.save_file(self._temp_output_path(), self.bilingual_temp_result)

@@ -42,8 +42,21 @@ right one. It is consulted only while the run still calls that endpoint: an
 `--api_base` elsewhere, or an `--api_format` override on an entry that names
 no `base_url`, moves the request to another host, and the entry's key is not
 sent there. The run says so; pass `--key` when you meant to reuse it. The file holds the address and the variable name, never a secret.
-See [Endpoints, models and languages](./model_lang.md#named-endpoints---provider).
+See [Endpoints, models and languages](./model_lang.md#named-endpoints-provider).
 `--model orcarouter` reads `BBM_ORCAROUTER_API_KEY` the same way.
+
+## Classifier variables
+
+A [Jev-compatible classifier](providers.md#jev-and-jev-compatible-classifiers) reads its key only for its own host:
+
+| variable | read for |
+|---|---|
+| `JEV_API_KEY`, `TYPESAFE_API_KEY` | TypeSafe's Jev at a typesafe.ai address |
+| `FEATHERLESS_API_KEY` | Simple Jev at a featherless.ai address |
+
+Through a gateway, name the key with `--classify-key` or a provider entry's `classify_env_key`.
+
+`BBM_JEV_MIN_CONFIDENCE`, a number from 0 to 1, sets Jev's gate for a run without `--classify-min-confidence` (the flag wins): a `skip` below it is translated. The default is 0.95. A value that is not a number from 0 to 1 stops the run.
 
 ## Old per-vendor variables
 

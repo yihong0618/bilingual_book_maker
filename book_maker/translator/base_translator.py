@@ -693,6 +693,22 @@ class Base(ABC):
     extra_body = {}
     extra_headers = {}
 
+    # --no-thinking, set by the CLI on the routes that carry it. Class-level
+    # for the same reason, and False everywhere else: a route that cannot ask
+    # for it is warned about the flag rather than reading an attribute that
+    # reaches nothing.
+    no_thinking = False
+
+    def request_extra_body(self, model=None):
+        """The `extra_body` every request on this route carries, or None.
+
+        `--extra_body` verbatim by default. The routes that implement
+        `--no-thinking` merge its control *underneath* the operator's fields,
+        so anything named in `--extra_body` wins — the flag is a default for
+        a field nobody set, never an override of one somebody did.
+        """
+        return self.extra_body or None
+
     # What `--source_lang` stated, when it stated anything. Class-level so
     # every route answers, including the ones a test builds without
     # __init__; None means "the model works it out from the text", which is
@@ -1128,6 +1144,10 @@ class Base(ABC):
         """
         target = model or getattr(self, "model", None)
         rungs = self.structured_rungs(prompt, schema, model)
+        return self._descend(rungs, target, accept)
+
+    def _descend(self, rungs, target, accept=None):
+        """`run_rungs` over the rungs `target` has not retired, floor always kept."""
         refusals = self._rung_refusals.get(target, {})
         live = [
             (name, rung)

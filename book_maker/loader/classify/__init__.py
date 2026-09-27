@@ -26,6 +26,7 @@ rows go to a decider.
 
 from dataclasses import dataclass
 
+from ...classifier import Classifier
 from .agent import build_agent_prompt
 from .candidates import gather_candidates
 from .model import (
@@ -34,11 +35,7 @@ from .model import (
     PlanUnresolvedError,
     classify_plan as classify_with_schema,
 )
-from .session import (
-    can_session_classify,
-    classify_over_session,
-    session_classify_engaged,
-)
+from .session import can_session_classify, classify_over_session
 from .all import decide_everything
 
 MODES = ("all", "model", "agent")
@@ -105,14 +102,19 @@ def mode_policy(name):
 
 
 def classify_plan(ledger, translator, model=None):
-    """Ask this translator for verdicts, in whichever way it can answer.
+    """Ask for verdicts, in whichever way the classify endpoint can answer.
 
-    The choice is the endpoint's, not the user's: a route that produces no
-    JSON object cannot be asked for one, and asking anyway is what used to
-    turn plan mode off there. Nothing about the two paths differs above this
-    line — both return ``({key: (verdict, content_type)}, candidates)``.
+    `translator` is the run's `Classifier` (`book_maker/classifier.py`: the
+    classify endpoint's backends in the run's preference order) or a bare
+    translator, asked through its own. Which backend answers is the
+    endpoint's business, not the user's: a route that produces no JSON
+    object is asked over a held conversation (`session.py`), everything else
+    one structured question per page (`model.py`), jev included. Both return
+    ``({key: (verdict, content_type)}, candidates)``.
     """
-    if session_classify_engaged(translator, model):
+    if not isinstance(translator, Classifier):
+        translator = Classifier(translator, model)
+    if translator.text_backend() == "session":
         return classify_over_session(ledger, translator, model=model)
     return classify_with_schema(ledger, translator, model=model)
 
@@ -133,5 +135,4 @@ __all__ = [
     "decide_everything",
     "gather_candidates",
     "mode_policy",
-    "session_classify_engaged",
 ]
