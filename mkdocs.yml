@@ -49,6 +49,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Quick start: quickstart.md
+  - Translate with an agent: agent-skill.md
   - Installation:
       - Python: installation.md
       - Docker: docker.md
