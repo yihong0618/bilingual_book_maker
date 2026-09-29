@@ -12,13 +12,19 @@ a person edits before translating.
 """
 
 import re
+import shlex
 import shutil
 from pathlib import Path
 from urllib.parse import unquote
 
 from .bundle import contained_path, sha256_file, sha256_text
 from .errors import PipelineError
-from .messages import STAGE_COMPLETE
+from .messages import (
+    SOURCE_BASELINE_UNKNOWN,
+    SOURCE_EDITED,
+    SOURCE_REASON_IMPORT,
+    STAGE_COMPLETE,
+)
 from .preflight import inspect, parse_markdown
 
 STAGE = "import"
@@ -27,8 +33,45 @@ INLINE_IMAGE = re.compile(r"(!\[[^\]\n]*\]\()([^)\n]+)(\))")
 INLINE_LINK = re.compile(r"(?<!\!)(\[[^\]\n]+\]\()([^)\n]+)(\))")
 
 
+def guard_source_replacement(bundle, stage, reason):
+    """Refuse to replace a `source.md` that differs from what was written.
+
+    The one invariant (lead 260928, astra consult): an existing
+    `bundle/source.md` may be replaced only when it still matches its
+    recorded baseline, `source.working_sha256` -- the text hash the import
+    wrote. Called before anything in the bundle is touched, so a refusal
+    leaves it byte for byte as it was. No stage status is consulted: a
+    failed extraction can sit beside a source someone has already edited.
+
+    No `source.md`: nothing to lose. A `source.md` with no baseline on
+    record (a bundle from before the key) is unknown, not untouched, and
+    refused too. `reason` is the phrase naming why this run replaces it, or
+    a callable returning one, asked only when refusing.
+    """
+    if not bundle.source.is_file():
+        return
+    manifest = bundle.read_manifest() if bundle.manifest_path.is_file() else {}
+    baseline = (manifest.get("source") or {}).get("working_sha256")
+    current = sha256_text(bundle.source.read_text(encoding="utf-8"))
+    if baseline == current:
+        return
+    why = reason() if callable(reason) else reason
+    template = SOURCE_BASELINE_UNKNOWN if not baseline else SOURCE_EDITED
+    raise PipelineError(
+        template.format(bundle=shlex.quote(str(bundle.root)), reason=why),
+        stage=stage,
+    )
+
+
 def import_markdown(
-    bundle, input_path, *, pandoc, origin=None, stage=STAGE, kind="markdown"
+    bundle,
+    input_path,
+    *,
+    pandoc,
+    origin=None,
+    stage=STAGE,
+    kind="markdown",
+    reason=SOURCE_REASON_IMPORT,
 ):
     """Copy `input_path` and its local images into `bundle`.
 
@@ -36,6 +79,10 @@ def import_markdown(
     already written Markdown and images to a working directory, and the
     only differences from an import are the stage its status is recorded
     under and the fact that the origin was a PDF.
+
+    An edited `source.md` already in the bundle is refused before anything
+    is written (`guard_source_replacement`); `reason` names why this run
+    would replace it.
     """
     source_file = Path(input_path)
     if not source_file.is_file():
@@ -44,6 +91,7 @@ def import_markdown(
     if not raw.strip():
         raise PipelineError(f"{source_file} has no content", stage=stage)
 
+    guard_source_replacement(bundle, stage, reason)
     bundle.create()
     bundle.set_stage(stage, "running")
 
@@ -51,6 +99,10 @@ def import_markdown(
         rewritten, copied = _relocate_assets(raw, source_file.parent, bundle)
         bundle.raw_source.write_text(raw, encoding="utf-8")
         bundle.source.write_text(rewritten, encoding="utf-8")
+        # The baseline goes on record as soon as the file is written, not
+        # only on success: a source the preflight then refuses is still
+        # the tool's own text, and a rerun may replace it.
+        bundle.update_manifest(source={"working_sha256": sha256_text(rewritten)})
         report = inspect(rewritten, root=bundle.root, pandoc=pandoc)
         report.raise_if_problems(stage)
     except PipelineError:
