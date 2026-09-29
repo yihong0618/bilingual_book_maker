@@ -210,7 +210,7 @@ The route needs no GPU. The device changes the speed, never the text. Install fr
       --use_context session
     ```
 
-    Add `--gpus all` on Linux or Windows (WSL2) with an NVIDIA card; the GPU works only on the amd64 image. See [Docker](../docker.md).
+    With an NVIDIA card on Linux or Windows (WSL2), use the `pdf-cuda` tag (amd64 only) and add `--gpus all`. See [Docker](../docker.md).
 
 ## What to expect from any PDF
 

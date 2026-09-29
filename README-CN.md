@@ -724,10 +724,10 @@ docker run --rm -v "${folder_path}":/book -v bbm-models:/root/.cache ghcr.io/yih
 
 要用 GPU，按你的机器看：
 
-- 带 NVIDIA 显卡的 Linux：装好 NVIDIA Container Toolkit，加 `--gpus all`。
-- 带 NVIDIA 显卡的 Windows：一样，通过 Docker Desktop 的 WSL2 后端。
+- 带 NVIDIA 显卡的 Linux：用 `pdf-cuda` 标签；装好 NVIDIA Container Toolkit，加 `--gpus all`。
+- 带 NVIDIA 显卡的 Windows：一样用 `pdf-cuda` 标签，通过 Docker Desktop 的 WSL2 后端。
 - Mac（Apple 芯片）：Docker 用不到 GPU，请直接在本机安装运行。
-- 带 NVIDIA 显卡的 arm64 Linux：再加 `--platform linux/amd64`。
+- 带 NVIDIA 显卡的 arm64 Linux：用 `pdf` 标签，在处理器上运行（`pdf-cuda` 只有 amd64）。
 
 更多：[Docker](https://github.com/yihong0618/bilingual_book_maker/wiki/Docker-安装)。
 

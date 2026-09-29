@@ -4,14 +4,15 @@ Use Docker if you do not want to set up Python yourself. Images are published to
 
 ## Images and tags
 
-There are two images, built from one Dockerfile on `python:3.12-slim`, for `linux/amd64` and `linux/arm64`.
+There are three images, built from one Dockerfile.
 
-| tag | what is in it | use it for |
-|---|---|---|
-| `latest` (also `basic`) | the translator and its Python packages; a few hundred megabytes | EPUB, TXT, Markdown, SRT, and PDFs on the older text route |
-| `pdf` | `latest` plus Pandoc 3.11 and the PDF packages (docling and PyTorch; on amd64 the CUDA build, several gigabytes) | `--to-epub` |
-| `<version>`, `<version>-pdf` | the same two images at a release | pinning a release |
-| `sha-<commit>`, `sha-<commit>-pdf` | the same two images at one commit | pinning a build |
+| tag | what is in it | platforms | use it for |
+|---|---|---|---|
+| `latest` (also `basic`) | the translator and its Python packages on `python:3.12-slim`; about 280 MB on amd64 | amd64, arm64 | EPUB, TXT, Markdown, SRT, and PDFs on the older text route |
+| `pdf` | `latest` plus Pandoc 3.11 and the PDF packages, with PyTorch's CPU build; about 2.4 GB on amd64 | amd64, arm64 | `--to-epub` on the processor: macOS, arm64 Linux, and any machine without an NVIDIA card |
+| `pdf-cuda` | the official PyTorch CUDA runtime image plus Pandoc 3.11, the translator and the PDF packages; its base alone is a 3.4 GB download | amd64 | `--to-epub` on an NVIDIA GPU, on Linux or on Windows |
+| `<version>`, `<version>-pdf`, `<version>-pdf-cuda` | the same three images at a release | | pinning a release |
+| `sha-<commit>`, `sha-<commit>-pdf`, `sha-<commit>-pdf-cuda` | the same three images at one commit | | pinning a build |
 
 ```bash
 docker pull ghcr.io/yihong0618/bilingual_book_maker:latest
@@ -20,7 +21,7 @@ docker pull ghcr.io/yihong0618/bilingual_book_maker:latest
 ## Mounts
 
 - **Your book folder at `/book`.** Pass the book as `/book/<file>`. The translated book is written back into the same folder.
-- **A named volume at `/root/.cache`** (the `pdf` image). The docling models download there on the first `--to-epub` run, about 500 MB. Without the volume every run downloads them again.
+- **A named volume at `/root/.cache`** (the `pdf` and `pdf-cuda` images). The docling models download there on the first `--to-epub` run, about 500 MB. Without the volume every run downloads them again.
 
 The container runs as root, so writing into the mounted folder always works. On Linux the files it writes belong to root: `chown` them afterwards, or add `--user $(id -u)`.
 
@@ -67,18 +68,18 @@ docker run --rm \
 
 ## A PDF, per system
 
-The `latest` image has no Pandoc and no PDF packages, so it cannot run `--to-epub`. Use the `pdf` tag.
+The `latest` image has no Pandoc and no PDF packages, so it cannot run `--to-epub`. With an NVIDIA card use the `pdf-cuda` tag; everywhere else use `pdf`.
 
 === "Linux with NVIDIA"
 
-    Install the NVIDIA driver and the NVIDIA Container Toolkit on the host. Nothing else: PyTorch's wheels carry the CUDA runtime.
+    Install the NVIDIA driver and the NVIDIA Container Toolkit on the host. Nothing else: the image carries the CUDA runtime.
 
     ```bash
     docker run --rm --gpus all \
       -v "$PWD":/book \
       -v bbm-models:/root/.cache \
       -e OPENAI_API_KEY \
-      ghcr.io/yihong0618/bilingual_book_maker:pdf \
+      ghcr.io/yihong0618/bilingual_book_maker:pdf-cuda \
       --book_name /book/paper.pdf \
       --to-epub \
       --use_context session
@@ -93,7 +94,7 @@ The `latest` image has no Pandoc and no PDF packages, so it cannot run `--to-epu
       -v "${PWD}:/book" `
       -v bbm-models:/root/.cache `
       -e OPENAI_API_KEY `
-      ghcr.io/yihong0618/bilingual_book_maker:pdf `
+      ghcr.io/yihong0618/bilingual_book_maker:pdf-cuda `
       --book_name /book/paper.pdf `
       --to-epub `
       --use_context session
@@ -101,7 +102,7 @@ The `latest` image has no Pandoc and no PDF packages, so it cannot run `--to-epu
 
 === "CPU only"
 
-    The same image runs on the processor. `--device cpu` skips the accelerator detection. The output is the same; it is slower.
+    The `pdf` image carries PyTorch's CPU build, for amd64 and arm64. `--device cpu` skips the accelerator detection. The output is the same as on a GPU; it is slower.
 
     ```bash
     docker run --rm \
@@ -117,7 +118,7 @@ The `latest` image has no Pandoc and no PDF packages, so it cannot run `--to-epu
 
 === "macOS"
 
-    The container is CPU-only whatever you pass: Docker runs a Linux VM that cannot see Metal. The image also ships the CUDA build of PyTorch. On Apple silicon the [native install](installation-pdf.md) is both faster (MPS) and much smaller.
+    The container is CPU-only whatever you pass: Docker runs a Linux VM that cannot see Metal. The `pdf` image runs natively on Apple silicon (arm64). The [native install](installation-pdf.md) is faster there (MPS).
 
     ```bash
     docker run --rm \
@@ -131,28 +132,11 @@ The `latest` image has no Pandoc and no PDF packages, so it cannot run `--to-epu
       --use_context session
     ```
 
-## GPU only on amd64
+## An NVIDIA card on arm64
 
-The images are published for both architectures, but PyPI's PyTorch is a CUDA build only on x86_64:
+`pdf-cuda` is built for amd64 only: the official PyTorch CUDA image it starts from is published for nothing else. On an arm64 Linux host with a card (GH200, Jetson), `pdf` runs on the processor.
 
-| torch 2.7.1, Linux | |
-|---|---|
-| `manylinux_2_28_x86_64` | 821.0 MB — the CUDA build |
-| `manylinux_2_28_aarch64` | 98.9 MB — no CUDA kernels |
-
-So an arm64 Linux host that *does* have a card (GH200, Jetson) pulls the arm64 image by default and runs on the processor, however many `--gpus` you pass. Pull the x86_64 image there:
-
-```bash
-docker run --rm --platform linux/amd64 --gpus all \
-  -v "$PWD":/book \
-  -v bbm-models:/root/.cache \
-  -e OPENAI_API_KEY \
-  ghcr.io/yihong0618/bilingual_book_maker:pdf \
-  --book_name /book/paper.pdf \
-  --to-epub
-```
-
-## What is not in either image
+## What is not in any image
 
 The Codex route (`--api_format codex`). It drives a `codex` binary signed in on your machine; neither the binary nor the login is in the container. Use an API route in Docker.
 
@@ -164,8 +148,9 @@ A plain build gives the small image:
 docker build --tag bilingual_book_maker .
 ```
 
-The PDF image is the `pdf` stage:
+The PDF images are the `pdf` and `pdf-cuda` stages:
 
 ```bash
 docker build --target pdf --tag bilingual_book_maker:pdf .
+docker build --platform linux/amd64 --target pdf-cuda --tag bilingual_book_maker:pdf-cuda .
 ```

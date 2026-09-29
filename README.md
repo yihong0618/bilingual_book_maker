@@ -823,10 +823,10 @@ docker run --rm -v "${folder_path}":/book -v bbm-models:/root/.cache ghcr.io/yih
 
 For a GPU, find your machine:
 
-- Linux with an NVIDIA card: install the NVIDIA Container Toolkit and add `--gpus all`.
-- Windows with an NVIDIA card: the same, through Docker Desktop's WSL2 backend.
+- Linux with an NVIDIA card: the `pdf-cuda` tag; install the NVIDIA Container Toolkit and add `--gpus all`.
+- Windows with an NVIDIA card: the same `pdf-cuda` tag, through Docker Desktop's WSL2 backend.
 - Mac (Apple silicon): Docker cannot reach the GPU; install the tool natively instead.
-- arm64 Linux with an NVIDIA card: also add `--platform linux/amd64`.
+- arm64 Linux with an NVIDIA card: the `pdf` tag, on the processor (`pdf-cuda` is amd64 only).
 
 More: [Docker](https://github.com/yihong0618/bilingual_book_maker/wiki/Docker).
 

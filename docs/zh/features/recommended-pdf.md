@@ -210,7 +210,7 @@ python make_book.py \
       --use_context session
     ```
 
-    在带 NVIDIA 显卡的 Linux 或 Windows（WSL2）上加 `--gpus all`；只有 amd64 镜像能用 GPU。见 [Docker 安装](../docker.md)。
+    在带 NVIDIA 显卡的 Linux 或 Windows（WSL2）上，改用 `pdf-cuda` 标签（只有 amd64）并加 `--gpus all`。见 [Docker 安装](../docker.md)。
 
 ## 对任何 PDF 都该有的预期
 

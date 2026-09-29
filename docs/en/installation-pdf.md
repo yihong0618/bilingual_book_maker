@@ -93,7 +93,7 @@ Which PyTorch build you get is decided by the *index* it comes from, not by the 
 
 Use `--extra-index-url`, never `--index-url`. `--index-url` *replaces* PyPI, and everything else this tool needs would stop resolving.
 
-If you want exactly the versions the project tests, `requirements-pdf-gpu.txt` and `requirements-pdf-cpu.txt` are the pinned sets the Docker `pdf` image installs (`pip install -r requirements-pdf-cpu.txt` names the CPU index inside the file). Expect them to replace the PyTorch you have.
+If you want exactly the versions the project tests, `requirements-pdf-gpu.txt` and `requirements-pdf-cpu.txt` are the pinned sets the Docker images install (`pdf` the CPU file, `pdf-cuda` the GPU file minus the PyTorch its base already has; `pip install -r requirements-pdf-cpu.txt` names the CPU index inside the file). Expect them to replace the PyTorch you have.
 
 ### With uv
 
@@ -181,7 +181,7 @@ The uv equivalent is `UV_TORCH_BACKEND=cpu`.
 
 ## Or skip all of it: Docker
 
-The `pdf` image tag carries Pandoc and the whole docling runtime: `docker pull ghcr.io/yihong0618/bilingual_book_maker:pdf`. See [Docker](docker.md), including why a Mac should install natively instead.
+The `pdf` image tag carries Pandoc and the whole docling runtime with PyTorch's CPU build: `docker pull ghcr.io/yihong0618/bilingual_book_maker:pdf`. With an NVIDIA card, the `pdf-cuda` tag. See [Docker](docker.md), including why a Mac should install natively instead.
 
 ## Sizes
 

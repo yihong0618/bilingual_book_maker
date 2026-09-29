@@ -93,7 +93,7 @@ pandoc --version
 
 请用 `--extra-index-url`，不要用 `--index-url`。`--index-url` 会*替换*掉 PyPI，这个工具需要的其他所有包就都解析不到了。
 
-如果你想要与项目测试时完全相同的版本，`requirements-pdf-gpu.txt` 和 `requirements-pdf-cpu.txt` 就是 Docker `pdf` 镜像安装的那两套锁定版本（`pip install -r requirements-pdf-cpu.txt` 的文件里已经写明了 CPU 索引）。它们会替换掉你已有的 PyTorch。
+如果你想要与项目测试时完全相同的版本，`requirements-pdf-gpu.txt` 和 `requirements-pdf-cpu.txt` 就是 Docker 镜像安装的那两套锁定版本（`pdf` 用 CPU 那份，`pdf-cuda` 用 GPU 那份、去掉基础镜像里已有的 PyTorch；`pip install -r requirements-pdf-cpu.txt` 的文件里已经写明了 CPU 索引）。它们会替换掉你已有的 PyTorch。
 
 ### 使用 uv
 
@@ -181,7 +181,7 @@ uv 的对应写法是 `UV_TORCH_BACKEND=cpu`。
 
 ## 或者全部跳过：Docker
 
-`pdf` 镜像标签带有 Pandoc 和完整的 docling 运行环境：`docker pull ghcr.io/yihong0618/bilingual_book_maker:pdf`。见 [Docker 安装](docker.md)，其中也解释了为什么 Mac 应该直接在本机安装。
+`pdf` 镜像标签带有 Pandoc 和完整的 docling 运行环境，PyTorch 用的是 CPU 版本：`docker pull ghcr.io/yihong0618/bilingual_book_maker:pdf`。有 NVIDIA 显卡的话，用 `pdf-cuda` 标签。见 [Docker 安装](docker.md)，其中也解释了为什么 Mac 应该直接在本机安装。
 
 ## 大小
 
