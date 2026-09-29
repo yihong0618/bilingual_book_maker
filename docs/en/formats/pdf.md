@@ -4,7 +4,7 @@ A PDF can take two routes. Pick the first unless you want plain text.
 
 | route | flag | output | needs |
 |---|---|---|---|
-| **PDF to bilingual EPUB** (experimental) | `--to-epub` | a reflowable EPUB with a table of contents, figures and display formulas as pictures | the [PDF extra](../installation-pdf.md) and Pandoc 3.1.12+ |
+| **PDF to bilingual EPUB** | `--to-epub` | a reflowable EPUB with a table of contents, figures and display formulas as pictures | the [PDF extra](../installation-pdf.md) and Pandoc 3.1.12+ |
 | **Text route** (older) | none | a bilingual `.txt`, plus an attempted EPUB | the base install |
 
 ## The `--to-epub` route

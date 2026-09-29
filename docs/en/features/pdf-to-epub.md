@@ -9,7 +9,7 @@ python make_book.py --book_name paper.pdf --to-epub --use_context session
 
 Read `paper_pages-1-2_book/source.md` between the two. [Recommended settings for PDF](recommended-pdf.md) has the command for each kind of document and each system.
 
-This route is experimental. It has been checked on arXiv papers and a set of books, scans and browser-saved pages, not on every PDF shape. Issues and pull requests are welcome; attach the PDF if it can be shared, or the page of `source.md` that came out wrong.
+The route has been checked on arXiv papers and a set of books, scans and browser-saved pages, not on every PDF shape. Issues and pull requests are welcome; attach the PDF if it can be shared, or the page of `source.md` that came out wrong.
 
 ## What it does
 
@@ -66,6 +66,10 @@ If a translated paragraph is wrong, correct it in `<name>_book/book_bilingual.md
 ## Recommended commands
 
 Every PDF starts with two pages and a few translated blocks (`--pages 1-2 --test`), then a read of `source.md`. The command for a novel, a textbook, a paper, a scanned book, a scan with a bad text layer and a Chinese scan, and the install and device for macOS, Linux with NVIDIA, Windows, a CPU-only machine and Docker, are on [Recommended settings for PDF](recommended-pdf.md).
+
+## Known limitations
+
+- Inline math equations may not be displayed correctly. Only display formulas are cropped as pictures; maths inside a sentence arrives as whatever text the extractor read from it.
 
 ## What can go wrong
 

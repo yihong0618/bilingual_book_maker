@@ -465,7 +465,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--to-epub`、`--pdf-ocr`、`--ocr-lang`、`--ocr-engine`、`--ocr-replace-layer`、`--pages`、`--device`、`--pdf-image-dpi`（仅限 PDF）：
 
-  把 PDF 变成带目录的双语 EPUB，见 [PDF 转双语 EPUB](#pdf-转-双语-epub-实验性)。
+  把 PDF 变成带目录的双语 EPUB，见 [PDF 转双语 EPUB](#pdf-转-双语-epub)。
 
 - `--sentence_mode`:
 
@@ -648,7 +648,7 @@ python3 make_book.py --book_name my_book.epub --key ${key} --plan-classify agent
 
 `--use_context session` 整本书保持一段对话，人名和文风前后一致。历史按缓存价重读，达到 `--context-compact-at`（默认 8192 token）时压缩成一份简短的交接报告；`--no-context-compact` 则让下一个窗口从空白开始。在支持提示缓存的接口上最合适。更多：[会话模式](https://github.com/yihong0618/bilingual_book_maker/wiki/会话模式)。
 
-### PDF 转 **双语** EPUB (实验性)
+### PDF 转 **双语** EPUB
 
 `--to-epub` 把 PDF 变成可重排、带目录的双语 EPUB：每段后面紧跟译文，图和行间公式保留为图片。需要从代码库安装 PDF 依赖，以及 [Pandoc](https://pandoc.org/installing.html) 3.1.12 或更新版本，见[安装 PDF 依赖](https://github.com/yihong0618/bilingual_book_maker/wiki/安装-PDF-扩展)。
 

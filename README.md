@@ -546,7 +546,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--to-epub`, `--pdf-ocr`, `--ocr-lang`, `--ocr-engine`, `--ocr-replace-layer`, `--pages`, `--device`, `--pdf-image-dpi` (PDF only):
 
-  Turn a PDF into a bilingual EPUB with a table of contents. See [PDF to bilingual EPUB](#pdf-to-bilingual-epub-experimental).
+  Turn a PDF into a bilingual EPUB with a table of contents. See [PDF to bilingual EPUB](#pdf-to-bilingual-epub).
 
 - `--sentence_mode`:
 
@@ -747,7 +747,7 @@ python3 make_book.py --book_name my_book.epub --key ${key} --plan-classify agent
 
 `--use_context session` keeps one conversation for the whole book, so names and style stay consistent. The history is re-read at the cache price and, once it reaches `--context-compact-at` (default 8192 tokens), compacted into a short handoff report; `--no-context-compact` starts the next window empty instead. Best on endpoints with prompt caching. More: [Session mode](https://github.com/yihong0618/bilingual_book_maker/wiki/Session-mode).
 
-### PDF to **bilingual** EPUB (experimental)
+### PDF to **bilingual** EPUB
 
 `--to-epub` turns a PDF into a reflowable bilingual EPUB with a table of contents: every paragraph followed by its translation, figures and display formulas kept as pictures. It needs the PDF extra, installed from a clone, and [Pandoc](https://pandoc.org/installing.html) 3.1.12 or newer; see [Installing the PDF extra](https://github.com/yihong0618/bilingual_book_maker/wiki/Installing-the-PDF-extra).
 

@@ -4,7 +4,7 @@ PDF 可以走两条路线。除非你只想要纯文本，否则选第一条。
 
 | 路线 | 参数 | 输出 | 需要 |
 |---|---|---|---|
-| **PDF 转双语 EPUB**（实验性） | `--to-epub` | 带目录的可重排 EPUB，插图和行间公式保留为图片 | [PDF 扩展](../installation-pdf.md)和 Pandoc 3.1.12+ |
+| **PDF 转双语 EPUB** | `--to-epub` | 带目录的可重排 EPUB，插图和行间公式保留为图片 | [PDF 扩展](../installation-pdf.md)和 Pandoc 3.1.12+ |
 | **纯文本路线**（旧） | 无 | 一个双语 `.txt`，另外尝试生成一个 EPUB | 基础安装 |
 
 ## `--to-epub` 路线

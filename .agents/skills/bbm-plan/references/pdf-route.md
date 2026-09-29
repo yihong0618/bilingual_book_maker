@@ -19,7 +19,7 @@ table of contents** next to the PDF (`<name>_bilingual.epub`), every
 paragraph followed by its translation. Without the flag a PDF takes the old
 route, which writes a bilingual `.txt` with no structure; only offer that if
 the user asks for txt (then follow `references/plain-formats.md` as for a
-TXT, with the `--batch_size` recommendation). This route is experimental: a
+TXT, with the `--batch_size` recommendation). A
 PDF is a page description with no paragraphs or headings in it, so the
 extractor guesses the structure back, and a reflowable bilingual EPUB with
 a working TOC out of that is already a good result. Say so up front.

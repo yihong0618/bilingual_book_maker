@@ -9,7 +9,7 @@ python make_book.py --book_name paper.pdf --to-epub --use_context session
 
 两条命令之间，读一读 `paper_pages-1-2_book/source.md`。[PDF 推荐设置](recommended-pdf.md)按文档类型和操作系统给出了对应的命令。
 
-这条路线还是实验性的。它在 arXiv 论文和一批图书、扫描件、浏览器另存的网页上检验过，并没有覆盖所有形态的 PDF。欢迎提 issue 和 pull request；如果 PDF 可以公开，请附上它，否则附上 `source.md` 里出错的那一页。
+这条路线在 arXiv 论文和一批图书、扫描件、浏览器另存的网页上检验过，并没有覆盖所有形态的 PDF。欢迎提 issue 和 pull request；如果 PDF 可以公开，请附上它，否则附上 `source.md` 里出错的那一页。
 
 ## 它做什么
 
@@ -66,6 +66,10 @@ docling 把每一页切成若干区域并给它们打上标签：正文、标题
 ## 推荐命令
 
 每份 PDF 都从两页和几段译文开始（`--pages 1-2 --test`），然后读一遍 `source.md`。小说、教材、论文、扫描书、文字层有误的扫描件和中文扫描件各自的命令，以及 macOS、带 NVIDIA 显卡的 Linux、Windows、只有 CPU 的机器和 Docker 上的安装方式与设备选择，都在 [PDF 推荐设置](recommended-pdf.md)里。
+
+## 已知限制
+
+- 行内数学公式可能无法正确显示。只有行间公式会被裁剪成图片；句子里的数学式按提取器读到的文字原样输出。
 
 ## 可能出现的问题
 
