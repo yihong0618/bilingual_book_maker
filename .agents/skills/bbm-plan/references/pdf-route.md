@@ -156,7 +156,7 @@ text):
 | Linux, CPU only | `pip install ".[pdf]"` plus PyTorch's CPU index (the line is on `docs/en/installation-pdf.md`; the plain line would pull about 3 GB of CUDA) | `--device cpu`; one two-page OCR scan took 26.3 s on the CPU against 10.6 s on MPS, identical text |
 | Windows with NVIDIA | `pip install ".[pdf]"` plus PyTorch's `cu126` index (the line is on `docs/en/installation-pdf.md`), and the NVIDIA driver | `auto` finds CUDA |
 | Windows, CPU only | `pip install ".[pdf]"` (PyPI's Windows wheel is already the CPU build) | `--device cpu` |
-| Docker | image `ghcr.io/yihong0618/bilingual_book_maker:pdf` (Pandoc and the PDF packages inside); mount the book's folder and a models volume at `/root/.cache` | `--gpus all` on Linux or Windows (WSL2) with NVIDIA, amd64 image only (`docs/en/docker.md`) |
+| Docker | image `ghcr.io/yihong0618/bilingual_book_maker:pdf` (CPU torch, amd64 and arm64; Pandoc and the PDF packages inside), or `:pdf-cuda` (amd64 only) for an NVIDIA card; mount the book's folder and a models volume at `/root/.cache` | `--gpus all` with `:pdf-cuda` on Linux or Windows (WSL2) with NVIDIA, amd64 image only (`docs/en/docker.md`) |
 
 ## What to tell the user up front
 
