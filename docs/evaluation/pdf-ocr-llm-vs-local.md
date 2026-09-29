@@ -91,5 +91,3 @@ What this means for you today:
 - Only docling's auto choice (rapidocr) was run. easyocr, ocrmac, tesseract and rapidocr with an explicit `--ocr-lang` were deferred. On a Mac with ocrmac installed, auto would pick ocrmac instead (read from the code, not run).
 - One CPU cell; no CUDA machine.
 - No price table for gpt-5.6-luna, so token counts were not converted to money.
-
-Source: docs/260923-eval-PDF_OCR_LUNA_VS_LOCAL_BASELINE.md; docs/260923-docs-OWNER_RULINGS_OCR_PROMPT_LAYER_WIKI.md for the rulings on its open questions; docs/260923-feat-ENDPOINT_OVERRIDES_CLASSIFIER_JEV.md for the image-model flags; docs/260924-feat-PDF_OCR_REPLACE_LAYER.md for `--ocr-replace-layer` (repository, dated records)

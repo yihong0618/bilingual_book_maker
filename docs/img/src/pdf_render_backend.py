@@ -1,6 +1,6 @@
 """CER by page-render backend on the scanned slices.
 
-Numbers copied from docs/260923-eval-PDF_BACKEND_JBIG2_MASK_RENDER.md
+Numbers from the measurements on docs/evaluation/pdf-page-render-backend.md
 (CER charspan: docling-parse, pypdfium2, hybrid).
 Run from the repository root: python docs/img/src/pdf_render_backend.py
 """

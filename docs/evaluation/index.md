@@ -2,7 +2,7 @@
 
 Several defaults in this tool were set by a measurement, and some by an owner ruling on top of one. These pages show what was asked, what was measured, and what came out of it, so you can judge a default before you change it. Each page ends with Limits: the sample size and what was not measured. Where a default is a chosen margin rather than a measured optimum, the page says so.
 
-Every number on these pages is copied from a dated record in the repository's `docs/` folder, named at the foot of each page. Nothing is recomputed or rounded differently. Where two records disagree, the page says which is later and which one the owner trusts.
+Every number on these pages is copied from the measurement's own record. Nothing is recomputed or rounded differently. Where two records disagree, the page says which is later and which one the owner trusts.
 
 ## Translation
 

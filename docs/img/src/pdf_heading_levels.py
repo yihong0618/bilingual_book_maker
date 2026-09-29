@@ -1,7 +1,6 @@
 """Exact heading levels on 20 arXiv papers (195 headings), four methods.
 
-Numbers copied from docs/260922-eval-DOCLING_HEADING_HIERARCHY_BENCHMARK.md
-and docs/260922-feat-PDF_HEADING_LEVELS.md.
+Numbers from the benchmark on docs/evaluation/pdf-heading-levels.md.
 Run from the repository root: python docs/img/src/pdf_heading_levels.py
 """
 

@@ -110,5 +110,3 @@ The quarantine blocked the one book-breaking fix it met: on the code page the mo
 - Only one model (gpt-5.6-luna) was run. No on-device model was tried.
 - The built pass was checked on pages 1-2 of four fixtures; label-only changes such as text to footnote change nothing in the export yet.
 - No OCR engine ran in the catalogue; the two scans were read through their embedded layers.
-
-Source: docs/260923-eval-PDF_STRUCTURE_FAULTS_LUNA_REGION_ROLES.md; docs/260923-eval-CODEX_CONSULT_STRUCTURE_DECISION_CLIENT.md for the design constraints; docs/260923-feat-PDF_ROLE_DECISIONS.md for what was built and its first runs; docs/260923-feat-ENDPOINT_OVERRIDES_CLASSIFIER_JEV.md for the `--img-model` flags and the owner's image-model ruling (repository, dated records)

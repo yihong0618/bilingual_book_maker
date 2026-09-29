@@ -152,5 +152,3 @@ Extraction time is the run's own `PDF extracted: 2 pages, …, N s.` line: model
 - tesseract needs its `configs` folder beside the language files: with `TESSDATA_PREFIX` pointing at a folder of `.traineddata` files alone, every tesseract cell failed (`KeyError: 'text'`, tesseract printing `read_params_file: Can't open tsv`). Linking Homebrew's `configs` and `tessconfigs` folders into it fixed that; the numbers above are from the rerun.
 - Default OCR mode: on the simplified Chinese scan, whose invisible OCR layer docling reads alongside, the engine's text is mixed with the layer's. `--ocr-replace-layer` was not measured here.
 - Ground truth for the real scans was typed by one person.
-
-Source: docs/260925-eval-PDF_OCR_ENGINES.md (repository, dated records); scorer and ground truth as in docs/260923-eval-PDF_OCR_LUNA_VS_LOCAL_BASELINE.md

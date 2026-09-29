@@ -44,5 +44,3 @@ What would change it: a formula decoder that is measured to be faithful on hard 
 - docling finds no formula regions at all on a page rotated 90 or 270 degrees.
 - The corpus check is 24 crops on arXiv papers and one textbook scan. Books with many pages of equations were not run end to end.
 - The pictures are not searchable and carry no alt text; Pandoc would turn alt text into a caption.
-
-Source: docs/260922-feat-PDF_FORMULA_IMAGES.md; docs/260923-eval-PDF_STRUCTURE_FAULTS_LUNA_REGION_ROLES.md for the killed enrichment cell; docs/260921-eval-DOCLING_VS_OPENDATALOADER.md is superseded and not trusted (repository, dated records)

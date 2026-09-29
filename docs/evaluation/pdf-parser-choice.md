@@ -9,7 +9,7 @@ The first version of the PDF route read files with OpenDataLoader's Java engine 
 - **The ruling (September 21), owner's words:** "normal users has to download the jre, which means is about as troublesome. The time saved? Trivial. We'd offer them cpu and gpu route for those, and two separate pdf dependencies txt and a install guide for mps/cuda or cpu at md. Don't want anything java here. Make it so."
 - **The time measured then:** 0.34 s per page for Java against 0.87 s per page for docling, on a 5-page cut. The difference is under 3 seconds.
 - **The survey (September 22):** an Opus worker, the owner's instruction "if func's strictly better then port". 20 arXiv papers, 100 pages, fresh docling and OpenDataLoader output with labels; 14 experiments, each porting or prototyping the module and running it on docling's items where that made sense.
-- **The first comparison (September 21)**, `260921-eval-DOCLING_VS_OPENDATALOADER.md`, is superseded. The owner does not trust it (it was run by a weaker agent), so its figures are not used on this page. The survey reproduced two of its figures and marks which.
+- **The first comparison (September 21)** is superseded. The owner does not trust it (it was run by a weaker agent), so its figures are not used on this page. The survey reproduced two of its figures and marks which.
 
 ## Results
 
@@ -60,5 +60,3 @@ From the survey: the style ranking went into the heading rule (built); the narro
 - The header/footer rule was narrowed after the worker saw the misfire on the same corpus, so its 2/2 is not a held-out result.
 - The table figure is copied from the earlier statistics, not re-run.
 - The 0.34 s against 0.87 s per page timing comes from the superseded September 21 comparison, as quoted in the owner-approved design; it is the only timing available.
-
-Source: docs/260922-eval-ODL_MODULE_SURVEY.md; docs/260921-plan-PDF_DOCLING_ONLY_AND_INSTALL_ROUTES.md for the ruling; docs/260922-feat-PDF_HEADING_LEVELS.md for the heading table; docs/260921-eval-DOCLING_VS_OPENDATALOADER.md is superseded and not trusted (repository, dated records)

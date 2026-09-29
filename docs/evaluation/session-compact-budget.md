@@ -38,7 +38,7 @@ Total price-weighted cost per book, September 5:
 
 ![Two panels: price-weighted cost per book against --context-compact-at on a log axis, with measured cells, model curves and the 8000 default of the time; and cost per content token against the token budget at 400, 800 and 1600.](../img/session-cost-curves.jpg)
 
-*Figure: the September 5 cost model and cells. It marks the defaults of that day (C=8000, a 1600 to 2000 budget clamp), before the September 7 ruling. Open squares at 12000 and 16000 are model predictions. Source: 260905-eval-SESSION_COST_OPTIMIZATION-RESULTS.md.*
+*Figure: the September 5 cost model and cells. It marks the defaults of that day (C=8000, a 1600 to 2000 budget clamp), before the September 7 ruling. Open squares at 12000 and 16000 are model predictions.*
 
 The price of the new grouping defaults, September 7:
 
@@ -52,7 +52,7 @@ At 150 units: +5.9% at 4096 and +24.0% at 8192. Raising C from 4096 to 8192 brou
 
 ![Left: cost per book against C at a budget of 800, three books. Right: all-in session tokens on a 300-unit run for the old defaults, C=4096 and C=8192.](../img/session-compact-cost.jpg)
 
-*Figure: numbers from 260905-eval-SESSION_COST_OPTIMIZATION-RESULTS.md (left) and 260907-fix-CONSERVATIVE_GROUP_DEFAULTS.md (right). Script: `docs/img/src/session_compact_cost.py`.*
+*Figure: the September 5 cost model (left) and the September 7 price check (right). Script: `docs/img/src/session_compact_cost.py`.*
 
 ## Decision
 
@@ -70,5 +70,3 @@ For you: leave it unset for the fewest seams. Set it lower (toward 4096) if sess
 - Each cell was a single run of about 25 requests; differences under about 30% on one run are close to noise.
 - The September 7 price check used one book (animal_farm) at two sizes.
 - The continuity result rests on one full book (childrens-literature, zh-hans).
-
-Source: docs/260905-eval-SESSION_COST_OPTIMIZATION-DESIGN.md, docs/260905-eval-SESSION_COST_OPTIMIZATION-RESULTS.md, docs/260907-fix-CONSERVATIVE_GROUP_DEFAULTS.md (repository, dated records)

@@ -1,7 +1,7 @@
 """Character error rate per page class: docling auto OCR vs gpt-5.6-luna.
 
-Numbers copied from docs/260923-eval-PDF_OCR_LUNA_VS_LOCAL_BASELINE.md
-(the per-class table, 25 pages). Log scale: the classes span 0.003 to 0.905.
+Numbers from the per-class table on docs/evaluation/pdf-ocr-llm-vs-local.md
+(25 pages). Log scale: the classes span 0.003 to 0.905.
 Run from the repository root: python docs/img/src/pdf_ocr_cer.py
 """
 

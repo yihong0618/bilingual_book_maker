@@ -10,7 +10,7 @@ Plan mode puts several units (paragraphs, verse lines, cells) into one request. 
 
 **The fault-emergence sweep (September 5, 2026).** 76 valid cells and 923 requests on the Codex route: 46 specified cells plus a 30-cell extension to 64, 96 and 128 units once the route's own halving was found to cap the grid at 24 effective units. Four epub-samples books: childrens-literature (literary prose), moby-dick-mo (a long novel), epub30-spec (short technical units) and wasteland (verse). Two models: `gpt-5.4-mini` and the Codex default. Every cell was read back from the produced EPUB. A content fault is a translation in the wrong slot, a missing one, or marker residue in the text.
 
-**A weak-model rerun** of both axes on `gpt-4o-mini` and `deepseek-chat`. It is known from the September 2026 grouping report and its two figures below; there is no dated record with its per-cell table.
+**A weak-model rerun** of both axes on `gpt-4o-mini` and `deepseek-chat`. It is known from the September 2026 grouping report and its two figures below; its per-cell table was not kept.
 
 ## Results
 
@@ -39,7 +39,7 @@ The fault-emergence sweep:
 
 ![Three panels: read-back fault rate and retry overhead against effective units per request, and retry overhead against the token budget, over 76 cells. The vertical lines mark the defaults of September 5, 2026 (32 units), since lowered to 16.](../img/fault-emergence.jpg)
 
-*Figure: fault rate and retry cost against units and budget, 76 cells, 923 requests. The lines show the defaults of the time (32 units, a 1600 to 2000 budget), before the September 7 ruling. Source: 260905-eval-FAULT_EMERGENCE_UB-RESULTS.md.*
+*Figure: fault rate and retry cost against units and budget, 76 cells, 923 requests. The lines show the defaults of the time (32 units, a 1600 to 2000 budget), before the September 7 ruling.*
 
 The weak-model rerun: a raised unit cap costs retries first and faults later, so the cap is the knob to lower and the budget is not.
 
@@ -49,7 +49,7 @@ DeepSeek compressed aggressively at every cap and budget (median zh/en character
 
 ![Per-cell median zh/en character ratio and counts of heavily compressed slots, gpt-4o-mini and deepseek-chat.](../img/compression_ratio.jpg)
 
-*Figures: weak-model rerun, from the September 2026 grouping report; no dated record carries the per-cell table.*
+*Figures: weak-model rerun, from the September 2026 grouping report; its per-cell table was not kept.*
 
 ## Decision
 
@@ -71,9 +71,7 @@ What would change it: a rerun of the sweep that shows faults below 16 on some mo
 
 ## Limits
 
-- **The sweep's "weak" model was `gpt-5.4-mini`, which is not a weak-model proxy.** It is unusually strong at format compliance. The sweep's finding that "the weak model held the reply format better than the strong one" (2 recoveries in 9 childrens cells against 5 in 6) is therefore unproven for genuinely weak models. The `gpt-4o-mini` and DeepSeek rerun is the weak-model evidence, and it has no dated record with a table.
+- **The sweep's "weak" model was `gpt-5.4-mini`, which is not a weak-model proxy.** It is unusually strong at format compliance. The sweep's finding that "the weak model held the reply format better than the strong one" (2 recoveries in 9 childrens cells against 5 in 6) is therefore unproven for genuinely weak models. The `gpt-4o-mini` and DeepSeek rerun is the weak-model evidence, and its per-cell table was not kept.
 - Only four books, and only childrens-literature reached prose at 128 units; moby and spec spent their test slice on front matter.
 - Nothing between 16 and 64 units was measured on an on-device model.
 - The token budget was measured fault-free only from 1600 up, and only at the old 32-unit cap. The shipped 800 to 1600 sits below the measured range on purpose.
-
-Source: docs/260905-eval-FAULT_EMERGENCE_UB_DESIGN.md, docs/260905-eval-FAULT_EMERGENCE_UB-RESULTS.md, docs/260904-eval-GENERAL_BATCH_DEGRADATION-DESIGN.md, docs/260904-eval-GENERAL_BATCH_DEGRADATION-RESULTS.md, docs/260907-fix-CONSERVATIVE_GROUP_DEFAULTS.md (repository, dated records)

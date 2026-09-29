@@ -82,5 +82,3 @@ The record also pins a survey of how others score extraction (OmniDocBench, olmO
 - Both corpora are cut to two pages per file. No whole book was run as part of either check.
 - The September 23 fixtures are mostly English, with one simplified and two traditional Chinese scans. Other scripts are not covered apart from Greek lines on two scans and one Romanian scan.
 - No shared benchmark score (OmniDocBench, olmOCR-bench) was computed for this route.
-
-Source: docs/260920-eval-ARXIV_CORPUS_PDF_EXTRACTION_CHECK.md; docs/260923-eval-PDF_EVAL_FIXTURES_AND_PRACTICE.md (repository, dated records)

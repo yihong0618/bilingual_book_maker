@@ -88,5 +88,3 @@ What stays for you to check: the yellow-box defect below is not fixed, so on a s
 - /Rotate pages were not exercised by the hybrid.
 - Detection was checked on pages 1 and 2 of 60 fixtures plus four pages of one book, not on whole books.
 - The yellow-box defect has no fix and no upstream report yet.
-
-Source: docs/260923-eval-PDF_BACKEND_JBIG2_MASK_RENDER.md; docs/260923-fix-PDF_JBIG2_PAGE_IMAGE_BACKEND.md for the implementation and its measurements (repository, dated records)

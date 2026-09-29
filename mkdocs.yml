@@ -58,26 +58,12 @@ nav:
       - Recommended settings: features/recommended-epub.md
       - Plan mode: features/plan-mode.md
       - Session mode: features/session-mode.md
-      - Evaluation:
-          - Why 16 units per request: evaluation/grouping-batch-size.md
-          - Why the session compacts at 8192: evaluation/session-compact-budget.md
-          - Why the tool probes the endpoint: evaluation/structured-output-ladder.md
-          - Jev as the plan classifier: evaluation/plan-classifier-jev.md
   - PDF:
       - PDF to bilingual EPUB: features/pdf-to-epub.md
       - Recommended settings: features/recommended-pdf.md
       - Which OCR engine: features/pdf-ocr-engines.md
       - Installing the PDF extra: installation-pdf.md
       - PDF flags and the text route: formats/pdf.md
-      - Evaluation:
-          - Why heading levels come from the page: evaluation/pdf-heading-levels.md
-          - Why formulas are pictures: evaluation/pdf-formulas-as-images.md
-          - Why a vision model reads scans better: evaluation/pdf-ocr-llm-vs-local.md
-          - Which OCR engine reads a scan best: evaluation/pdf-ocr-engines.md
-          - Why docling-parse stays: evaluation/pdf-page-render-backend.md
-          - Where an LLM fixes layout: evaluation/pdf-structure-llm-roles.md
-          - How extraction was checked: evaluation/pdf-extraction-corpus.md
-          - Why docling: evaluation/pdf-parser-choice.md
   - Other formats:
       - TXT: formats/txt.md
       - SRT: formats/srt.md
@@ -92,9 +78,22 @@ nav:
       - Model and language notes: model_lang.md
       - Language tags: languages.md
       - Migrating from old flags: migration.md
+  - Evaluation:
+      - All evaluations: evaluation/index.md
+      - Why 16 units per request: evaluation/grouping-batch-size.md
+      - Why the session compacts at 8192: evaluation/session-compact-budget.md
+      - Why the tool probes the endpoint: evaluation/structured-output-ladder.md
+      - Jev as the plan classifier: evaluation/plan-classifier-jev.md
+      - Why heading levels come from the page: evaluation/pdf-heading-levels.md
+      - Why formulas are pictures: evaluation/pdf-formulas-as-images.md
+      - Why a vision model reads scans better: evaluation/pdf-ocr-llm-vs-local.md
+      - Which OCR engine reads a scan best: evaluation/pdf-ocr-engines.md
+      - Why docling-parse stays: evaluation/pdf-page-render-backend.md
+      - Where an LLM fixes layout: evaluation/pdf-structure-llm-roles.md
+      - How extraction was checked: evaluation/pdf-extraction-corpus.md
+      - Why docling: evaluation/pdf-parser-choice.md
   - Reference:
       - Command line options: cmd.md
-      - All evaluations: evaluation/index.md
       - Disclaimer: disclaimer.md
 
 not_in_nav: |

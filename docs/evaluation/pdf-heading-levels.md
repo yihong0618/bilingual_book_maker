@@ -38,7 +38,7 @@ The benchmark of docling's own model:
 
 ![Headings at the exact level, out of 195: docling HeadingHierarchyModel 48, docling as is 83, docling plus ODL style rank 163, numbering first then style 187.](../img/pdf-heading-levels.jpg)
 
-*Figure: exact heading levels on 20 arXiv papers. Numbers from 260922-eval-DOCLING_HEADING_HIERARCHY_BENCHMARK.md and 260922-feat-PDF_HEADING_LEVELS.md. Script: `docs/img/src/pdf_heading_levels.py`.*
+*Figure: exact heading levels on 20 arXiv papers. Script: `docs/img/src/pdf_heading_levels.py`.*
 
 opendataloader's levels were right when it found a heading, but it found fewer than half, and a third of what it called headings was junk: arXiv stamps, equation fragments, author names. docling's detector is far better, so only the level rule was ported. The one paper the rule got wrong (2010.03667v1) has no numbering and two heading levels set in one font; its eight level-3 headings come out at level 2.
 
@@ -53,5 +53,3 @@ Heading levels are assigned by the numbering-first rule on docling's headings. d
 - Two levels set in one font with no numbering cannot be told apart.
 - A run of years in one style (`2024 …`, `2025 …`) reads as numbering.
 - The ground truth for six of the twenty papers rests on numbering and a font dump, not on page renders.
-
-Source: docs/260922-eval-DOCLING_HEADING_HIERARCHY_BENCHMARK.md, docs/260922-feat-PDF_HEADING_LEVELS.md (repository, dated records)

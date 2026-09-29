@@ -58,6 +58,36 @@ def test_links_point_at_pages_and_images_at_img(tmp_path):
     assert unresolved == []
 
 
+def test_readme_links_point_into_the_wiki_or_at_github():
+    names = {"index.md": "Home", "features/plan-mode.md": "Plan mode"}
+    unresolved = []
+    out = w.convert_readme_links(
+        "[zh](./README-CN.md) [p](./docs/features/plan-mode.md) [a](#plan-mode) "
+        "[w](https://github.com/x/wiki/Docker) ![i](./docs/img/output_style.jpg) "
+        "[![L](https://img.shields.io/l.svg)](./LICENSE)",
+        names,
+        unresolved,
+    )
+    assert out == (
+        f"[zh]({w.REPO_URL}/blob/main/README-CN.md) [p](Plan-mode) [a](#plan-mode) "
+        "[w](https://github.com/x/wiki/Docker) ![i](img/output_style.jpg) "
+        f"[![L](https://img.shields.io/l.svg)]({w.REPO_URL}/blob/main/LICENSE)"
+    )
+    assert unresolved == []
+
+
+def test_home_is_the_readme(tmp_path):
+    # PIN (owner 260928, docs/260928-docs-WIKI_HOME_README_EVAL_GROUP.md): the
+    # wiki's Home is README.md, the owner's own text, with only its relative
+    # links rewritten; docs/index.md is not published.
+    assert w.main(["docs_to_wiki.py", str(tmp_path)]) == 0
+    home = (tmp_path / "Home.md").read_text(encoding="utf-8")
+    readme = (w.ROOT / "README.md").read_text(encoding="utf-8")
+    assert home.splitlines()[0] == readme.splitlines()[0]
+    assert len(home.splitlines()) == len(readme.splitlines())
+    assert "](./" not in home
+
+
 def test_every_nav_page_converts_without_a_dangling_link(tmp_path):
     # PIN (260926): the wiki namespace is flat, so two nav pages may not
     # share a name, and every relative link on the site must land on a page.

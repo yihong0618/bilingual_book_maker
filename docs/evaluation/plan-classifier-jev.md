@@ -78,5 +78,3 @@ What would change it: a comparison on more books, with verdicts judged against w
 - The key was a gateway key, so TypeSafe's own address was not exercised live (it answered 401 to that key).
 - Token counts only; no money comparison.
 - Agreement with luna is not correctness: luna's verdicts were not judged either.
-
-Source: docs/260923-feat-ENDPOINT_OVERRIDES_CLASSIFIER_JEV.md (first round); docs/260924-feat-JEV_LEAN_REQUESTS_GATE_COMPATIBLE_ENDPOINTS.md (second round, the gate finding); docs/260924-eval-JEV_CONFIDENCE_THRESHOLD.md (the gate's value) (repository, dated records)

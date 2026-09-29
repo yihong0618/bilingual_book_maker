@@ -330,9 +330,30 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
   指定需要翻译的标签，使用逗号分隔多个标签。epub 由 html 文件组成，默认情况下，只翻译 `<p>` 中的内容。例如: `--translate-tags h1,h2,h3,p,div`
 
-- `--plan-classify`（仅 epub）、`--plan-dry-run`、`--plan-min-coverage`、`--max-batch-units`：
+- `--plan-classify`
+  **计划模式（仅 epub）**：使用进行翻译的模型，或 codex / claude code，对 epub 标签进行分类。
 
-  计划模式：整本书切分后由模型决定哪些标签签名要翻译。EPUB 默认开启；见[计划模式](#计划模式)。
+  取值决定每个标签的翻译与否如何判断：
+
+  - `auto`（默认）：书籍是 epub 时，问 LLM 该翻哪段。只有路由不能对话时，以及计划出错时，仅翻译 `--translate-tags` 选中的标签。经纯会话判定的行在 `<book>_plan.json` 中以 `unnamed (…)` 内容类型标注判定方式。
+  - `none`：不建计划，仅 `--translate-tags` 选中的标签，未选中则仅翻译`p`，即多数正文。
+  - `all`：翻译整个分区，不做分类。
+  - `model`：使用进行翻译的 LLM 进行判断，然后翻译。可用 `--plan-classify-model X` 指定分类用的模型。
+  - `agent`：对选中书籍输出分类计划。并输出指引，直接复制至你的coding tool进行分类
+  （也可以自己手工完成）。之后再次以 `--plan-classify agent` 运行翻译。
+
+  - `--plan-dry-run`：仅打印按标签签名分组的表格，写出 `<book>_plan.json` 后退出。同时遵守 `--only_filelist` / `--exclude_filelist`。
+  - `<book>_plan.json`：翻译计划；想重新分类请先删除该文件。
+  - `--plan-min-coverage`（默认 0.5，范围 0–1）：如果计划覆盖的正文比例低于该阈值，计划模式会直接报错退出。`0` 关闭该闸门，高于 `0.9` 的值多半会在分类已付费之后中止——两种情况都会警告。
+
+  - `--max-batch-units`:一个合并请求最多携带的段落数。想要更少、更大的请求（低成本）就把它和 `--accumulated_num` 一起调高。运行开始打印错位恢复等退化提示时则应调低。内容量同时由 token 预算（`--accumulated_num`）约束。
+
+  ```shell
+  # 使用模型判断哪些标签需要翻译
+  python3 make_book.py --book_name my_book.epub --key ${key} --plan-classify model
+  # 或交给 agent 判断：停下、打印指引，然后由你交给你的 AI
+  python3 make_book.py --book_name my_book.epub --key ${key} --plan-classify agent
+  ```
 
 - `--exclude-translate-tags`:
 
@@ -382,9 +403,21 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
     使用`--use_context`选项时，使用`--context_paragraph_limit`设置上下文段落数限制（仅 window 模式）。
 
-- `--use_context session`、`--context-compact-at`、`--no-context-compact`：
+- `--use_context session`:
 
-  会话模式：一份不断增长的历史代替重发的窗口，达到预算时压缩成交接报告。见[会话模式](#会话模式)。
+  session 模式维护一份
+  只追加的历史，每次按缓存价重读，所以对于支持缓存的的端点，上下文可以长到约整章。历史达到压缩预算时，模型
+  写一份交接报告，用来播种下一个窗口，并追加到 `<book>_handoff.md`。
+  注意看进度条上的
+  `cached=`：若十几个请求之后仍是 0，说明端点可能没有缓存机制，可Ctrl+C后改用 window 模式。
+
+  - `--context-compact-at`:
+
+    仅 session 模式。历史在被压缩成交接报告前可以达到的估算 token 预算。默认 `8192`，最小值 `500`。
+
+  - `--no-context-compact`:
+
+    仅 session 模式。跳过交接报告：历史仍在达到预算时滚动，但下一个窗口从空白开始，不继承摘要。更省钱，代价是接缝处的连续性。
 
 - `--glossary` / `--terminology`:
 

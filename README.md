@@ -366,9 +366,31 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   Use `--translate-tags` to specify tags need for translation. Use comma to separate multiple tags.
   For example: `--translate-tags h1,h2,h3,p,div`
 
-- `--plan-classify` (epub only), `--plan-dry-run`, `--plan-min-coverage`, `--max-batch-units`:
+- `--plan-classify` (epub only):
 
-  Plan mode: the whole book is partitioned and the model decides which tag signatures to translate. On by default for EPUBs; see [Plan mode](#plan-mode).
+  **Plan mode**: classify epub tags with the translating model, or with codex / claude code.
+
+  The value decides how is translation decision of each tag made:
+
+  - `auto` (default): when the book is an epub, ask the LLM what to translate. Only when the route cannot hold a conversation, and when the plan fails, translate the `--translate-tags` selection instead. Rows decided over a plain session appear in `<book>_plan.json` with an `unnamed (…)` content type naming how the verdict was reached rather than what the content is.
+  - `none`: no plan; only the `--translate-tags` selection — unselected, that defaults to `p`, most body text.
+  - `all`: translate the whole partition, no classification.
+  - `model`: the translating LLM judges, then translates. `--plan-classify-model X` picks the model that classifies.
+  - `agent`: writes the classification plan for the book and prints instructions to paste into your coding tool for classification. 
+  (or you could also do it by hand). Then run the translation with `--plan-classify agent` again.
+
+  - `--plan-dry-run`: print the per-signature table, write `<book>_plan.json`, and exit. Honors `--only_filelist` / `--exclude_filelist`.
+  - `<book>_plan.json`: the translation plan; delete it to classify again.
+  - `--plan-min-coverage` (default 0.5, range 0–1): plan mode aborts if the plan covers less than this fraction of the text. `0` disables the guard and values above `0.9` usually abort after classification is already paid for — both warn.
+
+  - `--max-batch-units`: the most units one grouped request may carry. Raise it together with `--accumulated_num` for fewer, larger (cheaper) requests; lower them once the run prints degradation warnings such as the misalignment-recovery hint. Content is also bounded by the token budget (`--accumulated_num`).
+
+  ```shell
+  # let the model judge which tags need translating
+  python3 make_book.py --book_name my_book.epub --key ${key} --plan-classify model
+  # or hand it to an agent: stops, prints instructions, then you give them to your AI
+  python3 make_book.py --book_name my_book.epub --key ${key} --plan-classify agent
+  ```
 
 - `--exclude-translate-tags`:
 
@@ -440,9 +462,28 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   Use `--context_paragraph_limit` to set a limit on the number of context paragraphs when using the `--use_context` option. This applies to window mode only.
 
-- `--use_context session`, `--context-compact-at`, `--no-context-compact`:
+- `--use_context session`:
 
-  Session mode: one growing history instead of a re-sent window, compacted into a handoff report at the budget. See [Session mode](#session-mode).
+  Session mode keeps one append-only history and re-reads it at the cache
+  price, so on endpoints that support caching the context can grow to about
+  a chapter. When the history reaches the compact budget, the model writes
+  a short handoff report (the run asks for ~300 tokens and truncates
+  anything runaway), whose summary seeds the next window; `<book>_handoff.md`
+  holds the latest snapshot, overwritten at each compaction.
+  Watch the progress bar's `cached=`: if it is still zero after a dozen
+  requests, the endpoint may not have a cache; Ctrl+C and switch to window
+  mode.
+
+  - `--context-compact-at`:
+
+    Session mode only. The estimated-token budget the whole window — the
+    inherited seed included — may reach before it is compacted into a
+    handoff report. Default `8192`, minimum `1500`: a window shorter than
+    that is mostly seed and seams, so below it use window mode instead.
+
+  - `--no-context-compact`:
+
+    Session mode only. Skip the handoff report. The window still rolls over at the budget, but the next one starts empty instead of inheriting a summary. Cheaper, at the cost of continuity across the seam.
 
 - `--glossary` / `--terminology`:
 

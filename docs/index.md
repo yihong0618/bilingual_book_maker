@@ -18,7 +18,8 @@ That writes `my_book_bilingual.epub` next to `my_book.epub`. The default model i
 - **PDF:** [PDF to bilingual EPUB](features/pdf-to-epub.md) (two pages first, then the whole file), [recommended settings](features/recommended-pdf.md) per document type and system, and [installing the PDF extra](installation-pdf.md).
 - **Other formats:** [TXT](formats/txt.md), [SRT](formats/srt.md) and [Markdown](formats/md.md), one command each; [which page for which file](book_source.md).
 - **Endpoints and models:** [Translating with an LLM](llm-args.md) (model, key, endpoint, retries, on-device models), the [provider file](providers.md), [machine translation](machine-args.md), [prompt files](prompt.md) and [environment variables](env_settings.md).
-- **Reference:** [every command line option](cmd.md), and [the measurements behind the defaults](evaluation/index.md).
+- **Evaluation:** [the measurements behind the defaults](evaluation/index.md), one question per page.
+- **Reference:** [every command line option](cmd.md).
 
 ## Use it on material you may translate
 

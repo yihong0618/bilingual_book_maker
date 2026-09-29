@@ -62,5 +62,3 @@ What would change it: an endpoint whose probe verdict and real behavior disagree
 - The router test covered one gateway and two models.
 - The marker eval ran on one strong model; weak models were not measured.
 - Refusal detection on the delimiter rung is recorded as missing, not fixed.
-
-Source: docs/260902-eval-SCHEMA_DROP_PROXY_SMOKE.md, docs/260902-eval-ROUTER_STABILITY_TWO_MODELS.md, docs/260904-eval-MARKER_SYNTAX_COMPLIANCE-BATCH_SWEEP.md, docs/260904-eval-GENERAL_BATCH_DEGRADATION-RESULTS.md (repository, dated records)
