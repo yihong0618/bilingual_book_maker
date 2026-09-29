@@ -63,16 +63,28 @@ jobs:
           sudo apt-get install -y -qq /tmp/pandoc.deb
           pandoc --version | head -1
 
-      # The route end to end on a two-page typed PDF built by the test
-      # helper, its text checked in the extracted Markdown. Not hermetic:
-      # docling downloads its models on this first run (~500 MB), which is
-      # why this is one job and one smoke rather than a matrix.
-      - name: PDF route smoke (two pages, no OCR)
+      # Extraction alone, from the shell as an operator types it: a two-page
+      # typed PDF built by the test helper, its text checked in the
+      # extracted Markdown. Not hermetic: docling downloads its models on
+      # this first run (~500 MB), which is why this is one job rather than
+      # a matrix; the step below reuses them.
+      - name: PDF extraction smoke (two pages, no OCR)
         run: |
             python -c "from pathlib import Path; from tests.pipeline_helpers import write_pdf; write_pdf(Path('ci_smoke.pdf'), pages=('The first page of a typed PDF, with a full sentence of prose on it.', 'The second page of it, also a sentence long.'))"
             python tools/pdf_to_book.py extract ci_smoke.pdf --output ci_smoke_book --pages 1-2 --device cpu
             grep -q "first page" ci_smoke_book/source.md
             grep -q "second page" ci_smoke_book/source.md
+
+      # The route end to end on the same two pages: extract, translate with
+      # the test suite's fixed stand-in translator (no model, no key), export
+      # with Pandoc, then the EPUB is opened and its contents entry, both
+      # phrases and each one's translation beside it are checked. A pytest
+      # file because the stand-in is registered in-process; its marker keeps
+      # it out of every other pytest run.
+      - name: PDF route end to end (extract, translate, export)
+        run: |
+            pip install pytest
+            python -m pytest -q -p no:cacheprovider -m pdf_route_ci tests/test_ci_pdf_route_smoke.py
 
   testing:
     runs-on: ubuntu-latest
