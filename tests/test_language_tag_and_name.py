@@ -43,7 +43,7 @@ from book_maker.utils import (
 
 REPO = Path(__file__).resolve().parent.parent
 HERMETIC = Path(__file__).resolve().parent / "hermetic"
-DOC = REPO / "docs" / "languages.md"
+DOC = REPO / "docs" / "en" / "languages.md"
 
 
 # ------------------------------------------------------------ the parse
@@ -471,7 +471,7 @@ class TestTheGuidanceLine:
         "Note: --language Klingon matched no known language tag, so nothing "
         "is stamped on the output markup. Use the tag (--language zh-hant) "
         'or state both (--language "zh-hant:Traditional Chinese"); the tags '
-        "are listed in docs/languages.md."
+        "are listed in docs/en/languages.md."
     )
 
     def test_free_text_that_matched_nothing_is_narrated_once(self):
@@ -512,7 +512,7 @@ def _alias_rows():
 
 
 class TestTheLanguageDocIsInStep:
-    """docs/languages.md is the address the guidance line sends people to.
+    """docs/en/languages.md is the address the guidance line sends people to.
 
     A table that has grown past it sends them to a page that does not list
     the language they were told to look up, which is worse than no page.
@@ -526,7 +526,7 @@ class TestTheLanguageDocIsInStep:
             if f"| `{tag}` | {name} |" not in text
         ]
 
-        assert not missing, f"not in docs/languages.md: {', '.join(missing)}"
+        assert not missing, f"not in docs/en/languages.md: {', '.join(missing)}"
 
     def test_every_other_accepted_spelling_is_listed(self):
         text = DOC.read_text(encoding="utf-8")
@@ -536,7 +536,7 @@ class TestTheLanguageDocIsInStep:
             if f"| `{alias}` | `{tag}` |" not in text
         ]
 
-        assert not missing, f"not in docs/languages.md: {', '.join(missing)}"
+        assert not missing, f"not in docs/en/languages.md: {', '.join(missing)}"
 
     def test_the_doc_lists_nothing_the_tables_dropped(self):
         """The other direction: a row left behind by a removed entry."""

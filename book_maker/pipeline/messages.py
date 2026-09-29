@@ -104,7 +104,7 @@ DEVICE_CPU_FALLBACK = "PDF extraction device: cpu (no supported accelerator dete
 # accelerator and never will.
 DEVICE_NO_CUDA_BUILD = (
     "--device cuda was asked for, but the installed PyTorch is a CPU-only "
-    "build. Reinstall through the CUDA route; see docs/installation-pdf.md."
+    "build. Reinstall through the CUDA route; see docs/en/installation-pdf.md."
 )
 DEVICE_UNAVAILABLE = (
     "--device {device} was asked for, but this machine has no {device} "
@@ -124,7 +124,7 @@ PDF_ROUTE_NOT_INSTALLED = (
     "downloads about 3 GB of CUDA there). The published package does not "
     'carry this route yet, so pip install "bbook_maker[pdf]" will only warn '
     "about the unknown extra and install the release without it. Every case, "
-    "per platform, in docs/installation-pdf.md. Detail: {err}"
+    "per platform, in docs/en/installation-pdf.md. Detail: {err}"
 )
 PDFIUM_UNUSABLE = (
     "pypdfium2 is installed but unusable (no PdfDocument); reinstall it with "

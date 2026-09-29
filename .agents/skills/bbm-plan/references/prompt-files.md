@@ -2,7 +2,7 @@
 
 Loaded from SKILL.md's intake once a candidate `prompt*` file is found **and
 the user has said to use it**. Do not lint before asking. The format itself,
-with examples, is on `docs/prompt.md`; this file is the checklist to run
+with examples, is on `docs/en/prompt.md`; this file is the checklist to run
 against the user's file before the first paid run.
 
 ## The contract (`book_maker/cli.py:parse_prompt_arg`)

@@ -310,7 +310,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--language`: 指定目标语言
 
-  - 可以写语言标签（`--language zh-hant`）、语言名（`--language "Traditional Chinese"`），或用 `--language "zh-hant:Traditional Chinese"` 同时指定两者——冒号前的标签用于 JSON 结构化输出字段名，冒号后的名字是发给模型的说法。预设值 `zh-hans`。另见[可用标签](./docs/languages.md)。
+  - 可以写语言标签（`--language zh-hant`）、语言名（`--language "Traditional Chinese"`），或用 `--language "zh-hant:Traditional Chinese"` 同时指定两者——冒号前的标签用于 JSON 结构化输出字段名，冒号后的名字是发给模型的说法。预设值 `zh-hans`。另见[可用标签](./docs/zh/languages.md)。
 
 - `--source_lang`: 源语言。写了就会附加提示词（"Translate from English"），在 `--api_format qwen`（请求里就是一对语言）和 `--api_format customapi` 还会写进请求本身；默认自动检测。
 

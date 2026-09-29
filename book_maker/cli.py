@@ -129,7 +129,7 @@ def language_guidance(spec):
         f"matched no known language tag, so nothing is stamped on the "
         f"output markup. Use the tag (--language zh-hant) or state both "
         f'(--language "zh-hant:Traditional Chinese"); the tags are '
-        f"listed in docs/languages.md."
+        f"listed in docs/en/languages.md."
     )
 
 
@@ -3690,7 +3690,7 @@ def main(argv=None, *, markdown_loader_class=None):
         # Model mode with a classifier of its own, whether `auto` chose it
         # above or a flag asked for it (`--classify-model`, `--plan-classify
         # model`), says who plans the book (lead 260925, skill field test;
-        # docs/features/plan-mode.md promises it). `auto` on a route that
+        # docs/en/features/plan-mode.md promises it). `auto` on a route that
         # plans by itself has said its own line above, and never has a
         # separate classifier there.
         print(f"plan mode: on (classified by {escape(classifier.describe())})")

@@ -2,7 +2,7 @@
 
 Numbers from the September 5 cost model (k input-token-equivalents per book,
 B=800) and the September 7 price check (animal_farm, 300 units), both on
-docs/evaluation/session-compact-budget.md.
+docs/en/evaluation/session-compact-budget.md.
 Run from the repository root: python docs/img/src/session_compact_cost.py
 """
 

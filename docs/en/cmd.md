@@ -11,7 +11,7 @@ sections after it provide additional notes for selected workflows.
 | Option | Purpose |
 |---|---|
 | `--book_name PATH` | Input EPUB, TXT, Markdown, SRT, or PDF path (required). |
-| `--language LANGUAGE` | Target language: a tag (`zh-hant`), a name (`"Traditional Chinese"`), or `TAG:NAME` to pin both when the tables miss the language — tag → output stamps and field names, name → the prompt. Default `zh-hans`; list in `docs/languages.md`. |
+| `--language LANGUAGE` | Target language: a tag (`zh-hant`), a name (`"Traditional Chinese"`), or `TAG:NAME` to pin both when the tables miss the language — tag → output stamps and field names, name → the prompt. Default `zh-hans`; list in `docs/en/languages.md`. |
 | `--source_lang LANGUAGE` | Source language. Stated, it reaches every LLM route's prompt, and the request body on `qwen`/`customapi`; default `auto` (states nothing). |
 | `--single_translate` | Output translation only instead of bilingual text. |
 | `--no_disclosure` | Do not mark the epub as an AI translation: leaves out the one-line credit ("Translated by \<model\>, \<year\>.") below the book intro. Turns off `--translation-metadata` too. |
@@ -182,7 +182,7 @@ Support changing the output style of epub files.
 
     bbook_maker --book_name test_books/animal_farm.epub --translation_style "color: #4a4a4a; font-style: normal; background-color: #f7f7f7; padding: 5px; margin: 10px 0; border-radius: 5px;"
 
-![Two EPUB pages: on the left, with the style above, each translation sits in a gray box after its original; on the right, the default style](img/output_style.jpg)
+![Two EPUB pages: on the left, with the style above, each translation sits in a gray box after its original; on the right, the default style](../img/output_style.jpg)
 
 ## Proxy
 `--proxy <PROXY>` <br>

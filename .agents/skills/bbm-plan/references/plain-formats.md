@@ -11,10 +11,10 @@ warning, so never pass them.
 
 | file | command (add `"${ROUTE[@]}" --language "$LANG"`) | why | user page |
 |---|---|---|---|
-| `.txt` | `--batch_size 20` | lines are sent in groups; 20 gives the model more context per request and halves the request count. Lower it if the model starts merging or dropping lines | `docs/formats/txt.md` |
-| `.srt` | `--accumulated_num 400` | consecutive subtitle blocks share one request up to that many characters (capped at 512) | `docs/formats/srt.md` |
-| `.md` | `--prompt prompt_md.json "${CONTEXT[@]}" --batch_size 20` | the shipped Markdown prompt keeps the markup; a session keeps names consistent; outside plan mode each request re-reads the history, so a larger `--batch_size` keeps the request count down | `docs/formats/md.md` |
-| `.pdf`, as text (only when the user asked for txt) | `--batch_size 20` | the old text route: a bilingual `.txt` with no structure, plus an attempted EPUB | `docs/formats/pdf.md#the-text-route-no-to-epub` |
+| `.txt` | `--batch_size 20` | lines are sent in groups; 20 gives the model more context per request and halves the request count. Lower it if the model starts merging or dropping lines | `docs/en/formats/txt.md` |
+| `.srt` | `--accumulated_num 400` | consecutive subtitle blocks share one request up to that many characters (capped at 512) | `docs/en/formats/srt.md` |
+| `.md` | `--prompt prompt_md.json "${CONTEXT[@]}" --batch_size 20` | the shipped Markdown prompt keeps the markup; a session keeps names consistent; outside plan mode each request re-reads the history, so a larger `--batch_size` keeps the request count down | `docs/en/formats/md.md` |
+| `.pdf`, as text (only when the user asked for txt) | `--batch_size 20` | the old text route: a bilingual `.txt` with no structure, plus an attempted EPUB | `docs/en/formats/pdf.md#the-text-route-no-to-epub` |
 
 ```bash
 python make_book.py --book_name "$BOOK" "${ROUTE[@]}" --language "$LANG" --batch_size 20 > run.log 2>&1

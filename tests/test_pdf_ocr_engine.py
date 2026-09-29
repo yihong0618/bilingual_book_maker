@@ -1,8 +1,8 @@
 """`--ocr-engine`: the OCR engine for the PDF route, chosen by name.
 
 PIN (packet K, owner brief 260924: "we should expose that to the user";
-measured guide docs/features/pdf-ocr-engines.md, numbers in
-docs/evaluation/pdf-ocr-engines.md): the flag is `auto` by default and
+measured guide docs/en/features/pdf-ocr-engines.md, numbers in
+docs/en/evaluation/pdf-ocr-engines.md): the flag is `auto` by default and
 names one of `pdf_settings.OCR_ENGINES`; the help text is the lead's,
 verbatim; an engine this install cannot run (not importable, tesseract not
 on PATH, ocrmac off macOS) is refused before any page is read, with the

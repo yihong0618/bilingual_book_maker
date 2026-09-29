@@ -37,17 +37,17 @@ The fault-emergence sweep:
 - Misalignment is U-shaped: two-unit batches misaligned on 3 of 4 books (harmless; the ladder lands on single units), the middle was mostly silent, and at 64 the retry misaligned again.
 - The sweep found a real corruption path: a one-slot shift that survived reconciliation put three literal `⟦spanN⟧` tokens into visible prose. It is fixed: such a batch now goes down the halving ladder instead of being written.
 
-![Three panels: read-back fault rate and retry overhead against effective units per request, and retry overhead against the token budget, over 76 cells. The vertical lines mark the defaults of September 5, 2026 (32 units), since lowered to 16.](../img/fault-emergence.jpg)
+![Three panels: read-back fault rate and retry overhead against effective units per request, and retry overhead against the token budget, over 76 cells. The vertical lines mark the defaults of September 5, 2026 (32 units), since lowered to 16.](../../img/fault-emergence.jpg)
 
 *Figure: fault rate and retry cost against units and budget, 76 cells, 923 requests. The lines show the defaults of the time (32 units, a 1600 to 2000 budget), before the September 7 ruling.*
 
 The weak-model rerun: a raised unit cap costs retries first and faults later, so the cap is the knob to lower and the budget is not.
 
-![Retry overhead against effective units per request on gpt-4o-mini and deepseek-chat.](../img/retry_overhead_vs_units.jpg)
+![Retry overhead against effective units per request on gpt-4o-mini and deepseek-chat.](../../img/retry_overhead_vs_units.jpg)
 
 DeepSeek compressed aggressively at every cap and budget (median zh/en character ratio 0.25 to 0.31, against gpt-4o-mini's 0.31 to 0.35). Short translations on that model are the model, not a grouping fault.
 
-![Per-cell median zh/en character ratio and counts of heavily compressed slots, gpt-4o-mini and deepseek-chat.](../img/compression_ratio.jpg)
+![Per-cell median zh/en character ratio and counts of heavily compressed slots, gpt-4o-mini and deepseek-chat.](../../img/compression_ratio.jpg)
 
 *Figures: weak-model rerun, from the September 2026 grouping report; its per-cell table was not kept.*
 

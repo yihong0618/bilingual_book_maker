@@ -4,10 +4,10 @@ Loaded from SKILL.md's intake, for every book. It ends with two bash arrays,
 `ROUTE` and `CONTEXT`, that every flow file's commands use.
 
 User pages behind this file, for anything not spelled out here:
-`docs/llm-args.md` (model, endpoint, format, keys, retries, on-device
-models), `docs/providers.md` (the provider file, extra models, which key
-goes where), `docs/env_settings.md` (every key variable),
-`docs/features/session-mode.md` (the context modes).
+`docs/en/llm-args.md` (model, endpoint, format, keys, retries, on-device
+models), `docs/en/providers.md` (the provider file, extra models, which key
+goes where), `docs/en/env_settings.md` (every key variable),
+`docs/en/features/session-mode.md` (the context modes).
 
 ## 1. Probe first, then ask
 
@@ -77,7 +77,7 @@ Then tell them exactly what to edit and stop until they say it is done:
 - `bbm_providers.json`: keep the entry they will use, fill `base_url`,
   `default_models` (the exact id the endpoint spells) and `env_key`; delete
   the `FILL-ME` entry if unused. The file holds no secrets: `env_key` only
-  names a variable. The fields are on `docs/providers.md`. A vendor with no
+  names a variable. The fields are on `docs/en/providers.md`. A vendor with no
   style of its own is `openai` plus its `base_url`. Ask for the model's
   price (the `prices` block) when the user cares about the bill: the
   progress bar then shows `spent=$0.012` instead of token counts. The
@@ -200,14 +200,14 @@ them further up front. With a session, leave `--context-compact-at` at
 8192 unless the server's context window is smaller; then set it below that
 window. A reasoning model (Qwen3-class) gets `--no-thinking`. On a CPU-only
 machine a local model is slow for a whole book: say so and offer a hosted
-route. `docs/llm-args.md#on-device-models-ollama-llamacpp-lm-studio` has
+route. `docs/en/llm-args.md#on-device-models-ollama-llamacpp-lm-studio` has
 the rest.
 
 ## Flag menu: route and context (every flow)
 
 **Defaults below are the recommendation.** The alternatives are listed so
 you can honour a request without guessing at legal values; the flag's full
-text is on `docs/cmd.md`.
+text is on `docs/en/cmd.md`.
 
 ### Route
 
@@ -229,7 +229,7 @@ text is on `docs/cmd.md`.
 | flag | values | default / recommended | choose otherwise when |
 |---|---|---|---|
 | `--use_context` | bare/`window`, `session` | **`session`** on openai and anthropic; **nothing** on codex; bare on gemini/qwen (step 5) | the progress bar's `cached=` count is still 0 after a dozen requests: the endpoint is not caching, and session mode re-reads the history at full price. Drop to bare `--use_context`. Drop to it too when a run must go parallel, where `session` is refused |
-| `--context-compact-at` | estimated-token budget, minimum 1500 | **unset → 8192**, printed at start | leave it unset: 8192 is chosen for continuity, not cost. A lower value is cheaper in session mode (300 units: 360,681 tokens at 4096 against 396,197 at 8192); set it lower only when the user puts session cost above seams, or below a local server's context window. Past 16000 the cost climbs steeply (`docs/evaluation/session-compact-budget.md`). Needs `--use_context session` on an API route |
+| `--context-compact-at` | estimated-token budget, minimum 1500 | **unset → 8192**, printed at start | leave it unset: 8192 is chosen for continuity, not cost. A lower value is cheaper in session mode (300 units: 360,681 tokens at 4096 against 396,197 at 8192); set it lower only when the user puts session cost above seams, or below a local server's context window. Past 16000 the cost climbs steeply (`docs/en/evaluation/session-compact-budget.md`). Needs `--use_context session` on an API route |
 | `--no-context-compact` | on/off | *off* | a small model writes poor handoff reports and the text drifts after a seam; the next window then starts empty |
 | `--context_paragraph_limit` | integer | *unset* (3 pairs) | window mode only, when the user wants a different number of pairs re-sent |
 | `--prompt` | path to `.json` / `.txt` / `.md`, or a template string | *unset* unless the user has one | the user hands over their own voice/register. Lint first (`references/prompt-files.md`). The run prints where each section landed |

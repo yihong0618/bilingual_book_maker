@@ -10,7 +10,7 @@ package cannot express "the CPU build" (PEP 735 groups are not emitted into
 distributions, direct references are banned from public indexes, and uv's
 --torch-backend cannot be inherited by a dependent), which is why that choice
 lives in requirements-pdf-cpu.txt / requirements-pdf-gpu.txt and
-docs/installation-pdf.md instead.
+docs/en/installation-pdf.md instead.
 
 Supersedes the 260920 split, where the route's own packages were base
 dependencies and only the OCR runtime was an extra. That arrangement belonged

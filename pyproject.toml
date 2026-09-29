@@ -50,7 +50,7 @@ dependencies = [
 # distributions and exclude index servers, direct references are banned
 # from public indexes, and uv's --torch-backend cannot be inherited by a
 # dependent. So the CPU/CUDA choice lives in requirements-pdf-cpu.txt,
-# requirements-pdf-gpu.txt and docs/installation-pdf.md instead.
+# requirements-pdf-gpu.txt and docs/en/installation-pdf.md instead.
 #
 # The OCR runtimes ride along (owner 250925): onnxruntime runs the models
 # already inside the rapidocr package (docling brings rapidocr), so a fresh

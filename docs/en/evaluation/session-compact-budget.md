@@ -36,7 +36,7 @@ Total price-weighted cost per book, September 5:
 - The model behind the curve predicted the full-book run's request count exactly (82/82) and its cost within −6.2%. That run was cheaper per content token (11.7) than every grid cell (13.1 to 20.4).
 - Fitted constants: F=104, j=11.3 per unit, F_h=72, K=538 (139 reports), ρ 1.41 to 1.74, g 1245/920/645 per book, r 1.12 to 1.18, α rising with C (0.042 to 0.213 on childrens).
 
-![Two panels: price-weighted cost per book against --context-compact-at on a log axis, with measured cells, model curves and the 8000 default of the time; and cost per content token against the token budget at 400, 800 and 1600.](../img/session-cost-curves.jpg)
+![Two panels: price-weighted cost per book against --context-compact-at on a log axis, with measured cells, model curves and the 8000 default of the time; and cost per content token against the token budget at 400, 800 and 1600.](../../img/session-cost-curves.jpg)
 
 *Figure: the September 5 cost model and cells. It marks the defaults of that day (C=8000, a 1600 to 2000 budget clamp), before the September 7 ruling. Open squares at 12000 and 16000 are model predictions.*
 
@@ -50,7 +50,7 @@ The price of the new grouping defaults, September 7:
 
 At 150 units: +5.9% at 4096 and +24.0% at 8192. Raising C from 4096 to 8192 brought the compaction count back to the old level (19 to 9, against 8), as intended, and made the bill worse. The halved budget multiplies the requests (33 to 52 or 63), and every request re-reads the carried history: the prompt load per request was 7007 (old), 4690 (at 4096) and 6537 (at 8192). Caching did not rescue it: 9k to 21k tokens cached against about 340k of prompt.
 
-![Left: cost per book against C at a budget of 800, three books. Right: all-in session tokens on a 300-unit run for the old defaults, C=4096 and C=8192.](../img/session-compact-cost.jpg)
+![Left: cost per book against C at a budget of 800, three books. Right: all-in session tokens on a 300-unit run for the old defaults, C=4096 and C=8192.](../../img/session-compact-cost.jpg)
 
 *Figure: the September 5 cost model (left) and the September 7 price check (right). Script: `docs/img/src/session_compact_cost.py`.*
 

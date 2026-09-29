@@ -4,10 +4,10 @@ Loaded from SKILL.md when the book is an `.epub`. `ROUTE` and `CONTEXT`
 come from `references/route-setup.md`.
 
 User pages, when you need more than this file says:
-`docs/formats/epub.md` (what the EPUB loader reads and writes, every flag
-that applies), `docs/features/plan-mode.md` (the plan, the classifier, every
-plan line the run prints), `docs/features/session-mode.md` (the history,
-compaction, handoff), `docs/cmd.md` (every flag).
+`docs/en/formats/epub.md` (what the EPUB loader reads and writes, every flag
+that applies), `docs/en/features/plan-mode.md` (the plan, the classifier, every
+plan line the run prints), `docs/en/features/session-mode.md` (the history,
+compaction, handoff), `docs/en/cmd.md` (every flag).
 
 Two runs of one command with small flag changes: **plan → full**. A smoke
 test sits between them, optional and skipped by default (step 4 says when a
@@ -26,7 +26,7 @@ classifier: "A classifier the user names" below); the full run adds `--quiet`, a
 `--resume` only once a cache exists (step 5); the optional smoke adds
 `--quiet --test --test_num 8`. Nothing from the "Never pass" list below.
 
-By kind of book (the user-facing version, with the endpoint and system rows, is `docs/features/recommended-epub.md`):
+By kind of book (the user-facing version, with the endpoint and system rows, is `docs/en/features/recommended-epub.md`):
 
 | book | what changes |
 |---|---|
@@ -189,7 +189,7 @@ intentionally.
 | `--classify-min-confidence P` | 0 to 1, Jev-compatible classifiers only | **not passed**: 0.95, measured | the user asks for more of Jev's skips kept; lower keeps more, at their risk |
 | `--plan-min-coverage` | 0.0–1.0 | **0.5** | a dictionary, critical edition or apparatus-heavy book legitimately translates less; lower it deliberately and say so |
 | `--exclude-translate-tags` | comma-separated tags; `""` excludes nothing | **`sup,code`** | the book puts real prose in one of those, or another tag is pure apparatus |
-| `--accumulated_num` | integer (tokens per request) | *unset*, derived per run: `1200` stock prompts, up to `1600` under a long `--prompt`, `800` off-schema; session runs keep the un-halved value; the run narrates its choice | the run keeps printing misalignment recoveries (shorten it), or the user wants fewer, larger requests for cost (`1` turns grouping off). `docs/evaluation/grouping-batch-size.md` |
+| `--accumulated_num` | integer (tokens per request) | *unset*, derived per run: `1200` stock prompts, up to `1600` under a long `--prompt`, `800` off-schema; session runs keep the un-halved value; the run narrates its choice | the run keeps printing misalignment recoveries (shorten it), or the user wants fewer, larger requests for cost (`1` turns grouping off). `docs/en/evaluation/grouping-batch-size.md` |
 | `--max-batch-units` | integer (units per request) | `16` (`8` automatically off-schema), a chosen margin under the measured 64-unit fault onset | the run keeps printing misalignment recoveries: halve it (`8`, then `4`). Never past `48` |
 
 ### Output form
@@ -252,7 +252,7 @@ python make_book.py --book_name "$BOOK" "${ROUTE[@]}" --language "$LANG" \
   `--classify-model featherless-ai/Qwen3.8-27B-classifier
   --classify-base-url https://simple-jev-demo-api.featherless.ai/v1/classifier`.
   Any chat model id works too. Gateways and key rules:
-  `docs/providers.md#jev-and-jev-compatible-classifiers`.
+  `docs/en/providers.md#jev-and-jev-compatible-classifiers`.
 - **There is no handoff.** The classifier decides every row, and the run
   goes straight on to translate. So the first run is the smoke above
   (classification covers the whole book whatever `--test` says, and the
@@ -316,7 +316,7 @@ name-then-rule reasoning), what the read-back showed, and hand over
 
 Route-wide lines (schema verdicts, retries, codex, session) are in
 `references/route-setup.md`; every plan line is explained on
-`docs/features/plan-mode.md#what-can-go-wrong`.
+`docs/en/features/plan-mode.md#what-can-go-wrong`.
 
 | symptom | meaning |
 |---|---|

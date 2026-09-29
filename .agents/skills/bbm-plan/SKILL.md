@@ -10,9 +10,9 @@ for the book in hand and follow it. The other flow files stay unread.
 
 Repo: the repository this skill ships in (`make_book.py` at its root). Run
 every command from the repo root. The user documentation is the MkDocs site
-in `docs/` of this checkout; the flow files point at the page to read for
+in `docs/en/` of this checkout; the flow files point at the page to read for
 anything they do not spell out. `python make_book.py --help` is the
-authority on every flag, and `docs/cmd.md` lists them all in one place.
+authority on every flag, and `docs/en/cmd.md` lists them all in one place.
 
 ## Your stance
 
@@ -50,7 +50,7 @@ after a crash or in a new session.
 2. **Book path** and **target language** (`--language`, e.g. `zh-hans`,
    `ja`, `Simplified Chinese`). For a small language the tables may not
    know, pass both halves: `--language "ain:Ainu"` (tag before the colon,
-   name after; the tag list is `docs/languages.md`). `--source_lang` states
+   name after; the tag list is `docs/en/languages.md`). `--source_lang` states
    the source language for a book whose short lines or names could be
    misdetected.
 3. **Their prompt file**, asked in the route question. If they hand one
@@ -81,9 +81,9 @@ say so before anything is paid for.
 
 | the book is | read, and follow | the user page behind it |
 |---|---|---|
-| an `.epub` | `references/epub-plan-mode.md` | `docs/formats/epub.md` |
-| a `.pdf` | `references/pdf-route.md` | `docs/features/pdf-to-epub.md` |
-| a `.txt`, `.srt` or `.md` | `references/plain-formats.md` | `docs/formats/txt.md`, `docs/formats/srt.md`, `docs/formats/md.md` |
+| an `.epub` | `references/epub-plan-mode.md` | `docs/en/formats/epub.md` |
+| a `.pdf` | `references/pdf-route.md` | `docs/en/features/pdf-to-epub.md` |
+| a `.txt`, `.srt` or `.md` | `references/plain-formats.md` | `docs/en/formats/txt.md`, `docs/en/formats/srt.md`, `docs/en/formats/md.md` |
 
 A file with another extension is not a book this tool reads; say so. A
 folder of chapters is several books: ask whether they want one run per

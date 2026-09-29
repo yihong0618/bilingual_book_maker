@@ -54,7 +54,7 @@ Wrong labels are the most frequent class but break a book once. Shattered or wro
 | zhqm_mid p1 | 164 | 11 | 0 | 9 | 2 | 0 | 0 | 0 | 7860 / 1014 (345) | 9.5 |
 | **total (12 pages)** | | 66 | 40 | 23 | 3 | 0 | 2 | 5 | 43443 / 4319 | 78.4 |
 
-![Label faults per page: fixed, kept wrong, changed to another wrong label](../img/pdf-structure-roles.jpg)
+![Label faults per page: fixed, kept wrong, changed to another wrong label](../../img/pdf-structure-roles.jpg)
 
 *Catalogued label faults on the 12 pages from the table above, split by what the model did. 66 faults in all.*
 
