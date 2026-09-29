@@ -141,7 +141,7 @@ def _replacement_reason(bundle, pdf, page_range, settings):
     """
     from .stages import PDF_PARSER, reuse_verdict
 
-    _, why = reuse_verdict(bundle, pdf, PDF_PARSER, page_range, settings)
+    _, why = reuse_verdict(bundle, pdf, PDF_PARSER, page_range, settings, report=False)
     return why or SOURCE_REASON_EXTRACT
 
 

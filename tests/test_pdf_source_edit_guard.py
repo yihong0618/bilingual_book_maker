@@ -70,12 +70,14 @@ def load_harness():
 
 
 def snapshot(root):
-    """Every file under the bundle, with its bytes: what 'nothing' means."""
+    """Every file and directory under the bundle, files with their bytes:
+    what 'nothing' means. A directory created by a refused run counts."""
     root = Path(root)
     return {
-        path.relative_to(root).as_posix(): path.read_bytes()
+        path.relative_to(root).as_posix(): (
+            path.read_bytes() if path.is_file() else "<dir>"
+        )
         for path in sorted(root.rglob("*"))
-        if path.is_file()
     }
 
 
@@ -399,6 +401,106 @@ def test_an_import_the_preflight_refused_can_be_imported_again(tmp_path, pandoc)
         == 0
     )
     assert "Chapter One" in Bundle(root).source.read_text(encoding="utf-8")
+
+
+def test_an_edit_after_a_refused_import_is_protected(tmp_path, pandoc, capsys):
+    """The other half: the operator mends the refused source by hand; an
+    import asked for again must not take the mend."""
+    harness = load_harness()
+    root = tmp_path / "bundle"
+    bad = write_fixture(
+        tmp_path / "bad", '# Title\n\nProse.\n\n<img src="assets/plate.png">\n'
+    )
+    command = ["--pandoc", pandoc, "import", str(bad), "--output", str(root)]
+    assert harness.main(command) == 1
+    bundle = Bundle(root)
+    edit(bundle)
+    before = snapshot(root)
+    capsys.readouterr()
+
+    assert harness.main(command) == 1
+
+    out = capsys.readouterr().out.replace("\n", "")
+    assert refusal(SOURCE_EDITED, bundle, SOURCE_REASON_IMPORT) in out
+    assert snapshot(root) == before
+
+
+def _manifestless_bundle(root):
+    """A bundle directory holding a source.md and an asset, and no manifest."""
+    root.mkdir(parents=True)
+    (root / "assets").mkdir()
+    (root / "assets" / "plate.png").write_bytes(b"not really a png")
+    (root / "source.md").write_text("# Hand made\n\nProse.\n", encoding="utf-8")
+    return Bundle(root)
+
+
+def test_a_bundle_without_a_manifest_is_left_exactly_as_it_was(
+    tmp_path, pandoc, pdf, fake_docling, capsys
+):
+    """No manifest, no baseline: refused, and not even a manifest or an
+    empty directory is added by the refusal (harness extract and import)."""
+    bundle = _manifestless_bundle(tmp_path / "bundle")
+    before = snapshot(bundle.root)
+
+    assert harness_extract(pandoc, pdf, bundle.root) == 1
+    out = capsys.readouterr().out.replace("\n", "")
+    assert refusal(SOURCE_BASELINE_UNKNOWN, bundle, SOURCE_REASON_EXTRACT) in out
+    assert snapshot(bundle.root) == before
+    assert fake_docling["calls"] == 0
+
+    book = write_fixture(tmp_path / "in")
+    command = ["--pandoc", pandoc, "import", str(book), "--output", str(bundle.root)]
+    assert load_harness().main(command) == 1
+    out = capsys.readouterr().out.replace("\n", "")
+    assert refusal(SOURCE_BASELINE_UNKNOWN, bundle, SOURCE_REASON_IMPORT) in out
+    assert snapshot(bundle.root) == before
+
+
+def test_the_main_cli_route_leaves_a_manifestless_bundle_alone(
+    tmp_path, pandoc, pdf, fake_docling, monkeypatch
+):
+    from book_maker.pipeline.to_epub import bundle_path, pdf_to_epub
+
+    register_fake_format(monkeypatch)
+    bundle = _manifestless_bundle(bundle_path(pdf))
+    before = snapshot(bundle.root)
+
+    with pytest.raises(PipelineError) as refused:
+        pdf_to_epub(pdf, list(TRANSLATE), pandoc=pandoc)
+
+    assert refused.value.detail == refusal(
+        SOURCE_BASELINE_UNKNOWN, bundle, SOURCE_REASON_EXTRACT
+    )
+    assert snapshot(bundle.root) == before
+    assert fake_docling["calls"] == 0
+
+
+def test_the_refusal_does_not_announce_an_extraction(
+    tmp_path, pandoc, pdf, fake_docling, capsys
+):
+    """ "Extracting again" is said only once the guard has let the run go."""
+    from book_maker.pipeline.messages import STRUCTURE_NOT_REUSED
+
+    bundle = extracted(tmp_path, pandoc, pdf, fake_docling)
+    bundle.update_manifest(
+        extraction={
+            "structure": "m",
+            "structure_rev": "r1",
+            "structure_status": "partial",
+        }
+    )
+    edit(bundle)
+    capsys.readouterr()
+    with pytest.raises(PipelineError):
+        stages.prepare(
+            bundle,
+            pdf,
+            pandoc=pandoc,
+            progress=False,
+            structure=SimpleNamespace(model="m", rev="r1", base=None),
+        )
+    line = STRUCTURE_NOT_REUSED.format(status="partial", model="m")
+    assert line not in capsys.readouterr().out.replace("\n", "")
 
 
 def test_the_main_cli_route_is_guarded_too(

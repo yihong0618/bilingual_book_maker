@@ -194,7 +194,9 @@ def pdf_to_epub(
 
         structure = image_request(image, translation)
 
-    bundle = Bundle(bundle_path(pdf, pages)).create()
+    # Not created here: the stage creates it, after refusing to replace an
+    # edited source.md, so a refusal leaves the directory as it was.
+    bundle = Bundle(bundle_path(pdf, pages))
     print(TO_EPUB_BUNDLE.format(path=bundle.root))
     prepare_stage(
         bundle,

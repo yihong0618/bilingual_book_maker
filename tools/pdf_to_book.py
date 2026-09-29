@@ -261,7 +261,9 @@ def main(argv=None):
                     f"command for a PDF",
                     stage="import",
                 )
-            bundle = Bundle(options.output).create()
+            # Not created here: the import creates it, after refusing to
+            # replace an edited source.md, so a refusal leaves nothing behind.
+            bundle = Bundle(options.output)
             import_markdown(bundle, options.input, pandoc=pandoc)
         elif command == "extract":
             if source_kind(options.input) != "pdf":
@@ -271,7 +273,7 @@ def main(argv=None):
                 )
             device = check_pdf_options("pdf", options)
             structure = structure_request(options, [])
-            bundle = Bundle(options.output).create()
+            bundle = Bundle(options.output)
             prepare(
                 bundle,
                 options.input,
@@ -311,7 +313,7 @@ def main(argv=None):
             bbm_options = check_options(trailing)
             device = check_pdf_options(source_kind(options.input), options)
             structure = structure_request(options, trailing)
-            bundle = Bundle(options.output).create()
+            bundle = Bundle(options.output)
             prepare(
                 bundle,
                 options.input,
