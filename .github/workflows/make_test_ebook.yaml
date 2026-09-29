@@ -86,6 +86,19 @@ jobs:
             pip install pytest
             python -m pytest -q -p no:cacheprovider -m pdf_route_ci tests/test_ci_pdf_route_smoke.py
 
+      # The page-by-page export leans on docling-core's private
+      # `_with_pictures_refs`, and pyproject admits docling up to 3; the
+      # contract is pinned in this file, which the base job skips (no
+      # docling there). Here everything it needs is installed, so a skip
+      # is a failure.
+      - name: docling-core contract (the page-by-page export)
+        run: |
+            set -o pipefail
+            python -m pytest -q -p no:cacheprovider -rs tests/test_pdf_ocr_replace_layer.py | tee docling_contract.log
+            if grep -q '^SKIPPED' docling_contract.log; then
+              echo "::error::a docling contract test was skipped where docling is installed"; exit 1
+            fi
+
   testing:
     runs-on: ubuntu-latest
     steps:
