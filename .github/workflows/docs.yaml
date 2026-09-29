@@ -7,6 +7,7 @@ on:
       - "docs/**"
       - "mkdocs.yml"
       - "README.md"
+      - "README-CN.md"
       - "tools/docs_to_wiki.py"
       - ".github/workflows/docs.yaml"
   workflow_dispatch:
