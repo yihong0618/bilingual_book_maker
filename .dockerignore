@@ -4,10 +4,13 @@
 !book_maker
 !make_book.py
 !requirements.txt
-# the pdf stage's pins. This file is an ALLOWLIST: a requirements file that
+# the pdf and pdf-cuda stages' pins. This file is an ALLOWLIST: a requirements file that
 # is not named here is not in the build context, and the stage's COPY fails
 # (seen 260921, when requirements-ocr.txt was missing from it).
+!requirements-pdf-cpu.txt
 !requirements-pdf-gpu.txt
+# pdf-cuda derives its pins from requirements-pdf-gpu.txt with this script.
+!tools/torch_base_requirements.py
 
 # ...minus anything that should never travel inside the allowed paths.
 book_maker/**/__pycache__
