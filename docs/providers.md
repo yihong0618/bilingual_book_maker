@@ -140,7 +140,7 @@ A local server needs no key, so the run's key is empty here; the classifier's ke
 
 ## Jev and Jev-compatible classifiers
 
-Jev is TypeSafe's classifier: a model built to answer typed questions, not to write. Plan mode's question for each kind of block, translate it or keep it, is that kind of question, and Jev answers a page of them in one cheap round trip. It translates nothing, so it can only be the classify model. Jev-compatible servers speak the same protocol; Featherless's Simple Jev, an open reimplementation on open models, is one.
+Jev is TypeSafe's classifier: a model built to answer typed questions, not to write. Plan mode's question for each kind of block, translate it or keep it, is that kind of question, and Jev answers a page of them in one cheap round trip. It translates nothing, so it can only be the classify model. Jev-compatible servers speak the same protocol; Featherless's Simple Jev, an open reimplementation on open models, is one. OpenJEV is a free public API to the same Jev model.
 
 ### The commands
 
@@ -148,6 +148,7 @@ Jev is TypeSafe's classifier: a model built to answer typed questions, not to wr
 |---|---|---|
 | TypeSafe's Jev | `--classify-model jev` | `JEV_API_KEY` or `TYPESAFE_API_KEY`, sent only to `api.typesafe.ai` |
 | Jev through a gateway | `--classify-model typesafe-ai/jev --classify-base-url https://ai-gateway.vercel.sh/typesafe --classify-key "$GATEWAY_KEY"` | named with `--classify-key` |
+| OpenJEV | `--classify-model openjev --classify-base-url https://api.openjev.sh/v1/systemone --classify-key "$OPENJEV_API_KEY"` | named with `--classify-key` |
 | Simple Jev at Featherless | `--classify-model featherless-ai/Qwen3.8-27B-classifier` | `FEATHERLESS_API_KEY`; the address defaults to `https://api.featherless.ai/v1/classifier` |
 | Simple Jev's keyless demo | `--classify-model featherless-ai/Qwen3.8-27B-classifier --classify-base-url https://simple-jev-demo-api.featherless.ai/v1/classifier` | none |
 
