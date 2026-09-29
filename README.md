@@ -759,8 +759,6 @@ python3 make_book.py --book_name paper.pdf --to-epub --pages 1-2 --key ${key} --
 python3 make_book.py --book_name paper.pdf --to-epub --key ${key} --use_context session
 ```
 
-![An arXiv paper as a reading edition: the table of contents built from the headings, the bilingual text, and a figure kept as a picture](./docs/img/pdf_reading_edition.webp)
-
 #### Scans (OCR)
 
 `--pdf-ocr` reads pages that have no text layer. `--ocr-lang` names the languages to read (`iso:zh`, `iso:ja`, …), `--ocr-engine` picks the engine (`auto`, `rapidocr`, `ocrmac`, `easyocr`, `tesseract`), and `--ocr-replace-layer` reads every page again when the embedded text is wrong. More: [Which OCR engine](https://github.com/yihong0618/bilingual_book_maker/wiki/Which-OCR-engine).

@@ -19,10 +19,6 @@ Everything lives in a working folder beside the PDF, `<name>_book/`: `source.md`
 
 `source.md` marks where each page starts with a comment, `<!-- page N -->`. N is the page's number in the PDF file, counted from 1: the numbers `--pages` takes, not the number printed on the page. A page with nothing on it keeps its marker, so the numbering never slips. Rarely, docling returns an item with no page. Such items are written once, at the end of `source.md`, under `<!-- unplaced -->`, and the run says how many. Their place in the reading order is lost: move them where they belong, or delete them, before you translate.
 
-![A translated arXiv paper open in Apple Books: the contents list on the left, Chinese text beside the original figure and caption](../../img/pdf_reading_edition.jpg)
-
-*An arXiv paper after the route, open in Apple Books. The contents come from the paper's headings.*
-
 ## Setup
 
 1. Install the PDF extra from a clone of the repository, `pip install ".[pdf]"` (Linux without an NVIDIA card and Windows with one add PyTorch's own index: [Installing the PDF extra](../installation-pdf.md)). You also need Pandoc **3.1.12 or newer** on PATH. No Java.

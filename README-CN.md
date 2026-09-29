@@ -660,8 +660,6 @@ python3 make_book.py --book_name paper.pdf --to-epub --pages 1-2 --key ${key} --
 python3 make_book.py --book_name paper.pdf --to-epub --key ${key} --use_context session
 ```
 
-![一篇 arXiv 论文的阅读版：按标题生成的目录、双语正文、保留为图片的图表](./docs/img/pdf_reading_edition.webp)
-
 #### 扫描件（OCR）
 
 `--pdf-ocr` 读取没有文字层的页面。`--ocr-lang` 指定要识别的语言（`iso:zh`、`iso:ja` 等），`--ocr-engine` 选择引擎（`auto`、`rapidocr`、`ocrmac`、`easyocr`、`tesseract`），`--ocr-replace-layer` 在自带文字层有误时重读每一页。更多：[选哪个 OCR 引擎](https://github.com/yihong0618/bilingual_book_maker/wiki/Which-OCR-engine)。

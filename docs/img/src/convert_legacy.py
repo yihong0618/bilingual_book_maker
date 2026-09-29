@@ -4,8 +4,7 @@ The wiki references JPEG only (owner rule, 2026-09-23): every image is a
 lossy JPEG at quality 85. These four figures came from the September 2026
 grouping and session evaluations as WebP; their plotting scripts live with
 the raw artifacts outside the repository, so the WebP files are the
-sources here. pdf_reading_edition.webp stays in docs/img/ because the
-README links it; its JPEG copy is what the wiki uses. output_style is the
+sources here. output_style is the
 --translation_style screenshot the old cmd.md hot-linked from GitHub; its
 PNG is fetched from that URL rather than stored (1.6 MB).
 
@@ -25,7 +24,6 @@ SOURCES = {
     HERE / "fault-emergence.webp": OUT / "fault-emergence.jpg",
     HERE / "retry_overhead_vs_units.webp": OUT / "retry_overhead_vs_units.jpg",
     HERE / "session-cost-curves.webp": OUT / "session-cost-curves.jpg",
-    OUT / "pdf_reading_edition.webp": OUT / "pdf_reading_edition.jpg",
     "https://user-images.githubusercontent.com/89069008/"
     "226104545-7c029bb1-5325-46d4-a1eb-ec4e7bbaee97.png": OUT / "output_style.jpg",
 }
