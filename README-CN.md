@@ -93,7 +93,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   `--key`即 API key，以及模型标识符 `--model`。省略 `--api_base`即使用openai官方API，
   省略`--model`即使用 gpt-5.6-luna。
 - 或使用`--provider`进行翻译: `bbm_providers.example.json` 里预设了以下厂家（Gemini、Qwen、xAI、Groq、OrcaRouter、Ollama、LiteLLM、
-  SiliconFlow、OpenRouter）：复制为 `bbm_providers.json`，并修改其中的key，
+  SiliconFlow、OpenRouter、Cheaper Inference）：复制为 `bbm_providers.json`，并修改其中的key，
   例如`--provider gemini` 就是使用其中 Gemini 的api。
 - `--use_context session` 使用会话模式翻译；历史默认在 8k 时压缩（`--context-compact-at` 可改）。它维护一份缓存的历史以保持前后一致，使人名、术语全书统一，也可以从交接报告中积累术语表（`--glossary-auto on`，默认关闭）——是 OpenAI 兼容接口的推荐用法，下方示例均已带上。
 - 旧的预设名和 key 参数仍然可用，见 [从旧参数迁移](https://github.com/yihong0618/bilingual_book_maker/wiki/Migrating-from-old-flags)。
@@ -176,6 +176,19 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   ```
 
   若要指定具体模型：`--provider orcarouter --model <模型 id>`。
+
+* [Cheaper Inference](https://cheaperinference.com)
+
+  OpenAI 兼容的网关。
+  每个模型比其厂商标价便宜 15–60%。
+  `--provider cheaperinference` 使用 `bbm_providers.example.json` 里的条目。
+  key 用 `--key` 或 `CHEAPER_INFERENCE_API_KEY`。
+  不写 `--model` 就是 `gpt-5.4-mini`。
+  模型 ID 见 https://cheaperinference.com/#models。
+
+  ```shell
+  python3 make_book.py --book_name test_books/animal_farm.epub --provider cheaperinference --key ${cheaperinference_key} --use_context session
+  ```
 
 * [Ollama](https://github.com/ollama/ollama)
 
