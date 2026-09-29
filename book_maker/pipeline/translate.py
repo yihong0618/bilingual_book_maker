@@ -244,21 +244,16 @@ def option_identity(options):
     return identity
 
 
-# The formats whose translator is handed `--api_base`: the model routes, and
-# `customapi`, whose address is its whole configuration. The codex sidecar
-# ignores an address (and a key: it signs in on its own), and the fixed
-# machine-translation engines call their own URL, so on those an address is
-# not part of what the run sends.
-ADDRESSED_FORMATS = (
-    "openai",
-    "anthropic",
-    "gemini",
-    "qwen",
-    "groq",
-    "xai",
-    "litellm",
-    "customapi",
-)
+# The formats whose translator is handed `--api_base`: every LLM format
+# except the codex sidecar (it ignores an address and a key: it signs in on
+# its own), plus `customapi`, whose address is its whole configuration. The
+# fixed machine-translation engines call their own URL, so on those an
+# address is not part of what the run sends. Derived from the translator
+# table so a format added there is addressed here without a second list.
+def _addressed_formats():
+    from book_maker.translator import LLM_FORMATS
+
+    return tuple(name for name in LLM_FORMATS if name != "codex") + ("customapi",)
 
 
 def provider_endpoint_digest(options):
@@ -303,7 +298,7 @@ def provider_endpoint_digest(options):
     except SystemExit as err:
         raise PipelineError(str(err), stage=STAGE)
     endpoint = {"api_format": api_format, "models": list(models)}
-    if api_format in ADDRESSED_FORMATS:
+    if api_format in _addressed_formats():
         endpoint["api_base"] = copy.api_base or ""
     # The lookup order `cli.resolve_api_key` walks, on the formats that read
     # a key from the environment by name.
