@@ -4,7 +4,7 @@
 
 An EPUB keeps its text in many kinds of markup: paragraphs, headings, list items, table cells, blockquotes, verse lines, captions. Plan mode finds all of them. The loader partitions the whole book into units, groups the units by their tag signature (the tag and its classes), and asks the model which signatures are worth translating. The answer is written to `<book>_plan.json`, which every later run of the same book reuses. Without a plan, only the `--translate-tags` selection is translated, `<p>` by default, and verse or a table outside `<p>` is left in the source language without a word.
 
-Plan mode also groups the work. Consecutive units share one request up to a token budget (`--accumulated_num`) and a unit cap (`--max-batch-units`, default 16). Each request asks for the units back by id, so a reply that drops, merges or reorders units is caught and retried in smaller pieces instead of shifting every translation by one slot. Plan mode is on by default for an EPUB on any LLM route; you do not need a flag. The numbers behind the defaults are on [Why 16 units per request](../evaluation/grouping-batch-size.md).
+Plan mode also groups the work. Consecutive units share one request up to a token budget (`--accumulated_num`) and a unit cap (`--max-batch-units`, default 16). Each request asks for the units back by id, so a reply that drops, merges or reorders units is caught and retried in smaller pieces instead of shifting every translation by one slot. Plan mode is on by default for an EPUB on any LLM route; you do not need a flag. The numbers behind the defaults are on [Units and tokens per request](../evaluation/grouping-batch-size.md).
 
 ## Setup
 

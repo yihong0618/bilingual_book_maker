@@ -58,7 +58,7 @@ The spent amount is an estimate from the usage each request reports; the vendor'
 
 ### The shipped `openai` entry turns the image step on
 
-The example file's `openai` entry sets `"img_model": "gpt-5.6-luna"`. So `--provider openai` on a PDF with `--to-epub` runs the region-role pass on every page by default. That also holds when you have no `bbm_providers.json`, because the run then falls back to the example. The pass costs about 3,000 prompt tokens per page: 43,443 prompt and 4,319 completion tokens for 12 pages in the study behind it ([Where an LLM fixes layout](evaluation/pdf-structure-llm-roles.md)). To run without it, pass `--img-model none`, or copy the file and delete the line.
+The example file's `openai` entry sets `"img_model": "gpt-5.6-luna"`. So `--provider openai` on a PDF with `--to-epub` runs the region-role pass on every page by default. That also holds when you have no `bbm_providers.json`, because the run then falls back to the example. The pass costs about 3,000 prompt tokens per page: 43,443 prompt and 4,319 completion tokens for 12 pages in the study behind it ([Region roles with an image model](evaluation/pdf-structure-llm-roles.md)). To run without it, pass `--img-model none`, or copy the file and delete the line.
 
 The `openai-jev` entry is the same `openai` entry plus `"classify_model": "jev"` with `JEV_API_KEY`, so `--provider openai-jev` translates with gpt-5.6-luna and classifies an EPUB's plan with [Jev](#jev-and-jev-compatible-classifiers). The `jev` entry is Jev on its own: it classifies and never translates, so `--provider jev` is refused with a hint to use `--classify-model`. No other entry names an image model or a classify model.
 

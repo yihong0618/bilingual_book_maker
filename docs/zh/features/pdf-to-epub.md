@@ -19,10 +19,6 @@ python make_book.py --book_name paper.pdf --to-epub --use_context session
 
 `source.md` 用一条注释 `<!-- page N -->` 标出每一页的开头。N 是该页在 PDF 文件中的序号，从 1 开始数，也就是 `--pages` 用的页码，而不是页面上印的页码。空白页同样保留标记，所以编号不会错位。极少数情况下，docling 会返回不属于任何页面的条目。这些条目只写一次，放在 `source.md` 末尾的 `<!-- unplaced -->` 下面，运行时会说明有多少条。它们在阅读顺序中的位置已经丢失：翻译之前，把它们移到该在的位置，或者删掉。
 
-![在 Apple Books 中打开的一篇翻译后的 arXiv 论文：左侧是目录，中文译文与原来的插图和图题并列](../../img/pdf_reading_edition.jpg)
-
-*一篇 arXiv 论文走完这条路线后在 Apple Books 中的样子。目录来自论文的标题。*
-
 ## 准备工作
 
 1. 在仓库的克隆里安装 PDF 扩展：`pip install ".[pdf]"`（没有 NVIDIA 显卡的 Linux 和装有 NVIDIA 显卡的 Windows 还要加上 PyTorch 自己的索引，见[安装 PDF 扩展](../installation-pdf.md)）。此外，PATH 上需要有 Pandoc **3.1.12 或更新版本**。不需要 Java。

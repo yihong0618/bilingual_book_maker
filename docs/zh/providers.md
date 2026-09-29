@@ -58,7 +58,7 @@ bbook_maker \
 
 ### 随附的 `openai` 条目会开启图像步骤
 
-示例文件的 `openai` 条目设置了 `"img_model": "gpt-5.6-luna"`。所以在 PDF 上用 `--to-epub` 加 `--provider openai`，默认会对每一页运行区域角色校正。即使你没有 `bbm_providers.json` 也一样，因为运行会退回使用示例文件。这一步每页约花 3,000 个提示 token：在它背后的那项研究中，12 页共用了 43,443 个提示 token 和 4,319 个补全 token（[大模型在哪些地方能修正版面](evaluation/pdf-structure-llm-roles.md)）。不想要这一步，就传 `--img-model none`，或者把文件复制一份并删掉那一行。
+示例文件的 `openai` 条目设置了 `"img_model": "gpt-5.6-luna"`。所以在 PDF 上用 `--to-epub` 加 `--provider openai`，默认会对每一页运行区域角色校正。即使你没有 `bbm_providers.json` 也一样，因为运行会退回使用示例文件。这一步每页约花 3,000 个提示 token：在它背后的那项研究中，12 页共用了 43,443 个提示 token 和 4,319 个补全 token（[用图像模型判定区域角色](evaluation/pdf-structure-llm-roles.md)）。不想要这一步，就传 `--img-model none`，或者把文件复制一份并删掉那一行。
 
 `openai-jev` 条目就是 `openai` 条目加上 `"classify_model": "jev"` 和 `JEV_API_KEY`，所以 `--provider openai-jev` 用 gpt-5.6-luna 翻译，用 [Jev](#jev-与-jev-兼容分类器) 给 EPUB 的计划分类。`jev` 条目只有 Jev：它只分类、从不翻译，所以 `--provider jev` 会被拒绝，并提示改用 `--classify-model`。其他条目都没有写图像模型或分类模型。
 

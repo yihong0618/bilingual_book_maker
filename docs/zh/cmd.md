@@ -24,16 +24,16 @@
 | `--translation_color COLOR` | 只设颜色的简写；`--translation_style` 优先。 |
 | `--pdf_layout MODE` | 额外生成的 PDF 输出：`none`、`top-bottom`、`side-by-side` 或 `all`。 |
 | `--to-epub` | 仅限 PDF：用 docling 读取 PDF，翻译得到的 Markdown，在其旁边写出 `<name>_bilingual.epub`；插图保留为图片；包留在 `<name>_book/` 里，便于编辑和续跑。需要 `pdf` 扩展和 PATH 上的 Pandoc 3.1.12+；不需要 Java。见 [installation-pdf.md](installation-pdf.md)。 |
-| `--pdf-ocr` | 仅限 PDF，配合 `--to-epub`：读取没有文本层的页面，不加这个参数时这些页面会被拒绝。默认关闭；OCR 要多花好几倍的时间，而且对原生数字 PDF 没有任何改变。无论开不开，版面、标题和表格都会被检测。 |
-| `--ocr-replace-layer` | 仅限 PDF，配合 `--to-epub --pdf-ocr`：对每一页做 OCR，并替换 PDF 自带的文本层，而不是保留它。默认关闭；测得它比一个完好的文本层差，是给有错的文本层用的。读出为空的页面保持为空，并会被点名。 |
+| `--pdf-ocr` | 仅限 PDF，配合 `--to-epub`：读取没有文字层的页面，不加这个参数时这些页面会被拒绝。默认关闭；OCR 要多花好几倍的时间，而且对原生数字 PDF 没有任何改变。无论开不开，版面、标题和表格都会被检测。 |
+| `--ocr-replace-layer` | 仅限 PDF，配合 `--to-epub --pdf-ocr`：对每一页做 OCR，并替换 PDF 自带的文字层，而不是保留它。默认关闭；测得它比一个完好的文字层差，是给有错的文字层用的。读出为空的页面保持为空，并会被点名。 |
 | `--no-formula-images` | 仅限 PDF，配合 `--to-epub`：让行间公式保留为 `<!-- formula-not-decoded -->` 占位符，而不是把每个公式从页面上裁剪成图片。解析器能找到公式，但从不读取它们，所以这些图片是数学内容能进入书中的唯一途径；它们不花模型费用，也不花可测量的时间。段落里的行内数学不算公式区域，无论如何都不在覆盖范围内。 |
 | `--pdf-image-dpi N` | PDF，`--to-epub`：插图清晰度，以 PDF 自身页面尺寸下的 DPI 计；默认 200，标注很小时用 300；换一个值重新运行只会重绘插图 |
 | `--img-model MODEL` | 仅限 PDF，配合 `--to-epub`：一个视觉模型，在导出前根据页面图像纠正版面检测器给出的区域角色（正文、标题、书名、图题、脚注、代码）。除非在这里或在提供方条目的 `img_model` 中指定，否则关闭；`none` 会关掉它。绝不会回退为本次运行自己的模型。每页约 3k 提示词 token。 |
 | `--img-base-url URL` | `--img-model` 的端点，当它不是本次运行的端点时使用（仅限 OpenAI 兼容）。 |
 | `--img-key KEY` | `--img-base-url` 使用的 key。默认：端点是本次运行自己的端点时，用本次运行的 key；否则，端点是提供方条目自己的端点时，用该条目的 `img_env_key`；否则，用该端点格式从环境中读取的 key。key 绝不会发往不是为它指定的地址。 |
 | `--device DEVICE` | 仅限 PDF，配合 `--to-epub`：提取模型在哪里运行——`auto`（默认；检测 CUDA 或 MPS，没有则回退到 CPU）、`cpu`、`cuda`、`mps`、`xpu`。CPU 完全受支持，输出相同，只是更慢。 |
-| `--ocr-lang LANGS` | 仅限 PDF，配合 `--to-epub --pdf-ocr`：OCR 引擎在没有文本层的页面上（加 `--ocr-replace-layer` 时是每一页）识别的语言，逗号分隔，使用引擎自己的代码（rapidocr：`ch`、`en`、`latin`；easyocr：`ch_sim`、`ja`、`ko`；ocrmac：`zh-Hans`、`ja-JP`），或加 `iso:` 前缀的通用 BCP-47 标签（`iso:zh-Hans`、`iso:zh-Hant`、`iso:ja`、`iso:ko`），docling 2.129 会把它映射到实际运行的引擎上。rapidocr 每次运行只识别一种语言，取第一个。引擎是 docling 在当前安装中选中的那个（装了 PDF 扩展时，Mac 上是 ocrmac，默认识别英语、西班牙语、法语和德语；其他系统上是 rapidocr，默认识别中文和英文），运行会打印它用的引擎和语言。其他文字的扫描件需要这个参数；运行遇到没加它的扫描页时会提示。未知的代码在读取任何页面之前就会被拒绝。每个引擎的代码，以及该选哪个引擎：[选择 OCR 引擎](features/pdf-ocr-engines.md)。 |
-| `--ocr-engine ENGINE` | 仅限 PDF，配合 `--to-epub --pdf-ocr`：用于没有文本层的页面（加 `--ocr-replace-layer` 时是每一页）的 OCR 引擎。`auto`（默认）按 ocrmac、rapidocr、easyocr 的顺序取第一个已安装的；`pdf` 扩展会安装带 onnxruntime 的 `rapidocr`（模型已包含），在 macOS 上还会安装 `ocrmac`（Apple 的 Vision 框架）；两者都不下载任何东西，所以 `auto` 在 Mac 上用 ocrmac 识别，在其他系统上用 rapidocr；`easyocr` 首次使用时下载模型（`pip install easyocr`）；`tesseract` 使用 PATH 上的 tesseract 程序及其语言数据。未安装的引擎，或在 macOS 之外指定 `ocrmac`，都会在读取任何页面之前被拒绝。语言代码因引擎而异（`--ocr-lang`）；运行会说明它用的引擎。该选哪个，有测量数据：[选择 OCR 引擎](features/pdf-ocr-engines.md)。 |
+| `--ocr-lang LANGS` | 仅限 PDF，配合 `--to-epub --pdf-ocr`：OCR 引擎在没有文字层的页面上（加 `--ocr-replace-layer` 时是每一页）识别的语言，逗号分隔，使用引擎自己的代码（rapidocr：`ch`、`en`、`latin`；easyocr：`ch_sim`、`ja`、`ko`；ocrmac：`zh-Hans`、`ja-JP`），或加 `iso:` 前缀的通用 BCP-47 标签（`iso:zh-Hans`、`iso:zh-Hant`、`iso:ja`、`iso:ko`），docling 2.129 会把它映射到实际运行的引擎上。rapidocr 每次运行只识别一种语言，取第一个。引擎是 docling 在当前安装中选中的那个（装了 PDF 扩展时，Mac 上是 ocrmac，默认识别英语、西班牙语、法语和德语；其他系统上是 rapidocr，默认识别中文和英文），运行会打印它用的引擎和语言。其他文字的扫描件需要这个参数；运行遇到没加它的扫描页时会提示。未知的代码在读取任何页面之前就会被拒绝。每个引擎的代码，以及该选哪个引擎：[选择 OCR 引擎](features/pdf-ocr-engines.md)。 |
+| `--ocr-engine ENGINE` | 仅限 PDF，配合 `--to-epub --pdf-ocr`：用于没有文字层的页面（加 `--ocr-replace-layer` 时是每一页）的 OCR 引擎。`auto`（默认）按 ocrmac、rapidocr、easyocr 的顺序取第一个已安装的；`pdf` 扩展会安装带 onnxruntime 的 `rapidocr`（模型已包含），在 macOS 上还会安装 `ocrmac`（Apple 的 Vision 框架）；两者都不下载任何东西，所以 `auto` 在 Mac 上用 ocrmac 识别，在其他系统上用 rapidocr；`easyocr` 首次使用时下载模型（`pip install easyocr`）；`tesseract` 使用 PATH 上的 tesseract 程序及其语言数据。未安装的引擎，或在 macOS 之外指定 `ocrmac`，都会在读取任何页面之前被拒绝。语言代码因引擎而异（`--ocr-lang`）；运行会说明它用的引擎。该选哪个，有测量数据：[选择 OCR 引擎](features/pdf-ocr-engines.md)。 |
 | `--pages PAGES` | 仅限 PDF，配合 `--to-epub`：要读取的页，从 1 开始编号（`12-30`、`1,3,5-7`）；其余页不处理。所选页码会写进包名和书名（`<name>_pages-12-30_…`），所以翻译一章永远不会覆盖整本书。如果所选范围从某节中间开始，`source.md` 里会在它的第一段正文上方加一个 `Page N` 标题。 |
 | `--retranslate OUT FILE START END` | 在已有的输出中重新翻译一段 EPUB 范围。仅限 EPUB——其他格式会拒绝。 |
 
@@ -61,11 +61,11 @@
 | `--temperature FLOAT` | 采样温度，仅用于接受该参数的格式；默认 `1.0`。anthropic 格式总会发送它。openai 格式在它等于 API 默认值时，以及模型拒绝显式设置时（gpt-5.x、o 系列），不发送它，由 API 默认值生效。codex 格式没有这项设置，会忽略它。 |
 | `--use_context [window\|session]` | 把前面的段落作为上下文发送。不带值或 `window`：重发最近几对原文与译文（一贯的行为）。`session`：一份只追加的历史，按端点的提示缓存价重读。 |
 | `--context_paragraph_limit N` | 仅窗口模式：上下文历史的上限。解析器默认值 `0` 表示采用翻译器的默认值（ChatGPT 为 3 段），而不是没有历史。 |
-| `--context-compact-at N` | 滚动历史的估算 token 预算。会话模式下，历史达到这个大小时会被压缩成交接报告；最小 `1500`。不设时，每个会话运行——无论是否分组，包括 `codex` 格式——都在 `8192` 处压缩，并在开始时打印出来。这个默认值是为连贯性（窗口接缝最少）而选的，不是为价格：会话模式下更低的值更便宜，因为每个请求都会重读携带的历史，所以如果你更在意会话成本而不是接缝，就调低它；如果模型的输入上限更小，就设成那个上限。超过约 `16000` 后成本会急剧上升。测量数据见[为什么会话在 8192 处压缩](evaluation/session-compact-budget.md)。它也限定计划分类器在那些通过普通对话分类的端点上的对话长度（在那里重新开始，不写交接报告），无论有没有 `--use_context`。显式给出的值总是优先。 |
+| `--context-compact-at N` | 滚动历史的估算 token 预算。会话模式下，历史达到这个大小时会被压缩成交接报告；最小 `1500`。不设时，每个会话运行——无论是否分组，包括 `codex` 格式——都在 `8192` 处压缩，并在开始时打印出来。这个默认值是为连贯性（窗口接缝最少）而选的，不是为价格：会话模式下更低的值更便宜，因为每个请求都会重读携带的历史，所以如果你更在意会话成本而不是接缝，就调低它；如果模型的输入上限更小，就设成那个上限。超过约 `16000` 后成本会急剧上升。测量数据见[会话压缩预算](evaluation/session-compact-budget.md)。它也限定计划分类器在那些通过普通对话分类的端点上的对话长度（在那里重新开始，不写交接报告），无论有没有 `--use_context`。显式给出的值总是优先。 |
 | `--no-context-compact` | 仅会话模式：跳过交接报告。窗口仍在达到预算时滚动，但下一个窗口从空白开始。 |
 | `--glossary FILE` / `--terminology FILE` | 一个由 `term → translation` 行组成的文件（每行一条；`#` 之后是备注或注释），本次运行必须照此翻译。同一个参数的两个名字。只有出现在某个请求里的术语才会随它发送。文件不存在时，运行在解析参数阶段就会中止。由 openai 系和 codex 系路线在 EPUB、Markdown 和 PDF 书上读取；其他路线会警告并忽略它。 |
 | `--glossary-auto on\|off` | 会话运行是否同时保留它自己的交接报告里确立的译名。除非你要求，否则关闭。它需要一个可供学习的会话（`--use_context session`，或 `codex` 格式的那一个线程），以及一个会用名字而不是大段文字作答的模型；`off` 时压缩那一轮只要求写摘要。学到的术语只留在本次运行和 `<book>_handoff.md` 里，不会出现在别处。 |
-| `--accumulated_num N` | EPUB 的 token/字符累积量，以及 SRT 字幕块按字符合并的批量（SRT 上限为 512）。在 EPUB 计划模式下，它是每个请求的 token 预算：任意长度的相邻单元在 `N` 个 token 之内合成一次请求（每个请求最多 `--max-batch-units` 个单元；端点经验证支持 JSON 模式但不支持严格 schema 时为其一半）。不设时，每次计划运行都会根据本次运行自己的提示词开销推算默认值——用自带提示词时为 `1200`，自定义 `--prompt` 较长时最多 `1600`——在没有严格 schema 结论的端点上，每个请求的预算减半，但绝不低于 `800` 的下限（所以在那里，无论提示词开销多大，每个请求的预算都是 `800`）；会话运行（包括 `codex`）保持未减半的值。这些是选定的安全余量，低于所有测量中未出现错误的范围；见[为什么每个请求 16 个单元](evaluation/grouping-batch-size.md)。运行会说明这个数字以及路线类别。传 `1` 关闭合并。最小 `1`。 |
+| `--accumulated_num N` | EPUB 的 token/字符累积量，以及 SRT 字幕块按字符合并的批量（SRT 上限为 512）。在 EPUB 计划模式下，它是每个请求的 token 预算：任意长度的相邻单元在 `N` 个 token 之内合成一次请求（每个请求最多 `--max-batch-units` 个单元；端点经验证支持 JSON 模式但不支持严格 schema 时为其一半）。不设时，每次计划运行都会根据本次运行自己的提示词开销推算默认值——用自带提示词时为 `1200`，自定义 `--prompt` 较长时最多 `1600`——在没有严格 schema 结论的端点上，每个请求的预算减半，但绝不低于 `800` 的下限（所以在那里，无论提示词开销多大，每个请求的预算都是 `800`）；会话运行（包括 `codex`）保持未减半的值。这些是选定的安全余量，低于所有测量中未出现错误的范围；见[每次请求的单元数与 token 数](evaluation/grouping-batch-size.md)。运行会说明这个数字以及路线类别。传 `1` 关闭合并。最小 `1`。 |
 | `--max-batch-units N` | 仅 EPUB 计划模式：`--accumulated_num` 的 token 预算最多能放进一个请求的单元数。默认 `16`，即首次出现内容错误的水平（每个请求 64 个单元）的四分之一，作为安全余量。端点经验证支持 JSON 模式但不支持严格 schema 时，携带其一半（`8`），回复数错的情况实际就出在这类端点上。如果你信任自己的模型、想减少请求，就调高它；如果运行一直打印错位恢复的提示，就调低它。 |
 | `--batch_size N` | TXT、Markdown 和 PDF（纯文本路线）加载器每个请求发送的行数或段落数。默认 `10`。 |
 | `--block_size N` | 把段落合并成用分隔符方式翻译的块。 |
@@ -206,7 +206,7 @@ python3 make_book.py --book_name test_books/the_little_prince.txt --test --batch
 
 累积到多少个 token 之后才开始翻译。gpt3.5 把 total_token 限制在 4090。
 
-在 EPUB 计划模式下你很少需要它：运行会自动推算每个请求的预算（用自带提示词时为 1200，在不支持严格 schema 的端点上为 800），并把它打印出来。见上面 `--accumulated_num` 那一行和[为什么每个请求 16 个单元](evaluation/grouping-batch-size.md)。
+在 EPUB 计划模式下你很少需要它：运行会自动推算每个请求的预算（用自带提示词时为 1200，在不支持严格 schema 的端点上为 800），并把它打印出来。见上面 `--accumulated_num` 那一行和[每次请求的单元数与 token 数](evaluation/grouping-batch-size.md)。
 
 例如，如果你用 --accumulated_num 1600，openai 可能会输出 2200 个 token，
 system 消息和 user 消息里的其他内容可能还要 200 个 token。1600+2200+200=4000，已经接近上限了。

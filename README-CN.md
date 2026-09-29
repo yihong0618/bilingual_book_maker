@@ -413,7 +413,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
   - `--context-compact-at`:
 
-    仅 session 模式。历史在被压缩成交接报告前可以达到的估算 token 预算。默认 `8192`，最小值 `500`。
+    仅 session 模式。历史在被压缩成交接报告前可以达到的估算 token 预算。默认 `8192`，最小值 `1500`。
 
   - `--no-context-compact`:
 

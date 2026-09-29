@@ -105,7 +105,7 @@ bbook_maker \
 | 你的 ChatGPT 套餐 | `--api_format codex`，不加上下文参数 | 线程本身就是上下文；见[用大模型翻译](../llm-args.md) |
 | 机器翻译引擎（Google、DeepL……） | `--classify-model gpt-5.6-luna` | 引擎无法分类，没有大模型分类器时只翻译 `<p>`；见[机器翻译](../machine-args.md) |
 | 小型本地模型（8B 到 16B） | 用默认值；推理模型加 `--no-thinking`，并把 `--context-compact-at` 设为模型的输入上限 | 在不支持严格 schema 的端点上，运行会自动把请求大小减半；见[本地模型](../llm-args.md#本地模型ollamallamacpplm-studio) |
-| 总是错位的模型（`N misaligned batches this run`） | `--max-batch-units 8`，然后 `4` | 请求更小；见[为什么每个请求 16 个单元](../evaluation/grouping-batch-size.md) |
+| 总是错位的模型（`N misaligned batches this run`） | `--max-batch-units 8`，然后 `4` | 请求更小；见[每次请求的单元数与 token 数](../evaluation/grouping-batch-size.md) |
 | 计划分类总是失败的小模型 | `--plan-classify all` | 跳过分类，翻译每一块 |
 
 ## 按系统

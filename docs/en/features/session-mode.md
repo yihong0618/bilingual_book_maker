@@ -4,7 +4,7 @@
 
 `--use_context session` keeps one conversation for the whole book. Every request adds to it, and every request carries it, so the model reads the last chapter or so before it translates the next paragraph. That is how names, register and terminology stay the same from page to page. On an endpoint with prompt caching, the history that was already sent is billed at the cache rate, so a long history costs much less than its size. The other context mode, bare `--use_context` (window mode), re-sends only the last few source/translation pairs with each request.
 
-A history cannot grow for ever. When it reaches `--context-compact-at` (default 8192 estimated tokens, the opening summary included), the model writes a short handoff report, about 300 tokens: the names, the register and the terminology decisions so far. That report opens the next window. The latest one is saved in `<book>_handoff.md`, and `--resume` reads it back. The default was chosen for continuity, not for price; [Why the session compacts at 8192](../evaluation/session-compact-budget.md) has the measurements, including the fact that a lower value is cheaper.
+A history cannot grow for ever. When it reaches `--context-compact-at` (default 8192 estimated tokens, the opening summary included), the model writes a short handoff report, about 300 tokens: the names, the register and the terminology decisions so far. That report opens the next window. The latest one is saved in `<book>_handoff.md`, and `--resume` reads it back. The default was chosen for continuity, not for price; [Session compact budget](../evaluation/session-compact-budget.md) has the measurements, including the fact that a lower value is cheaper.
 
 ## Setup
 

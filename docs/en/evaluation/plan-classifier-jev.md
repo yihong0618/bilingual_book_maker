@@ -67,7 +67,7 @@ That was one book and 31 signatures, so 0.75 was a hint, not a setting. The gate
 - The default classifier stays the translating model.
 - First round: the abstain threshold stayed at 0.5; the four low-confidence skips were recorded, not judged (two URLs, a single letter and a bare author name, which a reading edition could keep or translate).
 - Second round: the requests are lean (the shared text sent once), and the threshold became an asymmetric gate. A `skip` below it becomes `translate`; a `translate` is taken at any probability. Content is never lost to a doubtful skip.
-- The gate is 0.95 on the chosen option's probability, from the corpus measurement above. `--classify-min-confidence P` moves it for a run (`BBM_JEV_MIN_CONFIDENCE` does the same without the flag; the flag wins) for a run.
+- The gate is 0.95 on the chosen option's probability, from the corpus measurement above. `--classify-min-confidence P` moves it for a run (`BBM_JEV_MIN_CONFIDENCE` does the same without the flag; the flag wins).
 
 What would change it: a comparison on more books, with verdicts judged against what a reader wants, and a price for both arms.
 
