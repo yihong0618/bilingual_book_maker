@@ -551,3 +551,38 @@ def test_a_real_extraction_is_protected_the_same_way(tmp_path, pandoc, capsys):
     assert harness_extract(pandoc, pdf, root, "--device", "cpu", "--pages", "1-2") == 0
     assert STAGE_COMPLETE.format(stage="extract") in capsys.readouterr().out
     assert bundle.source.read_text(encoding="utf-8") == edited
+
+
+def test_an_edit_made_while_the_extraction_runs_is_protected_too(
+    tmp_path, pandoc, pdf, fake_docling, capsys
+):
+    """Codex 260928: the entry guard sees the source as the run starts; a
+    conversion takes minutes. An edit made meanwhile must survive, and the
+    figure assets must not be cleared for a run that is then refused."""
+    bundle = extracted(tmp_path, pandoc, pdf, fake_docling)
+    figure = bundle.root / "assets" / "figures" / "p0001-01.png"
+    figure.parent.mkdir(parents=True, exist_ok=True)
+    figure.write_bytes(b"\x89PNG-fake")
+    edited = {}
+
+    def convert(pdf_path, **kwargs):
+        fake_docling["calls"] += 1
+        edited["text"] = edit(bundle)
+        return CONVERTED
+
+    monkeypatch_target = docling_parser
+    original = monkeypatch_target._convert
+    monkeypatch_target._convert = convert
+    try:
+        capsys.readouterr()
+        code = harness_extract(pandoc, pdf, bundle.root, "--no-formula-images")
+    finally:
+        monkeypatch_target._convert = original
+
+    out = capsys.readouterr().out.replace("\n", "")
+    assert code == 1
+    assert fake_docling["calls"] == 2, "the conversion did run this time"
+    assert refusal(SOURCE_EDITED, bundle, SOURCE_REASON_SETTINGS) in out
+    assert bundle.source.read_text(encoding="utf-8") == edited["text"]
+    assert figure.read_bytes() == b"\x89PNG-fake", "figure assets were cleared"
+    assert (bundle.read_manifest()["stages"]["extract"] or {}).get("status") == "failed"

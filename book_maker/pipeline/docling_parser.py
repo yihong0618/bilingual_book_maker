@@ -1268,6 +1268,12 @@ def extract_pdf(
                 for record in pdf_figures.referenced(found.get("figures") or [], text)
             ],
         )
+        # Asked again here, after the conversion: the entry guard saw the
+        # source as the run started, and a conversion takes minutes in which
+        # the operator can edit it (Codex 260928). Before the assets go, so
+        # a refusal now leaves the edit and every figure in place; the
+        # importer asks once more before it writes.
+        guard_source_replacement(bundle, STAGE, reason or SOURCE_REASON_EXTRACT)
         pdf_figures.clear_assets(bundle)
         report = import_markdown(
             bundle,
