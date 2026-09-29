@@ -1,4 +1,4 @@
-# Where an LLM fixes a layout detector's mistakes, and where it cannot
+# Region roles with an image model: `--img-model`
 
 ## Abstract
 

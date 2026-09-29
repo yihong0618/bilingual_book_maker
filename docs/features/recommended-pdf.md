@@ -28,7 +28,7 @@ The route needs the [PDF extra](../installation-pdf.md) and Pandoc 3.1.12 or new
 | a scan whose text layer is garbage | `--pdf-ocr --ocr-replace-layer --ocr-lang <lang>` | every page is read again by the OCR engine | [Scan with a bad text layer](#by-document-type) |
 | a paper, or anything with code listings | `--img-model gpt-5.6-luna` | a vision model fixes author lines taken for headings and listings read as footnotes, about 3,000 prompt tokens a page | [Correcting region roles](pdf-to-epub.md#correcting-region-roles-with-a-vision-model) |
 | a long book you want a chapter at a time | `--pages 12-30` | each range gets its own book and never overwrites another | [PDF flags](../formats/pdf.md) |
-| full of maths | nothing extra | display formulas are kept as pictures by default | [Why formulas are pictures](../evaluation/pdf-formulas-as-images.md) |
+| full of maths | nothing extra | display formulas are kept as pictures by default | [PDF flags](../formats/pdf.md) |
 | translated with names or terms that must hold | `--glossary terms.txt` | pinned renderings, sent only with the blocks they occur in | [Session mode](session-mode.md) |
 | on a machine whose GPU misbehaves | `--device cpu` | the same text, only slower | [By system](#by-system) |
 
@@ -78,7 +78,7 @@ The route needs the [PDF extra](../installation-pdf.md) and Pandoc 3.1.12 or new
       --img-model gpt-5.6-luna
     ```
 
-    Heading levels come out exact on most papers (187 of 195 headings across 20 arXiv papers, see [the evaluation](../evaluation/pdf-heading-levels.md)). `--img-model` demotes an author line or a figure label taken for a heading, for about 3,000 prompt tokens a page; leave it out to spend nothing on it. Leave out the bibliography with `--pages` if you do not want to pay for it.
+    Heading levels come out exact on most papers (187 of 195 headings across 20 arXiv papers). `--img-model` demotes an author line or a figure label taken for a heading, for about 3,000 prompt tokens a page; leave it out to spend nothing on it. Leave out the bibliography with `--pages` if you do not want to pay for it.
 
 === "Scanned book"
 
@@ -130,7 +130,7 @@ The route needs the [PDF extra](../installation-pdf.md) and Pandoc 3.1.12 or new
       --use_context session
     ```
 
-    Horizontal text reads well. **Vertical text** (traditional books set top to bottom, right to left) comes out with its columns in the wrong order. Check `source.md` before you translate a vertical scan. See [Why a vision model reads scans better](../evaluation/pdf-ocr-llm-vs-local.md).
+    Horizontal text reads well. **Vertical text** (traditional books set top to bottom, right to left) comes out with its columns in the wrong order. Check `source.md` before you translate a vertical scan.
 
 ## By system
 

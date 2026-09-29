@@ -74,4 +74,4 @@ Who won where:
 - **Traditional Chinese:** ocrmac and rapidocr, within noise of each other on one page.
 - **easyocr** was last on every class but typewriter, the slowest, and the heaviest in memory.
 
-Every number, the pages, the scorer and the commands: [Which local OCR engine reads a scan best](../evaluation/pdf-ocr-engines.md). How a vision model compares with these engines: [Why a vision model reads scans better](../evaluation/pdf-ocr-llm-vs-local.md).
+Every number, the pages, the scorer and the commands: [OCR engines on scanned pages](../evaluation/pdf-ocr-engines.md).

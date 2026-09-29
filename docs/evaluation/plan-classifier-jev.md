@@ -1,4 +1,4 @@
-# Can a dedicated classifier decide the plan? Jev against gpt-5.6-luna
+# Jev as the plan classifier: `--classify-model`, measured against gpt-5.6-luna
 
 ## Abstract
 

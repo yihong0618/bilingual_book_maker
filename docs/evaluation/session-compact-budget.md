@@ -1,4 +1,4 @@
-# Why the session window compacts at 8192 tokens
+# Session compact budget: `--context-compact-at`
 
 ## Abstract
 

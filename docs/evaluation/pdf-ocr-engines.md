@@ -1,4 +1,4 @@
-# Which local OCR engine reads a scan best: rapidocr, ocrmac, easyocr and tesseract
+# OCR engines on scanned pages: `--ocr-engine` rapidocr, ocrmac, easyocr, tesseract
 
 Since this measurement, the `pdf` extra installs onnxruntime, and ocrmac on macOS, so rapidocr and ocrmac download nothing on a fresh install; the install notes below describe the install as it was measured.
 
@@ -32,7 +32,7 @@ The default stays `auto`. This page is the evidence behind [Which OCR engine](..
 
 Synthetic scans: 200 dpi; clean is a lossless PNG, degraded is grayscale, rotated 1.5°, blurred (r=0.8) and JPEG q40. Their ground truth is exact (the source page's text layer). The real scans' ground truth was typed from the page image. The Chinese book scan carries JBIG2 masks, so its page images came from pypdfium2 on every arm (the run printed the JBIG2 line).
 
-- **Scorer:** the one used for [the vision-model study](pdf-ocr-llm-vs-local.md), unchanged. Normalisation: Markdown syntax stripped (image links, comments, `#`, table pipes and rules, `**`, escapes, list bullets), HTML unescaped, NFKC, every quote variant mapped to `"`, every hyphen and dash removed, whitespace collapsed (removed entirely for Chinese). **CER** is order-sensitive: a paragraph read in another order counts as errors. **Han CER** is CER over the Han characters only. **line_err** ignores order: the length-weighted mean of (1 − partial match) over ground-truth lines, so it measures recognition and detection alone. The heading the route adds above an extraction that does not open with one (`# <file name>`) was removed before scoring.
+- **Scorer:** Normalisation: Markdown syntax stripped (image links, comments, `#`, table pipes and rules, `**`, escapes, list bullets), HTML unescaped, NFKC, every quote variant mapped to `"`, every hyphen and dash removed, whitespace collapsed (removed entirely for Chinese). **CER** is order-sensitive: a paragraph read in another order counts as errors. **Han CER** is CER over the Han characters only. **line_err** ignores order: the length-weighted mean of (1 − partial match) over ground-truth lines, so it measures recognition and detection alone. The heading the route adds above an extraction that does not open with one (`# <file name>`) was removed before scoring.
 
 Commands, one per cell (`$E` is the evaluation directory, `$ENGINE` one of the four, `$LANG` from the table above):
 

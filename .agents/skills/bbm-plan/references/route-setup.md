@@ -240,7 +240,7 @@ text is on `docs/cmd.md`.
 
 | symptom | meaning |
 |---|---|
-| `doesn't apply JSON schema … using delimiter method`, `honors JSON schema shape but not value constraints`, `no strict structured-output support` | **not a failure.** The endpoint does not do strict schema decoding, so translation uses the delimiter method. Expected on the anthropic route, most proxies and local servers; do not switch models over it (`docs/evaluation/structured-output-ladder.md`) |
+| `doesn't apply JSON schema … using delimiter method`, `honors JSON schema shape but not value constraints`, `no strict structured-output support` | **not a failure.** The endpoint does not do strict schema decoding, so translation uses the delimiter method. Expected on the anthropic route, most proxies and local servers; do not switch models over it |
 | `retrying after … — attempt N, waiting Ns` | a slow or rate-limited provider; the run waits with no attempt limit and goes on by itself. Only a rejected key, a refused request or a missing model stops it |
 | `--use_context session is not implemented for the … route` | that route keeps no history; use bare `--use_context`, or a route that does (step 5) |
 | `--parallel-workers is not supported with --use_context session …` | choose one; bare `--use_context` keeps the workers |

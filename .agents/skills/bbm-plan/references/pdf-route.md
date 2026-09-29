@@ -140,11 +140,11 @@ look; the user-facing version is `docs/features/recommended-pdf.md`):
 | document | add to the full run | say to the user |
 |---|---|---|
 | novel | `--use_context session` | chapters set without numbering get their level from font size alone: read the headings in `source.md`. The role pass was measured on papers, web pages and code, not novels: offer `--img-model none` on a long novel to save its tokens |
-| textbook with tables and formulas | `--pages A-B` per chapter, `--glossary` if terms recur | a bold theorem, lemma or corollary statement can come out as a heading: read the headings in `source.md` and demote it to a paragraph there. Tables are detected without OCR; display formulas become pictures, not translated (`docs/evaluation/pdf-formulas-as-images.md`); inline maths is not covered |
-| paper | `--use_context session`, `--img-model gpt-5.6-luna` unless the entry already names one; `--pages` to leave out the bibliography | heading levels were exact on 187 of 195 headings across 20 arXiv papers (`docs/evaluation/pdf-heading-levels.md`) |
+| textbook with tables and formulas | `--pages A-B` per chapter, `--glossary` if terms recur | a bold theorem, lemma or corollary statement can come out as a heading: read the headings in `source.md` and demote it to a paragraph there. Tables are detected without OCR; display formulas become pictures, not translated; inline maths is not covered |
+| paper | `--use_context session`, `--img-model gpt-5.6-luna` unless the entry already names one; `--pages` to leave out the bibliography | heading levels were exact on 187 of 195 headings across 20 arXiv papers |
 | scanned book | `--pdf-ocr` (not when the scan carries an OCR layer: see check 3), plus `--ocr-lang iso:<lang>` outside Chinese/English | JBIG2-masked scans (Internet Archive, ABBYY) get their page image from pypdfium2 and the run says so; still read `source.md` before paying. `--img-model` buys little here: it cannot rebuild a page docling shattered |
 | scanned book with a garbage layer | `--pdf-ocr --ocr-replace-layer --ocr-lang iso:<lang>` (`iso:zh` for a Chinese scan) | only after a first look without it showed the layer is wrong; on a good layer fresh OCR reads worse. A page read empty is named and kept empty; nothing read anywhere stops before translation |
-| Chinese scan | `--pdf-ocr --ocr-lang iso:zh` (`iso:zh-Hant` for traditional) | horizontal text reads well; **vertical** text comes back with its columns in the wrong order (CER 0.905 on the one page measured): do not translate it unreviewed (`docs/evaluation/pdf-ocr-llm-vs-local.md`) |
+| Chinese scan | `--pdf-ocr --ocr-lang iso:zh` (`iso:zh-Hant` for traditional) | horizontal text reads well; **vertical** text comes back with its columns in the wrong order (CER 0.905 on the one page measured): do not translate it unreviewed |
 
 By system (the route needs no GPU; the device changes speed, never the
 text):

@@ -1,4 +1,4 @@
-# Why 16 units per request, and why the budget halves on weaker endpoints
+# Units and tokens per request: `--max-batch-units`, `--accumulated_num`
 
 ## Abstract
 
