@@ -99,7 +99,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   OpenAI's own API, and `--model` for `gpt-5.6-luna`.
 - Or translate through `--provider`: `bbm_providers.example.json` has an
   entry for each vendor below (Gemini, Qwen, xAI, Groq, OrcaRouter, Ollama,
-  LiteLLM, SiliconFlow, OpenRouter). Copy it to
+  LiteLLM, SiliconFlow, OpenRouter, Cheaper Inference). Copy it to
   `bbm_providers.json`, set the key in it, and `--provider gemini` uses the
   Gemini API from it.
 - `--use_context session` translates in session mode; the history compacts
@@ -192,6 +192,19 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   ```
 
   To name one model instead: `--provider orcarouter --model <id>`.
+
+* [Cheaper Inference](https://cheaperinference.com)
+
+  An OpenAI-compatible gateway.
+  Each model costs 15–60% less than the list price of its lab.
+  `--provider cheaperinference` uses the entry in `bbm_providers.example.json`.
+  The key is `--key` or `CHEAPER_INFERENCE_API_KEY`.
+  Without `--model`, it is `gpt-5.4-mini`.
+  Model ids are listed at https://cheaperinference.com/#models.
+
+  ```shell
+  python3 make_book.py --book_name test_books/animal_farm.epub --provider cheaperinference --key ${cheaperinference_key} --use_context session
+  ```
 
 * [Ollama](https://github.com/ollama/ollama)
 
