@@ -301,8 +301,8 @@ def make_tag(name, **attrs):
 
 
 def has_restricted_content_model(element):
-    """Would a translated sibling of this element be invalid markup?"""
-    if element.name in SINGLETON_TAGS:
+    """Would a translated sibling break the content model or table grid?"""
+    if element.name in SINGLETON_TAGS or element.name in ("th", "td"):
         return True
     return element.find_parent("nav") is not None
 
@@ -332,8 +332,10 @@ def append_inline_translation(element, text, translation_style="", language=None
     translated sibling there produces a book epubcheck rejects, so the
     translation joins the element's own content instead, on its own line —
     a table-of-contents entry reads "Chapter 1" over "第一章" and stays
-    valid. A <br/> rather than a space, because running two languages
-    together on one line is exactly the crowding the bilingual sibling
+    valid. Table cells also keep their translation inside: a sibling cell
+    would add a column and duplicate any colspan/rowspan. A <br/> rather
+    than a space, because running two languages together on one line is
+    exactly the crowding the bilingual sibling
     layout avoids everywhere else.
     """
     span = make_tag("span")

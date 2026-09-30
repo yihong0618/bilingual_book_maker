@@ -2191,6 +2191,17 @@ class EPUBBookLoader(BaseBookLoader):
         the element because tag mode has no runs to anchor to, and needs
         `translation_host()` to find the same place from the outside.
         """
+        # A whole-cell translation gets its own line outside the source's
+        # inline wrappers. Cells with nested blocks still need run anchors
+        # so translations stay beside the corresponding source text.
+        if (
+            unit.element.name in ("th", "td")
+            and unit.owner_runs == 1
+            and (unit.resolver is None or is_simple_owner(unit.element, unit.resolver))
+        ):
+            return append_inline_translation(
+                unit.element, t_text, translation_style, language
+            )
         span = make_tag("span")
         if translation_style:
             span["style"] = translation_style
