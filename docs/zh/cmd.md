@@ -45,7 +45,7 @@
 | `--plan-classify {auto,none,all,model,agent}` | 不用计划、翻译整个分区、由模型筛选，或由编程代理筛选。默认 `auto`：在任何能作答的 epub 端点上由模型筛选——经验证支持严格 JSON schema 时通过结构化输出，其他情况（包括 codex）通过普通对话（精确回答 `skip`/`translate`，其他回答一律翻译）；只有在根本无法对话的地方才用标签模式。 |
 | `--classify-model MODEL` | 每个分类步骤使用的模型（旧名 `--plan-classify-model`），或一个 Jev 兼容的分类器（默认是 TypeSafe 的 Jev；网关需给出其 URL）；在 epub 上意味着 model 模式。其端点经验证支持 JSON schema 时通过 schema 提问，否则通过普通对话。默认：提供方条目的 `classify_model`，其次是本次运行的模型。 |
 | `--classify-base-url URL` | `--classify-model` 的端点，当它不是本次运行的端点时使用：一个 OpenAI 兼容端点，或一个 Jev 兼容的分类器的 URL（以 `/systemone` 结尾的路径原样使用）。 |
-| `--classify-key KEY` | `--classify-base-url` 使用的 key；默认规则与 `--img-key` 相同。`JEV_API_KEY`/`TYPESAFE_API_KEY` 只在 typesafe.ai 地址上被自动读取；提供方条目仍然可以把某个变量绑定到它自己的地址。 |
+| `--classify-key KEY` | `--classify-base-url` 使用的 key；默认规则与 `--img-key` 相同。`JEV_API_KEY`/`TYPESAFE_API_KEY` 只在 typesafe.ai 地址上被自动读取，Cloudflare AI Gateway 的 `CF_AIG_TOKEN` 只在 gateway.ai.cloudflare.com 上读取；提供方条目仍然可以把某个变量绑定到它自己的地址。 |
 | `--classify-min-confidence P` | Jev 兼容的分类器的置信度闸门，0 到 1：概率低于它的 `skip` 改为 `translate`；`translate` 从不受闸门限制。默认 `0.95`，经过测量；低于 `0.5` 时闸门不起作用。`BBM_JEV_MIN_CONFIDENCE` 不用参数也能设置它。 |
 | `--plan-min-coverage FRACTION` | 计划选中的文字比例低于此值时失败；默认 `0.5`，必须在 0 到 1 之间（`0` 关闭这道防线，高于 `0.9` 的值多半会中止——两种情况都会警告）。 |
 | `--poetry-group-size N` | 已弃用——现在通用分组和会话交接会让短行和相邻内容放在一起，单元数上限是 `--max-batch-units`。仍然可用（默认 `8`，最小 `1`），但会警告。 |

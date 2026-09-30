@@ -34,12 +34,14 @@ names; else what that address's format reads from the environment.
 
 `jev` (TypeSafe's System One classifier) is a classify endpoint of its own
 kind, and so is any server that speaks its wire format (packet J, 260924:
-a gateway in front of TypeSafe, or a server at a `/systemone` address). The
-same three flags reach them all; `is_jev_wire` says which (model, base)
+a gateway in front of TypeSafe -- Vercel's, or Cloudflare AI Gateway with
+TypeSafe as a custom provider -- or a server at a `/systemone` address).
+The same three flags reach them all; `is_jev_wire` says which (model, base)
 pairs speak it, and with no base the official endpoint is called. Key
 variables are read implicitly only at typesafe.ai (`JEV_API_KEY` /
 `TYPESAFE_API_KEY`); at any other address (a gateway) the key is passed
-explicitly.
+explicitly. A Cloudflare gateway's own token (`CF_AIG_TOKEN`) is read and
+sent only to gateway.ai.cloudflare.com.
 
 Nothing here builds a network client at import, and nothing imports the CLI
 at module level (the CLI imports this module).
@@ -60,7 +62,7 @@ HELP_IMG_BASE_URL = "Endpoint for --img-model when it is not the run's endpoint 
 HELP_IMG_KEY = "API key for --img-base-url. Default: the run's key when the endpoint is the run's own; else the provider entry's img_env_key when the endpoint is the entry's own; else the key the endpoint's format reads from the environment. A key is never sent to an address it was not given for."
 HELP_CLASSIFY_MODEL = "Model for every classification step: plan mode's unit classifier (the PDF route has no classification step yet). Resolution: this flag, else the provider entry's classify_model, else the run's own model. --plan-classify-model is the old name of this flag. Asked over a JSON schema where its endpoint verifies one, else over a plain conversation. 'jev' asks TypeSafe's Jev classifier (default host api.typesafe.ai, key JEV_API_KEY); a Jev-compatible server (a gateway, or an address ending in /systemone) is reached by its URL in --classify-base-url."
 HELP_CLASSIFY_BASE_URL = "Base URL for --classify-model: an OpenAI-compatible endpoint, or a Jev-compatible classifier's URL (a path ending in /systemone is used as is)."
-HELP_CLASSIFY_KEY = "API key for --classify-base-url; same default rule as --img-key. JEV_API_KEY or TYPESAFE_API_KEY is read only at a typesafe.ai address."
+HELP_CLASSIFY_KEY = "API key for --classify-base-url; same default rule as --img-key. JEV_API_KEY or TYPESAFE_API_KEY is read only at a typesafe.ai address; a Cloudflare AI Gateway's token, CF_AIG_TOKEN, only at gateway.ai.cloudflare.com."
 # The lead's text, verbatim (packet H item 14, owner ruling 260924).
 HELP_CLASSIFY_MIN_CONFIDENCE = "Confidence gate for a Jev-compatible classifier, 0 to 1: a 'skip' whose probability is below it becomes 'translate'; 'translate' is never gated. Default 0.95, measured 260924 on the epub3-samples corpus against gpt-5.6-luna with a lost skip costing ten extra translates. On two options the probability is never below 0.5, so a lower value turns the gate off. BBM_JEV_MIN_CONFIDENCE sets it for a run without the flag."
 
@@ -113,6 +115,16 @@ JEV_ENV_KEYS = ("JEV_API_KEY", "TYPESAFE_API_KEY")
 JEV_PATH = "/v1/systemone"
 # A base already ending here is posted to verbatim.
 JEV_WIRE_PATH = "/systemone"
+# Cloudflare AI Gateway in front of TypeSafe (developers.cloudflare.com/
+# ai-gateway/configuration/custom-providers/, read 260929): a custom provider
+# whose base_url is https://api.typesafe.ai, asked at
+# https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/custom-{slug};
+# the gateway forwards everything after `custom-{slug}` to base_url, so
+# `jev_request_url`'s `/v1/systemone` reaches TypeSafe's own path. An
+# authenticated gateway takes its token in `cf-aig-authorization`, and may
+# hold the provider key itself (BYOK), when no Authorization is needed.
+CF_AIG_HOST = "gateway.ai.cloudflare.com"
+CF_AIG_ENV_KEY = "CF_AIG_TOKEN"
 
 
 @dataclass(frozen=True)
@@ -207,6 +219,14 @@ def jev_request_url(api_base):
     return base + (JEV_WIRE_PATH if path.endswith("/v1") else JEV_PATH)
 
 
+def cf_aig_token(api_base):
+    """The Cloudflare AI Gateway token for `api_base`: `CF_AIG_TOKEN`, read
+    only when the host is gateway.ai.cloudflare.com, else ""."""
+    if _host(api_base) != CF_AIG_HOST:
+        return ""
+    return env.get(CF_AIG_ENV_KEY, "").strip()
+
+
 def jev_env_keys(api_base):
     """The key variables read implicitly for a Jev-wire address: TypeSafe's
     own at a typesafe.ai host, none anywhere else."""
@@ -261,7 +281,9 @@ def _key(explicit, bound, choice, run, with_key, flag):
     the choice's format reads from the environment. For the Jev wire
     (finding 2, extended by packet J): `JEV_API_KEY` / `TYPESAFE_API_KEY`
     are read *implicitly* only at a typesafe.ai host, and never the run's
-    key; anywhere else the key is named explicitly -- by the flag, or by a
+    key; an authenticated Cloudflare gateway (`CF_AIG_TOKEN` set) may hold
+    the key itself, when none is sent; anywhere else the key is named
+    explicitly -- by the flag, or by a
     provider entry whose `*_env_key` names the variable for the entry's own
     address (a gateway entry naming `JEV_API_KEY` for its gateway is that
     explicit naming, and is honoured: lead 260924, Codex re-verify).
@@ -278,12 +300,20 @@ def _key(explicit, bound, choice, run, with_key, flag):
         found = next((env[n] for n in names if env.get(n)), "")
         if found:
             return found
+        if cf_aig_token(choice.api_base):
+            # an authenticated Cloudflare gateway holding the key (BYOK)
+            return ""
         where = (
             f"Pass {flag}, or set one of: {', '.join(names)}."
             if names
             else f"Pass {flag}: {choice.api_base} is not a typesafe.ai "
             f"address, so {' and '.join(JEV_ENV_KEYS)} are not sent there."
         )
+        if _host(choice.api_base) == CF_AIG_HOST:
+            where += (
+                f" For a gateway that stores the key, set {CF_AIG_ENV_KEY} "
+                "to the gateway's token."
+            )
         raise SystemExit(
             f"No API key for the jev classifier at {choice.api_base}. {where}"
         )

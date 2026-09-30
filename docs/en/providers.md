@@ -140,7 +140,7 @@ A local server needs no key, so the run's key is empty here; the classifier's ke
 
 ## Jev and Jev-compatible classifiers
 
-Jev is TypeSafe's classifier: a model built to answer typed questions, not to write. Plan mode's question for each kind of block, translate it or keep it, is that kind of question, and Jev answers a page of them in one cheap round trip. It translates nothing, so it can only be the classify model. A gateway in front of TypeSafe speaks the same protocol.
+Jev is TypeSafe's classifier: a model built to answer typed questions, not to write. Plan mode's question for each kind of block, translate it or keep it, is that kind of question, and Jev answers a page of them in one cheap round trip. It translates nothing, so it can only be the classify model. A gateway in front of TypeSafe (Vercel's, or Cloudflare AI Gateway with TypeSafe as a custom provider) speaks the same protocol.
 
 ### The commands
 
@@ -148,6 +148,7 @@ Jev is TypeSafe's classifier: a model built to answer typed questions, not to wr
 |---|---|---|
 | TypeSafe's Jev | `--classify-model jev` | `JEV_API_KEY` or `TYPESAFE_API_KEY`, sent only to `api.typesafe.ai` |
 | Jev through a gateway | `--classify-model typesafe-ai/jev --classify-base-url https://ai-gateway.vercel.sh/typesafe --classify-key "$GATEWAY_KEY"` | named with `--classify-key` |
+| Jev through Cloudflare AI Gateway | `--classify-model jev --classify-base-url https://gateway.ai.cloudflare.com/v1/$ACCOUNT_ID/$GATEWAY_ID/custom-typesafe --classify-key "$JEV_API_KEY"` | named with `--classify-key`; `CF_AIG_TOKEN` for an authenticated gateway, which may store the key instead |
 
 For example, translating with gpt-5.6-luna and classifying with Jev:
 
@@ -161,6 +162,7 @@ bbook_maker \
 ### The rules
 
 - **A key is read from the environment only for its own host.** `JEV_API_KEY` and `TYPESAFE_API_KEY` go only to a typesafe.ai address. Anywhere else, a gateway included, name the key with `--classify-key` or the entry's `classify_env_key`.
+- **A Cloudflare gateway's token is read only for Cloudflare.** `CF_AIG_TOKEN` is sent as `cf-aig-authorization` only to gateway.ai.cloudflare.com. With the token set and no key named, no key is sent: the gateway supplies the one it stores. On the gateway, TypeSafe is a [custom provider](https://developers.cloudflare.com/ai-gateway/configuration/custom-providers/) with base URL `https://api.typesafe.ai`.
 - **A base URL that already ends in `/systemone` is used as it is.** Any other Jev base gets `/systemone` added after a `/v1`.
 - `jev` alone asks for TypeSafe's current model, `jev-latest`.
 

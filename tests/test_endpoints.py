@@ -35,6 +35,7 @@ KEY_VARS = (
     "BBM_OPENAI_API_KEY",
     "JEV_API_KEY",
     "TYPESAFE_API_KEY",
+    "CF_AIG_TOKEN",
     "IMG_KEY_VAR",
 )
 
@@ -420,6 +421,36 @@ class TestJevIsAClassifyEndpoint:
         assert (choice.key, choice.source) == ("k-var", "provider")
 
 
+CF_BASE = "https://gateway.ai.cloudflare.com/v1/acct/gw/custom-typesafe"
+
+
+def _sent_headers(base, key):
+    """The headers one Jev request to `base` carries."""
+    from book_maker.classifier import JevBackend, Question
+
+    sent = []
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"answers": {}, "usage": {}}
+
+    def post(url, json, headers, timeout):
+        sent.append(headers)
+        return Response()
+
+    JevBackend("jev-latest", key, base, post=post, log=print).ask(
+        Question(
+            prompt="P",
+            candidates={"a": ("translate", "skip")},
+            per_candidate={"a": "A"},
+        )
+    )
+    ((headers,),) = [sent]
+    return headers
+
+
 class TestJevCompatibleEndpoints:
     """Packet J (owner 260924): "it should support non official endpoints
     ... accept 3 params but default to official jev". The same three
@@ -475,6 +506,9 @@ class TestJevCompatibleEndpoints:
             ("https://jev.self.example/v1/", "https://jev.self.example/v1/systemone"),
             ("https://jev.self.example", "https://jev.self.example/v1/systemone"),
             ("https://api.typesafe.ai", "https://api.typesafe.ai/v1/systemone"),
+            # Cloudflare AI Gateway, TypeSafe as custom provider `typesafe`:
+            # the gateway forwards `/v1/systemone` to api.typesafe.ai
+            (CF_BASE, CF_BASE + "/v1/systemone"),
         ],
     )
     def test_the_request_url_for_every_base_shape(self, base, url):
@@ -528,6 +562,62 @@ class TestJevCompatibleEndpoints:
                 None,
             )
         assert "jev-secret" not in str(refused.value)
+
+    def test_cloudflare_needs_a_key_or_its_gateway_token(self, monkeypatch):
+        """PIN (owner 260929): at a Cloudflare AI Gateway the TypeSafe
+        variables are not read; the refusal names --classify-key and
+        CF_AIG_TOKEN (a gateway that stores the key)."""
+        monkeypatch.setenv("JEV_API_KEY", "jev-secret")
+        options = _opts(classify_model="jev", classify_base_url=CF_BASE)
+        with pytest.raises(SystemExit, match="--classify-key") as refused:
+            resolve_classify_endpoint(options, _run(), None)
+        assert "CF_AIG_TOKEN" in str(refused.value)
+        assert "jev-secret" not in str(refused.value)
+
+    def test_cloudflare_with_a_gateway_token_and_no_key_sends_none(self, monkeypatch):
+        """PIN (owner 260929): an authenticated gateway that stores the
+        provider key (BYOK) is asked with no Authorization of ours."""
+        monkeypatch.setenv("CF_AIG_TOKEN", "cf-gateway-token")
+        choice = resolve_classify_endpoint(
+            _opts(classify_model="jev", classify_base_url=CF_BASE), _run(), None
+        )
+        assert (choice.api_format, choice.model, choice.api_base, choice.key) == (
+            "jev",
+            "jev-latest",
+            CF_BASE,
+            "",
+        )
+        choice = resolve_classify_endpoint(
+            _opts(
+                classify_model="jev", classify_base_url=CF_BASE, classify_key="k-flag"
+            ),
+            _run(),
+            None,
+        )
+        assert choice.key == "k-flag"
+
+    def test_the_gateway_token_is_sent_only_to_cloudflare(self, monkeypatch):
+        """PIN (owner 260929): CF_AIG_TOKEN is bound to
+        gateway.ai.cloudflare.com; no other Jev address receives it."""
+        monkeypatch.setenv("CF_AIG_TOKEN", "cf-gateway-token")
+        cf = _sent_headers(CF_BASE, "k-flag")
+        assert cf["Authorization"] == "Bearer k-flag"
+        assert cf["cf-aig-authorization"] == "Bearer cf-gateway-token"
+        assert "Authorization" not in _sent_headers(CF_BASE, "")
+        for base in (
+            "https://api.typesafe.ai",
+            "https://ai-gateway.vercel.sh/typesafe",
+            "https://gateway.ai.cloudflare.com.example/v1/a/g/custom-typesafe",
+        ):
+            assert "cf-aig-authorization" not in _sent_headers(base, "k-flag")
+
+    def test_the_gateway_token_is_redacted(self, monkeypatch):
+        from book_maker.classifier import JevBackend
+        from book_maker.redaction import redact
+
+        monkeypatch.setenv("CF_AIG_TOKEN", "cf-gateway-token")
+        JevBackend("jev-latest", "", CF_BASE, post=None, log=print)
+        assert "cf-gateway-token" not in redact("401: bad cf-gateway-token")
 
     def test_the_request_carries_the_key_as_a_bearer(self):
         from book_maker.classifier import JevBackend, Question
@@ -676,7 +766,9 @@ def test_the_classify_endpoint_help_names_jev_urls_and_host_keys():
     assert "or a Jev-compatible classifier's URL" in HELP_CLASSIFY_BASE_URL
     assert "a path ending in /systemone is used as is" in HELP_CLASSIFY_BASE_URL
     assert HELP_CLASSIFY_KEY.endswith(
-        " JEV_API_KEY or TYPESAFE_API_KEY is read only at a typesafe.ai address."
+        " JEV_API_KEY or TYPESAFE_API_KEY is read only at a typesafe.ai "
+        "address; a Cloudflare AI Gateway's token, CF_AIG_TOKEN, only at "
+        "gateway.ai.cloudflare.com."
     )
 
 

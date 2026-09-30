@@ -140,7 +140,7 @@ bbook_maker \
 
 ## Jev 与 Jev 兼容分类器
 
-Jev 是 TypeSafe 的分类器：一个专门回答类型化问题、而不是写文字的模型。计划模式对每种块提的问题——翻译还是保留——正是这类问题，Jev 能在一次廉价的往返中回答一整页。它什么都不翻译，所以只能充当分类模型。TypeSafe 前面的网关说同一套协议。
+Jev 是 TypeSafe 的分类器：一个专门回答类型化问题、而不是写文字的模型。计划模式对每种块提的问题——翻译还是保留——正是这类问题，Jev 能在一次廉价的往返中回答一整页。它什么都不翻译，所以只能充当分类模型。TypeSafe 前面的网关（Vercel 的，或把 TypeSafe 设为自定义提供方的 Cloudflare AI Gateway）说同一套协议。
 
 ### 命令
 
@@ -148,6 +148,7 @@ Jev 是 TypeSafe 的分类器：一个专门回答类型化问题、而不是写
 |---|---|---|
 | TypeSafe 的 Jev | `--classify-model jev` | `JEV_API_KEY` 或 `TYPESAFE_API_KEY`，只发往 `api.typesafe.ai` |
 | 经网关访问 Jev | `--classify-model typesafe-ai/jev --classify-base-url https://ai-gateway.vercel.sh/typesafe --classify-key "$GATEWAY_KEY"` | 用 `--classify-key` 指定 |
+| 经 Cloudflare AI Gateway 访问 Jev | `--classify-model jev --classify-base-url https://gateway.ai.cloudflare.com/v1/$ACCOUNT_ID/$GATEWAY_ID/custom-typesafe --classify-key "$JEV_API_KEY"` | 用 `--classify-key` 指定；网关开启认证时用 `CF_AIG_TOKEN`，此时网关也可以代存 key |
 
 例如，用 gpt-5.6-luna 翻译、用 Jev 分类：
 
@@ -161,6 +162,7 @@ bbook_maker \
 ### 规则
 
 - **key 只为它自己的主机从环境变量读取。** `JEV_API_KEY` 和 `TYPESAFE_API_KEY` 只发往 typesafe.ai 地址。其他任何地方，包括网关，都要用 `--classify-key` 或条目的 `classify_env_key` 指定 key。
+- **Cloudflare 网关的 token 只为 Cloudflare 读取。** `CF_AIG_TOKEN` 只以 `cf-aig-authorization` 发往 gateway.ai.cloudflare.com。设置了 token 又没有指定 key 时，不发送 key：由网关提供它保存的 key。在网关上，TypeSafe 是一个 base URL 为 `https://api.typesafe.ai` 的[自定义提供方](https://developers.cloudflare.com/ai-gateway/configuration/custom-providers/)。
 - **已经以 `/systemone` 结尾的 base URL 原样使用。** 其他 Jev base 会在 `/v1` 之后加上 `/systemone`。
 - 只写 `jev` 时，请求的是 TypeSafe 当前的模型 `jev-latest`。
 

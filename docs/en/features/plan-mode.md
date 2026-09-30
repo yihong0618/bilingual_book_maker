@@ -39,7 +39,7 @@ The classifier is found in this order: `--classify-model`, then the provider ent
 - **A classifier of its own** (named by flag or provider entry) plans the book whatever the translating route can do. The run prints `plan mode: on (classified by …)`. This is how a machine-translation route gets a plan. Google Translate with gpt-5.6-luna as the classifier was run end to end on the test book: all 31 signatures decided, coverage 99.8%.
 - **Agent mode asks no model.** `--plan-classify agent` hands every undecided row to you or your coding agent. A named classifier does not pre-fill the plan, because an agent judges worse from pre-filled answers; the run warns that it is ignored. `--plan-classify all` ignores it too.
 - **Where it is asked and with which key** is on [Provider file and extra models](../providers.md#where-each-model-is-asked). A classifier on its own address prints its own usage line at the end of the run.
-- **Jev**, TypeSafe's classifier, is built for exactly this question: translate or skip, a page of signatures per request, in one cheap round trip. `--classify-model jev` uses it; a gateway in front of TypeSafe works too. Which key goes where, and the URL rules, are on [Provider file and extra models](../providers.md#jev-and-jev-compatible-classifiers).
+- **Jev**, TypeSafe's classifier, is built for exactly this question: translate or skip, a page of signatures per request, in one cheap round trip. `--classify-model jev` uses it; a gateway in front of TypeSafe (Vercel's, or Cloudflare AI Gateway) works too. Which key goes where, and the URL rules, are on [Provider file and extra models](../providers.md#jev-and-jev-compatible-classifiers).
 - **Jev's gate.** A doubtful `skip` becomes `translate`, so no content is lost to it. The gate is 0.95 on the probability of Jev's chosen answer, measured over 662 plan signatures from 45 EPUBs against gpt-5.6-luna. At that value about nine of ten of Jev's skips fall back to `translate`; what it still skips is apparatus (copyright lines, line numbers, note marks, index locators). On that corpus Jev saves little over translating everything. The plan file marks each fallback on its row (`… below the gate: translate`). `--classify-min-confidence P` moves the gate for a run (`BBM_JEV_MIN_CONFIDENCE` does the same without the flag); lower keeps more of Jev's skips, at your risk. See [Jev as the plan classifier](../evaluation/plan-classifier-jev.md).
 
 === "A machine-translation route with an LLM classifier"
@@ -90,6 +90,20 @@ The classifier is found in this order: `--classify-model`, then the provider ent
     ```
 
     The key must be named: the Jev variables are sent on their own only to a typesafe.ai address.
+
+=== "Jev through Cloudflare AI Gateway"
+
+    ```bash
+    bbook_maker \
+      --book_name novel.epub \
+      --model gpt-5.6-luna \
+      --classify-model jev \
+      --classify-base-url https://gateway.ai.cloudflare.com/v1/$ACCOUNT_ID/$GATEWAY_ID/custom-typesafe \
+      --classify-key "$JEV_API_KEY" \
+      --use_context session
+    ```
+
+    TypeSafe is a [custom provider](https://developers.cloudflare.com/ai-gateway/configuration/custom-providers/) on your gateway, slug `typesafe`, base URL `https://api.typesafe.ai`. For an authenticated gateway, set `CF_AIG_TOKEN`; if the gateway stores the TypeSafe key, leave out `--classify-key`.
 
 ## Recommended commands
 

@@ -248,7 +248,11 @@ python make_book.py --book_name "$BOOK" "${ROUTE[@]}" --language "$LANG" \
 
 - **Which classifier.** `jev` is TypeSafe's (reads `JEV_API_KEY` or
   `TYPESAFE_API_KEY`); `--provider openai-jev` from the shipped example
-  does the same in one word. Any chat model id works too. Gateways and key rules:
+  does the same in one word. Through Cloudflare AI Gateway (TypeSafe as a
+  custom provider, slug `typesafe`): `--classify-model jev
+  --classify-base-url https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/custom-typesafe`
+  with `--classify-key`, or `CF_AIG_TOKEN` alone when the gateway stores
+  the key. Any chat model id works too. Gateways and key rules:
   `docs/en/providers.md#jev-and-jev-compatible-classifiers`.
 - **There is no handoff.** The classifier decides every row, and the run
   goes straight on to translate. So the first run is the smoke above

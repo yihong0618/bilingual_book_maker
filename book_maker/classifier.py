@@ -628,13 +628,15 @@ class JevBackend:
         wait_cap=JEV_WAIT_CAP,
         min_confidence=None,
     ):
+        from .endpoints import cf_aig_token
         from .redaction import remember
         from .translator.base_translator import UsageMeter
 
-        remember(key)  # a 401 body may quote it back
         self.model = model
         self.key = key
         self.base = (base or "").rstrip("/")
+        self.gateway_token = cf_aig_token(self.base)
+        remember(key, self.gateway_token)  # a 401 body may quote it back
         self._post = post or _requests_post
         self._sleep = sleep
         self._log = log
@@ -767,6 +769,8 @@ class JevBackend:
         headers = {"Content-Type": "application/json"}
         if self.key:
             headers["Authorization"] = f"Bearer {self.key}"
+        if self.gateway_token:
+            headers["cf-aig-authorization"] = f"Bearer {self.gateway_token}"
         attempt = 0
         while True:
             retry_after = None
