@@ -39,7 +39,6 @@ export BBM_API_KEY=${your_api_key}
 | 变量 | 用于 |
 |---|---|
 | `JEV_API_KEY`、`TYPESAFE_API_KEY` | typesafe.ai 地址上 TypeSafe 的 Jev |
-| `FEATHERLESS_API_KEY` | featherless.ai 地址上的 Simple Jev |
 
 通过网关访问时，用 `--classify-key` 或提供方条目的 `classify_env_key` 指定 key。
 

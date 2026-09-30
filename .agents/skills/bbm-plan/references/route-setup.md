@@ -27,7 +27,7 @@ for f in (pathlib.Path("bbm_providers.json"), pathlib.Path.home()/".bbm"/"provid
                         f"model={(e.get('default_models') or ['(none)'])[0]} {key}={'set' if os.environ.get(key) else 'UNSET'}")
 print("\n".join(seen) or "no provider entries")
 for v in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "BBM_API_KEY", "BBM_ORCAROUTER_API_KEY",
-          "JEV_API_KEY", "TYPESAFE_API_KEY", "FEATHERLESS_API_KEY"):
+          "JEV_API_KEY", "TYPESAFE_API_KEY"):
     print(v, "set" if os.environ.get(v) else "unset")
 EOF
 command -v codex >/dev/null && codex login status 2>&1 | head -1 || echo "codex: not installed"

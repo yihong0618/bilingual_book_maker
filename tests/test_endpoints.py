@@ -35,7 +35,6 @@ KEY_VARS = (
     "BBM_OPENAI_API_KEY",
     "JEV_API_KEY",
     "TYPESAFE_API_KEY",
-    "FEATHERLESS_API_KEY",
     "IMG_KEY_VAR",
 )
 
@@ -424,11 +423,12 @@ class TestJevIsAClassifyEndpoint:
 class TestJevCompatibleEndpoints:
     """Packet J (owner 260924): "it should support non official endpoints
     ... accept 3 params but default to official jev". The same three
-    classify flags reach TypeSafe's Jev, a gateway in front of it, and
-    Featherless's Simple Jev (docs/260924-jev-alternative-format.md)."""
+    classify flags reach TypeSafe's Jev and a gateway in front of it.
 
-    DEMO = "https://simple-jev-demo-api.featherless.ai/v1/classifier"
-    SIMPLE_JEV = "featherless-ai/Qwen3.8-27B-classifier"
+    PIN (owner 260929, docs/260929-fix-JEV_WIRE_TYPESAFE_ONLY.md): the
+    third-party host rows, the `/classifier` path, the `-classifier` id
+    rule and the keyless address are removed; they came from an unverified
+    note, not from a primary source."""
 
     @pytest.mark.parametrize(
         "model, base, wire",
@@ -438,13 +438,8 @@ class TestJevCompatibleEndpoints:
             ("jev-1.13.0", "", True),
             ("typesafe-ai/jev", "https://ai-gateway.vercel.sh/typesafe", True),
             ("JEV-Preview", "", True),
-            ("featherless-ai/Qwen3.8-27B-classifier", "", True),
-            ("my-classifier", "https://self.example/v1", True),
             ("m", "https://api.typesafe.ai", True),
             ("m", "https://eu.api.typesafe.ai", True),
-            ("m", "https://simple-jev-demo-api.featherless.ai", True),
-            ("m", "https://api.featherless.ai/v1/classifier", True),
-            ("m", "https://self.example/v1/classifier", True),
             ("m", "https://self.example/v1/systemone/", True),
             # not the wire
             ("gpt-5.6-luna", "", False),
@@ -453,12 +448,11 @@ class TestJevCompatibleEndpoints:
             ("classifier-7b", "", False),
             ("gpt-5.6-luna", "https://api.openai.com/v1", False),
             ("m", "https://nottypesafe.ai", False),
-            ("m", "https://featherless.ai.example.com", False),
-            # PIN (lead 260924, packet J fix round): Featherless serves an
-            # OpenAI-compatible chat API too; its host alone is not Jev
-            ("m", "https://api.featherless.ai/v1", False),
-            ("m", "https://other.featherless.ai", False),
-            ("m", "https://self.example/classifiers", False),
+            # PIN (owner 260929): a `-classifier` id and a `/classifier`
+            # path are no longer the Jev wire
+            ("my-classifier", "https://self.example/v1", False),
+            ("acme/tiny-classifier", "", False),
+            ("m", "https://self.example/v1/classifier", False),
         ],
     )
     def test_the_detection_matrix(self, model, base, wire):
@@ -473,24 +467,11 @@ class TestJevCompatibleEndpoints:
                 "https://ai-gateway.vercel.sh/typesafe/v1/systemone",
             ),
             (
-                "https://simple-jev-demo-api.featherless.ai/v1/classifier/",
-                "https://simple-jev-demo-api.featherless.ai/v1/classifier",
-            ),
-            (
-                "https://jev.self.example/v1/systemone",
+                "https://jev.self.example/v1/systemone/",
                 "https://jev.self.example/v1/systemone",
             ),
-            # PIN (lead 260924, packet J fix round): the server's own path
-            # after /v1, which is not doubled
-            (
-                "https://api.featherless.ai/v1",
-                "https://api.featherless.ai/v1/classifier",
-            ),
-            ("https://api.featherless.ai/", "https://api.featherless.ai/v1/classifier"),
-            (
-                "https://simple-jev-demo-api.featherless.ai",
-                "https://simple-jev-demo-api.featherless.ai/v1/classifier",
-            ),
+            # PIN (lead 260924, packet J fix round): `/systemone` after
+            # /v1, which is not doubled
             ("https://jev.self.example/v1/", "https://jev.self.example/v1/systemone"),
             ("https://jev.self.example", "https://jev.self.example/v1/systemone"),
             ("https://api.typesafe.ai", "https://api.typesafe.ai/v1/systemone"),
@@ -507,97 +488,23 @@ class TestJevCompatibleEndpoints:
         )
         assert choice.model == "jev-latest"
 
-    def test_the_keyless_demo_needs_no_key_and_reads_none(self, monkeypatch):
-        # no variable is read for the demo, even the host family's own
-        monkeypatch.setenv("FEATHERLESS_API_KEY", "fl-secret")
-        monkeypatch.setenv("JEV_API_KEY", "jev-secret")
-        choice = resolve_classify_endpoint(
-            _opts(classify_model=self.SIMPLE_JEV, classify_base_url=self.DEMO),
-            _run(),
-            None,
-        )
-        assert (choice.api_format, choice.model, choice.api_base, choice.key) == (
-            "jev",
-            self.SIMPLE_JEV,
-            self.DEMO,
-            "",
-        )
-        # an explicit key is still the operator's to send
-        choice = resolve_classify_endpoint(
-            _opts(
-                classify_model=self.SIMPLE_JEV,
-                classify_base_url=self.DEMO,
-                classify_key="k-flag",
-            ),
-            _run(),
-            None,
-        )
-        assert choice.key == "k-flag"
-
-    def test_featherless_reads_its_own_variable_only(self, monkeypatch):
-        base = "https://api.featherless.ai/v1/classifier"
-        options = _opts(classify_model=self.SIMPLE_JEV, classify_base_url=base)
-        monkeypatch.setenv("JEV_API_KEY", "jev-secret")
-        with pytest.raises(SystemExit, match="FEATHERLESS_API_KEY") as refused:
-            resolve_classify_endpoint(options, _run(), None)
-        assert "--classify-key" in str(refused.value)
-        assert "jev-secret" not in str(refused.value)
-        monkeypatch.setenv("FEATHERLESS_API_KEY", "fl-secret")
-        assert resolve_classify_endpoint(options, _run(), None).key == "fl-secret"
-
-    def test_a_chat_model_at_featherless_is_a_chat_model(self, monkeypatch):
-        """PIN (lead 260924, fix round): a chat model at Featherless's
-        OpenAI-compatible base is asked as one, and FEATHERLESS_API_KEY is
-        not read implicitly for it."""
-        monkeypatch.setenv("FEATHERLESS_API_KEY", "fl-secret")
+    def test_a_classifier_id_is_an_ordinary_chat_model(self, monkeypatch):
+        """PIN (owner 260929): with the third-party rule gone, an id ending
+        in `-classifier` is asked like any other model at its address."""
         options = _opts(
-            classify_model="some-llm",
-            classify_base_url="https://api.featherless.ai/v1",
+            classify_model="acme/tiny-classifier",
+            classify_base_url="https://llm.example/v1",
             classify_key="k-flag",
         )
         choice = resolve_classify_endpoint(options, _run(), None)
         assert (choice.api_format, choice.api_base, choice.key) == (
             "openai",
-            "https://api.featherless.ai/v1",
+            "https://llm.example/v1",
             "k-flag",
         )
 
-    def test_a_featherless_classifier_id_defaults_to_featherless(self, monkeypatch):
-        """PIN (lead 260924, packet J fix round): with no base, a
-        `featherless-ai/...-classifier` id is asked at Featherless's
-        classifier with FEATHERLESS_API_KEY, never at typesafe.ai."""
-        monkeypatch.setenv("FEATHERLESS_API_KEY", "fl-secret")
-        monkeypatch.setenv("JEV_API_KEY", "jev-secret")
-        choice = resolve_classify_endpoint(
-            _opts(classify_model=self.SIMPLE_JEV), _run(), None
-        )
-        assert (choice.api_format, choice.api_base, choice.key) == (
-            "jev",
-            "https://api.featherless.ai/v1/classifier",
-            "fl-secret",
-        )
-        assert endpoints.jev_request_url(choice.api_base) == (
-            "https://api.featherless.ai/v1/classifier"
-        )
-
-    def test_another_classifier_id_without_a_base_is_refused(self, monkeypatch):
-        """PIN (lead 260924, packet J fix round): no default is guessed."""
-        monkeypatch.setenv("JEV_API_KEY", "jev-secret")
-        with pytest.raises(SystemExit, match="--classify-base-url") as refused:
-            resolve_classify_endpoint(
-                _opts(classify_model="acme/tiny-classifier"), _run(), None
-            )
-        assert "acme/tiny-classifier" in str(refused.value)
-        assert "typesafe" not in str(refused.value)
-
-    def test_the_featherless_variable_is_not_sent_to_typesafe(self, monkeypatch):
-        monkeypatch.setenv("FEATHERLESS_API_KEY", "fl-secret")
-        with pytest.raises(SystemExit, match="JEV_API_KEY"):
-            resolve_classify_endpoint(_opts(classify_model="jev"), _run(), None)
-
     def test_the_gateway_needs_an_explicit_key(self, monkeypatch):
         monkeypatch.setenv("JEV_API_KEY", "jev-secret")
-        monkeypatch.setenv("FEATHERLESS_API_KEY", "fl-secret")
         monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
         options = _opts(
             classify_model="typesafe-ai/jev",
@@ -605,10 +512,24 @@ class TestJevCompatibleEndpoints:
         )
         with pytest.raises(SystemExit, match="--classify-key") as refused:
             resolve_classify_endpoint(options, _run(), None)
-        for secret in ("jev-secret", "fl-secret", "sk-openai", "sk-run"):
+        for secret in ("jev-secret", "sk-openai", "sk-run"):
             assert secret not in str(refused.value)
 
-    def test_the_demo_request_carries_no_authorization_header(self):
+    def test_a_systemone_address_without_a_key_is_refused(self, monkeypatch):
+        """PIN (owner 260929): no Jev-wire address is keyless any more."""
+        monkeypatch.setenv("JEV_API_KEY", "jev-secret")
+        with pytest.raises(SystemExit, match="--classify-key") as refused:
+            resolve_classify_endpoint(
+                _opts(
+                    classify_model="m",
+                    classify_base_url="https://jev.self.example/v1/systemone",
+                ),
+                _run(),
+                None,
+            )
+        assert "jev-secret" not in str(refused.value)
+
+    def test_the_request_carries_the_key_as_a_bearer(self):
         from book_maker.classifier import JevBackend, Question
 
         sent = []
@@ -623,8 +544,9 @@ class TestJevCompatibleEndpoints:
             sent.append((url, headers))
             return Response()
 
+        base = "https://jev.self.example/v1/systemone"
         choice = resolve_classify_endpoint(
-            _opts(classify_model=self.SIMPLE_JEV, classify_base_url=self.DEMO),
+            _opts(classify_model="m", classify_base_url=base, classify_key="k-flag"),
             _run(),
             None,
         )
@@ -639,8 +561,8 @@ class TestJevCompatibleEndpoints:
             )
         )
         ((url, headers),) = sent
-        assert url == self.DEMO
-        assert "Authorization" not in headers
+        assert url == base
+        assert headers["Authorization"] == "Bearer k-flag"
 
 
 # ---------------------------------------------------------- the translator
@@ -746,17 +668,15 @@ def test_the_endpoint_help_says_what_the_resolution_does():
 
 def test_the_classify_endpoint_help_names_jev_urls_and_host_keys():
     # PIN (packet H item 13, 260924, the lead's text): a Jev-compatible
-    # server is reached by --classify-base-url, and a Jev host's own key
-    # variable is read only at that host (docs/260923-feat-ENDPOINT_OVERRIDES_CLASSIFIER_JEV.md)
+    # server is reached by --classify-base-url, and TypeSafe's key
+    # variables are read only at typesafe.ai (docs/260923-feat-ENDPOINT_OVERRIDES_CLASSIFIER_JEV.md)
     from book_maker.endpoints import HELP_CLASSIFY_BASE_URL, HELP_CLASSIFY_KEY
 
     assert "OpenAI-compatible only" not in HELP_CLASSIFY_BASE_URL
     assert "or a Jev-compatible classifier's URL" in HELP_CLASSIFY_BASE_URL
-    assert "/systemone or /classifier is used as is" in HELP_CLASSIFY_BASE_URL
+    assert "a path ending in /systemone is used as is" in HELP_CLASSIFY_BASE_URL
     assert HELP_CLASSIFY_KEY.endswith(
-        " A Jev host's own variable (JEV_API_KEY or TYPESAFE_API_KEY at "
-        "typesafe.ai, FEATHERLESS_API_KEY at featherless.ai) is read only at "
-        "that host."
+        " JEV_API_KEY or TYPESAFE_API_KEY is read only at a typesafe.ai address."
     )
 
 

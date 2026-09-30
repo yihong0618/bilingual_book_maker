@@ -538,7 +538,7 @@ JEV_MIN_CONFIDENCE_ENV = "BBM_JEV_MIN_CONFIDENCE"
 # questions evaluated in parallel against one `state`, one answer per
 # question id. 429 and 529 are "back off and retry"; 401 and 422 are the
 # request's own fault. The same wire is served by Jev-compatible servers
-# (Simple Jev); where a request goes is `endpoints.jev_request_url`, and
+# (a gateway in front of TypeSafe); where a request goes is `endpoints.jev_request_url`, and
 # `JEV_PATH` is imported from there at the top of this module.
 # Per-request timeout in seconds; a request that times out is retried.
 JEV_TIMEOUT = 120
@@ -766,7 +766,6 @@ class JevBackend:
         url = jev_request_url(self.base)
         headers = {"Content-Type": "application/json"}
         if self.key:
-            # none for the keyless Simple Jev demo
             headers["Authorization"] = f"Bearer {self.key}"
         attempt = 0
         while True:

@@ -140,7 +140,7 @@ bbook_maker \
 
 ## Jev 与 Jev 兼容分类器
 
-Jev 是 TypeSafe 的分类器：一个专门回答类型化问题、而不是写文字的模型。计划模式对每种块提的问题——翻译还是保留——正是这类问题，Jev 能在一次廉价的往返中回答一整页。它什么都不翻译，所以只能充当分类模型。Jev 兼容服务器说同一套协议；Featherless 的 Simple Jev 就是其中之一，它是在开放模型上的一个开源重新实现。
+Jev 是 TypeSafe 的分类器：一个专门回答类型化问题、而不是写文字的模型。计划模式对每种块提的问题——翻译还是保留——正是这类问题，Jev 能在一次廉价的往返中回答一整页。它什么都不翻译，所以只能充当分类模型。TypeSafe 前面的网关说同一套协议。
 
 ### 命令
 
@@ -148,8 +148,6 @@ Jev 是 TypeSafe 的分类器：一个专门回答类型化问题、而不是写
 |---|---|---|
 | TypeSafe 的 Jev | `--classify-model jev` | `JEV_API_KEY` 或 `TYPESAFE_API_KEY`，只发往 `api.typesafe.ai` |
 | 经网关访问 Jev | `--classify-model typesafe-ai/jev --classify-base-url https://ai-gateway.vercel.sh/typesafe --classify-key "$GATEWAY_KEY"` | 用 `--classify-key` 指定 |
-| Featherless 上的 Simple Jev | `--classify-model featherless-ai/Qwen3.8-27B-classifier` | `FEATHERLESS_API_KEY`；地址默认为 `https://api.featherless.ai/v1/classifier` |
-| Simple Jev 的免 key 演示 | `--classify-model featherless-ai/Qwen3.8-27B-classifier --classify-base-url https://simple-jev-demo-api.featherless.ai/v1/classifier` | 无 |
 
 例如，用 gpt-5.6-luna 翻译、用 Jev 分类：
 
@@ -162,9 +160,8 @@ bbook_maker \
 
 ### 规则
 
-- **key 只为它自己的主机从环境变量读取。** `JEV_API_KEY` 和 `TYPESAFE_API_KEY` 只发往 typesafe.ai 地址，`FEATHERLESS_API_KEY` 只发往 featherless.ai 地址。其他任何地方，包括网关，都要用 `--classify-key` 或条目的 `classify_env_key` 指定 key。
-- **已经以 `/systemone` 或 `/classifier` 结尾的 base URL 原样使用。** 其他 base 会在 `/v1` 之后加上服务器自己的路径：featherless.ai 上加 `/classifier`，其他地方加 `/systemone`。
-- **其他以 `-classifier` 结尾的 ID 需要 `--classify-base-url`。** 只有 Featherless 的 ID 有已知地址；其他 ID 运行会停下，要求给出地址。
+- **key 只为它自己的主机从环境变量读取。** `JEV_API_KEY` 和 `TYPESAFE_API_KEY` 只发往 typesafe.ai 地址。其他任何地方，包括网关，都要用 `--classify-key` 或条目的 `classify_env_key` 指定 key。
+- **已经以 `/systemone` 结尾的 base URL 原样使用。** 其他 Jev base 会在 `/v1` 之后加上 `/systemone`。
 - 只写 `jev` 时，请求的是 TypeSafe 当前的模型 `jev-latest`。
 
 ### 闸门：没把握的跳过按翻译处理

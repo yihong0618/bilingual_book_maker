@@ -140,7 +140,7 @@ A local server needs no key, so the run's key is empty here; the classifier's ke
 
 ## Jev and Jev-compatible classifiers
 
-Jev is TypeSafe's classifier: a model built to answer typed questions, not to write. Plan mode's question for each kind of block, translate it or keep it, is that kind of question, and Jev answers a page of them in one cheap round trip. It translates nothing, so it can only be the classify model. Jev-compatible servers speak the same protocol; Featherless's Simple Jev, an open reimplementation on open models, is one.
+Jev is TypeSafe's classifier: a model built to answer typed questions, not to write. Plan mode's question for each kind of block, translate it or keep it, is that kind of question, and Jev answers a page of them in one cheap round trip. It translates nothing, so it can only be the classify model. A gateway in front of TypeSafe speaks the same protocol.
 
 ### The commands
 
@@ -148,8 +148,6 @@ Jev is TypeSafe's classifier: a model built to answer typed questions, not to wr
 |---|---|---|
 | TypeSafe's Jev | `--classify-model jev` | `JEV_API_KEY` or `TYPESAFE_API_KEY`, sent only to `api.typesafe.ai` |
 | Jev through a gateway | `--classify-model typesafe-ai/jev --classify-base-url https://ai-gateway.vercel.sh/typesafe --classify-key "$GATEWAY_KEY"` | named with `--classify-key` |
-| Simple Jev at Featherless | `--classify-model featherless-ai/Qwen3.8-27B-classifier` | `FEATHERLESS_API_KEY`; the address defaults to `https://api.featherless.ai/v1/classifier` |
-| Simple Jev's keyless demo | `--classify-model featherless-ai/Qwen3.8-27B-classifier --classify-base-url https://simple-jev-demo-api.featherless.ai/v1/classifier` | none |
 
 For example, translating with gpt-5.6-luna and classifying with Jev:
 
@@ -162,9 +160,8 @@ bbook_maker \
 
 ### The rules
 
-- **A key is read from the environment only for its own host.** `JEV_API_KEY` and `TYPESAFE_API_KEY` go only to a typesafe.ai address, `FEATHERLESS_API_KEY` only to a featherless.ai one. Anywhere else, a gateway included, name the key with `--classify-key` or the entry's `classify_env_key`.
-- **A base URL that already ends in `/systemone` or `/classifier` is used as it is.** Any other base gets the server's own path added: `/classifier` on featherless.ai, `/systemone` elsewhere, after a `/v1`.
-- **Any other id ending in `-classifier` needs `--classify-base-url`.** Only Featherless's ids have a known address; for another the run stops and asks for one.
+- **A key is read from the environment only for its own host.** `JEV_API_KEY` and `TYPESAFE_API_KEY` go only to a typesafe.ai address. Anywhere else, a gateway included, name the key with `--classify-key` or the entry's `classify_env_key`.
+- **A base URL that already ends in `/systemone` is used as it is.** Any other Jev base gets `/systemone` added after a `/v1`.
 - `jev` alone asks for TypeSafe's current model, `jev-latest`.
 
 ### The gate: a doubtful skip is translated

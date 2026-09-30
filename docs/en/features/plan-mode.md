@@ -39,7 +39,7 @@ The classifier is found in this order: `--classify-model`, then the provider ent
 - **A classifier of its own** (named by flag or provider entry) plans the book whatever the translating route can do. The run prints `plan mode: on (classified by …)`. This is how a machine-translation route gets a plan. Google Translate with gpt-5.6-luna as the classifier was run end to end on the test book: all 31 signatures decided, coverage 99.8%.
 - **Agent mode asks no model.** `--plan-classify agent` hands every undecided row to you or your coding agent. A named classifier does not pre-fill the plan, because an agent judges worse from pre-filled answers; the run warns that it is ignored. `--plan-classify all` ignores it too.
 - **Where it is asked and with which key** is on [Provider file and extra models](../providers.md#where-each-model-is-asked). A classifier on its own address prints its own usage line at the end of the run.
-- **Jev**, TypeSafe's classifier, is built for exactly this question: translate or skip, a page of signatures per request, in one cheap round trip. `--classify-model jev` uses it; a Jev-compatible server such as Featherless's Simple Jev works too. Which key goes where, and the URL rules, are on [Provider file and extra models](../providers.md#jev-and-jev-compatible-classifiers).
+- **Jev**, TypeSafe's classifier, is built for exactly this question: translate or skip, a page of signatures per request, in one cheap round trip. `--classify-model jev` uses it; a gateway in front of TypeSafe works too. Which key goes where, and the URL rules, are on [Provider file and extra models](../providers.md#jev-and-jev-compatible-classifiers).
 - **Jev's gate.** A doubtful `skip` becomes `translate`, so no content is lost to it. The gate is 0.95 on the probability of Jev's chosen answer, measured over 662 plan signatures from 45 EPUBs against gpt-5.6-luna. At that value about nine of ten of Jev's skips fall back to `translate`; what it still skips is apparatus (copyright lines, line numbers, note marks, index locators). On that corpus Jev saves little over translating everything. The plan file marks each fallback on its row (`… below the gate: translate`). `--classify-min-confidence P` moves the gate for a run (`BBM_JEV_MIN_CONFIDENCE` does the same without the flag); lower keeps more of Jev's skips, at your risk. See [Jev as the plan classifier](../evaluation/plan-classifier-jev.md).
 
 === "A machine-translation route with an LLM classifier"
@@ -91,18 +91,6 @@ The classifier is found in this order: `--classify-model`, then the provider ent
 
     The key must be named: the Jev variables are sent on their own only to a typesafe.ai address.
 
-=== "Simple Jev"
-
-    ```bash
-    bbook_maker \
-      --book_name novel.epub \
-      --model gpt-5.6-luna \
-      --classify-model featherless-ai/Qwen3.8-27B-classifier \
-      --use_context session
-    ```
-
-    Asks Featherless's classifier endpoint and reads `FEATHERLESS_API_KEY`. For the keyless demo, add `--classify-base-url https://simple-jev-demo-api.featherless.ai/v1/classifier`.
-
 ## Recommended commands
 
 The command per kind of book (novel, textbook, paper, dictionary), per endpoint (hosted, on-device, machine translation) and per system is on [Recommended settings for EPUB](recommended-epub.md).
@@ -120,8 +108,7 @@ These are the lines the run prints, what they mean, and what to do.
 - **`--classify-model names a classifier, and --plan-classify agent leaves every row to your agent and asks no model; it is ignored this run.`** (or `… all translates the whole partition …`). As it says; drop the flag or the mode.
 - **`--plan-classify model asks an LLM to rule on every plan signature, and the google format translates through one fixed engine with no model to ask. …`** A fixed-engine run in `model` mode with no classifier of its own. Add `--classify-model`, or use `agent` or `all`.
 - **`--classify-model needs an OpenAI-compatible endpoint; … resolves to the … format.`** A `--classify-base-url` that is not OpenAI-shaped. **`--classify-base-url names where --classify-model is served, and no --classify-model was given. …`** Name the model too.
-- **`No API key for the jev classifier at … Pass --classify-key, …`** The Jev variables are read only for a typesafe.ai address and `FEATHERLESS_API_KEY` only for a featherless.ai one. Through a gateway, name the key with `--classify-key`.
-- **`… is a Jev-compatible classifier with no known default address; name its endpoint with --classify-base-url.`** An id ending in `-classifier` that is not Featherless's. Add its URL.
+- **`No API key for the jev classifier at … Pass --classify-key, …`** The Jev variables are read only for a typesafe.ai address. Through a gateway, name the key with `--classify-key`.
 - **`BBM_JEV_MIN_CONFIDENCE must be a number from 0 to 1; got …`** Fix or unset the variable.
 - **`<book>_plan.json has N undecided signature(s) …`**. After `--plan-classify agent`, some rows still have no decision. Fill every `action` with `translate` or `skip`, then rerun.
 - **`…: invalid action '…' — use …`**. A typo in a hand-edited plan. Fix the JSON and rerun.

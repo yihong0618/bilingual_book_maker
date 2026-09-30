@@ -555,40 +555,10 @@ class TestTheAsymmetricGate:
         }
 
 
-class TestTheTwoReplyShapes:
-    """Packet J: a Simple-Jev-shaped reply (docs/260924-jev-alternative-format.md)
-    and the Vercel AI Gateway's recorded reply (copied from jev-calculator's
-    `test/fixtures/gateway-response.recorded.json`) parse alike; the
-    gateway's `provider_metadata` is ignored."""
-
-    def test_a_simple_jev_reply(self):
-        payload = {
-            "answers": {
-                "route": {
-                    "type": "choice",
-                    "choice": "billing",
-                    "confidence": 0.9999,
-                    "probabilities": {
-                        "billing": 0.9999,
-                        "technical": 0.00003,
-                        "account": 0.0001,
-                    },
-                }
-            },
-            "usage": {"input_tokens": 434, "output_tokens": 3},
-        }
-        backend = _backend(Transport(Response(200, payload)))
-        answer = Classifier(None, "m", backends=[backend]).ask(
-            Question(
-                prompt="P",
-                candidates={"route": ("billing", "technical", "account")},
-                per_candidate={"route": "Which team handles this?"},
-            )
-        )
-        assert answer.values == {"route": "billing"}
-        assert answer.confidence == {"route": 0.9999}
-        assert answer.usage["prompt_tokens"] == 434
-        assert (backend.usage.prompt, backend.usage.completion) == (434, 3)
+class TestTheGatewayReply:
+    """Packet J: the Vercel AI Gateway's recorded reply (copied from
+    jev-calculator's `test/fixtures/gateway-response.recorded.json`)
+    parses; the gateway's `provider_metadata` is ignored."""
 
     def test_the_recorded_gateway_reply(self):
         import json
