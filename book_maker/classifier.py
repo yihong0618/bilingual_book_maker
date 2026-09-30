@@ -589,10 +589,26 @@ class JevFatal(Exception):
     """TypeSafe refused the request itself (a key, a malformed question)."""
 
 
+def _no_ambient_auth(request):
+    """Requests' `auth` hook that adds nothing: without it a `.netrc` entry
+    for the host would add a Basic Authorization of its own."""
+    return request
+
+
 def _requests_post(url, json, headers, timeout):
+    """One POST, no redirect followed (Codex review 260929: Requests keeps
+    `cf-aig-authorization` on a cross-host redirect) and no `.netrc`
+    credentials (a gateway holding the key must see no Authorization)."""
     import requests
 
-    return requests.post(url, json=json, headers=headers, timeout=timeout)
+    return requests.post(
+        url,
+        json=json,
+        headers=headers,
+        timeout=timeout,
+        allow_redirects=False,
+        auth=_no_ambient_auth,
+    )
 
 
 class JevBackend:
@@ -785,6 +801,15 @@ class JevBackend:
                 if status == 200:
                     return response.json()
                 detail = redact((getattr(response, "text", "") or "")[:300])
+                if 300 <= status < 400:
+                    where = (getattr(response, "headers", None) or {}).get(
+                        "location", "no location"
+                    )
+                    raise JevFatal(
+                        f"jev answered {status}, a redirect to {redact(where)}; "
+                        "redirects are not followed, so name the final address "
+                        "with --classify-base-url"
+                    )
                 if status in JEV_FATAL_STATUSES:
                     raise JevFatal(f"jev answered {status}: {detail}")
                 why = f"HTTP {status}: {detail}"

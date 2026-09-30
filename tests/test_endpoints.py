@@ -611,6 +611,59 @@ class TestJevCompatibleEndpoints:
         ):
             assert "cf-aig-authorization" not in _sent_headers(base, "k-flag")
 
+    def test_the_gateway_token_needs_https(self, monkeypatch):
+        """PIN (Codex review 260929): never sent over plain http."""
+        monkeypatch.setenv("CF_AIG_TOKEN", "cf-gateway-token")
+        plain = CF_BASE.replace("https://", "http://")
+        assert endpoints.cf_aig_token(plain) == ""
+        assert "cf-aig-authorization" not in _sent_headers(plain, "k-flag")
+
+    def test_the_transport_follows_no_redirect_and_no_netrc(
+        self, monkeypatch, tmp_path
+    ):
+        """PIN (Codex review 260929): the real Requests transport. A `.netrc`
+        default entry adds no Authorization (BYOK stays keyless, our Bearer
+        is not replaced), and a redirect is not followed."""
+        import requests
+
+        from book_maker.classifier import _requests_post
+
+        netrc = tmp_path / "netrc"
+        netrc.write_text("default login netrc-user password netrc-password\n")
+        netrc.chmod(0o600)
+        monkeypatch.setenv("NETRC", str(netrc))
+        seen = []
+
+        def send(session, prepared, **kw):
+            seen.append((dict(prepared.headers), kw.get("allow_redirects")))
+            response = requests.Response()
+            response.status_code = 200
+            return response
+
+        monkeypatch.setattr(requests.Session, "send", send)
+        _requests_post(CF_BASE, {}, {"cf-aig-authorization": "Bearer t"}, 5)
+        _requests_post(CF_BASE, {}, {"Authorization": "Bearer k"}, 5)
+        (byok, follow_a), (keyed, follow_b) = seen
+        assert "Authorization" not in byok
+        assert keyed["Authorization"] == "Bearer k"
+        assert (follow_a, follow_b) == (False, False)
+
+    def test_a_redirect_is_fatal_and_named(self, monkeypatch):
+        from book_maker.classifier import JevBackend, JevFatal, Question
+
+        monkeypatch.setenv("CF_AIG_TOKEN", "cf-gateway-token")
+
+        class Response:
+            status_code = 307
+            text = ""
+            headers = {"location": "https://elsewhere.example/v1/systemone"}
+
+        backend = JevBackend(
+            "jev-latest", "k", CF_BASE, post=lambda *a, **k: Response(), log=print
+        )
+        with pytest.raises(JevFatal, match="elsewhere.example"):
+            backend._send({})
+
     def test_the_gateway_token_is_redacted(self, monkeypatch):
         from book_maker.classifier import JevBackend
         from book_maker.redaction import redact

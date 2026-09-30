@@ -221,8 +221,9 @@ def jev_request_url(api_base):
 
 def cf_aig_token(api_base):
     """The Cloudflare AI Gateway token for `api_base`: `CF_AIG_TOKEN`, read
-    only when the host is gateway.ai.cloudflare.com, else ""."""
-    if _host(api_base) != CF_AIG_HOST:
+    only for https://gateway.ai.cloudflare.com, else "" (Codex review
+    260929: never over plain http)."""
+    if _host(api_base) != CF_AIG_HOST or urlparse(api_base).scheme != "https":
         return ""
     return env.get(CF_AIG_ENV_KEY, "").strip()
 
