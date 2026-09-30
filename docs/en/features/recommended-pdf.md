@@ -26,7 +26,7 @@ The route needs the [PDF extra](../installation-pdf.md) and Pandoc 3.1.12 or new
 | on a Mac, and you want no download | `--pdf-ocr` (auto picks ocrmac, which the pdf extra installs on a Mac; `--ocr-engine ocrmac` names it) | Apple's Vision framework, nothing to download; within a hair of the best on English and traditional Chinese, rapidocr better on simplified-Chinese scans | [Which OCR engine](pdf-ocr-engines.md) |
 | a scan that already has an OCR layer (Internet Archive, ABBYY) | nothing extra | the run uses the layer and says so | [Scanned book](#by-document-type) |
 | a scan whose text layer is garbage | `--pdf-ocr --ocr-replace-layer --ocr-lang <lang>` | every page is read again by the OCR engine | [Scan with a bad text layer](#by-document-type) |
-| a paper, or anything with code listings | `--img-model gpt-5.6-luna` | a vision model fixes author lines taken for headings and listings read as footnotes, about 3,000 prompt tokens a page | [Correcting region roles](pdf-to-epub.md#correcting-region-roles-with-a-vision-model) |
+| a paper, or anything with code listings | `--img-model gpt-6-luna` | a vision model fixes author lines taken for headings and listings read as footnotes, about 3,000 prompt tokens a page | [Correcting region roles](pdf-to-epub.md#correcting-region-roles-with-a-vision-model) |
 | a long book you want a chapter at a time | `--pages 12-30` | each range gets its own book and never overwrites another | [PDF flags](../formats/pdf.md) |
 | full of maths | nothing extra | display formulas are kept as pictures by default | [PDF flags](../formats/pdf.md) |
 | translated with names or terms that must hold | `--glossary terms.txt` | pinned renderings, sent only with the blocks they occur in | [Session mode](session-mode.md) |
@@ -63,7 +63,7 @@ The route needs the [PDF extra](../installation-pdf.md) and Pandoc 3.1.12 or new
       --glossary terms.txt
     ```
 
-    Translate a chapter at a time with `--pages`; each range gets its own book. A textbook with code listings gains from `--img-model gpt-5.6-luna`: the listing's lines come out as code instead of footnotes. Inline mathematics inside a sentence is not a formula region and is not covered: it arrives as whatever the text layer or OCR made of it.
+    Translate a chapter at a time with `--pages`; each range gets its own book. A textbook with code listings gains from `--img-model gpt-6-luna`: the listing's lines come out as code instead of footnotes. Inline mathematics inside a sentence is not a formula region and is not covered: it arrives as whatever the text layer or OCR made of it.
 
 === "Paper"
 
@@ -75,7 +75,7 @@ The route needs the [PDF extra](../installation-pdf.md) and Pandoc 3.1.12 or new
       --to-epub \
       --language zh-hans \
       --use_context session \
-      --img-model gpt-5.6-luna
+      --img-model gpt-6-luna
     ```
 
     Heading levels come out exact on most papers (187 of 195 headings across 20 arXiv papers). `--img-model` demotes an author line or a figure label taken for a heading, for about 3,000 prompt tokens a page; leave it out to spend nothing on it. Leave out the bibliography with `--pages` if you do not want to pay for it.

@@ -15,9 +15,9 @@ bbook_maker --book_name my_book.epub --use_context session
 
 | 参数 | 作用 |
 |---|---|
-| `--model`（`-m`） | 模型 ID，按端点自己的写法：`gpt-5-mini`、`claude-sonnet-4-6`、`openai/gpt-5-mini`。`openai` 格式下默认 `gpt-5.6-luna`。`anthropic` 格式必须写。 |
+| `--model`（`-m`） | 模型 ID，按端点自己的写法：`gpt-5-mini`、`claude-sonnet-4-6`、`openai/gpt-5-mini`。`openai` 格式下默认 `gpt-6-luna`。`anthropic` 格式必须写。 |
 | `--api_base` | 端点 URL。默认是该格式的官方地址。OpenAI 形式的端点以 `/v1` 结尾。粘贴进来的 `…/v1/chat/completions` 或末尾的斜杠会被去掉。 |
-| `--api_format` | 端点说的 API：`openai`、`anthropic`、`codex`、`gemini`、`qwen`、`groq`、`xai`、`litellm`，或某个[机器翻译](machine-args.md)引擎。不写时由 `--api_base` 推断：Anthropic 的地址是 `anthropic`，其余都是 `openai`。没写 `--api_base` 而模型 ID 是 `claude-*` 时，也会选 `anthropic`。 |
+| `--api_format` | 端点说的 API：`openai`、`anthropic`、`codex`、`gemini`、`qwen`、`groq`、`xai`、`litellm`，或某个[翻译服务](machine-args.md)引擎。不写时由 `--api_base` 推断：Anthropic 的地址是 `anthropic`，其余都是 `openai`。没写 `--api_base` 而模型 ID 是 `claude-*` 时，也会选 `anthropic`。 |
 
 每种常见情况一个示例：
 
@@ -26,7 +26,7 @@ bbook_maker --book_name my_book.epub --use_context session
     ```bash
     bbook_maker \
       --book_name my_book.epub \
-      --model gpt-5.6-luna \
+      --model gpt-6-luna \
       --use_context session
     ```
 
@@ -69,7 +69,7 @@ bbook_maker --book_name my_book.epub --use_context session
       --api_format codex
     ```
 
-    通过 [Codex CLI](https://developers.openai.com/codex/cli) 消耗你的 ChatGPT 套餐额度，需要先安装并登录（`codex login`）。默认运行 `gpt-5.6-luna`，换模型加 `--model <id>`。线程本身就是上下文，所以不需要 `--use_context`。它忽略 `--api_base` 和 `--key`。Codex 回答所选模型已满载时，运行会打印一行 `codex: … retrying in 60 s` 并再次请求；这种回答通常是 Codex 在对它不信任的网络限流，换个网络或账号会有帮助。
+    通过 [Codex CLI](https://developers.openai.com/codex/cli) 消耗你的 ChatGPT 套餐额度，需要先安装并登录（`codex login`）。默认运行 `gpt-6-luna`，换模型加 `--model <id>`。线程本身就是上下文，所以不需要 `--use_context`。它忽略 `--api_base` 和 `--key`。Codex 回答所选模型已满载时，运行会打印一行 `codex: … retrying in 60 s` 并再次请求；这种回答通常是 Codex 在对它不信任的网络限流，换个网络或账号会有帮助。
 
 提供 Claude 模型的网关通常说的是 OpenAI 形式。如果网关对 anthropic 形式回 404，运行会停下，并指出改用 `--api_format openai` 即可。
 
@@ -106,7 +106,7 @@ bbook_maker --book_name my_book.epub --api_base 'https://example-endpoint.openai
 bbook_maker --book_name my_book.epub --api_format codex --language zh-hans
 ```
 
-机器翻译服务（谷歌、DeepL、彩云、腾讯、自定义 API）见[机器翻译](machine-args.md)。常用的厂商最好写进[提供方文件](providers.md)。
+翻译服务（谷歌、DeepL、彩云、腾讯、自定义 API）见[翻译服务](machine-args.md)。常用的厂商最好写进[提供方文件](providers.md)。
 
 ## API key
 

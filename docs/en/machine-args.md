@@ -1,6 +1,6 @@
-# Machine translation
+# Translation services
 
-These routes call a translation service instead of a language model. They need no model and often no key. They also cannot answer a question, so everything in this tool that asks the model something is off on them.
+These routes call a translation service: text goes in, a translation comes back. Some of these services run a language model behind their API, but none takes a prompt from this tool. They need no model and often no key. They also cannot answer a question, so everything in this tool that asks the model something is off on them.
 
 ## The routes
 
@@ -86,7 +86,7 @@ The tool sends one POST per paragraph to `--api_base`, form-encoded, with three 
 
 - **No prompt.** `--prompt` has no place to go; the text is sent alone.
 - **No session.** `--use_context session` is refused: there is no conversation to keep.
-- **No plan classification by the engine itself.** On an EPUB the run falls back to the `--translate-tags` selection (`p` by default), so verse or tables outside `<p>` stay untranslated. Name an LLM classifier and the book gets a full plan while the engine translates: `--classify-model gpt-5.6-luna` (it reads `OPENAI_API_KEY`), or a provider entry's `classify_model`. This was run end to end on Google Translate. Without one, `--plan-classify model` is refused, and `--plan-classify all` still translates every block the plan finds without asking anyone. See [Plan mode](features/plan-mode.md#choosing-the-classifier).
+- **No plan classification by the engine itself.** On an EPUB the run falls back to the `--translate-tags` selection (`p` by default), so verse or tables outside `<p>` stay untranslated. Name an LLM classifier and the book gets a full plan while the engine translates: `--classify-model gpt-6-luna` (it reads `OPENAI_API_KEY`), or a provider entry's `classify_model`. This was run end to end on Google Translate. Without one, `--plan-classify model` is refused, and `--plan-classify all` still translates every block the plan finds without asking anyone. See [Plan mode](features/plan-mode.md#choosing-the-classifier).
 - **No glossary.** `--glossary` is read only by the OpenAI- and Codex-shaped routes; here it is ignored with a warning.
 - **No stated source language** on `google`, `deepl`, `deeplfree`, `caiyun` and `tencent`. `--source_lang` is ignored with a warning; only `customapi` (and the `qwen` LLM route) send it.
 

@@ -58,9 +58,9 @@ The spent amount is an estimate from the usage each request reports; the vendor'
 
 ### The shipped `openai` entry turns the image step on
 
-The example file's `openai` entry sets `"img_model": "gpt-5.6-luna"`. So `--provider openai` on a PDF with `--to-epub` runs the region-role pass on every page by default. That also holds when you have no `bbm_providers.json`, because the run then falls back to the example. The pass costs about 3,000 prompt tokens per page: 43,443 prompt and 4,319 completion tokens for 12 pages in the study behind it ([Region roles with an image model](evaluation/pdf-structure-llm-roles.md)). To run without it, pass `--img-model none`, or copy the file and delete the line.
+The example file's `openai` entry sets `"img_model": "gpt-6-luna"`. So `--provider openai` on a PDF with `--to-epub` runs the region-role pass on every page by default. That also holds when you have no `bbm_providers.json`, because the run then falls back to the example. The pass costs about 3,000 prompt tokens per page: 43,443 prompt and 4,319 completion tokens for 12 pages in the study behind it ([Region roles with an image model](evaluation/pdf-structure-llm-roles.md)). To run without it, pass `--img-model none`, or copy the file and delete the line.
 
-The `openai-jev` entry is the same `openai` entry plus `"classify_model": "jev"` with `JEV_API_KEY`, so `--provider openai-jev` translates with gpt-5.6-luna and classifies an EPUB's plan with [Jev](#jev-and-jev-compatible-classifiers). The `jev` entry is Jev on its own: it classifies and never translates, so `--provider jev` is refused with a hint to use `--classify-model`. No other entry names an image model or a classify model.
+The `openai-jev` entry is the same `openai` entry plus `"classify_model": "jev"` with `JEV_API_KEY`, so `--provider openai-jev` translates with gpt-6-luna and classifies an EPUB's plan with [Jev](#jev-and-jev-compatible-classifiers). The `jev` entry is Jev on its own: it classifies and never translates, so `--provider jev` is refused with a hint to use `--classify-model`. No other entry names an image model or a classify model.
 
 ## The two extra models
 
@@ -80,7 +80,7 @@ The image step never falls back to the translating model. It runs only when a mo
 - **Without a base URL**, the model is asked at the run's own endpoint, with the run's format and key.
     - An image model needs that endpoint to be OpenAI-shaped. On any other format the run stops before it starts: `--img-model needs an OpenAI-compatible endpoint; … resolves to the … format.`
     - A classify model works on any LLM route that can hold a conversation, the anthropic and codex routes included.
-    - On a [machine-translation](machine-args.md) run there is no model to share an endpoint with. A classify model named without a base is then asked at the host its id implies: `--classify-model gpt-5.6-luna` goes to OpenAI.
+    - On a [translation-service](machine-args.md) run there is no model to share an endpoint with. A classify model named without a base is then asked at the host its id implies: `--classify-model gpt-6-luna` goes to OpenAI.
 - **With `--img-base-url` or `--classify-base-url`**, the model is asked there. The address must speak the OpenAI shape, or, for a classifier, the [Jev protocol](#jev-and-jev-compatible-classifiers); anything else is refused before anything is paid for.
 - A base URL without its model stops the run: `--img-base-url names where --img-model is served, and no --img-model was given.` (and the same for `--classify-base-url`).
 
@@ -112,10 +112,10 @@ Translate on a local model, and let a hosted model classify the plan and read pa
       "api_style": "openai",
       "base_url": "http://localhost:11434/v1",
       "default_models": ["qwen3:8b"],
-      "classify_model": "gpt-5.6-luna",
+      "classify_model": "gpt-6-luna",
       "classify_base_url": "https://api.openai.com/v1",
       "classify_env_key": "OPENAI_API_KEY",
-      "img_model": "gpt-5.6-luna",
+      "img_model": "gpt-6-luna",
       "img_base_url": "https://api.openai.com/v1",
       "img_env_key": "OPENAI_API_KEY"
     }
@@ -130,7 +130,7 @@ bbook_maker \
   --book_name my_book.epub \
   --api_base http://localhost:11434/v1 \
   --model qwen3:8b \
-  --classify-model gpt-5.6-luna \
+  --classify-model gpt-6-luna \
   --classify-base-url https://api.openai.com/v1 \
   --classify-key "$OPENAI_API_KEY" \
   --use_context session
@@ -140,7 +140,7 @@ A local server needs no key, so the run's key is empty here; the classifier's ke
 
 ## Jev and Jev-compatible classifiers
 
-Jev is TypeSafe's classifier: a model built to answer typed questions, not to write. Plan mode's question for each kind of block, translate it or keep it, is that kind of question, and Jev answers a page of them in one cheap round trip. It translates nothing, so it can only be the classify model. Jev-compatible servers speak the same protocol; Featherless's Simple Jev, an open reimplementation on open models, is one.
+Jev is TypeSafe's classifier: a model built to answer typed questions, not to write. Plan mode's question for each kind of block, translate it or keep it, is that kind of question, and Jev answers a page of them in one cheap round trip. It translates nothing, so it can only be the classify model. A gateway in front of TypeSafe (Vercel's, or Cloudflare AI Gateway with TypeSafe as a custom provider) speaks the same protocol.
 
 ### The commands
 
@@ -148,23 +148,22 @@ Jev is TypeSafe's classifier: a model built to answer typed questions, not to wr
 |---|---|---|
 | TypeSafe's Jev | `--classify-model jev` | `JEV_API_KEY` or `TYPESAFE_API_KEY`, sent only to `api.typesafe.ai` |
 | Jev through a gateway | `--classify-model typesafe-ai/jev --classify-base-url https://ai-gateway.vercel.sh/typesafe --classify-key "$GATEWAY_KEY"` | named with `--classify-key` |
-| Simple Jev at Featherless | `--classify-model featherless-ai/Qwen3.8-27B-classifier` | `FEATHERLESS_API_KEY`; the address defaults to `https://api.featherless.ai/v1/classifier` |
-| Simple Jev's keyless demo | `--classify-model featherless-ai/Qwen3.8-27B-classifier --classify-base-url https://simple-jev-demo-api.featherless.ai/v1/classifier` | none |
+| Jev through Cloudflare AI Gateway | `--classify-model jev --classify-base-url https://gateway.ai.cloudflare.com/v1/$ACCOUNT_ID/$GATEWAY_ID/custom-typesafe --classify-key "$JEV_API_KEY"` | named with `--classify-key`; `CF_AIG_TOKEN` for an authenticated gateway, which may store the key instead |
 
-For example, translating with gpt-5.6-luna and classifying with Jev:
+For example, translating with gpt-6-luna and classifying with Jev:
 
 ```bash
 bbook_maker \
   --book_name my_book.epub \
-  --model gpt-5.6-luna \
+  --model gpt-6-luna \
   --classify-model jev
 ```
 
 ### The rules
 
-- **A key is read from the environment only for its own host.** `JEV_API_KEY` and `TYPESAFE_API_KEY` go only to a typesafe.ai address, `FEATHERLESS_API_KEY` only to a featherless.ai one. Anywhere else, a gateway included, name the key with `--classify-key` or the entry's `classify_env_key`.
-- **A base URL that already ends in `/systemone` or `/classifier` is used as it is.** Any other base gets the server's own path added: `/classifier` on featherless.ai, `/systemone` elsewhere, after a `/v1`.
-- **Any other id ending in `-classifier` needs `--classify-base-url`.** Only Featherless's ids have a known address; for another the run stops and asks for one.
+- **A key is read from the environment only for its own host.** `JEV_API_KEY` and `TYPESAFE_API_KEY` go only to a typesafe.ai address. Anywhere else, a gateway included, name the key with `--classify-key` or the entry's `classify_env_key`.
+- **A Cloudflare gateway's token is read only for Cloudflare.** `CF_AIG_TOKEN` is sent as `cf-aig-authorization` only to gateway.ai.cloudflare.com. With the token set and no key named, no key is sent: the gateway supplies the one it stores. On the gateway, TypeSafe is a [custom provider](https://developers.cloudflare.com/ai-gateway/configuration/custom-providers/) with base URL `https://api.typesafe.ai`.
+- **A base URL that already ends in `/systemone` is used as it is.** Any other Jev base gets `/systemone` added after a `/v1`.
 - `jev` alone asks for TypeSafe's current model, `jev-latest`.
 
 ### The gate: a doubtful skip is translated
@@ -182,7 +181,7 @@ If you want OpenAI to translate and Jev to classify, the shipped `openai-jev` en
   "providers": {
     "openai-with-jev": {
       "api_style": "openai",
-      "default_models": ["gpt-5.6-luna"],
+      "default_models": ["gpt-6-luna"],
       "env_key": "OPENAI_API_KEY",
       "classify_model": "typesafe-ai/jev",
       "classify_base_url": "https://ai-gateway.vercel.sh/typesafe",
@@ -201,7 +200,7 @@ Each Jev request sends the page's candidate lines once, with one short question 
 A `--plan-dry-run` shows where each model would be asked, without a key:
 
 ```text
-Classifier: gpt-5.6-luna at the openai endpoint's default host (cli)
+Classifier: gpt-6-luna at the openai endpoint's default host (cli)
 Image model: off
 ```
 
@@ -210,7 +209,7 @@ The part in brackets is where the choice came from: `cli`, `provider` or `run`. 
 At the end of the run, a model on a client of its own prints its own usage line under the translation's:
 
 ```text
-Classifier (gpt-5.6-luna at the endpoint's default host): tokens: in 7.6k, out 1.8k, cached 0 (3 requests)
+Classifier (gpt-6-luna at the endpoint's default host): tokens: in 7.6k, out 1.8k, cached 0 (3 requests)
 ```
 
 The image model's line reads `Image model (<model> at <address>): …` and is printed after the extraction.

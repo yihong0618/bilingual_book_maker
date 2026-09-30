@@ -58,9 +58,9 @@ bbook_maker \
 
 ### 随附的 `openai` 条目会开启图像步骤
 
-示例文件的 `openai` 条目设置了 `"img_model": "gpt-5.6-luna"`。所以在 PDF 上用 `--to-epub` 加 `--provider openai`，默认会对每一页运行区域角色校正。即使你没有 `bbm_providers.json` 也一样，因为运行会退回使用示例文件。这一步每页约花 3,000 个提示 token：在它背后的那项研究中，12 页共用了 43,443 个提示 token 和 4,319 个补全 token（[用图像模型判定区域角色](evaluation/pdf-structure-llm-roles.md)）。不想要这一步，就传 `--img-model none`，或者把文件复制一份并删掉那一行。
+示例文件的 `openai` 条目设置了 `"img_model": "gpt-6-luna"`。所以在 PDF 上用 `--to-epub` 加 `--provider openai`，默认会对每一页运行区域角色校正。即使你没有 `bbm_providers.json` 也一样，因为运行会退回使用示例文件。这一步每页约花 3,000 个提示 token：在它背后的那项研究中，12 页共用了 43,443 个提示 token 和 4,319 个补全 token（[用图像模型判定区域角色](evaluation/pdf-structure-llm-roles.md)）。不想要这一步，就传 `--img-model none`，或者把文件复制一份并删掉那一行。
 
-`openai-jev` 条目就是 `openai` 条目加上 `"classify_model": "jev"` 和 `JEV_API_KEY`，所以 `--provider openai-jev` 用 gpt-5.6-luna 翻译，用 [Jev](#jev-与-jev-兼容分类器) 给 EPUB 的计划分类。`jev` 条目只有 Jev：它只分类、从不翻译，所以 `--provider jev` 会被拒绝，并提示改用 `--classify-model`。其他条目都没有写图像模型或分类模型。
+`openai-jev` 条目就是 `openai` 条目加上 `"classify_model": "jev"` 和 `JEV_API_KEY`，所以 `--provider openai-jev` 用 gpt-6-luna 翻译，用 [Jev](#jev-与-jev-兼容分类器) 给 EPUB 的计划分类。`jev` 条目只有 Jev：它只分类、从不翻译，所以 `--provider jev` 会被拒绝，并提示改用 `--classify-model`。其他条目都没有写图像模型或分类模型。
 
 ## 两个额外模型
 
@@ -80,7 +80,7 @@ bbook_maker \
 - **没有 base URL 时**，模型在本次运行自己的端点上被询问，用本次运行的格式和 key。
     - 图像模型要求该端点是 OpenAI 形式。其他任何格式下，运行在开始前就会停下：`--img-model needs an OpenAI-compatible endpoint; … resolves to the … format.`
     - 分类模型在任何能对话的大模型路线上都能用，anthropic 和 codex 路线也包括在内。
-    - 在[机器翻译](machine-args.md)运行中，没有可以共用端点的模型。这时不带 base 指定的分类模型，会在它的 ID 所暗示的主机上被询问：`--classify-model gpt-5.6-luna` 发往 OpenAI。
+    - 在[翻译服务](machine-args.md)路线上，没有可以共用端点的模型。这时不带 base 指定的分类模型，会在它的 ID 所暗示的主机上被询问：`--classify-model gpt-6-luna` 发往 OpenAI。
 - **有 `--img-base-url` 或 `--classify-base-url` 时**，模型在那里被询问。该地址必须说 OpenAI 形式，对分类器来说也可以是 [Jev 协议](#jev-与-jev-兼容分类器)；其他任何情况都会在花钱之前被拒绝。
 - 只写 base URL 而不写对应模型，运行会停下：`--img-base-url names where --img-model is served, and no --img-model was given.`（`--classify-base-url` 同理）。
 
@@ -112,10 +112,10 @@ key 与地址绑定，永远不会发往它不该去的主机。对图像模型�
       "api_style": "openai",
       "base_url": "http://localhost:11434/v1",
       "default_models": ["qwen3:8b"],
-      "classify_model": "gpt-5.6-luna",
+      "classify_model": "gpt-6-luna",
       "classify_base_url": "https://api.openai.com/v1",
       "classify_env_key": "OPENAI_API_KEY",
-      "img_model": "gpt-5.6-luna",
+      "img_model": "gpt-6-luna",
       "img_base_url": "https://api.openai.com/v1",
       "img_env_key": "OPENAI_API_KEY"
     }
@@ -130,7 +130,7 @@ bbook_maker \
   --book_name my_book.epub \
   --api_base http://localhost:11434/v1 \
   --model qwen3:8b \
-  --classify-model gpt-5.6-luna \
+  --classify-model gpt-6-luna \
   --classify-base-url https://api.openai.com/v1 \
   --classify-key "$OPENAI_API_KEY" \
   --use_context session
@@ -140,7 +140,7 @@ bbook_maker \
 
 ## Jev 与 Jev 兼容分类器
 
-Jev 是 TypeSafe 的分类器：一个专门回答类型化问题、而不是写文字的模型。计划模式对每种块提的问题——翻译还是保留——正是这类问题，Jev 能在一次廉价的往返中回答一整页。它什么都不翻译，所以只能充当分类模型。Jev 兼容服务器说同一套协议；Featherless 的 Simple Jev 就是其中之一，它是在开放模型上的一个开源重新实现。
+Jev 是 TypeSafe 的分类器：一个专门回答类型化问题、而不是写文字的模型。计划模式对每种块提的问题——翻译还是保留——正是这类问题，Jev 能在一次廉价的往返中回答一整页。它什么都不翻译，所以只能充当分类模型。TypeSafe 前面的网关（Vercel 的，或把 TypeSafe 设为自定义提供方的 Cloudflare AI Gateway）说同一套协议。
 
 ### 命令
 
@@ -148,23 +148,22 @@ Jev 是 TypeSafe 的分类器：一个专门回答类型化问题、而不是写
 |---|---|---|
 | TypeSafe 的 Jev | `--classify-model jev` | `JEV_API_KEY` 或 `TYPESAFE_API_KEY`，只发往 `api.typesafe.ai` |
 | 经网关访问 Jev | `--classify-model typesafe-ai/jev --classify-base-url https://ai-gateway.vercel.sh/typesafe --classify-key "$GATEWAY_KEY"` | 用 `--classify-key` 指定 |
-| Featherless 上的 Simple Jev | `--classify-model featherless-ai/Qwen3.8-27B-classifier` | `FEATHERLESS_API_KEY`；地址默认为 `https://api.featherless.ai/v1/classifier` |
-| Simple Jev 的免 key 演示 | `--classify-model featherless-ai/Qwen3.8-27B-classifier --classify-base-url https://simple-jev-demo-api.featherless.ai/v1/classifier` | 无 |
+| 经 Cloudflare AI Gateway 访问 Jev | `--classify-model jev --classify-base-url https://gateway.ai.cloudflare.com/v1/$ACCOUNT_ID/$GATEWAY_ID/custom-typesafe --classify-key "$JEV_API_KEY"` | 用 `--classify-key` 指定；网关开启认证时用 `CF_AIG_TOKEN`，此时网关也可以代存 key |
 
-例如，用 gpt-5.6-luna 翻译、用 Jev 分类：
+例如，用 gpt-6-luna 翻译、用 Jev 分类：
 
 ```bash
 bbook_maker \
   --book_name my_book.epub \
-  --model gpt-5.6-luna \
+  --model gpt-6-luna \
   --classify-model jev
 ```
 
 ### 规则
 
-- **key 只为它自己的主机从环境变量读取。** `JEV_API_KEY` 和 `TYPESAFE_API_KEY` 只发往 typesafe.ai 地址，`FEATHERLESS_API_KEY` 只发往 featherless.ai 地址。其他任何地方，包括网关，都要用 `--classify-key` 或条目的 `classify_env_key` 指定 key。
-- **已经以 `/systemone` 或 `/classifier` 结尾的 base URL 原样使用。** 其他 base 会在 `/v1` 之后加上服务器自己的路径：featherless.ai 上加 `/classifier`，其他地方加 `/systemone`。
-- **其他以 `-classifier` 结尾的 ID 需要 `--classify-base-url`。** 只有 Featherless 的 ID 有已知地址；其他 ID 运行会停下，要求给出地址。
+- **key 只为它自己的主机从环境变量读取。** `JEV_API_KEY` 和 `TYPESAFE_API_KEY` 只发往 typesafe.ai 地址。其他任何地方，包括网关，都要用 `--classify-key` 或条目的 `classify_env_key` 指定 key。
+- **Cloudflare 网关的 token 只为 Cloudflare 读取。** `CF_AIG_TOKEN` 只以 `cf-aig-authorization` 发往 gateway.ai.cloudflare.com。设置了 token 又没有指定 key 时，不发送 key：由网关提供它保存的 key。在网关上，TypeSafe 是一个 base URL 为 `https://api.typesafe.ai` 的[自定义提供方](https://developers.cloudflare.com/ai-gateway/configuration/custom-providers/)。
+- **已经以 `/systemone` 结尾的 base URL 原样使用。** 其他 Jev base 会在 `/v1` 之后加上 `/systemone`。
 - 只写 `jev` 时，请求的是 TypeSafe 当前的模型 `jev-latest`。
 
 ### 闸门：没把握的跳过按翻译处理
@@ -182,7 +181,7 @@ Jev 的每个回答都带一个概率。低于闸门的 `skip` 记为 `translate
   "providers": {
     "openai-with-jev": {
       "api_style": "openai",
-      "default_models": ["gpt-5.6-luna"],
+      "default_models": ["gpt-6-luna"],
       "env_key": "OPENAI_API_KEY",
       "classify_model": "typesafe-ai/jev",
       "classify_base_url": "https://ai-gateway.vercel.sh/typesafe",
@@ -201,7 +200,7 @@ Jev 的每个回答都带一个概率。低于闸门的 `skip` 记为 `translate
 `--plan-dry-run` 不需要 key，就能显示每个模型会在哪里被询问：
 
 ```text
-Classifier: gpt-5.6-luna at the openai endpoint's default host (cli)
+Classifier: gpt-6-luna at the openai endpoint's default host (cli)
 Image model: off
 ```
 
@@ -210,7 +209,7 @@ Image model: off
 运行结束时，拥有自己客户端的模型会在翻译用量那一行下面打印自己的用量：
 
 ```text
-Classifier (gpt-5.6-luna at the endpoint's default host): tokens: in 7.6k, out 1.8k, cached 0 (3 requests)
+Classifier (gpt-6-luna at the endpoint's default host): tokens: in 7.6k, out 1.8k, cached 0 (3 requests)
 ```
 
 图像模型的那一行是 `Image model (<model> at <address>): …`，在提取之后打印。
@@ -218,5 +217,5 @@ Classifier (gpt-5.6-luna at the endpoint's default host): tokens: in 7.6k, out 1
 以下警告表示某个参数在本次运行中不起作用：
 
 - **`--img-model, --img-base-url and --img-key choose the vision model for the steps that look at a page image, and only the PDF route (--to-epub on a PDF) has one; …`** 你指定了图像模型，但这本书不是走 `--to-epub` 路线的 PDF。
-- **`--classify-model names a classifier, and --plan-classify all translates the whole partition without classifying anything; it is ignored this run.`** `--plan-classify agent` 也一样：代理模式把每一行都留给你的代理，不问任何模型。
+- **`--classify-model names a classifier, and --plan-classify all translates the whole partition without classifying anything; it is ignored this run.`** `--plan-classify agent` 也一样：智能体模式把每一行都留给你的智能体，不问任何模型。
 - **`Nothing on this route classifies yet, so --classify-model is ignored on a … book.`** 目前只有 EPUB 有分类步骤。

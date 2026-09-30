@@ -19,7 +19,7 @@ bbook_maker \
 | 几乎不花钱先看一眼 | `--test --test_num 8` | [快速开始](../quickstart.md) |
 | 付费之前先看哪些会翻译、哪些会跳过（不需要 key） | `--plan-dry-run` | [计划模式](plan-mode.md) |
 | 每一块都翻译，不做分类 | `--plan-classify all` | [计划模式](plan-mode.md) |
-| 自己或借助编程代理决定计划 | `--plan-classify agent`，然后重新运行同一条命令 | [计划模式](plan-mode.md) |
+| 自己或借助编程智能体决定计划 | `--plan-classify agent`，然后重新运行同一条命令 | [计划模式](plan-mode.md) |
 | 全书必须统一的人名和术语 | `--glossary names.txt` | [会话模式](session-mode.md) |
 | 你自己的文风或语域 | `--prompt my_prompt.json` | [提示词文件](../prompt.md) |
 | 只翻译部分章节 | `--only_filelist ch03.xhtml,ch04.xhtml`（EPUB 内部的文件名） | [EPUB](../formats/epub.md) |
@@ -103,7 +103,7 @@ bbook_maker \
 | 不支持提示缓存的端点（进度条上的 `cached=` 一直是 0） | 不带值的 `--use_context` | 会话会在每个请求里为整段历史付全价 |
 | Gemini 或 Qwen | `--api_format gemini --use_context`（或 `qwen`） | 它们自己维护历史，并拒绝会话模式 |
 | 你的 ChatGPT 套餐 | `--api_format codex`，不加上下文参数 | 线程本身就是上下文；见[用大模型翻译](../llm-args.md) |
-| 机器翻译引擎（Google、DeepL……） | `--classify-model gpt-5.6-luna` | 引擎无法分类，没有大模型分类器时只翻译 `<p>`；见[机器翻译](../machine-args.md) |
+| 翻译服务（Google、DeepL……） | `--classify-model gpt-6-luna` | 引擎无法分类，没有大模型分类器时只翻译 `<p>`；见[翻译服务](../machine-args.md) |
 | 小型本地模型（8B 到 16B） | 用默认值；推理模型加 `--no-thinking`，并把 `--context-compact-at` 设为模型的输入上限 | 在不支持严格 schema 的端点上，运行会自动把请求大小减半；见[本地模型](../llm-args.md#本地模型ollamallamacpplm-studio) |
 | 总是错位的模型（`N misaligned batches this run`） | `--max-batch-units 8`，然后 `4` | 请求更小；见[每次请求的单元数与 token 数](../evaluation/grouping-batch-size.md) |
 | 计划分类总是失败的小模型 | `--plan-classify all` | 跳过分类，翻译每一块 |
@@ -147,7 +147,7 @@ bbook_maker \
     ```bash
     bbook_maker \
       --book_name novel.epub \
-      --model gpt-5.6-luna \
+      --model gpt-6-luna \
       --use_context session
     ```
 

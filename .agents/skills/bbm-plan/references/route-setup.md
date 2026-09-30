@@ -27,7 +27,7 @@ for f in (pathlib.Path("bbm_providers.json"), pathlib.Path.home()/".bbm"/"provid
                         f"model={(e.get('default_models') or ['(none)'])[0]} {key}={'set' if os.environ.get(key) else 'UNSET'}")
 print("\n".join(seen) or "no provider entries")
 for v in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "BBM_API_KEY", "BBM_ORCAROUTER_API_KEY",
-          "JEV_API_KEY", "TYPESAFE_API_KEY", "FEATHERLESS_API_KEY"):
+          "JEV_API_KEY", "TYPESAFE_API_KEY", "CF_AIG_TOKEN"):
     print(v, "set" if os.environ.get(v) else "unset")
 EOF
 command -v codex >/dev/null && codex login status 2>&1 | head -1 || echo "codex: not installed"
@@ -81,8 +81,8 @@ Then tell them exactly what to edit and stop until they say it is done:
   style of its own is `openai` plus its `base_url`. Ask for the model's
   price (the `prices` block) when the user cares about the bill: the
   progress bar then shows `spent=$0.012` instead of token counts. The
-  example carries gpt-5.6-luna's list price.
-- The example's `openai` entry also sets `img_model: gpt-5.6-luna`, which
+  example carries gpt-6-luna's list price.
+- The example's `openai` entry also sets `img_model: gpt-6-luna`, which
   only the PDF flow uses (`references/pdf-route.md`); leave it in unless
   the user wants to spend nothing on it. **Add a `classify_model` only
   when the user names a classifier** (`references/epub-plan-mode.md`, "A
@@ -94,7 +94,7 @@ A bare `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` needs no file at all:
 with no `bbm_providers.json`, `--provider openai` (or `anthropic`) reads
 the shipped example's entry, prints one warning line saying so, and sends
 the run to the vendor host with the conventional variable (and, for
-`openai`, `img_model: gpt-5.6-luna`). Hand the file over only when the user
+`openai`, `img_model: gpt-6-luna`). Hand the file over only when the user
 wants the warning gone, another model or price, or cannot write in the
 repo root (then `~/.bbm/providers.json` is read instead). Otherwise rerun
 the probe after step 2; it should show the entry with its key `set`.
@@ -152,7 +152,7 @@ is the same route spelled the older way): the run drives a local
 `codex app-server` sidecar and spends the user's ChatGPT/Codex plan
 allowance instead of API credits. Step 3 does not apply.
 
-- **`--api_format codex` alone runs `gpt-5.6-luna`.** To name another
+- **`--api_format codex` alone runs `gpt-6-luna`.** To name another
   model, add `--model "$MODEL"`, and offer only ids the user's plan lists.
 - **No `--key`, no `--api_base`.** Run `codex login` once beforehand. The
   run checks that the sidecar is up and signed in before parsing the book,
@@ -214,10 +214,10 @@ text is on `docs/en/cmd.md`.
 | flag | values | default / recommended | choose otherwise when |
 |---|---|---|---|
 | `--provider` | a name from `bbm_providers.json` (repo root) or `~/.bbm/providers.json` | **the route, step 1** | the endpoint is an entry there: one word supplies `--api_base`, `--api_format`, the model(s) and the key variable. Explicit flags still win, so `--model` may ride along |
-| `--model` | any model id the endpoint uses, verbatim; or `orcarouter` | the entry's `default_models`; unset on the openai format means `gpt-5.6-luna` | the user names a different model, or wants the OrcaRouter gateway. A ChatGPT plan is `--api_format codex` (step 4), not a `--model` value |
+| `--model` | any model id the endpoint uses, verbatim; or `orcarouter` | the entry's `default_models`; unset on the openai format means `gpt-6-luna` | the user names a different model, or wants the OrcaRouter gateway. A ChatGPT plan is `--api_format codex` (step 4), not a `--model` value |
 | `--model_list` | several ids, comma-separated | *unset*; one model goes in `--model` | rate limits force rotation. Refused with `--use_context session`; each id keeps its own prompt cache |
 | `--key` | one key, or several comma-separated to rotate past rate limits | **never passed**; the entry's `env_key` (then `$BBM_API_KEY`, then the format's own variable) is read from the environment | never; omit on the codex route too |
-| `--api_format` | `openai`, `anthropic`, `codex`, `gemini`, `qwen`, `groq`, `xai`, `litellm`, `google`, `caiyun`, `deepl`, `deeplfree`, `tencent`, `customapi` | *unset*; inferred from `--api_base`, then from the model id | the run spends the user's ChatGPT plan (`codex`), or step 3 proved the guess wrong. The machine-translation formats cannot answer a question, so they are translation-only |
+| `--api_format` | `openai`, `anthropic`, `codex`, `gemini`, `qwen`, `groq`, `xai`, `litellm`, `google`, `caiyun`, `deepl`, `deeplfree`, `tencent`, `customapi` | *unset*; inferred from `--api_base`, then from the model id | the run spends the user's ChatGPT plan (`codex`), or step 3 proved the guess wrong. The translation-service formats cannot answer a question, so they are translation-only |
 | `--api_base` | endpoint URL | *unset*; the entry's `base_url` | a gateway, proxy or local server. The OpenAI shape wants `…/v1`; the anthropic shape wants the bare host |
 | `--proxy` | `http://127.0.0.1:7890`-style | *unset* | the user is behind one |
 | `--no-thinking` | on/off | *off* | a reasoning model (local Qwen3-class, or a hosted one that thinks by default) spends tokens and time before every paragraph. Refused on codex |

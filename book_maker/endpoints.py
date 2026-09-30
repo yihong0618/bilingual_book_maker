@@ -34,13 +34,14 @@ names; else what that address's format reads from the environment.
 
 `jev` (TypeSafe's System One classifier) is a classify endpoint of its own
 kind, and so is any server that speaks its wire format (packet J, 260924:
-Featherless's Simple Jev, a gateway in front of TypeSafe). The same three
-flags reach them all; `is_jev_wire` says which (model, base) pairs speak it,
-and with no base the official endpoint is called. Key variables are read
-implicitly only at the hosts that own them (`JEV_API_KEY` /
-`TYPESAFE_API_KEY` at typesafe.ai, `FEATHERLESS_API_KEY` at featherless.ai);
-the documented keyless Simple Jev demo takes none; at any other address (a
-gateway) the key is passed explicitly.
+a gateway in front of TypeSafe -- Vercel's, or Cloudflare AI Gateway with
+TypeSafe as a custom provider -- or a server at a `/systemone` address).
+The same three flags reach them all; `is_jev_wire` says which (model, base)
+pairs speak it, and with no base the official endpoint is called. Key
+variables are read implicitly only at typesafe.ai (`JEV_API_KEY` /
+`TYPESAFE_API_KEY`); at any other address (a gateway) the key is passed
+explicitly. A Cloudflare gateway's own token (`CF_AIG_TOKEN`) is read and
+sent only to gateway.ai.cloudflare.com.
 
 Nothing here builds a network client at import, and nothing imports the CLI
 at module level (the CLI imports this module).
@@ -48,7 +49,6 @@ at module level (the CLI imports this module).
 
 from dataclasses import dataclass, replace
 from os import environ as env
-from typing import Callable, Optional
 from urllib.parse import urlparse
 
 SOURCE_CLI = "cli"
@@ -60,9 +60,9 @@ SOURCE_OFF = "off"
 HELP_IMG_MODEL = "Vision model for the steps that look at a page image (today: correcting the layout detector's region roles on the PDF route). Resolution: this flag, else the provider entry's img_model, else off; 'none' turns a provider entry's image model off. The run's own model is never used for images unless named here."
 HELP_IMG_BASE_URL = "Endpoint for --img-model when it is not the run's endpoint (OpenAI-compatible only)."
 HELP_IMG_KEY = "API key for --img-base-url. Default: the run's key when the endpoint is the run's own; else the provider entry's img_env_key when the endpoint is the entry's own; else the key the endpoint's format reads from the environment. A key is never sent to an address it was not given for."
-HELP_CLASSIFY_MODEL = "Model for every classification step: plan mode's unit classifier (the PDF route has no classification step yet). Resolution: this flag, else the provider entry's classify_model, else the run's own model. --plan-classify-model is the old name of this flag. Asked over a JSON schema where its endpoint verifies one, else over a plain conversation. 'jev' asks TypeSafe's Jev classifier (default host api.typesafe.ai, key JEV_API_KEY); a Jev-compatible server such as Simple Jev is reached by its URL in --classify-base-url."
-HELP_CLASSIFY_BASE_URL = "Base URL for --classify-model: an OpenAI-compatible endpoint, or a Jev-compatible classifier's URL (a path ending in /systemone or /classifier is used as is)."
-HELP_CLASSIFY_KEY = "API key for --classify-base-url; same default rule as --img-key. A Jev host's own variable (JEV_API_KEY or TYPESAFE_API_KEY at typesafe.ai, FEATHERLESS_API_KEY at featherless.ai) is read only at that host."
+HELP_CLASSIFY_MODEL = "Model for every classification step: plan mode's unit classifier (the PDF route has no classification step yet). Resolution: this flag, else the provider entry's classify_model, else the run's own model. --plan-classify-model is the old name of this flag. Asked over a JSON schema where its endpoint verifies one, else over a plain conversation. 'jev' asks TypeSafe's Jev classifier (default host api.typesafe.ai, key JEV_API_KEY); a Jev-compatible server (a gateway, or an address ending in /systemone) is reached by its URL in --classify-base-url."
+HELP_CLASSIFY_BASE_URL = "Base URL for --classify-model: an OpenAI-compatible endpoint, or a Jev-compatible classifier's URL (a path ending in /systemone is used as is)."
+HELP_CLASSIFY_KEY = "API key for --classify-base-url; same default rule as --img-key. JEV_API_KEY or TYPESAFE_API_KEY is read only at a typesafe.ai address; a Cloudflare AI Gateway's token, CF_AIG_TOKEN, only at gateway.ai.cloudflare.com."
 # The lead's text, verbatim (packet H item 14, owner ruling 260924).
 HELP_CLASSIFY_MIN_CONFIDENCE = "Confidence gate for a Jev-compatible classifier, 0 to 1: a 'skip' whose probability is below it becomes 'translate'; 'translate' is never gated. Default 0.95, measured 260924 on the epub3-samples corpus against gpt-5.6-luna with a lost skip costing ten extra translates. On two options the probability is never below 0.5, so a lower value turns the gate off. BBM_JEV_MIN_CONFIDENCE sets it for a run without the flag."
 
@@ -113,23 +113,18 @@ JEV_HOST_SUFFIX = "typesafe.ai"
 JEV_ENV_KEYS = ("JEV_API_KEY", "TYPESAFE_API_KEY")
 # The request path TypeSafe serves (docs.typesafe.ai/api, read 260924).
 JEV_PATH = "/v1/systemone"
-# Paths a base may already end at: the request is posted there verbatim.
-JEV_WIRE_PATHS = ("/systemone", "/classifier")
-# Featherless's Simple Jev (docs/260924-jev-alternative-format.md): an open
-# reimplementation of the Jev interface at `https://api.featherless.ai/v1/
-# classifier`, ids such as `featherless-ai/Qwen3.8-27B-classifier`, and a
-# public demo host that needs no key.
-FEATHERLESS_HOST_SUFFIX = "featherless.ai"
-FEATHERLESS_ENV_KEYS = ("FEATHERLESS_API_KEY",)
-SIMPLE_JEV_DEMO_HOST = "simple-jev-demo-api.featherless.ai"
-# Where a `featherless-ai/...-classifier` id is asked when no base is given.
-FEATHERLESS_NAMESPACE = "featherless-ai/"
-FEATHERLESS_DEFAULT_BASE = "https://api.featherless.ai/v1/classifier"
-# A `-classifier` id no default address is known for (lead-accepted 260924).
-CLASSIFIER_WITHOUT_BASE = (
-    "{model} is a Jev-compatible classifier with no known default address; "
-    "name its endpoint with --classify-base-url."
-)
+# A base already ending here is posted to verbatim.
+JEV_WIRE_PATH = "/systemone"
+# Cloudflare AI Gateway in front of TypeSafe (developers.cloudflare.com/
+# ai-gateway/configuration/custom-providers/, read 260929): a custom provider
+# whose base_url is https://api.typesafe.ai, asked at
+# https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/custom-{slug};
+# the gateway forwards everything after `custom-{slug}` to base_url, so
+# `jev_request_url`'s `/v1/systemone` reaches TypeSafe's own path. An
+# authenticated gateway takes its token in `cf-aig-authorization`, and may
+# hold the provider key itself (BYOK), when no Authorization is needed.
+CF_AIG_HOST = "gateway.ai.cloudflare.com"
+CF_AIG_ENV_KEY = "CF_AIG_TOKEN"
 
 
 @dataclass(frozen=True)
@@ -189,135 +184,54 @@ def _is_jev_id(model):
     return last == JEV_ALIAS or last.startswith(JEV_ALIAS + "-")
 
 
-def _is_featherless_classifier_id(model):
-    name = (model or "").strip().lower()
-    return name.startswith(FEATHERLESS_NAMESPACE) and name.endswith("-classifier")
-
-
-@dataclass(frozen=True)
-class JevHost:
-    """A host known to serve the Jev wire, and what is known about it.
-
-    `host` is matched exactly, or with its subdomains when `subdomains`.
-    `owns_id` picks the model ids whose default address is `default_base`.
-    `path` is the request path appended after `/v1` (`jev_request_url`),
-    `env_keys` the variables read implicitly for this host alone,
-    `keyless` whether it takes no key at all, and `wire` whether the host
-    alone makes a (model, base) pair Jev.
-    """
-
-    host: str
-    subdomains: bool
-    owns_id: Optional[Callable[[str], bool]]
-    default_base: Optional[str]
-    path: str
-    env_keys: tuple
-    keyless: bool
-    wire: bool
-
-
-# Most specific first: the keyless demo is a featherless.ai host, and any
-# other featherless.ai address also serves an OpenAI-compatible chat API, so
-# it is not Jev by its host alone (lead 260924).
-JEV_HOSTS = (
-    JevHost(SIMPLE_JEV_DEMO_HOST, False, None, None, "/classifier", (), True, True),
-    JevHost(
-        JEV_HOST_SUFFIX,
-        True,
-        _is_jev_id,
-        JEV_DEFAULT_BASE,
-        "/systemone",
-        JEV_ENV_KEYS,
-        False,
-        True,
-    ),
-    JevHost(
-        FEATHERLESS_HOST_SUFFIX,
-        True,
-        _is_featherless_classifier_id,
-        FEATHERLESS_DEFAULT_BASE,
-        "/classifier",
-        FEATHERLESS_ENV_KEYS,
-        False,
-        False,
-    ),
-)
-
-
-def _jev_host(api_base):
-    """The `JEV_HOSTS` row `api_base` calls, or None."""
-    host = _host(api_base)
-    for row in JEV_HOSTS:
-        if host == row.host or (row.subdomains and host.endswith("." + row.host)):
-            return row
-    return None
-
-
 def is_jev_wire(model, api_base=""):
     """Whether (model, base) speaks the Jev wire format (packet J, 260924).
 
     The model id's last segment is `jev` or starts with `jev-` (a gateway
-    namespaces it: `typesafe-ai/jev`), or the id ends with `-classifier`
-    (Simple Jev's `featherless-ai/Qwen3.8-27B-classifier`); or the base's
-    host is typesafe.ai (or a subdomain) or exactly the keyless Simple Jev
-    demo; or the base's path ends at `/systemone` or `/classifier`. Any
-    other featherless.ai address is not Jev by its host alone (lead 260924):
-    Featherless also serves an OpenAI-compatible chat API there, so
-    `--classify-base-url https://api.featherless.ai/v1` with a chat model
-    stays a chat model.
+    namespaces it: `typesafe-ai/jev`); or the base's host is typesafe.ai
+    (or a subdomain); or the base's path ends at `/systemone`.
     """
-    if _is_jev_id(model) or (model or "").strip().lower().endswith("-classifier"):
-        return True
-    row = _jev_host(api_base)
-    if row is not None and row.wire:
-        return True
-    return _base_path(api_base).endswith(JEV_WIRE_PATHS)
+    return (
+        _is_jev_id(model)
+        or _host_in(api_base, JEV_HOST_SUFFIX)
+        or _base_path(api_base).endswith(JEV_WIRE_PATH)
+    )
 
 
 def jev_default_base(model):
-    """The address a Jev-wire id is asked at when no base is given, or None.
-
-    A `jev`/`jev-*` id (a gateway's `typesafe-ai/jev` included) is the
-    official Jev; a `featherless-ai/...-classifier` id is Featherless's
-    Simple Jev; any other `-classifier` id has no default (lead 260924,
-    packet J fix round: it is never sent to typesafe.ai).
-    """
-    for row in JEV_HOSTS:
-        if row.owns_id is not None and row.owns_id(model):
-            return row.default_base
-    return None
+    """The address a Jev-wire id is asked at when no base is given, or None:
+    the official Jev for a `jev`/`jev-*` id (a gateway's `typesafe-ai/jev`
+    included)."""
+    return JEV_DEFAULT_BASE if _is_jev_id(model) else None
 
 
 def jev_request_url(api_base):
     """Where a Jev-wire request is posted (lead 260924, packet J fix round).
 
-    No base: the official endpoint. A base already ending at `/systemone`
-    or `/classifier`: verbatim. Otherwise the server's own path is
-    appended -- `/classifier` on a featherless.ai host (Simple Jev), else
-    `/systemone` -- after `/v1`, which is added unless the base already
-    ends there (`.../v1` -> `.../v1/classifier`, a bare host ->
-    `/v1/classifier`).
+    No base: the official endpoint. A base already ending at `/systemone`:
+    verbatim. Otherwise `/systemone` is appended after `/v1`, which is
+    added unless the base already ends there.
     """
     base = (api_base or JEV_DEFAULT_BASE).strip().rstrip("/")
     path = _base_path(base)
-    if path.endswith(JEV_WIRE_PATHS):
+    if path.endswith(JEV_WIRE_PATH):
         return base
-    row = _jev_host(base)
-    tail = row.path if row is not None else "/systemone"
-    return base + (tail if path.endswith("/v1") else "/v1" + tail)
+    return base + (JEV_WIRE_PATH if path.endswith("/v1") else JEV_PATH)
+
+
+def cf_aig_token(api_base):
+    """The Cloudflare AI Gateway token for `api_base`: `CF_AIG_TOKEN`, read
+    only for https://gateway.ai.cloudflare.com, else "" (Codex review
+    260929: never over plain http)."""
+    if _host(api_base) != CF_AIG_HOST or urlparse(api_base).scheme != "https":
+        return ""
+    return env.get(CF_AIG_ENV_KEY, "").strip()
 
 
 def jev_env_keys(api_base):
-    """The key variables read implicitly for a Jev-wire address: only the
-    ones its host owns, none for the keyless demo or any other host."""
-    row = _jev_host(api_base)
-    return row.env_keys if row is not None else ()
-
-
-def jev_keyless(api_base):
-    """Whether the address is the documented keyless Simple Jev demo."""
-    row = _jev_host(api_base)
-    return row is not None and row.keyless
+    """The key variables read implicitly for a Jev-wire address: TypeSafe's
+    own at a typesafe.ai host, none anywhere else."""
+    return JEV_ENV_KEYS if _host_in(api_base, JEV_HOST_SUFFIX) else ()
 
 
 def _address(api_base, api_format):
@@ -367,10 +281,10 @@ def _key(explicit, bound, choice, run, with_key, flag):
     choice calls the address that variable belongs to (`bound`); else what
     the choice's format reads from the environment. For the Jev wire
     (finding 2, extended by packet J): `JEV_API_KEY` / `TYPESAFE_API_KEY`
-    are read *implicitly* only at a typesafe.ai host and
-    `FEATHERLESS_API_KEY` only at a featherless.ai host, and never the
-    run's key; the keyless Simple Jev demo needs none (no header is sent);
-    anywhere else the key is named explicitly -- by the flag, or by a
+    are read *implicitly* only at a typesafe.ai host, and never the run's
+    key; an authenticated Cloudflare gateway (`CF_AIG_TOKEN` set) may hold
+    the key itself, when none is sent; anywhere else the key is named
+    explicitly -- by the flag, or by a
     provider entry whose `*_env_key` names the variable for the entry's own
     address (a gateway entry naming `JEV_API_KEY` for its gateway is that
     explicit naming, and is honoured: lead 260924, Codex re-verify).
@@ -387,7 +301,8 @@ def _key(explicit, bound, choice, run, with_key, flag):
         found = next((env[n] for n in names if env.get(n)), "")
         if found:
             return found
-        if jev_keyless(choice.api_base):
+        if cf_aig_token(choice.api_base):
+            # an authenticated Cloudflare gateway holding the key (BYOK)
             return ""
         where = (
             f"Pass {flag}, or set one of: {', '.join(names)}."
@@ -395,6 +310,11 @@ def _key(explicit, bound, choice, run, with_key, flag):
             else f"Pass {flag}: {choice.api_base} is not a typesafe.ai "
             f"address, so {' and '.join(JEV_ENV_KEYS)} are not sent there."
         )
+        if _host(choice.api_base) == CF_AIG_HOST:
+            where += (
+                f" For a gateway that stores the key, set {CF_AIG_ENV_KEY} "
+                "to the gateway's token."
+            )
         raise SystemExit(
             f"No API key for the jev classifier at {choice.api_base}. {where}"
         )
@@ -440,8 +360,6 @@ def _choose(model, base, run, source, *, image):
             )
         if not base:
             base = jev_default_base(model)
-            if base is None:
-                raise SystemExit(CLASSIFIER_WITHOUT_BASE.format(model=model))
         if model.strip().lower() == JEV_ALIAS:
             model = JEV_DEFAULT_MODEL
         base, api_format, own = base.rstrip("/"), JEV_FORMAT, True

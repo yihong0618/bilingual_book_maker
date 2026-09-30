@@ -103,7 +103,7 @@ The book is translated through a [plan](plan-mode.md) (every block of text is fo
 | an endpoint without prompt caching (`cached=` on the progress bar stays 0) | bare `--use_context` | a session would pay for the whole history on every request |
 | Gemini or Qwen | `--api_format gemini --use_context` (or `qwen`) | they keep their own history and refuse a session |
 | your ChatGPT plan | `--api_format codex`, no context flag | the thread is the context; see [Translating with an LLM](../llm-args.md) |
-| a machine-translation engine (Google, DeepL, …) | `--classify-model gpt-5.6-luna` | the engine cannot classify, so without an LLM classifier only `<p>` is translated; see [Machine translation](../machine-args.md) |
+| a translation service (Google, DeepL, …) | `--classify-model gpt-6-luna` | the engine cannot classify, so without an LLM classifier only `<p>` is translated; see [Translation services](../machine-args.md) |
 | a small on-device model (8B to 16B) | the defaults; add `--no-thinking` for a reasoning model, and `--context-compact-at` at the model's input limit | the run halves its request sizes by itself on an endpoint without a strict schema; see [On-device models](../llm-args.md#on-device-models-ollama-llamacpp-lm-studio) |
 | a model that keeps misaligning (`N misaligned batches this run`) | `--max-batch-units 8`, then `4` | smaller requests; see [Units and tokens per request](../evaluation/grouping-batch-size.md) |
 | a small model whose plan classification keeps failing | `--plan-classify all` | skips classification and translates every block |
@@ -147,7 +147,7 @@ The work happens on the endpoint, so a hosted endpoint needs the same command on
     ```bash
     bbook_maker \
       --book_name novel.epub \
-      --model gpt-5.6-luna \
+      --model gpt-6-luna \
       --use_context session
     ```
 

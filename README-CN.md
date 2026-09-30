@@ -6,7 +6,7 @@
 
 bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制作多语言版本的 epub/txt/md/srt/pdf 文件和图书。请仅将其用于您有权翻译的内容——您持有必要权利的作品、许可或授权允许您翻译的作品、公有领域图书，或适用法律另行允许的使用方式。请在使用之前阅读项目的 **[免责声明](./disclaimer.md)**。
 
-各类文件的使用指南、全部参数，以及默认值背后的测量，见 [wiki](https://github.com/yihong0618/bilingual_book_maker/wiki/首页)。用 Codex 或 Claude Code 等编程代理的话，仓库自带的技能会替你问清情况、选好参数并运行：[用代理翻译](https://github.com/yihong0618/bilingual_book_maker/wiki/用代理翻译)。
+各类文件的使用指南、全部参数，以及默认值背后的测量，见 [wiki](https://github.com/yihong0618/bilingual_book_maker/wiki/首页)。用 Codex 或 Claude Code 等编程智能体的话，仓库自带的技能会替你问清情况、选好参数并运行：[用智能体翻译](https://github.com/yihong0618/bilingual_book_maker/wiki/用智能体翻译)。
 
 [![Stars](https://img.shields.io/github/stars/yihong0618/bilingual_book_maker)](https://github.com/yihong0618/bilingual_book_maker/stargazers)
 [![CI](https://github.com/yihong0618/bilingual_book_maker/actions/workflows/make_test_ebook.yaml/badge.svg)](https://github.com/yihong0618/bilingual_book_maker/actions/workflows/make_test_ebook.yaml)
@@ -23,7 +23,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 ## 支持的接口
 
 支持 OpenAI 和 Anthropic 格式的 API 接口。
-通常需要三个字段，使用官方接口时两个，模型如 `gpt-5.6-luna`（默认）
+通常需要三个字段，使用官方接口时两个，模型如 `gpt-6-luna`（默认）
 或 `claude-sonnet-4-6`。
 在 `--api_format` 填 `openai` 或 `anthropic` 即可指定 API 请求格式。
 该参数也可以选择常规翻译引擎（`google`、`caiyun`、`deepl`、`deeplfree`、
@@ -31,7 +31,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 
 `--provider` 是另一种传凭据的方式，通过 JSON 配置文件 `bbm_providers.json`。
 
-epub 标签分类在支持 JSON Schema 的接口上自动开启，在其他任何能对话的接口（含 codex 路由和普通转售代理）上也会开启，改为让模型直接回答 `skip`/`translate`；只有完全不能对话的路由（机器翻译引擎）才只翻译 `p` 标签，
+epub 标签分类在支持 JSON Schema 的接口上自动开启，在其他任何能对话的接口（含 codex 路由和普通转售代理）上也会开启，改为让模型直接回答 `skip`/`translate`；只有完全不能对话的路由（翻译服务）才只翻译 `p` 标签，
 因此诗歌等内容可能不会被翻译。详见[计划模式](#计划模式)。
 
 旧参数（`--model gpt4o`、`--model gemini`、`--openai_key` 等）仍然可用：详见
@@ -64,13 +64,13 @@ python3 make_book.py --book_name test_books/animal_farm.epub --provider openai -
 
 ```shell
 python3 make_book.py --book_name test_books/animal_farm.epub \
-  --key sk-... --model gpt-5.6-luna --api_base https://api.openai.com/v1 --test --use_context session
+  --key sk-... --model gpt-6-luna --api_base https://api.openai.com/v1 --test --use_context session
 ```
 
 使用[Codex](https://developers.openai.com/codex/cli)订阅：
 
 ```shell
-python3 make_book.py --book_name test_books/animal_farm.epub --model gpt-5.6-luna --api_format codex --test
+python3 make_book.py --book_name test_books/animal_farm.epub --model gpt-6-luna --api_format codex --test
 ```
 
 或者交给 coding agent
@@ -91,7 +91,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   那家的地址，所以格式加一个 `--key` 就是一条完整命令。
 - **其他 OpenAI 兼容 API**: `--api_base`（以 `/v1` 结尾）、
   `--key`即 API key，以及模型标识符 `--model`。省略 `--api_base`即使用openai官方API，
-  省略`--model`即使用 gpt-5.6-luna。
+  省略`--model`即使用 gpt-6-luna。
 - 或使用`--provider`进行翻译: `bbm_providers.example.json` 里预设了以下厂家（Gemini、Qwen、xAI、Groq、OrcaRouter、Ollama、LiteLLM、
   SiliconFlow、OpenRouter）：复制为 `bbm_providers.json`，并修改其中的key，
   例如`--provider gemini` 就是使用其中 Gemini 的api。
@@ -207,7 +207,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 * [Codex](https://developers.openai.com/codex/cli)
 
   使用 ChatGPT/Codex 订阅额度。需要安装
-  [Codex CLI](https://developers.openai.com/codex/cli) 默认使用`gpt-5.6-luna`，可使用 `--api_format codex --model <id>`指定模型。整本书只开一个 session 并复用，到达 `--context-compact-at` 时压缩；
+  [Codex CLI](https://developers.openai.com/codex/cli) 默认使用`gpt-6-luna`，可使用 `--api_format codex --model <id>`指定模型。整本书只开一个 session 并复用，到达 `--context-compact-at` 时压缩；
   运行在沙箱中，shell、MCP 服务器、浏览全部关闭。但hooks可能仍会触发。
 
   ```shell
@@ -262,11 +262,11 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--model`:
 
-  接口所用的模型 ID，按接口自己的拼写。openai 格式下默认 `gpt-5.6-luna`。第二列是该 ID 需要的 `--api_format`：
+  接口所用的模型 ID，按接口自己的拼写。openai 格式下默认 `gpt-6-luna`。第二列是该 ID 需要的 `--api_format`：
 
   | 模型 | `--api_format` | 说明 |
   |------|---------------|------|
-  | `gpt-5.6-luna` | `openai` | 默认值，OpenAI 官方地址 |
+  | `gpt-6-luna` | `openai` | 默认值，OpenAI 官方地址 |
   | `claude-sonnet-4-6` | `anthropic` | Anthropic 官方地址 |
   | `gpt-4o-mini` | `openai` | OpenAI |
 
@@ -289,7 +289,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   | `groq` | 需要：`--key`，或 `$BBM_API_KEY`、`$BBM_GROQ_API_KEY`、`$GROQ_API_KEY` | GroqCloud；必须写 `--model` |
   | `xai` | 需要：`--key`，或 `$BBM_API_KEY`、`$BBM_XAI_API_KEY`、`$XAI_API_KEY` | xAI；必须写 `--model` |
   | `litellm` | 本机代理不需要；否则 `--key` 或 `$LITELLM_MASTER_KEY` | LiteLLM 代理，不写 `--api_base` 就是 `http://localhost:4000`；必须写 `--model` |
-  | `codex` | 不需要：`codex login`（Codex CLI） | 本地 `codex app-server` 侧车，消耗 ChatGPT/Codex 套餐额度，默认 `gpt-5.6-luna` |
+  | `codex` | 不需要：`codex login`（Codex CLI） | 本地 `codex app-server` 侧车，消耗 ChatGPT/Codex 套餐额度，默认 `gpt-6-luna` |
   | `orcarouter` | 需要：`--key` 或 `$BBM_ORCAROUTER_API_KEY` | 使用OrcaRouter |
   | `google` | 不需要 | 免费谷歌翻译 |
   | `caiyun` | 需要：`--key` 或 `$BBM_CAIYUN_API_KEY` | 彩云小译 |
@@ -446,7 +446,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--no_disclosure`:
 
-  epub 输出会在书籍简介下方加 "Translated by gpt-5.6-luna, 2026."；附带该参数则不加。同时关闭翻译元数据（`--translation-metadata`，包含模型、日期和词汇表）。
+  epub 输出会在书籍简介下方加 "Translated by gpt-6-luna, 2026."；附带该参数则不加。同时关闭翻译元数据（`--translation-metadata`，包含模型、日期和词汇表）。
 
 - `--translation_style`:
 
@@ -633,12 +633,12 @@ python make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'https
 
 ### 计划模式
 
-EPUB 默认按计划翻译：整本书切分成单元，由模型按标签签名决定翻译哪些，诗歌、列表、表格单元格都不会漏掉，相邻单元合成一次请求。`--plan-classify` 决定由谁判断：`auto`（默认）、`agent`（你自己或编码代理，通过计划文件）、`all` 或 `none`。
+EPUB 默认按计划翻译：整本书切分成单元，由模型按标签签名决定翻译哪些，诗歌、列表、表格单元格都不会漏掉，相邻单元合成一次请求。`--plan-classify` 决定由谁判断：`auto`（默认）、`agent`（你自己或编程智能体，通过计划文件）、`all` 或 `none`。
 
 ```shell
 # 预览哪些会翻译、哪些跳过（不需要 key）
 python3 make_book.py --book_name my_book.epub --plan-dry-run
-# 自己或让编码代理决定计划，然后重跑同一条命令开始翻译
+# 自己或让编程智能体决定计划，然后重跑同一条命令开始翻译
 python3 make_book.py --book_name my_book.epub --key ${key} --plan-classify agent
 ```
 

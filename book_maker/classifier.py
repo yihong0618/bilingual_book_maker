@@ -501,7 +501,7 @@ class Classifier:
         return base or "the endpoint's default host"
 
     def describe(self, backend=None):
-        """`"gpt-5.6-luna at https://... via schema (cli)"`."""
+        """`"gpt-6-luna at https://... via schema (cli)"`."""
         # Never probes: a dry run describes the classifier without spending.
         via = backend or "/".join(self.prefer) or "nothing"
         return f"{self.model} at {self.where()} via {via} ({self.source})"
@@ -538,7 +538,7 @@ JEV_MIN_CONFIDENCE_ENV = "BBM_JEV_MIN_CONFIDENCE"
 # questions evaluated in parallel against one `state`, one answer per
 # question id. 429 and 529 are "back off and retry"; 401 and 422 are the
 # request's own fault. The same wire is served by Jev-compatible servers
-# (Simple Jev); where a request goes is `endpoints.jev_request_url`, and
+# (a gateway in front of TypeSafe); where a request goes is `endpoints.jev_request_url`, and
 # `JEV_PATH` is imported from there at the top of this module.
 # Per-request timeout in seconds; a request that times out is retried.
 JEV_TIMEOUT = 120
@@ -589,10 +589,26 @@ class JevFatal(Exception):
     """TypeSafe refused the request itself (a key, a malformed question)."""
 
 
+def _no_ambient_auth(request):
+    """Requests' `auth` hook that adds nothing: without it a `.netrc` entry
+    for the host would add a Basic Authorization of its own."""
+    return request
+
+
 def _requests_post(url, json, headers, timeout):
+    """One POST, no redirect followed (Codex review 260929: Requests keeps
+    `cf-aig-authorization` on a cross-host redirect) and no `.netrc`
+    credentials (a gateway holding the key must see no Authorization)."""
     import requests
 
-    return requests.post(url, json=json, headers=headers, timeout=timeout)
+    return requests.post(
+        url,
+        json=json,
+        headers=headers,
+        timeout=timeout,
+        allow_redirects=False,
+        auth=_no_ambient_auth,
+    )
 
 
 class JevBackend:
@@ -628,13 +644,15 @@ class JevBackend:
         wait_cap=JEV_WAIT_CAP,
         min_confidence=None,
     ):
+        from .endpoints import cf_aig_token
         from .redaction import remember
         from .translator.base_translator import UsageMeter
 
-        remember(key)  # a 401 body may quote it back
         self.model = model
         self.key = key
         self.base = (base or "").rstrip("/")
+        self.gateway_token = cf_aig_token(self.base)
+        remember(key, self.gateway_token)  # a 401 body may quote it back
         self._post = post or _requests_post
         self._sleep = sleep
         self._log = log
@@ -766,8 +784,9 @@ class JevBackend:
         url = jev_request_url(self.base)
         headers = {"Content-Type": "application/json"}
         if self.key:
-            # none for the keyless Simple Jev demo
             headers["Authorization"] = f"Bearer {self.key}"
+        if self.gateway_token:
+            headers["cf-aig-authorization"] = f"Bearer {self.gateway_token}"
         attempt = 0
         while True:
             retry_after = None
@@ -782,6 +801,15 @@ class JevBackend:
                 if status == 200:
                     return response.json()
                 detail = redact((getattr(response, "text", "") or "")[:300])
+                if 300 <= status < 400:
+                    where = (getattr(response, "headers", None) or {}).get(
+                        "location", "no location"
+                    )
+                    raise JevFatal(
+                        f"jev answered {status}, a redirect to {redact(where)}; "
+                        "redirects are not followed, so name the final address "
+                        "with --classify-base-url"
+                    )
                 if status in JEV_FATAL_STATUSES:
                     raise JevFatal(f"jev answered {status}: {detail}")
                 why = f"HTTP {status}: {detail}"

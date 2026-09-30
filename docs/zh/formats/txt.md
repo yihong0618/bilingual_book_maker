@@ -40,10 +40,10 @@ bbook_maker \
 | 参数 | 作用 |
 |---|---|
 | `--book_name PATH` | 要翻译的文件。扩展名决定格式。 |
-| `-m`, `--model MODEL` | 模型 ID，按端点自己的写法原样填写。openai 格式下默认 `gpt-5.6-luna`。 |
+| `-m`, `--model MODEL` | 模型 ID，按端点自己的写法原样填写。openai 格式下默认 `gpt-6-luna`。 |
 | `--key KEY` | API key；用逗号分隔的多个 key 会轮流使用。不写时先读 `BBM_API_KEY`，再读该格式自己的变量。 |
 | `--api_base URL` | 端点地址。默认是该格式的官方地址。 |
-| `--api_format FORMAT` | 端点使用的 API，或者一个机器翻译引擎。不写时根据 `--api_base` 推断。 |
+| `--api_format FORMAT` | 端点使用的 API，或者一个翻译服务。不写时根据 `--api_base` 推断。 |
 | `--provider NAME` | `bbm_providers.json` 中的一个具名端点。 |
 | `--model_list IDS` | 轮流使用的多个模型。与 `--use_context session` 同用时会被拒绝。 |
 | `--language LANGUAGE` | 目标语言：一个标签、一个名称，或 `TAG:NAME`。默认 `zh-hans`。 |

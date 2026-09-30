@@ -1,6 +1,6 @@
 # Quick start
 
-This page takes you from nothing to three bilingual books: an EPUB, a TXT and a PDF. It uses OpenAI's API and the default model, `gpt-5.6-luna`. Other endpoints are on [Translating with an LLM](llm-args.md).
+This page takes you from nothing to three bilingual books: an EPUB, a TXT and a PDF. It uses OpenAI's API and the default model, `gpt-6-luna`. Other endpoints are on [Translating with an LLM](llm-args.md).
 
 ## 1. Install
 

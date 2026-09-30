@@ -52,7 +52,7 @@ A [Jev-compatible classifier](providers.md#jev-and-jev-compatible-classifiers) r
 | variable | read for |
 |---|---|
 | `JEV_API_KEY`, `TYPESAFE_API_KEY` | TypeSafe's Jev at a typesafe.ai address |
-| `FEATHERLESS_API_KEY` | Simple Jev at a featherless.ai address |
+| `CF_AIG_TOKEN` | an authenticated Cloudflare AI Gateway at gateway.ai.cloudflare.com |
 
 Through a gateway, name the key with `--classify-key` or a provider entry's `classify_env_key`.
 

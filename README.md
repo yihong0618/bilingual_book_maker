@@ -25,10 +25,10 @@ Guides for every file type and option, and the measurements behind the defaults,
 ## Supported endpoints
 
 OpenAI and Anthropic format endpoints are supported.
-Usually it comes with three fields, two if you are using the official endpoints, such as `gpt-5.6-luna` (the default)
+Usually it comes with three fields, two if you are using the official endpoints, such as `gpt-6-luna` (the default)
 or `claude-sonnet-4-6`. 
 Specify `openai`, or `anthropic` at `--api_format` for API request formats.
-This argument also supports selecting some machine-translation engines (`google`, `caiyun`, `deepl`, `deeplfree`,
+This argument also supports selecting some translation services (`google`, `caiyun`, `deepl`, `deeplfree`,
 `tencent`, `customapi` — not an OpenAI format) or `codex`
 if you want to use your Codex quota instead. 
 
@@ -69,13 +69,13 @@ You can also pass the key on the command line:
 
 ```shell
 python3 make_book.py --book_name test_books/animal_farm.epub \
-  --key sk-... --model gpt-5.6-luna --api_base https://api.openai.com/v1 --test --use_context session
+  --key sk-... --model gpt-6-luna --api_base https://api.openai.com/v1 --test --use_context session
 ```
 
 To spend a [Codex](https://developers.openai.com/codex/cli) subscription:
 
 ```shell
-python3 make_book.py --book_name test_books/animal_farm.epub --model gpt-5.6-luna --api_format codex --test
+python3 make_book.py --book_name test_books/animal_farm.epub --model gpt-6-luna --api_format codex --test
 ```
 
 Or hand it to a coding agent
@@ -90,13 +90,13 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--api_format` names the API the endpoint speaks: `openai`, `anthropic`,
   `gemini`, `qwen`, `groq`, `xai`, `litellm`, `codex`, or one of the
-  machine-translation engines (`google`, `caiyun`, `deepl`, `deeplfree`,
+  translation services (`google`, `caiyun`, `deepl`, `deeplfree`,
   `tencent`, `customapi`). A format that belongs to one vendor already
   knows that vendor's address, so the format and a `--key` are a whole
   command.
 - **Any other OpenAI-compatible API**: `--api_base` (ending in `/v1`),
   `--key` the API key, and the model id in `--model`. Omit `--api_base` for
-  OpenAI's own API, and `--model` for `gpt-5.6-luna`.
+  OpenAI's own API, and `--model` for `gpt-6-luna`.
 - Or translate through `--provider`: `bbm_providers.example.json` has an
   entry for each vendor below (Gemini, Qwen, xAI, Groq, OrcaRouter, Ollama,
   LiteLLM, SiliconFlow, OpenRouter). Copy it to
@@ -224,7 +224,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 * [Codex](https://developers.openai.com/codex/cli)
 
   Spend your ChatGPT/Codex plan. Install the
-  [Codex CLI](https://developers.openai.com/codex/cli). The default model is `gpt-5.6-luna`; `--api_format codex --model <id>` names another. One session is reused for the whole book and compacted at `--context-compact-at`;
+  [Codex CLI](https://developers.openai.com/codex/cli). The default model is `gpt-6-luna`; `--api_format codex --model <id>` names another. One session is reused for the whole book and compacted at `--context-compact-at`;
   it runs sandboxed, with shell, MCP servers and browsing off, but hooks may still fire.
 
   ```shell
@@ -249,10 +249,10 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
       "openai": {
         "api_style": "openai",
         "base_url": "https://api.openai.com/v1",
-        "default_models": ["gpt-5.6-luna"],
+        "default_models": ["gpt-6-luna"],
         "env_key": "OPENAI_API_KEY",
         "prices": {
-          "gpt-5.6-luna": {"input": 0.20, "output": 1.20, "cached_input": 0.02}
+          "gpt-6-luna": {"input": 0.10, "output": 0.50, "cached_input": 0.01}
         }
       }
     }
@@ -292,11 +292,11 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--model`:
 
-  The model id, exactly as the endpoint spells it. On the OpenAI format the default is `gpt-5.6-luna`. The second column is the `--api_format` the id needs:
+  The model id, exactly as the endpoint spells it. On the OpenAI format the default is `gpt-6-luna`. The second column is the `--api_format` the id needs:
 
   | model | `--api_format` | notes |
   |-------|---------------|-------|
-  | `gpt-5.6-luna` | `openai` | the default, at OpenAI's own address |
+  | `gpt-6-luna` | `openai` | the default, at OpenAI's own address |
   | `claude-sonnet-4-6` | `anthropic` | Anthropic's own address |
   | `gpt-4o-mini` | `openai` | OpenAI |
   | `gemini-flash-latest` | `gemini` | the default there, at Google's own address |
@@ -322,7 +322,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   | `groq` | required: `--key`, else `$BBM_API_KEY`, `$BBM_GROQ_API_KEY`, `$GROQ_API_KEY` | GroqCloud; `--model` required |
   | `xai` | required: `--key`, else `$BBM_API_KEY`, `$BBM_XAI_API_KEY`, `$XAI_API_KEY` | xAI; `--model` required |
   | `litellm` | none for a proxy on this machine, else `--key` or `$LITELLM_MASTER_KEY` | a LiteLLM proxy, `http://localhost:4000` unless `--api_base` says otherwise; `--model` required |
-  | `codex` | none: `codex login` (Codex CLI) | the local `codex app-server` sidecar on a ChatGPT/Codex plan, default `gpt-5.6-luna` |
+  | `codex` | none: `codex login` (Codex CLI) | the local `codex app-server` sidecar on a ChatGPT/Codex plan, default `gpt-6-luna` |
   | `orcarouter` | required: `--key` or `$BBM_ORCAROUTER_API_KEY` | OrcaRouter |
   | `google` | none | Google Translate, free |
   | `caiyun` | required: `--key` or `$BBM_CAIYUN_API_KEY` | Caiyun |
@@ -419,7 +419,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   - A third key, `style`, is a standing instruction about how to write — register, tone, vocabulary. It is said **once where a window starts**, not repeated on every request.
 
-  - `--prompt` works on every LLM route, and on srt books too — there its sections sit on top of the subtitle loader's own prompt, section by section. Replacing the `user` template on an srt book means saying yourself that the block number and the timeline must come back unchanged; the run warns about it. The fixed machine-translation routes (google, deepl, caiyun, tencent, qwen, customapi) send text and nothing else, so they carry no prompt at all and the run says so at start.
+  - `--prompt` works on every LLM route, and on srt books too — there its sections sit on top of the subtitle loader's own prompt, section by section. Replacing the `user` template on an srt book means saying yourself that the block number and the timeline must come back unchanged; the run warns about it. The fixed translation-service routes (google, deepl, caiyun, tencent, qwen, customapi) send text and nothing else, so they carry no prompt at all and the run says so at start.
   
   - A `.md` file is read as the [PromptDown](https://github.com/btfranklin/promptdown) **block** form — the format is theirs, the reader is ours, so no extra package is installed: `--prompt prompt_md.prompt.md` (example at [./prompt_md.prompt.md](./prompt_md.prompt.md)). `## System Message`, an optional `## Style`, and a `## Conversation` whose `**User:**` turn is the template. The table form of a conversation is refused. Example:
 
@@ -525,7 +525,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--no_disclosure`:
 
-  An epub output adds "Translated by gpt-5.6-luna, 2026." below the book intro; this flag leaves it out. It also turns off the translation metadata (`--translation-metadata`: the model, the date and the glossary).
+  An epub output adds "Translated by gpt-6-luna, 2026." below the book intro; this flag leaves it out. It also turns off the translation metadata (`--translation-metadata`: the model, the date and the glossary).
 
 - `--translation_style`:
 

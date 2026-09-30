@@ -14,7 +14,7 @@ bbook_maker --book_name book.epub \
 
 | 参数 | 含义 |
 |---|---|
-| `--model` | 模型 ID，按端点自己的写法。在 `openai` 格式下可以省略：默认 `gpt-5.6-luna`。 |
+| `--model` | 模型 ID，按端点自己的写法。在 `openai` 格式下可以省略：默认 `gpt-6-luna`。 |
 | `--api_base` | 端点 URL。默认是该格式的官方地址；`…/v1`、`…/v1/` 和 `…/v1/chat/completions` 都可以。 |
 | `--key` | API key。用逗号分隔多个 key，可以轮流使用以分摊限流。 |
 | `--api_format` | 传输格式。会自动推断；只有推断错了才需要传。 |
@@ -22,7 +22,7 @@ bbook_maker --book_name book.epub \
 
 `--model_list a,b` 在多个模型之间轮换，旧命令用的也是它；一个模型只在其中一个参数里写，不要两个都写。
 
-`--api_format` 取值为 `openai`（默认）、`anthropic`、`gemini`、`qwen`、`groq`、`xai`、`litellm`、`codex`，或固定的机器翻译引擎 `google`、`caiyun`、`deepl`、`deeplfree`、`tencent`、`customapi`。
+`--api_format` 取值为 `openai`（默认）、`anthropic`、`gemini`、`qwen`、`groq`、`xai`、`litellm`、`codex`，或固定的翻译服务 `google`、`caiyun`、`deepl`、`deeplfree`、`tencent`、`customapi`。
 
 五种厂商格式各自带着自己的端点，所以格式加一个 key 就是一条完整的路线，不必再去查 `--api_base`：
 
@@ -36,7 +36,7 @@ bbook_maker --book_name book.epub \
 
 `gemini` 和 `qwen` 有各自的协议——Gemini 有原生的约束解码、安全设置和对话历史；Qwen-MT 用一对源/目标语言代替提示词——`--interval` 控制 gemini 路线的请求节奏，免费额度就靠它避开限流。另外三种是换了地址的 OpenAI 路线，保留它的一切功能。这五种都不会从主机名推断出来：要么写明格式，要么给出厂商的 OpenAI 兼容 `--api_base`，走 `openai` 路线。
 
-`codex` 根本不是端点：它驱动本地的 `codex app-server` 侧车进程，本次运行记在你的 ChatGPT 套餐上，所以它不接受 `--key` 和 `--api_base`，`--model` 可选（默认 `gpt-5.6-luna`）。它从不会被推断出来，必须明确写出。见[用大模型翻译](llm-args.md)。
+`codex` 根本不是端点：它驱动本地的 `codex app-server` 侧车进程，本次运行记在你的 ChatGPT 套餐上，所以它不接受 `--key` 和 `--api_base`，`--model` 可选（默认 `gpt-6-luna`）。它从不会被推断出来，必须明确写出。见[用大模型翻译](llm-args.md)。
 
 推断按以下顺序进行：明确写出的 `--api_format` 优先；然后看 `--api_base` 的主机（`anthropic.com` 表示 anthropic 形式，其他都是 OpenAI 形式）；然后，在没有指定端点时，看模型 ID 是否提到 `claude` 或 `anthropic`，`anthropic/claude-sonnet-4-6` 也算。
 
@@ -112,7 +112,7 @@ bbook_maker --book_name book.epub \
 
 通过这种格式分类时使用提示词档位——不会要求端点编译 schema。
 
-## 机器翻译引擎
+## 翻译服务
 
 这些引擎说自己的协议，不接受模型，所以指定模型会报错，而不是悄悄不起作用。
 

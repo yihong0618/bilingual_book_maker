@@ -18,7 +18,7 @@ has the full table.
 
 | Flag | Meaning |
 |---|---|
-| `--model` | Model id, exactly as the endpoint names it. On the `openai` format it may be left out: it defaults to `gpt-5.6-luna`. |
+| `--model` | Model id, exactly as the endpoint names it. On the `openai` format it may be left out: it defaults to `gpt-6-luna`. |
 | `--api_base` | Endpoint URL. Defaults to the format's official host; `…/v1`, `…/v1/` and `…/v1/chat/completions` all work. |
 | `--key` | API key. Comma-separate several to rotate them and spread rate limits. |
 | `--api_format` | Wire format. Inferred; pass it only when the guess is wrong. |
@@ -28,7 +28,7 @@ has the full table.
 commands used; name a model in one flag or the other, not both.
 
 `--api_format` is one of `openai` (default), `anthropic`, `gemini`, `qwen`,
-`groq`, `xai`, `litellm`, `codex`, or the fixed machine-translation engines
+`groq`, `xai`, `litellm`, `codex`, or the fixed translation services
 `google`, `caiyun`, `deepl`, `deeplfree`, `tencent`, `customapi`.
 
 The five vendor formats each carry their own endpoint, so the format and a
@@ -52,7 +52,7 @@ give the vendor's OpenAI-compatible `--api_base` and get the `openai` route.
 
 `codex` is not an endpoint at all: it drives a local `codex app-server`
 sidecar and bills the run to your ChatGPT plan, so it takes no `--key` and no
-`--api_base`, and `--model` is optional (default `gpt-5.6-luna`). It is never
+`--api_base`, and `--model` is optional (default `gpt-6-luna`). It is never
 inferred; name it explicitly. See [Translating with an LLM](llm-args.md).
 
 Inference goes in this order: an explicit `--api_format` wins; then the
@@ -170,7 +170,7 @@ the SDK appends its own.
 Classification through this format uses the prompt rung — the endpoint is not
 asked to compile a schema.
 
-## Machine-translation engines
+## Translation services
 
 These speak their own protocols and take no model, so naming one is an error
 rather than a silent no-op.

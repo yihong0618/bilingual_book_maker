@@ -233,7 +233,7 @@ intentionally.
 
 Agent mode is the default because you judge better than a pre-filled plan.
 When the user asks for a classifier to decide the skips ("use Jev", "let
-gpt-5.6-luna decide what to skip"), that is their call: use `auto` with it,
+gpt-6-luna decide what to skip"), that is their call: use `auto` with it,
 say in the choices block that the plan is the classifier's, not yours, and
 still read its skips. This picks another mode; agent mode itself never
 takes a pre-filled plan. None of these is such a request: naming the
@@ -248,10 +248,11 @@ python make_book.py --book_name "$BOOK" "${ROUTE[@]}" --language "$LANG" \
 
 - **Which classifier.** `jev` is TypeSafe's (reads `JEV_API_KEY` or
   `TYPESAFE_API_KEY`); `--provider openai-jev` from the shipped example
-  does the same in one word. Featherless's keyless demo is
-  `--classify-model featherless-ai/Qwen3.8-27B-classifier
-  --classify-base-url https://simple-jev-demo-api.featherless.ai/v1/classifier`.
-  Any chat model id works too. Gateways and key rules:
+  does the same in one word. Through Cloudflare AI Gateway (TypeSafe as a
+  custom provider, slug `typesafe`): `--classify-model jev
+  --classify-base-url https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/custom-typesafe`
+  with `--classify-key`, or `CF_AIG_TOKEN` alone when the gateway stores
+  the key. Any chat model id works too. Gateways and key rules:
   `docs/en/providers.md#jev-and-jev-compatible-classifiers`.
 - **There is no handoff.** The classifier decides every row, and the run
   goes straight on to translate. So the first run is the smoke above

@@ -65,7 +65,7 @@ QUOTA_WARN_PERCENT = 90
 # own. (`compact_budget_for` is uniform today, so nothing differs yet — the
 # lookup exists so a model that prices its cache very differently can be
 # special-cased there rather than at every call site.)
-DEFAULT_MODEL = "gpt-5.6-luna"
+DEFAULT_MODEL = "gpt-6-luna"
 
 # A minute past the reset, because the server's clock and ours are not the
 # same and coming back a second early just burns another failed turn.

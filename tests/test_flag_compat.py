@@ -1128,7 +1128,7 @@ class TestTheJevGateFlag:
         "model,base",
         [
             ("jev-latest", "https://api.typesafe.ai"),
-            ("featherless-ai/Qwen3.8-27B-classifier", ""),
+            ("typesafe-ai/jev", "https://ai-gateway.vercel.sh/typesafe"),
             ("m", "https://gw.example/v1/systemone"),
         ],
     )

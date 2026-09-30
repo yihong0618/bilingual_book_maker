@@ -397,7 +397,7 @@ def test_the_openai_format_defaults_to_a_model(tmp_path):
         "--book_name", str(src), "--key", "sk-test", "--test", "--test_num", "1"
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "offline model list: ['gpt-5.6-luna']" in proc.stdout
+    assert "offline model list: ['gpt-6-luna']" in proc.stdout
 
 
 def test_an_old_key_flag_alone_lands_on_the_default_model(tmp_path):
@@ -409,7 +409,7 @@ def test_an_old_key_flag_alone_lands_on_the_default_model(tmp_path):
         "--book_name", str(src), "--openai_key", "sk-test", "--test", "--test_num", "1"
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "offline model list: ['gpt-5.6-luna']" in proc.stdout
+    assert "offline model list: ['gpt-6-luna']" in proc.stdout
     assert "gpt-3.5-turbo" not in proc.stdout
 
 

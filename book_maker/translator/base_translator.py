@@ -97,8 +97,8 @@ class PriceTable:
 
     Looked up by the model id the run asked for: exactly, then by the part
     after a router's `vendor/` prefix, then by the longest listed id the
-    model's name starts with — so `gpt-5.6-luna-2026-07-30` is priced as
-    `gpt-5.6-luna`. A model none of that finds has no price, and the meter
+    model's name starts with — so `gpt-6-luna-2026-07-30` is priced as
+    `gpt-6-luna`. A model none of that finds has no price, and the meter
     says so instead of guessing.
     """
 
