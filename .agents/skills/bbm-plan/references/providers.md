@@ -1,8 +1,8 @@
 # Routes: model name → endpoint shape → flags
 
 Loaded from `references/route-setup.md` step 3. The user pages cover the
-flags themselves: `docs/llm-args.md` (model, endpoint, format, keys),
-`docs/model_lang.md` (per-vendor addresses), `docs/providers.md` (the
+flags themselves: `docs/en/llm-args.md` (model, endpoint, format, keys),
+`docs/en/model_lang.md` (per-vendor addresses), `docs/en/providers.md` (the
 provider file's fields, the image and classify models, which key is sent
 where). This file carries only what the agent needs beyond them: which
 shape to try, how to probe it, and what each route can do.
@@ -60,7 +60,7 @@ and session-context machinery.
 
 ## `--provider NAME`: the same route, written once
 
-The fields and the lookup order are on `docs/providers.md`; what matters
+The fields and the lookup order are on `docs/en/providers.md`; what matters
 for the probe:
 
 - The `providers` wrapper is required; the loader reads nothing from a file
@@ -76,7 +76,7 @@ for the probe:
   so `--provider nvidia --model <id>` keeps the user's model.
 - A key is bound to its address: the entry's `env_key` is not sent when an
   `--api_base` moves the run elsewhere. The `img_*` and `classify_*` fields
-  follow the same rule (`docs/providers.md#which-key-goes-where`); the
+  follow the same rule (`docs/en/providers.md#which-key-goes-where`); the
   EPUB flow adds a `classify_model` only when the user names a classifier.
 
 ## `--model orcarouter`: a gateway with no address to type

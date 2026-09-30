@@ -384,6 +384,95 @@ def test_a_picture_is_written_once_and_placed_on_its_own_page(
     assert len(pictures) == 1
 
 
+PRIVATE_API = (
+    "docling-core changed `_with_pictures_refs`; `docling_parser._export_pages` "
+    "depends on it (private API), see docstring"
+)
+
+
+def test_the_private_pictures_refs_step_keeps_the_contract_the_export_needs(
+    tmp_path,
+):
+    # The contract behind the pin above, on docling-core itself: pyproject
+    # admits docling >=2.129,<3 while the lock pins docling-core 2.97.2, so
+    # an upgrade may change this private method with no error of its own.
+    # `_export_pages` calls it once with these keywords, needs the original
+    # document untouched (the formula markers and heading levels live on
+    # it), a copy whose every picture names a file it wrote under
+    # `image_dir`, and that copy's references to be what the per-page
+    # REFERENCED export writes once `pdf_figures.name_pictures` has renamed
+    # them. (The formula serializer's three branches are pinned in
+    # tests/test_pdf_formula.py, not here.)
+    import inspect
+
+    pytest.importorskip("PIL")
+    document = real_document({1: "Text on page one."}, pages=[1, 2], picture_on=2)
+    from docling_core.types.doc import PictureItem
+    from docling_core.types.doc.base import ImageRefMode
+    from pydantic import AnyUrl
+
+    from book_maker.pipeline import pdf_figures
+
+    method = getattr(type(document), "_with_pictures_refs", None)
+    assert callable(method), PRIVATE_API
+    parameters = inspect.signature(method).parameters
+    assert {"image_dir", "page_no"} <= set(parameters), PRIVATE_API
+    assert all(
+        parameters[name].kind
+        in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+        for name in ("image_dir", "page_no")
+    ), PRIVATE_API
+
+    # Before: the picture is embedded pixels, no file reference.
+    before = document.export_to_dict()
+    picture = document.pictures[0]
+    assert isinstance(picture.image.uri, AnyUrl)  # a data: URI
+    assert str(picture.image.uri).startswith("data:")
+
+    images = tmp_path / "out" / docling_parser.IMAGE_DIR
+    referenced = document._with_pictures_refs(image_dir=images, page_no=None)
+
+    # (1) The original is not changed: same objects, same content.
+    assert referenced is not document, PRIVATE_API
+    assert document.pictures[0] is picture, PRIVATE_API
+    assert isinstance(picture.image.uri, AnyUrl), PRIVATE_API
+    assert document.export_to_dict() == before, PRIVATE_API
+
+    # (2) Every picture of the copy names a file written under image_dir.
+    copies = [
+        item
+        for item, _level in referenced.iterate_items(with_groups=False)
+        if isinstance(item, PictureItem)
+    ]
+    assert len(copies) == 1, PRIVATE_API
+    for item in copies:
+        assert item.image is not None, PRIVATE_API
+        uri = item.image.uri
+        assert uri is not None and not isinstance(uri, AnyUrl), PRIVATE_API
+        written = Path(str(uri)).resolve()
+        assert written.is_file(), PRIVATE_API
+        assert written.is_relative_to(images.resolve()), PRIVATE_API
+
+    # (3) The stable names survive the REFERENCED export, per page as
+    # `_export_pages` writes it and for the whole document.
+    records = pdf_figures.name_pictures(referenced, images.parent)
+    assert [record["file"] for record in records] == ["assets/figures/p0002-01.png"]
+    stable = "figures/p0002-01.png"
+    assert (images.parent / stable).is_file()
+    page_two = referenced.export_to_markdown(
+        image_mode=ImageRefMode.REFERENCED, page_no=2
+    )
+    page_one = referenced.export_to_markdown(
+        image_mode=ImageRefMode.REFERENCED, page_no=1
+    )
+    whole = referenced.export_to_markdown(image_mode=ImageRefMode.REFERENCED)
+    assert f"]({stable})" in page_two, (PRIVATE_API, page_two)
+    assert stable not in page_one, page_one
+    assert whole.count(stable) == 1, (PRIVATE_API, whole)
+    # and the original, unchanged, still embeds rather than naming a file
+    assert stable not in document.export_to_markdown(image_mode=ImageRefMode.EMBEDDED)
+
+
 def test_an_item_over_two_pages_is_written_once_under_its_first(
     bundle, tmp_path, pandoc
 ):

@@ -34,6 +34,34 @@ BILINGUAL_EDITED_EXPORT = (
     "Bilingual Markdown was edited; rebuild the EPUB from it with: "
     "python tools/pdf_to_book.py export {bundle}"
 )
+# An edited bundle source.md is never replaced by a re-extraction or a
+# re-import (lead 260928, astra consult): refused before anything in the
+# bundle is touched. {bundle} is the bundle root, shell-quoted; {reason} is
+# one SOURCE_REASON_* phrase. The lead's text, verbatim.
+SOURCE_EDITED = (
+    "source.md in {bundle} was edited after extraction, and this run would "
+    "extract again ({reason}), which would overwrite it. Nothing was changed. "
+    "To keep the edits, rerun with the extraction settings the bundle was made "
+    "with, or translate the bundle as it is: python tools/pdf_to_book.py "
+    "translate {bundle}. To extract afresh, move the bundle aside first."
+)
+# A source.md with no recorded baseline (a bundle from before
+# `source.working_sha256`) is unknown, not untouched.
+SOURCE_BASELINE_UNKNOWN = (
+    "{bundle} has no record of the source.md it was extracted with, so this "
+    "run cannot tell whether extracting again ({reason}) would overwrite "
+    "edits. Nothing was changed. Move the bundle aside to extract afresh."
+)
+SOURCE_REASON_SETTINGS = "extraction settings changed"
+SOURCE_REASON_PAGES = "page range changed"
+SOURCE_REASON_PDF = "the PDF changed"
+SOURCE_REASON_PARSER = "the parser changed"
+SOURCE_REASON_STRUCTURE = "the structure pass was {status} and is asked for again"
+SOURCE_REASON_IMPORT = "import requested again"
+# Not in the lead's list: an extraction asked for when no finished one is on
+# record (the last one failed or never completed, or `extract_pdf` was
+# called directly). Flagged to the lead in the unit A report.
+SOURCE_REASON_EXTRACT = "extraction requested again"
 SUBMISSION_UNKNOWN = (
     "Extraction submission outcome is unknown; do not resubmit until the "
     "provider job is checked."
@@ -76,7 +104,7 @@ DEVICE_CPU_FALLBACK = "PDF extraction device: cpu (no supported accelerator dete
 # accelerator and never will.
 DEVICE_NO_CUDA_BUILD = (
     "--device cuda was asked for, but the installed PyTorch is a CPU-only "
-    "build. Reinstall through the CUDA route; see docs/installation-pdf.md."
+    "build. Reinstall through the CUDA route; see docs/en/installation-pdf.md."
 )
 DEVICE_UNAVAILABLE = (
     "--device {device} was asked for, but this machine has no {device} "
@@ -96,7 +124,7 @@ PDF_ROUTE_NOT_INSTALLED = (
     "downloads about 3 GB of CUDA there). The published package does not "
     'carry this route yet, so pip install "bbook_maker[pdf]" will only warn '
     "about the unknown extra and install the release without it. Every case, "
-    "per platform, in docs/installation-pdf.md. Detail: {err}"
+    "per platform, in docs/en/installation-pdf.md. Detail: {err}"
 )
 PDFIUM_UNUSABLE = (
     "pypdfium2 is installed but unusable (no PdfDocument); reinstall it with "

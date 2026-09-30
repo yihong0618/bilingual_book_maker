@@ -1,1 +1,0 @@
-This report was split into [Why 16 units per request](evaluation/grouping-batch-size.md), [Why the session compacts at 8192](evaluation/session-compact-budget.md) and [Why the tool probes the endpoint](evaluation/structured-output-ladder.md).

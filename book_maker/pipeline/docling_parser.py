@@ -35,7 +35,7 @@ from .bundle import (
 )
 from . import pdf_figures, pdf_formula, pdf_headings, pdf_render
 from .errors import PipelineError
-from .importer import import_markdown
+from .importer import guard_source_replacement, import_markdown
 from .messages import (
     CONTROL_CHARACTERS_REMOVED,
     FORMULA_IMAGES,
@@ -69,6 +69,7 @@ from .messages import (
     PDF_ROUTE_NOT_INSTALLED,
     SCANNED_PAGES,
     SELECTION_HEADING_ADDED,
+    SOURCE_REASON_EXTRACT,
     STRUCTURE_APPLIED,
     STRUCTURE_DETAIL_BUDGET,
     STRUCTURE_DETAIL_DEADLINE,
@@ -129,6 +130,19 @@ IMAGE_REF = re.compile(r"(!\[[^\]]*\]\()([^)]*)(\))")
 # records it (`extraction.render_backend`).
 RENDER_DOCLING_PARSE = "docling-parse"
 RENDER_PDFIUM_PAGE_IMAGE = "pypdfium2-page-image"
+
+
+def _replacement_reason(bundle, pdf, page_range, settings):
+    """Why a direct `extract_pdf` call replaces this bundle's source.
+
+    `stages.prepare` passes its own reason; a caller that goes straight to
+    the adapter gets the reuse decision's, or "extraction requested again"
+    when that decision would have reused the bundle.
+    """
+    from .stages import PDF_PARSER, reuse_verdict
+
+    _, why = reuse_verdict(bundle, pdf, PDF_PARSER, page_range, settings, report=False)
+    return why or SOURCE_REASON_EXTRACT
 
 
 def resolve_device(requested):
@@ -895,6 +909,7 @@ def extract_pdf(
     convert=None,
     progress=True,
     structure=None,
+    reason=None,
 ):
     """Convert one PDF to Markdown in `bundle`, locally.
 
@@ -911,6 +926,12 @@ def extract_pdf(
     region-role pass inside the conversion when the endpoint can see a
     page image; when it cannot, the extraction goes on with the
     detector's labels and says so.
+
+    An edited `source.md` already in the bundle is refused before anything
+    is touched -- limitations, figure records, the stage, the staging
+    directory (`importer.guard_source_replacement`). `reason` is the
+    stage's phrase for why this run extracts again; called directly, the
+    reuse decision is asked for it.
     """
     pdf = Path(pdf_path)
     if not pdf.is_file():
@@ -924,6 +945,11 @@ def extract_pdf(
             ocr_lang=tuple(parse_ocr_lang(ocr_lang) or ()),
             formula_images=bool(formula_images),
         )
+    guard_source_replacement(
+        bundle,
+        STAGE,
+        reason or (lambda: _replacement_reason(bundle, pdf, page_range, settings)),
+    )
     ocr = settings.ocr
     languages = list(settings.ocr_lang) or None
 
@@ -1242,9 +1268,21 @@ def extract_pdf(
                 for record in pdf_figures.referenced(found.get("figures") or [], text)
             ],
         )
+        # Asked again here, after the conversion: the entry guard saw the
+        # source as the run started, and a conversion takes minutes in which
+        # the operator can edit it (Codex 260928). Before the assets go, so
+        # a refusal now leaves the edit and every figure in place; the
+        # importer asks once more before it writes.
+        guard_source_replacement(bundle, STAGE, reason or SOURCE_REASON_EXTRACT)
         pdf_figures.clear_assets(bundle)
         report = import_markdown(
-            bundle, source, pandoc=pandoc, origin=pdf, stage=STAGE, kind="pdf"
+            bundle,
+            source,
+            pandoc=pandoc,
+            origin=pdf,
+            stage=STAGE,
+            kind="pdf",
+            reason=reason or SOURCE_REASON_EXTRACT,
         )
     except (PipelineError, KeyboardInterrupt):
         bundle.set_stage(STAGE, "failed", parser=PARSER, device=resolved)

@@ -275,7 +275,7 @@ def test_a_missing_pdf_install_is_an_error_not_a_cpu_fallback(monkeypatch):
     detail = refused.value.detail
     assert 'pip install ".[pdf]"' in detail
     assert "--extra-index-url https://download.pytorch.org/whl/cpu" in detail
-    assert "docs/installation-pdf.md" in detail
+    assert "docs/en/installation-pdf.md" in detail
     # PIN (260921): the published package has no `pdf` extra, and pip meets a
     # missing extra with a warning and a successful install of the release
     # without it -- an operator who followed that line would arrive back here

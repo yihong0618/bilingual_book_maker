@@ -18,6 +18,7 @@ Two things are decided here rather than there:
   record is what this module believes.
 """
 
+import argparse
 import contextlib
 import hashlib
 import io
@@ -236,27 +237,78 @@ def option_identity(options):
             )
         )
     if getattr(options, "provider", None):
-        # A named endpoint is shorthand for an address and a model list that
-        # live in a file; the file's contents belong to the identity, and
-        # its contents do not belong in the manifest.
-        identity.append(("provider_config", _provider_config_digest()))
+        # A named endpoint is shorthand for flags the command left out; what
+        # it fills in belongs to the identity, as a digest (an address or a
+        # key variable does not belong in the manifest).
+        identity.append(("provider_config", provider_endpoint_digest(options)))
     return identity
 
 
-def _provider_config_digest():
-    from book_maker import provider_loader
+# The formats whose translator is handed `--api_base`: every LLM format
+# except the codex sidecar (it ignores an address and a key: it signs in on
+# its own), plus `customapi`, whose address is its whole configuration. The
+# fixed machine-translation engines call their own URL, so on those an
+# address is not part of what the run sends. Derived from the translator
+# table so a format added there is addressed here without a second list.
+def _addressed_formats():
+    from book_maker.translator import LLM_FORMATS
 
-    digest = hashlib.sha256()
-    for path in (
-        provider_loader.EXAMPLE_CONFIG_PATH,
-        provider_loader.GLOBAL_CONFIG_PATH,
-        Path.cwd() / provider_loader.LOCAL_CONFIG_FILENAME,
-    ):
-        digest.update(str(path).encode("utf-8"))
-        digest.update(
-            sha256_file(path).encode("ascii") if Path(path).is_file() else b"-"
+    return tuple(name for name in LLM_FORMATS if name != "codex") + ("customapi",)
+
+
+def provider_endpoint_digest(options):
+    """A digest of the endpoint `--provider` makes this run call.
+
+    The identity is what reaches the request from the entry, resolved by the
+    CLI's own `resolve_endpoint` (typed flags outrank the entry, the entry's
+    key variable stays with the entry's address, the format's default
+    address and model are filled in): the wire format, the address where
+    the route uses one, the models the run will rotate in their order, and
+    -- unless `--key` was typed, which is hashed by itself -- the names of
+    the variables the key would be read from, never their values. Prices,
+    currency and the entry's image and classify endpoints are not what the
+    translation is asked, and nothing else in the files is: an unrelated
+    entry, a formatting edit, which file the entry came from or the
+    directory the run started in cannot invalidate a translation.
+
+    Until 260928 this hashed the three provider files by path and contents,
+    the current directory included, so any of those re-fingerprinted a
+    finished bundle (translated and paid for again) or refused to resume an
+    interrupted one with SETTINGS_CHANGED. The branch is unreleased: a
+    bundle translated with `--provider` before this change matches no
+    longer, once -- a finished one is translated again, an interrupted one
+    is refused with SETTINGS_CHANGED -- the same ruling as the sparse
+    identity (8cb667c). FORMATTER_VERSION is deliberately left alone:
+    bumping it would re-translate every bundle without a provider too.
+
+    Resolved on a copy: resolution fills in `api_base` and `model` and
+    attaches `provider_route` and `price_table`, none of which may reach the
+    sparse identity. What the resolution prints (the shipped-example notice,
+    the moved-endpoint warning) was said by `check_options` and is said
+    again by the run, so it is not repeated here. A provider the CLI would
+    refuse is refused in the CLI's words, as `compat_stops` does. Nothing is
+    constructed and nothing authenticates: no translator, no key read.
+    """
+    from book_maker.cli import FORMAT_ENV_KEYS, resolve_endpoint
+
+    copy = argparse.Namespace(**vars(options))
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            models, api_format, provider_keys = resolve_endpoint(copy)
+    except SystemExit as err:
+        raise PipelineError(str(err), stage=STAGE)
+    endpoint = {"api_format": api_format, "models": list(models)}
+    if api_format in _addressed_formats():
+        endpoint["api_base"] = copy.api_base or ""
+    # The lookup order `cli.resolve_api_key` walks, on the formats that read
+    # a key from the environment by name.
+    if api_format in FORMAT_ENV_KEYS and not copy.key:
+        endpoint["key_variables"] = list(provider_keys) + list(
+            FORMAT_ENV_KEYS[api_format]
         )
-    return digest.hexdigest()
+    return hashlib.sha256(
+        json.dumps(endpoint, sort_keys=True).encode("utf-8")
+    ).hexdigest()
 
 
 def translation_fingerprint(bundle, bbm_options, options=None):

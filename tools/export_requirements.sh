@@ -38,7 +38,7 @@
 #
 # The split is real on Linux only. On macOS and Windows the PyPI wheel is
 # already CPU-only, so both files install the same thing there. See
-# docs/installation-pdf.md.
+# docs/en/installation-pdf.md.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 pdm lock --update-reuse -G :all

@@ -4,12 +4,12 @@ Loaded from SKILL.md when the book is a `.pdf`. `ROUTE` and `CONTEXT` come
 from `references/route-setup.md`.
 
 User pages, when you need more than this file says:
-`docs/features/pdf-to-epub.md` (what the route does, the vision-model pass,
-every terminal line and its fix), `docs/features/recommended-pdf.md`
-(the command per document type and per system), `docs/installation-pdf.md` (the install
-per system), `docs/formats/pdf.md` (every flag that applies, and the older
-text route), `docs/docker.md` (the `pdf` image). Measurements behind the
-advice: `docs/evaluation/pdf-*.md`.
+`docs/en/features/pdf-to-epub.md` (what the route does, the vision-model pass,
+every terminal line and its fix), `docs/en/features/recommended-pdf.md`
+(the command per document type and per system), `docs/en/installation-pdf.md` (the install
+per system), `docs/en/formats/pdf.md` (every flag that applies, and the older
+text route), `docs/en/docker.md` (the `pdf` image). Measurements behind the
+advice: `docs/en/evaluation/pdf-*.md`.
 
 ## Recommend the bilingual EPUB, not the txt
 
@@ -19,7 +19,7 @@ table of contents** next to the PDF (`<name>_bilingual.epub`), every
 paragraph followed by its translation. Without the flag a PDF takes the old
 route, which writes a bilingual `.txt` with no structure; only offer that if
 the user asks for txt (then follow `references/plain-formats.md` as for a
-TXT, with the `--batch_size` recommendation). This route is experimental: a
+TXT, with the `--batch_size` recommendation). A
 PDF is a page description with no paragraphs or headings in it, so the
 extractor guesses the structure back, and a reflowable bilingual EPUB with
 a working TOC out of that is already a good result. Say so up front.
@@ -52,7 +52,7 @@ paid):
    instead of about 3.2 GB of CUDA it cannot use); **Windows with an
    NVIDIA card** adds the CUDA index (`cu126`) plus the NVIDIA driver, or
    it runs on the processor. macOS: the plain line, nothing to choose. Send
-   the user to their system's tab on `docs/installation-pdf.md` for the
+   the user to their system's tab on `docs/en/installation-pdf.md` for the
    exact line rather than improvising one. Do **not** tell them `pip
    install "bbook_maker[pdf]"`: the published package does not carry the
    route yet, and pip answers an unknown extra with a warning and a
@@ -82,7 +82,7 @@ paid):
    (render it with pypdfium2 and look).
    `--ocr-engine` picks the engine (`auto` default; rapidocr for
    simplified Chinese, tesseract or ocrmac for English, measured):
-   `docs/features/pdf-ocr-engines.md`. **Read the `OCR engine: …,
+   `docs/en/features/pdf-ocr-engines.md`. **Read the `OCR engine: …,
    languages: …` line the run prints**: `auto` is ocrmac only where ocrmac
    is installed (the pdf extra brings it on a Mac, an older install may
    lack it) and rapidocr otherwise, which read an English typewriter scan
@@ -131,20 +131,20 @@ translation; no `--resume` is needed on this route.
 | `--pages 12-30` | the user wants one chapter or a range, or the paper's bibliography and appendix are not worth paying for; numbered from 1. The book is `<name>_pages-12-30_bilingual.epub` beside the whole-book one, never over it. A selection starting mid-section gets a `Page 12` heading in `source.md`; rename it there before the full run if the user wants a real title |
 | `--pdf-image-dpi N` | how sharp the figures are, in dots per inch of the PDF's own page size (72 to 600). **Default 200**: sharp on a tablet or an iPad, nothing to pass when the user asks for sharp figures. 300 for figures with tiny labels (schematics, dense plots), 150 for a smaller book. A rerun at another value redraws the figures only and rebuilds the EPUB; extraction and translation are kept. A picture embedded in the PDF at a lower resolution keeps its own (the run says how many); formulas keep theirs |
 | `--glossary` | the same file contract as on an EPUB; worth it on a paper with recurring terms |
-| `--img-model gpt-5.6-luna` | a paper, a textbook, anything with code listings: a vision model corrects docling's region roles (an author line taken for a heading, a listing read as footnotes; 40 of 66 label faults fixed in the study, `docs/evaluation/pdf-structure-llm-roles.md`). About 3k prompt tokens a page. `(--provider openai)` already turns it on through the example's `img_model`; `--img-model none` turns it off. Needs an OpenAI-compatible endpoint that reads images; a local route gets it only with `--img-base-url` (and `--img-key`) at a hosted one. Changing it re-extracts |
+| `--img-model gpt-5.6-luna` | a paper, a textbook, anything with code listings: a vision model corrects docling's region roles (an author line taken for a heading, a listing read as footnotes; 40 of 66 label faults fixed in the study, `docs/en/evaluation/pdf-structure-llm-roles.md`). About 3k prompt tokens a page. `(--provider openai)` already turns it on through the example's `img_model`; `--img-model none` turns it off. Needs an OpenAI-compatible endpoint that reads images; a local route gets it only with `--img-base-url` (and `--img-key`) at a hosted one. Changing it re-extracts |
 | `--no-formula-images` | almost never: it replaces every display equation's picture with a bare placeholder |
 
 By document type (the full run; every one starts with the two-page first
-look; the user-facing version is `docs/features/recommended-pdf.md`):
+look; the user-facing version is `docs/en/features/recommended-pdf.md`):
 
 | document | add to the full run | say to the user |
 |---|---|---|
 | novel | `--use_context session` | chapters set without numbering get their level from font size alone: read the headings in `source.md`. The role pass was measured on papers, web pages and code, not novels: offer `--img-model none` on a long novel to save its tokens |
-| textbook with tables and formulas | `--pages A-B` per chapter, `--glossary` if terms recur | a bold theorem, lemma or corollary statement can come out as a heading: read the headings in `source.md` and demote it to a paragraph there. Tables are detected without OCR; display formulas become pictures, not translated (`docs/evaluation/pdf-formulas-as-images.md`); inline maths is not covered |
-| paper | `--use_context session`, `--img-model gpt-5.6-luna` unless the entry already names one; `--pages` to leave out the bibliography | heading levels were exact on 187 of 195 headings across 20 arXiv papers (`docs/evaluation/pdf-heading-levels.md`) |
+| textbook with tables and formulas | `--pages A-B` per chapter, `--glossary` if terms recur | a bold theorem, lemma or corollary statement can come out as a heading: read the headings in `source.md` and demote it to a paragraph there. Tables are detected without OCR; display formulas become pictures, not translated; inline maths is not covered |
+| paper | `--use_context session`, `--img-model gpt-5.6-luna` unless the entry already names one; `--pages` to leave out the bibliography | heading levels were exact on 187 of 195 headings across 20 arXiv papers |
 | scanned book | `--pdf-ocr` (not when the scan carries an OCR layer: see check 3), plus `--ocr-lang iso:<lang>` outside Chinese/English | JBIG2-masked scans (Internet Archive, ABBYY) get their page image from pypdfium2 and the run says so; still read `source.md` before paying. `--img-model` buys little here: it cannot rebuild a page docling shattered |
 | scanned book with a garbage layer | `--pdf-ocr --ocr-replace-layer --ocr-lang iso:<lang>` (`iso:zh` for a Chinese scan) | only after a first look without it showed the layer is wrong; on a good layer fresh OCR reads worse. A page read empty is named and kept empty; nothing read anywhere stops before translation |
-| Chinese scan | `--pdf-ocr --ocr-lang iso:zh` (`iso:zh-Hant` for traditional) | horizontal text reads well; **vertical** text comes back with its columns in the wrong order (CER 0.905 on the one page measured): do not translate it unreviewed (`docs/evaluation/pdf-ocr-llm-vs-local.md`) |
+| Chinese scan | `--pdf-ocr --ocr-lang iso:zh` (`iso:zh-Hant` for traditional) | horizontal text reads well; **vertical** text comes back with its columns in the wrong order (CER 0.905 on the one page measured): do not translate it unreviewed |
 
 By system (the route needs no GPU; the device changes speed, never the
 text):
@@ -153,10 +153,10 @@ text):
 |---|---|---|
 | macOS, Apple silicon | `pip install ".[pdf]"` (nothing to choose) | `auto` finds MPS; the run prints `PDF extraction device: mps.` Docker cannot reach MPS on a Mac: install natively |
 | Linux with NVIDIA | `pip install ".[pdf]"` | `auto` finds CUDA; `--device cuda` makes the run refuse, with the reason, if it cannot use it |
-| Linux, CPU only | `pip install ".[pdf]"` plus PyTorch's CPU index (the line is on `docs/installation-pdf.md`; the plain line would pull about 3 GB of CUDA) | `--device cpu`; one two-page OCR scan took 26.3 s on the CPU against 10.6 s on MPS, identical text |
-| Windows with NVIDIA | `pip install ".[pdf]"` plus PyTorch's `cu126` index (the line is on `docs/installation-pdf.md`), and the NVIDIA driver | `auto` finds CUDA |
+| Linux, CPU only | `pip install ".[pdf]"` plus PyTorch's CPU index (the line is on `docs/en/installation-pdf.md`; the plain line would pull about 3 GB of CUDA) | `--device cpu`; one two-page OCR scan took 26.3 s on the CPU against 10.6 s on MPS, identical text |
+| Windows with NVIDIA | `pip install ".[pdf]"` plus PyTorch's `cu126` index (the line is on `docs/en/installation-pdf.md`), and the NVIDIA driver | `auto` finds CUDA |
 | Windows, CPU only | `pip install ".[pdf]"` (PyPI's Windows wheel is already the CPU build) | `--device cpu` |
-| Docker | image `ghcr.io/yihong0618/bilingual_book_maker:pdf` (Pandoc and the PDF packages inside); mount the book's folder and a models volume at `/root/.cache` | `--gpus all` on Linux or Windows (WSL2) with NVIDIA, amd64 image only (`docs/docker.md`) |
+| Docker | image `ghcr.io/yihong0618/bilingual_book_maker:pdf` (CPU torch, amd64 and arm64; Pandoc and the PDF packages inside), or `:pdf-cuda` (amd64 only) for an NVIDIA card; mount the book's folder and a models volume at `/root/.cache` | `--gpus all` with `:pdf-cuda` on Linux or Windows (WSL2) with NVIDIA, amd64 image only (`docs/en/docker.md`) |
 
 ## What to tell the user up front
 
@@ -203,7 +203,7 @@ Then report the settings used (the run prints the OCR engine and languages,
 the device and, with `--img-model`, the image model's token line), what the
 first look and the read-back showed, and hand over `<name>_bilingual.epub`.
 
-## Failure lines (all fail loud; `docs/features/pdf-to-epub.md#what-can-go-wrong` has every one)
+## Failure lines (all fail loud; `docs/en/features/pdf-to-epub.md#what-can-go-wrong` has every one)
 
 | symptom | meaning |
 |---|---|

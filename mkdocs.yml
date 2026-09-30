@@ -47,55 +47,91 @@ markdown_extensions:
       permalink: true
 
 nav:
-  - Home: index.md
-  - Quick start: quickstart.md
-  - Translate with an agent: agent-skill.md
-  - Installation:
-      - Python: installation.md
-      - Docker: docker.md
-  - EPUB:
-      - Translate an EPUB: formats/epub.md
-      - Recommended settings: features/recommended-epub.md
-      - Plan mode: features/plan-mode.md
-      - Session mode: features/session-mode.md
+  - English:
+      - Home: en/index.md
+      - Quick start: en/quickstart.md
+      - Translate with an agent: en/agent-skill.md
+      - Installation:
+          - Python: en/installation.md
+          - Docker: en/docker.md
+      - EPUB:
+          - Translate an EPUB: en/formats/epub.md
+          - Recommended settings: en/features/recommended-epub.md
+          - Plan mode: en/features/plan-mode.md
+          - Session mode: en/features/session-mode.md
+      - PDF:
+          - PDF to bilingual EPUB: en/features/pdf-to-epub.md
+          - Recommended settings: en/features/recommended-pdf.md
+          - Which OCR engine: en/features/pdf-ocr-engines.md
+          - Installing the PDF extra: en/installation-pdf.md
+          - PDF flags and the text route: en/formats/pdf.md
+      - Other formats:
+          - TXT: en/formats/txt.md
+          - SRT: en/formats/srt.md
+          - Markdown: en/formats/md.md
+          - Which page for which file: en/book_source.md
+      - Endpoints and models:
+          - Translating with an LLM: en/llm-args.md
+          - Provider file and extra models: en/providers.md
+          - Machine translation: en/machine-args.md
+          - Environment variables: en/env_settings.md
+          - Prompt files: en/prompt.md
+          - Model and language notes: en/model_lang.md
+          - Language tags: en/languages.md
+          - Migrating from old flags: en/migration.md
       - Evaluation:
-          - Why 16 units per request: evaluation/grouping-batch-size.md
-          - Why the session compacts at 8192: evaluation/session-compact-budget.md
-          - Why the tool probes the endpoint: evaluation/structured-output-ladder.md
-          - Jev as the plan classifier: evaluation/plan-classifier-jev.md
-  - PDF:
-      - PDF to bilingual EPUB: features/pdf-to-epub.md
-      - Recommended settings: features/recommended-pdf.md
-      - Which OCR engine: features/pdf-ocr-engines.md
-      - Installing the PDF extra: installation-pdf.md
-      - PDF flags and the text route: formats/pdf.md
-      - Evaluation:
-          - Why heading levels come from the page: evaluation/pdf-heading-levels.md
-          - Why formulas are pictures: evaluation/pdf-formulas-as-images.md
-          - Why a vision model reads scans better: evaluation/pdf-ocr-llm-vs-local.md
-          - Which OCR engine reads a scan best: evaluation/pdf-ocr-engines.md
-          - Why docling-parse stays: evaluation/pdf-page-render-backend.md
-          - Where an LLM fixes layout: evaluation/pdf-structure-llm-roles.md
-          - How extraction was checked: evaluation/pdf-extraction-corpus.md
-          - Why docling: evaluation/pdf-parser-choice.md
-  - Other formats:
-      - TXT: formats/txt.md
-      - SRT: formats/srt.md
-      - Markdown: formats/md.md
-      - Which page for which file: book_source.md
-  - Endpoints and models:
-      - Translating with an LLM: llm-args.md
-      - Provider file and extra models: providers.md
-      - Machine translation: machine-args.md
-      - Environment variables: env_settings.md
-      - Prompt files: prompt.md
-      - Model and language notes: model_lang.md
-      - Language tags: languages.md
-      - Migrating from old flags: migration.md
-  - Reference:
-      - Command line options: cmd.md
-      - All evaluations: evaluation/index.md
-      - Disclaimer: disclaimer.md
+          - Measurements behind the parameters: en/evaluation/index.md
+          - Units and tokens per request: en/evaluation/grouping-batch-size.md
+          - Session compact budget: en/evaluation/session-compact-budget.md
+          - Jev as the plan classifier: en/evaluation/plan-classifier-jev.md
+          - OCR engines on scanned pages: en/evaluation/pdf-ocr-engines.md
+          - Region roles with an image model: en/evaluation/pdf-structure-llm-roles.md
+      - Reference:
+          - Command line options: en/cmd.md
+          - Disclaimer: en/disclaimer.md
+  - 中文:
+      - 首页: zh/index.md
+      - 快速开始: zh/quickstart.md
+      - 用代理翻译: zh/agent-skill.md
+      - 安装:
+          - Python 安装: zh/installation.md
+          - Docker 安装: zh/docker.md
+      - EPUB:
+          - 翻译 EPUB: zh/formats/epub.md
+          - EPUB 推荐设置: zh/features/recommended-epub.md
+          - 计划模式: zh/features/plan-mode.md
+          - 会话模式: zh/features/session-mode.md
+      - PDF:
+          - PDF 转双语 EPUB: zh/features/pdf-to-epub.md
+          - PDF 推荐设置: zh/features/recommended-pdf.md
+          - 选择 OCR 引擎: zh/features/pdf-ocr-engines.md
+          - 安装 PDF 扩展: zh/installation-pdf.md
+          - PDF 参数与纯文本路线: zh/formats/pdf.md
+      - 其他格式:
+          - TXT 文件: zh/formats/txt.md
+          - SRT 字幕: zh/formats/srt.md
+          - Markdown 文件: zh/formats/md.md
+          - 各类文件对应的页面: zh/book_source.md
+      - 端点与模型:
+          - 用大模型翻译: zh/llm-args.md
+          - 提供方文件与额外模型: zh/providers.md
+          - 机器翻译: zh/machine-args.md
+          - 环境变量: zh/env_settings.md
+          - 提示词文件: zh/prompt.md
+          - 模型与语言说明: zh/model_lang.md
+          - 语言标签: zh/languages.md
+          - 从旧参数迁移: zh/migration.md
+      - 评测:
+          - 参数背后的测量: zh/evaluation/index.md
+          - 每次请求的单元数与 token 数: zh/evaluation/grouping-batch-size.md
+          - 会话压缩预算: zh/evaluation/session-compact-budget.md
+          - 用 Jev 做计划分类器: zh/evaluation/plan-classifier-jev.md
+          - 扫描页上的 OCR 引擎: zh/evaluation/pdf-ocr-engines.md
+          - 用图像模型判定区域角色: zh/evaluation/pdf-structure-llm-roles.md
+      - 参考:
+          - 命令行参数: zh/cmd.md
+          - 免责声明: zh/disclaimer.md
 
 not_in_nav: |
-  /session_grouping_eval.md
+  /en/session_grouping_eval.md
+  /zh/session_grouping_eval.md

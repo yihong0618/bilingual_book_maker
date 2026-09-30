@@ -11,11 +11,18 @@ from pathlib import Path
 
 from .bundle import parse_ocr_lang, sha256_file
 from .errors import PipelineError
-from .importer import import_markdown
+from .importer import guard_source_replacement, import_markdown
 from .messages import (
     EXTRACTION_REUSED_OTHER_RUNTIME,
     OCR_REPLACE_NEEDS_OCR,
     PDF_OPTIONS_INERT,
+    SOURCE_REASON_EXTRACT,
+    SOURCE_REASON_IMPORT,
+    SOURCE_REASON_PAGES,
+    SOURCE_REASON_PARSER,
+    SOURCE_REASON_PDF,
+    SOURCE_REASON_SETTINGS,
+    SOURCE_REASON_STRUCTURE,
     STAGE_COMPLETE,
     STRUCTURE_NOT_REUSED,
 )
@@ -111,10 +118,43 @@ def already_prepared(bundle, input_path, parser, pages, settings=None, device=No
     The docling version and the device are provenance, not settings: the
     extraction stands, and the operator is told once that it was made
     elsewhere.
+
+    The finished stage's name, or False. `reuse_verdict` gives the reason
+    as well, which the replacement guard names in its refusal.
     """
+    finished, _ = reuse_verdict(bundle, input_path, parser, pages, settings, device)
+    return finished
+
+
+def reuse_verdict(
+    bundle, input_path, parser, pages, settings=None, device=None, report=True
+):
+    """`(finished stage or False, why not)`: `already_prepared` with its reason.
+
+    The reason is the first check that failed, as the phrase the
+    replacement guard puts in its refusal (`importer.guard_source_replacement`);
+    None when the bundle is reused. The checks and their order are the
+    reuse decision's own -- this only names the one that decided.
+
+    `report` prints the decision's lines (a structure pass extracted again,
+    an extraction made on another runtime); off, it has no side effect, so
+    a refusal can ask for its reason without saying "Extracting again".
+    """
+    finished, reason, lines = _verdict(
+        bundle, input_path, parser, pages, settings, device
+    )
+    if report:
+        for line in lines:
+            print(line)
+    return finished, reason
+
+
+def _verdict(bundle, input_path, parser, pages, settings, device):
+    """`(finished, reason, lines to print)`, printing nothing."""
     settings = settings or ExtractionSettings()
+    markdown = parser is None
     if not bundle.manifest_path.is_file():
-        return False
+        return False, _again(markdown), []
     manifest = bundle.read_manifest()
     stages = manifest.get("stages") or {}
     done = [
@@ -123,33 +163,38 @@ def already_prepared(bundle, input_path, parser, pages, settings=None, device=No
         if (stages.get(name) or {}).get("status") == "completed"
     ]
     if not done:
-        return False
+        return False, _again(markdown), []
     source = manifest.get("source") or {}
     if source.get("origin_sha256") != sha256_file(input_path):
-        return False
+        return False, SOURCE_REASON_IMPORT if markdown else SOURCE_REASON_PDF, []
     extraction = manifest.get("extraction") or {}
+    lines = []
     if "extract" in done:
         if extraction.get("provider") != parser:
-            return False
+            return False, SOURCE_REASON_PARSER, []
         if (extraction.get("page_range") or None) != (pages or None):
-            return False
+            return False, SOURCE_REASON_PAGES, []
         if ExtractionSettings.from_manifest(extraction).identity() != (
             settings.identity()
         ):
-            return False
+            return False, SOURCE_REASON_SETTINGS, []
         # Asked for a structure pass that never ran (the endpoint could not
         # see a page then) or did not finish: that bundle holds the
         # detector's labels, in part or whole, not what this run asks for,
         # so it is extracted again (rulings 260923). Only `complete` counts.
         if settings.structure and not _structure_complete(extraction):
-            print(
-                STRUCTURE_NOT_REUSED.format(
-                    status=_structure_status(extraction), model=settings.structure
-                )
-            )
-            return False
-        _report_other_runtime(extraction, device_for(device))
-    return done[0]
+            status = _structure_status(extraction)
+            line = STRUCTURE_NOT_REUSED.format(status=status, model=settings.structure)
+            return False, SOURCE_REASON_STRUCTURE.format(status=status), [line]
+        other = _other_runtime(extraction, device_for(device))
+        if other:
+            lines.append(other)
+    return done[0], None, lines
+
+
+def _again(markdown):
+    """The reason when no finished stage is on record at all."""
+    return SOURCE_REASON_IMPORT if markdown else SOURCE_REASON_EXTRACT
 
 
 def _structure_status(extraction):
@@ -168,21 +213,19 @@ def _structure_complete(extraction):
     return _structure_status(extraction) == STATUS_COMPLETE
 
 
-def _report_other_runtime(extraction, device):
-    """One line when the reused extraction ran on another docling or device."""
+def _other_runtime(extraction, device):
+    """The line for a reused extraction made on another docling or device."""
     old_version = extraction.get("version")
     new_version = _installed_docling()
     old_requested = extraction.get("device_requested") or "auto"
     other_version = new_version is not None and old_version != new_version
     if not other_version and old_requested == device:
-        return
-    print(
-        EXTRACTION_REUSED_OTHER_RUNTIME.format(
-            old_version=old_version or "unknown",
-            old_device=extraction.get("device") or old_requested,
-            new_version=new_version or "unknown",
-            new_device=device,
-        )
+        return None
+    return EXTRACTION_REUSED_OTHER_RUNTIME.format(
+        old_version=old_version or "unknown",
+        old_device=extraction.get("device") or old_requested,
+        new_version=new_version or "unknown",
+        new_device=device,
     )
 
 
@@ -243,19 +286,29 @@ def prepare(
             structure_rev=structure.rev,
             structure_base=getattr(structure, "base", None),
         )
-    finished = already_prepared(
+    finished, reason, lines = _verdict(
         bundle,
         input_path,
         PDF_PARSER if kind == "pdf" else None,
         pages,
         settings,
-        device=device,
+        device,
     )
     if finished:
+        for line in lines:
+            print(line)
         print(STAGE_COMPLETE.format(stage=finished))
         return None
+    # An edited source.md is refused before anything is said or touched;
+    # the import and the extraction ask again themselves, for their other
+    # callers (`importer.guard_source_replacement`).
+    guard_source_replacement(
+        bundle, "import" if kind == "markdown" else "extract", reason
+    )
+    for line in lines:
+        print(line)
     if kind == "markdown":
-        return import_markdown(bundle, input_path, pandoc=pandoc)
+        return import_markdown(bundle, input_path, pandoc=pandoc, reason=reason)
     from .docling_parser import extract_pdf
 
     return extract_pdf(
@@ -266,5 +319,6 @@ def prepare(
         page_range=pages,
         settings=settings,
         progress=progress,
+        reason=reason,
         **({"structure": structure} if structure is not None else {}),
     )

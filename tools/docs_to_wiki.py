@@ -3,16 +3,26 @@
 
     python tools/docs_to_wiki.py <wiki checkout>
 
+The site has one tree per language, `docs/en/` and `docs/zh/`, under the
+top-level nav groups `English` and `中文`; images live once in `docs/img/`.
 The wiki is a flat space of pages, so every page takes its title from the
-mkdocs.yml nav (the two "Recommended settings" entries get their section
-appended), `index.md` becomes `Home`, the nav becomes `_Sidebar.md`, and the
-site's few MkDocs-only constructs are rewritten for GitHub's renderer:
+mkdocs.yml nav (the two English "Recommended settings" entries get their
+section appended; the Chinese titles are unique already), every name must be
+unique across both languages, the nav becomes `_Sidebar.md` with the two
+language groups at the top, and the site's few MkDocs-only constructs are
+rewritten for GitHub's renderer:
 
 - relative `.md` links (with `../`, subdirectories and `#anchor`) become
   links to the wiki page names;
 - `=== "Tab"` blocks become `<details><summary>Tab</summary>` blocks, so a
   reader still opens only the system or document type they have;
 - the images under `docs/img/` are copied into `img/` of the wiki checkout.
+
+`Home` is README.md itself, not `docs/en/index.md` (owner 260928: the README
+is the owner's own text), and the Chinese home `首页` is README-CN.md in the
+same way. Their links are relative to the repository root: pages and images
+under `docs/` point into the wiki (a `docs/<page>.md` without a language
+directory means the home's own language), any other file at GitHub.
 
 Pages that are not in the nav are left out. Nothing is committed or pushed;
 the caller reviews the checkout and does that.
@@ -28,17 +38,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / "docs"
 MKDOCS = ROOT / "mkdocs.yml"
+README = ROOT / "README.md"
+README_CN = ROOT / "README-CN.md"
+REPO_URL = "https://github.com/yihong0618/bilingual_book_maker"
+LANGUAGES = ("en", "zh")
 
-# The wiki namespace is flat, so the two "Recommended settings" pages need
-# their section in the name.
+# The wiki namespace is flat, so the two English "Recommended settings" pages
+# need their section in the name. These names are the pages' URLs from before
+# the language split and must not change.
 TITLE_OVERRIDES = {
-    "features/recommended-epub.md": "Recommended settings for EPUB",
-    "features/recommended-pdf.md": "Recommended settings for PDF",
-    "index.md": "Home",
+    "en/features/recommended-epub.md": "Recommended settings for EPUB",
+    "en/features/recommended-pdf.md": "Recommended settings for PDF",
+    "en/index.md": "Home",
 }
 
+
+def home_sources() -> dict[str, tuple[Path, str]]:
+    """Each language's home page is a README at the repository root, not its
+    docs/<lang>/index.md: `nav path -> (README, language)`."""
+    return {"en/index.md": (README, "en"), "zh/index.md": (README_CN, "zh")}
+
+
 _NAV_LINE = re.compile(r"^( *)- (.+?):(?: (.+))?$")
-_LINK = re.compile(r"(!?)\[([^\]]*)\]\(([^)\s]+)\)")
+# The label may hold one image, as a badge does: [![alt](src)](target).
+_LINK = re.compile(r"(!?)\[((?:[^\[\]]|!\[[^\]]*\]\([^)]*\))*)\]\(([^)\s]+)\)")
 _TAB = re.compile(r'^=== "(.+)"\s*$')
 
 
@@ -98,8 +121,32 @@ def page_name(path: str, title: str) -> str:
 
 
 def wiki_file(name: str) -> str:
-    """GitHub stores a page called "A b" as `A-b.md`."""
+    """GitHub stores a page called "A b" as `A-b.md`; every other character,
+    Chinese included, is kept as it is (a UTF-8 file name)."""
     return name.replace(" ", "-")
+
+
+def check_names(names: dict[str, str]) -> None:
+    """Refuse a nav whose pages cannot share one flat wiki.
+
+    Every page needs a name, a name with `/` would be a path, and two pages
+    on one wiki file (the same name, or names equal once spaces become
+    hyphens or case is ignored, as GitHub's page URLs are) would overwrite
+    each other. Exits non-zero naming the pages.
+    """
+    seen: dict[str, str] = {}
+    for path, name in names.items():
+        if not name.strip():
+            raise SystemExit(f"nav page {path} has an empty title")
+        if "/" in name:
+            raise SystemExit(f"nav page {path}: title {name!r} contains '/'")
+        key = wiki_file(name).casefold()
+        if key in seen:
+            raise SystemExit(
+                f"two nav pages on wiki page {wiki_file(name)!r}: "
+                f"{seen[key]} and {path}"
+            )
+        seen[key] = path
 
 
 def convert_tabs(text: str) -> str:
@@ -169,6 +216,18 @@ def anchors(path: Path) -> dict[str, str]:
     return out
 
 
+def normalise(path: str) -> str:
+    """Collapse `.` and `..` in a relative path."""
+    parts: list[str] = []
+    for part in Path(path).parts:
+        if part == "..":
+            if parts:
+                parts.pop()
+        elif part != ".":
+            parts.append(part)
+    return "/".join(parts)
+
+
 def convert_links(
     text: str, source: str, names: dict[str, str], unresolved: list[str]
 ) -> str:
@@ -185,16 +244,7 @@ def convert_links(
         path, _, anchor = target.partition("#")
         if not bang and not path.endswith(".md"):
             return match.group(0)
-        resolved = Path(resolve(path))
-        # Normalise `../`.
-        parts: list[str] = []
-        for part in resolved.parts:
-            if part == "..":
-                if parts:
-                    parts.pop()
-            elif part != ".":
-                parts.append(part)
-        key = "/".join(parts)
+        key = normalise(resolve(path))
         if bang:
             if not (DOCS / key).is_file():
                 unresolved.append(f"{source}: image {target}")
@@ -211,6 +261,40 @@ def convert_links(
             return f"[{label}]({page}{anchor})"
         unresolved.append(f"{source}: {target}")
         return match.group(0)
+
+    return _LINK.sub(repl, text)
+
+
+def convert_readme_links(
+    text: str,
+    names: dict[str, str],
+    unresolved: list[str],
+    lang: str = "en",
+    readme: str = "README.md",
+) -> str:
+    """Rewrite a README's root-relative links for its language's home page.
+
+    `./docs/<lang>/x.md` and `./docs/img/...` are taken as they are; a page
+    link without a language directory (`./docs/x.md`) means `lang`'s page.
+    """
+
+    def repl(match: re.Match) -> str:
+        bang, label, target = match.groups()
+        if "://" in target or target.startswith(("#", "mailto:")):
+            return match.group(0)
+        path, sep, anchor = target.partition("#")
+        key = normalise(path)
+        if key.startswith("docs/"):
+            rest = key[len("docs/") :]
+            if not bang and rest.split("/")[0] not in LANGUAGES + ("img",):
+                rest = f"{lang}/{rest}"
+            link = f"{bang}[{label}]({rest}{sep}{anchor})"
+            return convert_links(link, "index.md", names, unresolved)
+        if not (ROOT / key).exists():
+            unresolved.append(f"{readme}: {target}")
+            return match.group(0)
+        kind = "raw" if bang else "blob"
+        return f"{bang}[{label}]({REPO_URL}/{kind}/main/{key}{sep}{anchor})"
 
     return _LINK.sub(repl, text)
 
@@ -238,11 +322,9 @@ def main(argv: list[str]) -> int:
     nav = read_nav(MKDOCS.read_text(encoding="utf-8"))
     pages = pages_of(nav)
     names = {path: page_name(path, title) for title, path in pages}
-    seen: dict[str, str] = {}
-    for path, name in names.items():
-        if name in seen:
-            raise SystemExit(f"two pages named {name!r}: {seen[name]} and {path}")
-        seen[name] = path
+    if len(names) != len(pages):
+        raise SystemExit("a docs page is listed twice in the nav")
+    check_names(names)
 
     # Drop pages of an earlier generation so a renamed page leaves no orphan.
     for old in wiki.glob("*.md"):
@@ -251,10 +333,20 @@ def main(argv: list[str]) -> int:
         shutil.rmtree(wiki / "img")
 
     unresolved: list[str] = []
+    homes = home_sources()
     for path, name in names.items():
-        text = (DOCS / path).read_text(encoding="utf-8")
-        text = convert_tabs(text)
-        text = convert_links(text, path, names, unresolved)
+        if path in homes:
+            readme, lang = homes[path]
+            text = convert_readme_links(
+                readme.read_text(encoding="utf-8"),
+                names,
+                unresolved,
+                lang=lang,
+                readme=readme.name,
+            )
+        else:
+            text = convert_tabs((DOCS / path).read_text(encoding="utf-8"))
+            text = convert_links(text, path, names, unresolved)
         (wiki / f"{wiki_file(name)}.md").write_text(text, encoding="utf-8")
 
     (wiki / "img").mkdir()
@@ -267,7 +359,8 @@ def main(argv: list[str]) -> int:
     )
     (wiki / "_Footer.md").write_text(
         "These pages are generated from the repository's `docs/` directory "
-        "by `tools/docs_to_wiki.py`; edit them there.\n",
+        "(Home from README.md, 首页 from README-CN.md) by "
+        "`tools/docs_to_wiki.py`; edit them there.\n",
         encoding="utf-8",
     )
 

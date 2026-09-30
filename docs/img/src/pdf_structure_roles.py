@@ -1,6 +1,6 @@
 """What an LLM role pass did to each page's labeled faults.
 
-Numbers copied from docs/260923-eval-PDF_STRUCTURE_FAULTS_LUNA_REGION_ROLES.md
+Numbers from the measurements on docs/en/evaluation/pdf-structure-llm-roles.md
 (per-page rows: faults fixed / kept wrong / changed to another wrong label).
 Run from the repository root: python docs/img/src/pdf_structure_roles.py
 """

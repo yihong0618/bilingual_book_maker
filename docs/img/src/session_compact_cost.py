@@ -1,8 +1,8 @@
 """Session cost against --context-compact-at, and the price of the 260907 defaults.
 
-Numbers copied from docs/260905-eval-SESSION_COST_OPTIMIZATION-RESULTS.md
-(k input-token-equivalents per book, B=800) and
-docs/260907-fix-CONSERVATIVE_GROUP_DEFAULTS.md (animal_farm, 300 units).
+Numbers from the September 5 cost model (k input-token-equivalents per book,
+B=800) and the September 7 price check (animal_farm, 300 units), both on
+docs/en/evaluation/session-compact-budget.md.
 Run from the repository root: python docs/img/src/session_compact_cost.py
 """
 
