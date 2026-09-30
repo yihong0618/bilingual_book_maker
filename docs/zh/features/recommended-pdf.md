@@ -26,7 +26,7 @@ python make_book.py \
 | 在 Mac 上，并且不想下载任何东西 | `--pdf-ocr`（auto 会选 ocrmac，pdf 扩展在 Mac 上会安装它；`--ocr-engine ocrmac` 可以直接指定它） | Apple 的 Vision 框架，无需下载；在英文和繁体中文上与最好的引擎只差一点，简体中文扫描件上 rapidocr 更好 | [选择 OCR 引擎](pdf-ocr-engines.md) |
 | 已经带有 OCR 文字层的扫描件（Internet Archive、ABBYY） | 不用额外传什么 | 运行时会使用这层文字，并说明这一点 | [扫描书](#按文档类型) |
 | 文字层是乱码的扫描件 | `--pdf-ocr --ocr-replace-layer --ocr-lang <lang>` | 每一页都由 OCR 引擎重新读取 | [文字层有误的扫描件](#按文档类型) |
-| 论文，或任何带代码清单的文档 | `--img-model gpt-5.6-luna` | 视觉模型会纠正被当成标题的作者行和被读成脚注的代码清单，每页约 3,000 个提示 token | [纠正区域角色](pdf-to-epub.md#用视觉模型纠正区域角色) |
+| 论文，或任何带代码清单的文档 | `--img-model gpt-6-luna` | 视觉模型会纠正被当成标题的作者行和被读成脚注的代码清单，每页约 3,000 个提示 token | [纠正区域角色](pdf-to-epub.md#用视觉模型纠正区域角色) |
 | 想一次翻译一章的长书 | `--pages 12-30` | 每个范围都有自己的书，互不覆盖 | [PDF 参数](../formats/pdf.md) |
 | 满是数学公式 | 不用额外传什么 | 行间公式默认保留为图片 | [PDF 参数](../formats/pdf.md) |
 | 人名或术语的译法必须固定 | `--glossary terms.txt` | 钉住的译法，只随出现它们的文本块一起发送 | [会话模式](session-mode.md) |
@@ -63,7 +63,7 @@ python make_book.py \
       --glossary terms.txt
     ```
 
-    用 `--pages` 一次翻译一章；每个范围都有自己的书。带代码清单的教材能从 `--img-model gpt-5.6-luna` 中受益：清单的各行会以代码的形式输出，而不是变成脚注。句子里的行内数学式不是公式区域，不在处理范围内：文字层或 OCR 把它读成什么样，它就是什么样。
+    用 `--pages` 一次翻译一章；每个范围都有自己的书。带代码清单的教材能从 `--img-model gpt-6-luna` 中受益：清单的各行会以代码的形式输出，而不是变成脚注。句子里的行内数学式不是公式区域，不在处理范围内：文字层或 OCR 把它读成什么样，它就是什么样。
 
 === "论文"
 
@@ -75,7 +75,7 @@ python make_book.py \
       --to-epub \
       --language zh-hans \
       --use_context session \
-      --img-model gpt-5.6-luna
+      --img-model gpt-6-luna
     ```
 
     在大多数论文上，标题层级都完全正确（20 篇 arXiv 论文中，195 个标题有 187 个正确）。`--img-model` 会把被当成标题的作者行或插图标注降级，每页约 3,000 个提示 token；不传它就不在这上面花钱。如果不想为参考文献付费，用 `--pages` 把它排除在外。

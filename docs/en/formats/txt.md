@@ -40,10 +40,10 @@ These work the same on every format.
 | flag | what it does |
 |---|---|
 | `--book_name PATH` | The file to translate. The extension picks the format. |
-| `-m`, `--model MODEL` | The model id, exactly as the endpoint names it. Default `gpt-5.6-luna` on the openai format. |
+| `-m`, `--model MODEL` | The model id, exactly as the endpoint names it. Default `gpt-6-luna` on the openai format. |
 | `--key KEY` | API key; several comma-separated keys rotate. Falls back to `BBM_API_KEY`, then the format's own variable. |
 | `--api_base URL` | The endpoint. Defaults to the format's official host. |
-| `--api_format FORMAT` | The API the endpoint speaks, or a machine-translation engine. Inferred from `--api_base` when left out. |
+| `--api_format FORMAT` | The API the endpoint speaks, or a translation service. Inferred from `--api_base` when left out. |
 | `--provider NAME` | A named endpoint from `bbm_providers.json`. |
 | `--model_list IDS` | Several models to rotate across. Refused with `--use_context session`. |
 | `--language LANGUAGE` | Target language: a tag, a name, or `TAG:NAME`. Default `zh-hans`. |

@@ -179,7 +179,7 @@ MODEL_OPTIONAL_FORMATS = ("codex",)
 # format asks for an id; the other three name what their own route used to
 # run by default, so `--api_format gemini` alone is a working command.
 DEFAULT_MODELS = {
-    "openai": "gpt-5.6-luna",
+    "openai": "gpt-6-luna",
     "gemini": "gemini-flash-latest",
     "qwen": "qwen-mt-turbo",
 }
@@ -2226,7 +2226,7 @@ def build_parser():
         "names a route instead of a model: 'orcarouter' sends the run to the "
         "OrcaRouter gateway. Old alias values, 'codex' among them, are "
         "translated to their format or model with a note; prefer "
-        "'--api_format codex'. Defaults to gpt-5.6-luna on the openai format; "
+        "'--api_format codex'. Defaults to gpt-6-luna on the openai format; "
         "the anthropic format needs an id",
     )
     parser.add_argument(

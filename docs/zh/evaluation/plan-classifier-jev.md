@@ -10,7 +10,7 @@
 - **运行：** `--test --test_num 8 --quiet --language zh-hans`，用 gpt-5.6-luna 翻译，内存上限 1500 MB。
 - **luna 组：** `--model gpt-5.6-luna --classify-model gpt-5.6-luna`。该端点校验严格的 JSON schema，所以签名按页发送，每个请求包含若干个。
 - **Jev 组：** `--model gpt-5.6-luna --classify-model typesafe-ai/jev --classify-base-url https://ai-gateway.vercel.sh/typesafe`。每个签名一个 Choice 问题。在第一轮中，首选答案的置信度低于 0.5 时，Jev 回答 `unsure`。
-- **固定引擎单元格：** `--api_format google --classify-model gpt-5.6-luna`，检查机器翻译路线能否从大模型分类器得到计划。
+- **固定引擎单元格：** `--api_format google --classify-model gpt-5.6-luna`，检查翻译服务路线能否从大模型分类器得到计划。
 - **比较内容：** 两组在每个签名上的判定。没有人评判哪个判定是对的。
 
 ## 结果

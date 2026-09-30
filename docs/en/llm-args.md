@@ -15,9 +15,9 @@ A route is an endpoint, not a model name. Three flags name it.
 
 | flag | what it does |
 |---|---|
-| `--model` (`-m`) | The model id, exactly as the endpoint names it: `gpt-5-mini`, `claude-sonnet-4-6`, `openai/gpt-5-mini`. Default `gpt-5.6-luna` on the `openai` format. The `anthropic` format needs one. |
+| `--model` (`-m`) | The model id, exactly as the endpoint names it: `gpt-5-mini`, `claude-sonnet-4-6`, `openai/gpt-5-mini`. Default `gpt-6-luna` on the `openai` format. The `anthropic` format needs one. |
 | `--api_base` | The endpoint URL. Defaults to the format's official host. An OpenAI-shaped endpoint ends in `/v1`. A pasted `…/v1/chat/completions` or a trailing slash is trimmed. |
-| `--api_format` | The API the endpoint speaks: `openai`, `anthropic`, `codex`, `gemini`, `qwen`, `groq`, `xai`, `litellm`, or a [machine-translation](machine-args.md) engine. Inferred from `--api_base` when you leave it out: an Anthropic host means `anthropic`, everything else `openai`. A `claude-*` model id with no `--api_base` also selects `anthropic`. |
+| `--api_format` | The API the endpoint speaks: `openai`, `anthropic`, `codex`, `gemini`, `qwen`, `groq`, `xai`, `litellm`, or a [translation service](machine-args.md). Inferred from `--api_base` when you leave it out: an Anthropic host means `anthropic`, everything else `openai`. A `claude-*` model id with no `--api_base` also selects `anthropic`. |
 
 Examples, one per common case:
 
@@ -26,7 +26,7 @@ Examples, one per common case:
     ```bash
     bbook_maker \
       --book_name my_book.epub \
-      --model gpt-5.6-luna \
+      --model gpt-6-luna \
       --use_context session
     ```
 
@@ -69,7 +69,7 @@ Examples, one per common case:
       --api_format codex
     ```
 
-    Spends your ChatGPT plan through the [Codex CLI](https://developers.openai.com/codex/cli), which must be installed and signed in (`codex login`). It runs `gpt-5.6-luna`; add `--model <id>` for another. The thread is the context, so no `--use_context` is needed. It ignores `--api_base` and `--key`. When Codex answers that the selected model is at capacity, the run prints a `codex: … retrying in 60 s` line and asks again; that answer is usually Codex rate-limiting a network it distrusts, and another network or account helps.
+    Spends your ChatGPT plan through the [Codex CLI](https://developers.openai.com/codex/cli), which must be installed and signed in (`codex login`). It runs `gpt-6-luna`; add `--model <id>` for another. The thread is the context, so no `--use_context` is needed. It ignores `--api_base` and `--key`. When Codex answers that the selected model is at capacity, the run prints a `codex: … retrying in 60 s` line and asks again; that answer is usually Codex rate-limiting a network it distrusts, and another network or account helps.
 
 A gateway that serves Claude models usually speaks the OpenAI shape. If a gateway answers 404 to the anthropic shape, the run stops and names `--api_format openai` as the fix.
 
@@ -106,7 +106,7 @@ bbook_maker --book_name my_book.epub --api_base 'https://example-endpoint.openai
 bbook_maker --book_name my_book.epub --api_format codex --language zh-hans
 ```
 
-Machine-translation services (Google, DeepL, Caiyun, Tencent, a custom API) are on [Machine translation](machine-args.md). A vendor you use often belongs in the [provider file](providers.md).
+Translation services (Google, DeepL, Caiyun, Tencent, a custom API) are on [Translation services](machine-args.md). A vendor you use often belongs in the [provider file](providers.md).
 
 ## Keys
 

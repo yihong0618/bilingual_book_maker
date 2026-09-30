@@ -15,7 +15,7 @@ EPUB 是本工具最熟悉的格式，所有功能都能用在它上面。
 EPUB 是一个由 XHTML 页面组成的 zip 包。工具会读取书的 spine 里列出的每一页。
 
 - **使用大模型路线时（默认）：**书会经过[计划模式](../features/plan-mode.md)。加载器找出每一个承载文字的块（段落、标题、列表项、表格单元格、引文、诗行、图题），按类型分组，再问模型哪几类值得翻译。答案保存在 `<book>_plan.json` 里，之后的运行会复用它。随后，相邻的块在 token 预算和单元数上限之内合成一次请求。
-- **使用机器翻译路线且没有 `--classify-model`，或使用 `--plan-classify none` 时：**只翻译 `--translate-tags` 选中的标签，默认是 `<p>`。这时 `<p>` 之外的诗歌或表格会保留源语言。
+- **使用翻译服务路线且没有 `--classify-model`，或使用 `--plan-classify none` 时：**只翻译 `--translate-tags` 选中的标签，默认是 `<p>`。这时 `<p>` 之外的诗歌或表格会保留源语言。
 - 段落里的链接、强调和其他行内标记在翻译前被替换成编号标记，翻译后再放回原处，所以模型永远看不到原始 HTML。
 - `--exclude-translate-tags` 里的内容（默认 `sup` 和 `code`）从不发送。
 
@@ -54,10 +54,10 @@ bbook_maker \
 | 参数 | 作用 |
 |---|---|
 | `--book_name PATH` | 要翻译的文件。扩展名决定格式。 |
-| `-m`, `--model MODEL` | 模型 id，按端点自己的写法。openai 格式下默认 `gpt-5.6-luna`。 |
+| `-m`, `--model MODEL` | 模型 id，按端点自己的写法。openai 格式下默认 `gpt-6-luna`。 |
 | `--key KEY` | API key；用逗号分隔多个 key 可以轮换使用。未提供时依次读取 `BBM_API_KEY` 和该格式自己的变量。 |
 | `--api_base URL` | 端点地址。默认是该格式的官方地址。 |
-| `--api_format FORMAT` | 端点所用的 API，或一个机器翻译引擎。省略时根据 `--api_base` 推断。 |
+| `--api_format FORMAT` | 端点所用的 API，或一个翻译服务。省略时根据 `--api_base` 推断。 |
 | `--provider NAME` | `bbm_providers.json` 里的一个具名端点。 |
 | `--model_list IDS` | 轮换使用的多个模型。与 `--use_context session` 同用会被拒绝。 |
 | `--language LANGUAGE` | 目标语言：标签、语言名，或 `TAG:NAME`。默认 `zh-hans`。 |
@@ -84,7 +84,7 @@ bbook_maker \
 | `--only_filelist FILES` | 只翻译这些内部文件（相对于 OPF 的名字，逗号分隔）。 |
 | `--exclude_filelist FILES` | 跳过这些内部文件。给了 `--only_filelist` 时忽略。 |
 | `--plan-classify MODE` | 计划由谁决定：`auto`（默认）、`none`、`all`、`model`、`agent`。见[计划模式](../features/plan-mode.md)。 |
-| `--classify-model MODEL` | 用另一个模型分类（默认：提供方条目的 `classify_model`，其次是翻译用的模型）。在命令行上写明时，运行进入 `model` 模式，分类失败会中止运行；它也能让机器翻译路线用上计划。`--plan-classify-model` 是旧名字。在 `--plan-classify all` 或 `agent` 下忽略。 |
+| `--classify-model MODEL` | 用另一个模型分类（默认：提供方条目的 `classify_model`，其次是翻译用的模型）。在命令行上写明时，运行进入 `model` 模式，分类失败会中止运行；它也能让翻译服务路线用上计划。`--plan-classify-model` 是旧名字。在 `--plan-classify all` 或 `agent` 下忽略。 |
 | `--classify-base-url URL` | 该模型的服务地址，当它不是本次运行的端点时使用（仅限 OpenAI 兼容）。 |
 | `--classify-key KEY` | `--classify-base-url` 使用的 key。见[哪个 key 发往哪里](../providers.md#哪个-key-发往哪里)。 |
 | `--plan-dry-run` | 打印计划并写出 `<book>_plan.json`，不翻译。不需要 key。 |

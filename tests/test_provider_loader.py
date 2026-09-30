@@ -445,7 +445,7 @@ class TestEndpointFields:
     def test_the_shipped_openai_entry_names_an_image_model(self):
         shipped = Path(__file__).resolve().parent.parent / "bbm_providers.example.json"
         entry = json.loads(shipped.read_text(encoding="utf-8"))["providers"]["openai"]
-        assert entry["img_model"] == "gpt-5.6-luna"
+        assert entry["img_model"] == "gpt-6-luna"
 
 
 def test_the_skill_s_example_is_the_shipped_one_byte_for_byte():

@@ -8,7 +8,7 @@ Plan mode also groups the work. Consecutive units share one request up to a toke
 
 ## Setup
 
-Nothing to install. Plan mode needs an EPUB and a model to classify with. That is the translating model on any LLM route. On a [machine-translation](../machine-args.md) route there is no model to ask, so the run falls back to the `--translate-tags` selection, unless you name a classifier with `--classify-model` (see [Choosing the classifier](#choosing-the-classifier)).
+Nothing to install. Plan mode needs an EPUB and a model to classify with. That is the translating model on any LLM route. On a [translation-service](../machine-args.md) route there is no model to ask, so the run falls back to the `--translate-tags` selection, unless you name a classifier with `--classify-model` (see [Choosing the classifier](#choosing-the-classifier)).
 
 The flags:
 
@@ -36,19 +36,19 @@ Do not pass these in plan mode: `--translate-tags` (ignored, the plan covers eve
 The classifier is found in this order: `--classify-model`, then the provider entry's `classify_model`, then the translating model.
 
 - **How it is asked.** Where the classifier's endpoint verifies a strict JSON schema, one request carries a page of signatures and the reply is held to the schema. Elsewhere it is a plain conversation: five signatures per turn, each answered `skip`, `translate` or `unsure`. Two missed replies in a row step down to three per turn, then to one. Below one, classification stops and the remaining signatures are translated. Each step prints one line.
-- **A classifier of its own** (named by flag or provider entry) plans the book whatever the translating route can do. The run prints `plan mode: on (classified by …)`. This is how a machine-translation route gets a plan. Google Translate with gpt-5.6-luna as the classifier was run end to end on the test book: all 31 signatures decided, coverage 99.8%.
+- **A classifier of its own** (named by flag or provider entry) plans the book whatever the translating route can do. The run prints `plan mode: on (classified by …)`. This is how a translation-service route gets a plan. Google Translate with gpt-5.6-luna as the classifier was run end to end on the test book: all 31 signatures decided, coverage 99.8%.
 - **Agent mode asks no model.** `--plan-classify agent` hands every undecided row to you or your coding agent. A named classifier does not pre-fill the plan, because an agent judges worse from pre-filled answers; the run warns that it is ignored. `--plan-classify all` ignores it too.
 - **Where it is asked and with which key** is on [Provider file and extra models](../providers.md#where-each-model-is-asked). A classifier on its own address prints its own usage line at the end of the run.
 - **Jev**, TypeSafe's classifier, is built for exactly this question: translate or skip, a page of signatures per request, in one cheap round trip. `--classify-model jev` uses it; a gateway in front of TypeSafe (Vercel's, or Cloudflare AI Gateway) works too. Which key goes where, and the URL rules, are on [Provider file and extra models](../providers.md#jev-and-jev-compatible-classifiers).
 - **Jev's gate.** A doubtful `skip` becomes `translate`, so no content is lost to it. The gate is 0.95 on the probability of Jev's chosen answer, measured over 662 plan signatures from 45 EPUBs against gpt-5.6-luna. At that value about nine of ten of Jev's skips fall back to `translate`; what it still skips is apparatus (copyright lines, line numbers, note marks, index locators). On that corpus Jev saves little over translating everything. The plan file marks each fallback on its row (`… below the gate: translate`). `--classify-min-confidence P` moves the gate for a run (`BBM_JEV_MIN_CONFIDENCE` does the same without the flag); lower keeps more of Jev's skips, at your risk. See [Jev as the plan classifier](../evaluation/plan-classifier-jev.md).
 
-=== "A machine-translation route with an LLM classifier"
+=== "A translation-service route with an LLM classifier"
 
     ```bash
     bbook_maker \
       --book_name novel.epub \
       --api_format google \
-      --classify-model gpt-5.6-luna \
+      --classify-model gpt-6-luna \
       --language zh-hans
     ```
 
@@ -63,14 +63,14 @@ The classifier is found in this order: `--classify-model`, then the provider ent
       --use_context session
     ```
 
-    The one-line way: translates with gpt-5.6-luna at OpenAI (`OPENAI_API_KEY`) and classifies the plan with Jev (`JEV_API_KEY`), both from the `openai-jev` entry of the shipped `bbm_providers.example.json`.
+    The one-line way: translates with gpt-6-luna at OpenAI (`OPENAI_API_KEY`) and classifies the plan with Jev (`JEV_API_KEY`), both from the `openai-jev` entry of the shipped `bbm_providers.example.json`.
 
 === "Jev at TypeSafe"
 
     ```bash
     bbook_maker \
       --book_name novel.epub \
-      --model gpt-5.6-luna \
+      --model gpt-6-luna \
       --classify-model jev \
       --use_context session
     ```
@@ -82,7 +82,7 @@ The classifier is found in this order: `--classify-model`, then the provider ent
     ```bash
     bbook_maker \
       --book_name novel.epub \
-      --model gpt-5.6-luna \
+      --model gpt-6-luna \
       --classify-model typesafe-ai/jev \
       --classify-base-url https://ai-gateway.vercel.sh/typesafe \
       --classify-key "$GATEWAY_KEY" \
@@ -96,7 +96,7 @@ The classifier is found in this order: `--classify-model`, then the provider ent
     ```bash
     bbook_maker \
       --book_name novel.epub \
-      --model gpt-5.6-luna \
+      --model gpt-6-luna \
       --classify-model jev \
       --classify-base-url https://gateway.ai.cloudflare.com/v1/$ACCOUNT_ID/$GATEWAY_ID/custom-typesafe \
       --classify-key "$JEV_API_KEY" \
@@ -107,7 +107,7 @@ The classifier is found in this order: `--classify-model`, then the provider ent
 
 ## Recommended commands
 
-The command per kind of book (novel, textbook, paper, dictionary), per endpoint (hosted, on-device, machine translation) and per system is on [Recommended settings for EPUB](recommended-epub.md).
+The command per kind of book (novel, textbook, paper, dictionary), per endpoint (hosted, on-device, translation service) and per system is on [Recommended settings for EPUB](recommended-epub.md).
 
 ## What can go wrong
 

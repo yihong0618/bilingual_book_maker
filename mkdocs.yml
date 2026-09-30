@@ -58,7 +58,6 @@ nav:
           - Translate an EPUB: en/formats/epub.md
           - Recommended settings: en/features/recommended-epub.md
           - Plan mode: en/features/plan-mode.md
-          - Session mode: en/features/session-mode.md
       - PDF:
           - PDF to bilingual EPUB: en/features/pdf-to-epub.md
           - Recommended settings: en/features/recommended-pdf.md
@@ -72,8 +71,9 @@ nav:
           - Which page for which file: en/book_source.md
       - Endpoints and models:
           - Translating with an LLM: en/llm-args.md
+          - Session mode: en/features/session-mode.md
           - Provider file and extra models: en/providers.md
-          - Machine translation: en/machine-args.md
+          - Translation services: en/machine-args.md
           - Environment variables: en/env_settings.md
           - Prompt files: en/prompt.md
           - Model and language notes: en/model_lang.md
@@ -92,7 +92,7 @@ nav:
   - 中文:
       - 首页: zh/index.md
       - 快速开始: zh/quickstart.md
-      - 用代理翻译: zh/agent-skill.md
+      - 用智能体翻译: zh/agent-skill.md
       - 安装:
           - Python 安装: zh/installation.md
           - Docker 安装: zh/docker.md
@@ -100,7 +100,6 @@ nav:
           - 翻译 EPUB: zh/formats/epub.md
           - EPUB 推荐设置: zh/features/recommended-epub.md
           - 计划模式: zh/features/plan-mode.md
-          - 会话模式: zh/features/session-mode.md
       - PDF:
           - PDF 转双语 EPUB: zh/features/pdf-to-epub.md
           - PDF 推荐设置: zh/features/recommended-pdf.md
@@ -114,8 +113,9 @@ nav:
           - 各类文件对应的页面: zh/book_source.md
       - 端点与模型:
           - 用大模型翻译: zh/llm-args.md
+          - 会话模式: zh/features/session-mode.md
           - 提供方文件与额外模型: zh/providers.md
-          - 机器翻译: zh/machine-args.md
+          - 翻译服务: zh/machine-args.md
           - 环境变量: zh/env_settings.md
           - 提示词文件: zh/prompt.md
           - 模型与语言说明: zh/model_lang.md

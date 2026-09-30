@@ -10,7 +10,7 @@ Plan mode asks a model, for each kind of block in an EPUB, whether it is worth t
 - **Run:** `--test --test_num 8 --quiet --language zh-hans`, translating with gpt-5.6-luna, under a 1500 MB memory cap.
 - **Luna arm:** `--model gpt-5.6-luna --classify-model gpt-5.6-luna`. The endpoint verifies a strict JSON schema, so the signatures go in pages of several per request.
 - **Jev arm:** `--model gpt-5.6-luna --classify-model typesafe-ai/jev --classify-base-url https://ai-gateway.vercel.sh/typesafe`. One Choice question per signature. In this first round, below 0.5 confidence in its top answer, Jev answered `unsure`.
-- **Fixed-engine cell:** `--api_format google --classify-model gpt-5.6-luna`, to check that a machine-translation route gets a plan from an LLM classifier.
+- **Fixed-engine cell:** `--api_format google --classify-model gpt-5.6-luna`, to check that a translation-service route gets a plan from an LLM classifier.
 - **Compared:** each signature's verdict between the two arms. Nobody judged which verdict was right.
 
 ## Results

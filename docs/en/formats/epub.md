@@ -15,7 +15,7 @@ EPUB is the format this tool knows best. Every feature works on it.
 An EPUB is a zip of XHTML pages. The tool reads every page the book's spine lists.
 
 - **With an LLM route (the default):** the book goes through [plan mode](../features/plan-mode.md). The loader finds every block that carries text (paragraphs, headings, list items, table cells, blockquotes, verse lines, captions), groups them by kind, and asks the model which kinds are worth translating. The answer is saved in `<book>_plan.json` and reused by later runs. Consecutive blocks then share one request, up to a token budget and a unit cap.
-- **With a machine-translation route and no `--classify-model`, or with `--plan-classify none`:** only the `--translate-tags` selection is translated, `<p>` by default. Verse or a table outside `<p>` then stays in the source language.
+- **With a translation-service route and no `--classify-model`, or with `--plan-classify none`:** only the `--translate-tags` selection is translated, `<p>` by default. Verse or a table outside `<p>` then stays in the source language.
 - Links, emphasis and other inline markup inside a paragraph are replaced by numbered markers before translation and put back afterwards, so the model never sees raw HTML.
 - Content inside `--exclude-translate-tags` (`sup` and `code` by default) is never sent.
 
@@ -54,10 +54,10 @@ These work the same on every format.
 | flag | what it does |
 |---|---|
 | `--book_name PATH` | The file to translate. The extension picks the format. |
-| `-m`, `--model MODEL` | The model id, exactly as the endpoint names it. Default `gpt-5.6-luna` on the openai format. |
+| `-m`, `--model MODEL` | The model id, exactly as the endpoint names it. Default `gpt-6-luna` on the openai format. |
 | `--key KEY` | API key; several comma-separated keys rotate. Falls back to `BBM_API_KEY`, then the format's own variable. |
 | `--api_base URL` | The endpoint. Defaults to the format's official host. |
-| `--api_format FORMAT` | The API the endpoint speaks, or a machine-translation engine. Inferred from `--api_base` when left out. |
+| `--api_format FORMAT` | The API the endpoint speaks, or a translation service. Inferred from `--api_base` when left out. |
 | `--provider NAME` | A named endpoint from `bbm_providers.json`. |
 | `--model_list IDS` | Several models to rotate across. Refused with `--use_context session`. |
 | `--language LANGUAGE` | Target language: a tag, a name, or `TAG:NAME`. Default `zh-hans`. |
@@ -84,7 +84,7 @@ These work the same on every format.
 | `--only_filelist FILES` | Translate only these internal files (OPF-relative names, comma-separated). |
 | `--exclude_filelist FILES` | Skip these internal files. Ignored when `--only_filelist` is given. |
 | `--plan-classify MODE` | How the plan is decided: `auto` (default), `none`, `all`, `model`, `agent`. See [Plan mode](../features/plan-mode.md). |
-| `--classify-model MODEL` | Classify with another model (default: the provider entry's `classify_model`, else the translating model). Typed, it puts the run in `model` mode, so a failure stops the run; it also gives a machine-translation route a plan. `--plan-classify-model` is the old name. Ignored under `--plan-classify all` or `agent`. |
+| `--classify-model MODEL` | Classify with another model (default: the provider entry's `classify_model`, else the translating model). Typed, it puts the run in `model` mode, so a failure stops the run; it also gives a translation-service route a plan. `--plan-classify-model` is the old name. Ignored under `--plan-classify all` or `agent`. |
 | `--classify-base-url URL` | Where that model is served, when it is not the run's endpoint (OpenAI-compatible only). |
 | `--classify-key KEY` | The key for `--classify-base-url`. See [which key goes where](../providers.md#which-key-goes-where). |
 | `--plan-dry-run` | Print the plan and write `<book>_plan.json` without translating. No key needed. |

@@ -1,6 +1,6 @@
 # 快速开始
 
-本页带你从零开始做出三本双语书：一个 EPUB、一个 TXT 和一个 PDF。这里用的是 OpenAI 的 API 和默认模型 `gpt-5.6-luna`。其他端点见[用大模型翻译](llm-args.md)。
+本页带你从零开始做出三本双语书：一个 EPUB、一个 TXT 和一个 PDF。这里用的是 OpenAI 的 API 和默认模型 `gpt-6-luna`。其他端点见[用大模型翻译](llm-args.md)。
 
 ## 1. 安装
 

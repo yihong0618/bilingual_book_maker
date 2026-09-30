@@ -233,7 +233,7 @@ intentionally.
 
 Agent mode is the default because you judge better than a pre-filled plan.
 When the user asks for a classifier to decide the skips ("use Jev", "let
-gpt-5.6-luna decide what to skip"), that is their call: use `auto` with it,
+gpt-6-luna decide what to skip"), that is their call: use `auto` with it,
 say in the choices block that the plan is the classifier's, not yours, and
 still read its skips. This picks another mode; agent mode itself never
 takes a pre-filled plan. None of these is such a request: naming the

@@ -31,7 +31,7 @@ guess. Any model id reaches any endpoint; nothing has to be registered.
 | nothing: a local Codex sidecar on the user's plan | `--api_format codex`, no key, no base (`references/route-setup.md` step 4) |
 
 On the openai format `--model` may be left out; it defaults to
-`gpt-5.6-luna`. Every other format wants an id, and the anthropic format
+`gpt-6-luna`. Every other format wants an id, and the anthropic format
 errors without one.
 
 `codex` is the one route with no endpoint to probe. It is not a model id and
@@ -128,7 +128,7 @@ default_root = "https://api.anthropic.com" if shape == "anthropic" else OPENAI_S
 root = (entry.get("base_url") or default_root).rstrip("/")
 root = root[:-3] if root.endswith("/v1") else root
 key_var = entry.get("env_key") or "BBM_API_KEY"
-model = (entry.get("default_models") or [""])[0] or ("gpt-5.6-luna" if shape == "openai" else "")
+model = (entry.get("default_models") or [""])[0] or ("gpt-6-luna" if shape == "openai" else "")
 print(f"SHAPE={shape} ROOT={shlex.quote(root)} MODEL={shlex.quote(model)} KEY_VAR={key_var}")
 EOF
 )"
@@ -242,7 +242,7 @@ agent` makes no API call, you are the classifier. It matters only when the
 user names a classifier (`references/epub-plan-mode.md`, "A classifier the
 user names") and that classifier is the translating model.
 
-The machine-translation engines have one channel, and it translates
+The translation services have one channel, and it translates
 whatever it is handed. They cannot be asked a question.
 
 ## What the run's own probe does later

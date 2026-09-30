@@ -8,7 +8,7 @@ EPUB 把文字放在多种标记里：段落、标题、列表项、表格单元
 
 ## 准备
 
-不需要安装任何东西。计划模式需要一本 EPUB 和一个用来分类的模型。在任何大模型路线上，这个模型就是翻译用的模型。[机器翻译](../machine-args.md)路线上没有模型可问，所以运行会回退到 `--translate-tags` 选中的标签，除非你用 `--classify-model` 指定一个分类器（见[选择分类器](#选择分类器)）。
+不需要安装任何东西。计划模式需要一本 EPUB 和一个用来分类的模型。在任何大模型路线上，这个模型就是翻译用的模型。[翻译服务](../machine-args.md)路线上没有模型可问，所以运行会回退到 `--translate-tags` 选中的标签，除非你用 `--classify-model` 指定一个分类器（见[选择分类器](#选择分类器)）。
 
 参数：
 
@@ -18,7 +18,7 @@ EPUB 把文字放在多种标记里：段落、标题、列表项、表格单元
 | `--plan-classify model` | 与 `auto` 相同，但有无法确定的行时中止运行，而不是回退。 |
 | `--plan-classify all` | 翻译所有单元；不分类，不写计划文件。 |
 | `--plan-classify none` | 不用计划：翻译 `--translate-tags` 选中的标签，与计划模式出现之前一样。 |
-| `--plan-classify agent` | 写出带样本的计划，为编程代理（或你本人）打印说明，然后停止。重新运行同一条命令开始翻译。 |
+| `--plan-classify agent` | 写出带样本的计划，为编程智能体（或你本人）打印说明，然后停止。重新运行同一条命令开始翻译。 |
 | `--classify-model MODEL` | 用另一个模型，或一个 Jev 兼容的分类器（`jev`）来分类。在命令行上写明时，运行进入 `model` 模式，分类失败会中止运行。`--plan-classify-model` 是旧名字，仍然可用。 |
 | `--classify-base-url URL` | 该模型的服务地址，当它不是本次运行的端点时使用：一个 OpenAI 兼容地址，或一个 Jev 兼容的分类器的 URL。 |
 | `--classify-key KEY` | `--classify-base-url` 使用的 key。 |
@@ -36,19 +36,19 @@ EPUB 把文字放在多种标记里：段落、标题、列表项、表格单元
 分类器按以下顺序确定：`--classify-model`，然后是提供方条目的 `classify_model`，最后是翻译用的模型。
 
 - **怎么问。**分类器的端点经验证支持严格 JSON schema 时，一个请求携带一页签名，回复受 schema 约束。其他情况下是普通对话：每轮五个签名，每个回答 `skip`、`translate` 或 `unsure`。连续两次回复不合格式，就降到每轮三个，再降到每轮一个。连一个都不行时，分类停止，剩下的签名全部翻译。每降一级都会打印一行。
-- **单独的分类器**（通过参数或提供方条目指定）会为整本书做计划，无论翻译路线本身能做什么。运行会打印 `plan mode: on (classified by …)`。机器翻译路线就是这样用上计划的。用 gpt-5.6-luna 当分类器、Google 翻译负责翻译，在测试书上完整跑过：31 个签名全部有了决定，覆盖率 99.8%。
-- **agent 模式不问任何模型。**`--plan-classify agent` 把所有未决定的行交给你或你的编程代理。指定的分类器不会预先填写计划，因为代理面对预填的答案判断得更差；运行会警告它被忽略了。`--plan-classify all` 也会忽略它。
+- **单独的分类器**（通过参数或提供方条目指定）会为整本书做计划，无论翻译路线本身能做什么。运行会打印 `plan mode: on (classified by …)`。翻译服务路线就是这样用上计划的。用 gpt-5.6-luna 当分类器、Google 翻译负责翻译，在测试书上完整跑过：31 个签名全部有了决定，覆盖率 99.8%。
+- **agent 模式不问任何模型。**`--plan-classify agent` 把所有未决定的行交给你或你的编程智能体。指定的分类器不会预先填写计划，因为智能体面对预填的答案判断得更差；运行会警告它被忽略了。`--plan-classify all` 也会忽略它。
 - **在哪里问、用哪个 key**，见[提供方文件与额外模型](../providers.md#各模型在哪里被询问)。在单独地址上的分类器，会在运行结束时打印自己的用量行。
 - **Jev** 是 TypeSafe 的分类器，专为这个问题而生：翻译还是跳过，每个请求一页签名，一次廉价的往返就够。`--classify-model jev` 就会使用它；TypeSafe 前面的网关（Vercel 的，或 Cloudflare AI Gateway）也可以。哪个 key 发往哪里，以及 URL 规则，见[提供方文件与额外模型](../providers.md#jev-与-jev-兼容分类器)。
 - **Jev 的闸门。**拿不准的 `skip` 会改为 `translate`，所以不会因它丢失内容。闸门设在 Jev 所选答案的概率 0.95 处，这个值是以 gpt-5.6-luna 为参照，在 45 本 EPUB 的 662 个计划签名上测出来的。在这个值下，Jev 的跳过约有十分之九会回退为 `translate`；它仍然跳过的是校勘材料（版权行、行号、注释标记、索引页码）。在这个语料上，Jev 比全部翻译省不了多少。计划文件会在每个回退的行上注明（`… below the gate: translate`）。`--classify-min-confidence P` 可以为一次运行调整闸门（`BBM_JEV_MIN_CONFIDENCE` 不用参数也能做到）；调低会保留更多 Jev 的跳过，风险自负。见[用 Jev 做计划分类器](../evaluation/plan-classifier-jev.md)。
 
-=== "机器翻译路线加大模型分类器"
+=== "翻译服务路线加大模型分类器"
 
     ```bash
     bbook_maker \
       --book_name novel.epub \
       --api_format google \
-      --classify-model gpt-5.6-luna \
+      --classify-model gpt-6-luna \
       --language zh-hans
     ```
 
@@ -63,14 +63,14 @@ EPUB 把文字放在多种标记里：段落、标题、列表项、表格单元
       --use_context session
     ```
 
-    一行搞定：用 OpenAI 的 gpt-5.6-luna 翻译（`OPENAI_API_KEY`），用 Jev 为计划分类（`JEV_API_KEY`），两者都来自随附的 `bbm_providers.example.json` 里的 `openai-jev` 条目。
+    一行搞定：用 OpenAI 的 gpt-6-luna 翻译（`OPENAI_API_KEY`），用 Jev 为计划分类（`JEV_API_KEY`），两者都来自随附的 `bbm_providers.example.json` 里的 `openai-jev` 条目。
 
 === "TypeSafe 上的 Jev"
 
     ```bash
     bbook_maker \
       --book_name novel.epub \
-      --model gpt-5.6-luna \
+      --model gpt-6-luna \
       --classify-model jev \
       --use_context session
     ```
@@ -82,7 +82,7 @@ EPUB 把文字放在多种标记里：段落、标题、列表项、表格单元
     ```bash
     bbook_maker \
       --book_name novel.epub \
-      --model gpt-5.6-luna \
+      --model gpt-6-luna \
       --classify-model typesafe-ai/jev \
       --classify-base-url https://ai-gateway.vercel.sh/typesafe \
       --classify-key "$GATEWAY_KEY" \
@@ -96,7 +96,7 @@ EPUB 把文字放在多种标记里：段落、标题、列表项、表格单元
     ```bash
     bbook_maker \
       --book_name novel.epub \
-      --model gpt-5.6-luna \
+      --model gpt-6-luna \
       --classify-model jev \
       --classify-base-url https://gateway.ai.cloudflare.com/v1/$ACCOUNT_ID/$GATEWAY_ID/custom-typesafe \
       --classify-key "$JEV_API_KEY" \
@@ -107,7 +107,7 @@ EPUB 把文字放在多种标记里：段落、标题、列表项、表格单元
 
 ## 推荐命令
 
-按书的类型（小说、教材、论文、词典）、按端点（托管、本地、机器翻译）和按系统给出的命令，见 [EPUB 推荐设置](recommended-epub.md)。
+按书的类型（小说、教材、论文、词典）、按端点（托管、本地、翻译服务）和按系统给出的命令，见 [EPUB 推荐设置](recommended-epub.md)。
 
 ## 可能出现的问题
 

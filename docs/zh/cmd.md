@@ -42,7 +42,7 @@
 | 参数 | 用途 |
 |---|---|
 | `--plan-dry-run` | 构建并打印 EPUB 计划，写出所有 `action` 仍为 `null` 的 `<book>_plan.json`，然后退出。不需要凭据。 |
-| `--plan-classify {auto,none,all,model,agent}` | 不用计划、翻译整个分区、由模型筛选，或由编程代理筛选。默认 `auto`：在任何能作答的 epub 端点上由模型筛选——经验证支持严格 JSON schema 时通过结构化输出，其他情况（包括 codex）通过普通对话（精确回答 `skip`/`translate`，其他回答一律翻译）；只有在根本无法对话的地方才用标签模式。 |
+| `--plan-classify {auto,none,all,model,agent}` | 不用计划、翻译整个分区、由模型筛选，或由编程智能体筛选。默认 `auto`：在任何能作答的 epub 端点上由模型筛选——经验证支持严格 JSON schema 时通过结构化输出，其他情况（包括 codex）通过普通对话（精确回答 `skip`/`translate`，其他回答一律翻译）；只有在根本无法对话的地方才用标签模式。 |
 | `--classify-model MODEL` | 每个分类步骤使用的模型（旧名 `--plan-classify-model`），或一个 Jev 兼容的分类器（默认是 TypeSafe 的 Jev；网关需给出其 URL）；在 epub 上意味着 model 模式。其端点经验证支持 JSON schema 时通过 schema 提问，否则通过普通对话。默认：提供方条目的 `classify_model`，其次是本次运行的模型。 |
 | `--classify-base-url URL` | `--classify-model` 的端点，当它不是本次运行的端点时使用：一个 OpenAI 兼容端点，或一个 Jev 兼容的分类器的 URL（以 `/systemone` 结尾的路径原样使用）。 |
 | `--classify-key KEY` | `--classify-base-url` 使用的 key；默认规则与 `--img-key` 相同。`JEV_API_KEY`/`TYPESAFE_API_KEY` 只在 typesafe.ai 地址上被自动读取，Cloudflare AI Gateway 的 `CF_AIG_TOKEN` 只在 gateway.ai.cloudflare.com 上读取；提供方条目仍然可以把某个变量绑定到它自己的地址。 |
@@ -85,13 +85,13 @@
 
 | 参数 | 用途 |
 |---|---|
-| `--model MODEL` | 模型 id，按端点自己的写法（`gpt-5-mini`、`claude-sonnet-4-6`、`openai/gpt-5-mini`）。`openai` 格式下默认 `gpt-5.6-luna`；`anthropic` 格式必须指定。旧的别名值会被改写，并附一条说明。 |
+| `--model MODEL` | 模型 id，按端点自己的写法（`gpt-5-mini`、`claude-sonnet-4-6`、`openai/gpt-5-mini`）。`openai` 格式下默认 `gpt-6-luna`；`anthropic` 格式必须指定。旧的别名值会被改写，并附一条说明。 |
 | `--api_base URL` | 端点地址。默认是该格式的官方地址。粘贴进来的 `…/v1/chat/completions` 或末尾的斜杠会被去掉。 |
 | `--key KEY` | API key；用逗号分隔多个 key 可以轮换使用。更推荐用 `BBM_API_KEY` 或该格式自己的变量。 |
 | `--api_format FORMAT` | 端点所用的 API：`openai`（默认）、`anthropic`、`gemini`、`qwen`、`groq`、`xai`、`litellm`、`codex`、`google`、`caiyun`、`deepl`、`deeplfree`、`tencent`、`customapi`。根据 `--api_base` 的主机推断，否则根据含 `claude`/`anthropic` 的模型 id 推断——各厂商格式从不推断，所以要写明。 |
 | `--api_format gemini` \| `qwen` | Google 和阿里巴巴各自的协议，各有自己的翻译器：Gemini 原生的约束解码和对话历史，以及 Qwen-MT 的语言对请求。默认分别为 `gemini-flash-latest` 和 `qwen-mt-turbo`。 |
 | `--api_format groq` \| `xai` \| `litellm` | Groq、xAI 和 LiteLLM 代理（`http://localhost:4000`）上的 OpenAI 形态。每种都自带地址，所以格式加一个 key 就是完整的路线。必须写 `--model`：这些模型目录更新很快，所以不预设任何模型。 |
-| `--model codex` | 使用 ChatGPT 套餐的 Codex CLI 侧车，等同于 `--api_format codex`。它运行 `gpt-5.6-luna`；`--api_format codex --model <id>` 可以指定其他模型（侧车还提供 `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.5`、`gpt-5.2`）。 |
+| `--model codex` | 使用 ChatGPT 套餐的 Codex CLI 侧车，等同于 `--api_format codex`。它运行 `gpt-6-luna`；`--api_format codex --model <id>` 可以指定其他模型（侧车还提供 `gpt-5.6-luna`、`gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.5`、`gpt-5.2`）。 |
 | `--model orcarouter` | OrcaRouter 网关及其智能路由模型 `orcarouter/auto`。不需要 `--api_base`；如果你传了，以你的为准。key 来自 `BBM_ORCAROUTER_API_KEY`。它不是旧别名：不会改写任何东西。 |
 | `--model_list IDS` | 轮换使用的多个模型 id，逗号分隔。单个模型应该写在 `--model` 里；在两个参数里都写模型会报错。与 `--use_context session` 同用会被拒绝：轮换会让每个请求都成为全价的缓存未命中，还会在一段对话里混用多个模型。 |
 | `--source_lang LANG` | 源语言。明确指定时，它会作为依据写进每条大模型路线的提示词，在 `qwen`/`customapi` 上还会写进请求本身；默认 `auto`。 |
@@ -113,7 +113,7 @@ localhost 上的端点不需要 key。
 对照表见[从旧参数迁移](migration.md)。
 旧的各厂商 key 变量（`BBM_GROQ_API_KEY`、`BBM_GOOGLE_GEMINI_KEY`……）在原来使用它们的路线上仍然会被读取。
 
-不要把密钥直接写在共享的命令行上。对代理和 CI 来说，环境变量更安全。
+不要把密钥直接写在共享的命令行上。对智能体和 CI 来说，环境变量更安全。
 CLI 自己**不会**加载 `.env` 文件：请先导出变量，或者在运行前 source 一个被 git 忽略的本地文件，例如
 `set -a; source .env; set +a; bbook_maker ...`。
 

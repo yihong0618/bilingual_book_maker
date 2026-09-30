@@ -501,7 +501,7 @@ class Classifier:
         return base or "the endpoint's default host"
 
     def describe(self, backend=None):
-        """`"gpt-5.6-luna at https://... via schema (cli)"`."""
+        """`"gpt-6-luna at https://... via schema (cli)"`."""
         # Never probes: a dry run describes the classifier without spending.
         via = backend or "/".join(self.prefer) or "nothing"
         return f"{self.model} at {self.where()} via {via} ({self.source})"

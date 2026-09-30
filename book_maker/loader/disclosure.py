@@ -5,7 +5,7 @@ not be traceable back to the operator, but a reader must still be able to
 see what could have gone wrong with the translation. So the whole visible
 apparatus is a single small paragraph appended below the book's own intro —
 
-    Translated by gpt-5.6-luna, 2026.
+    Translated by gpt-6-luna, 2026.
 
 — placed on the title page, found through the EPUB 2 guide or the EPUB 3
 landmarks, and falling back to the first linear document for a book that
