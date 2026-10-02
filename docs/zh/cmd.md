@@ -74,7 +74,7 @@
 | `--batch` | 提交一个 ChatGPT Batch API 任务。在 EPUB 上会被拒绝（那里走不到队列路径：运行会按全价实时翻译，并提交一个空任务，而不是写出书），在不支持 Batch API 的路线上也会被拒绝。TXT、SRT 和 Markdown 加载器也没有实现它（运行会实时翻译），所以目前没有任何格式用到它。 |
 | `--batch-use` | 使用之前提交的批量任务。在 EPUB 上会被拒绝，与 `--batch` 相同。 |
 | `--no-thinking` | 让模型回答前不要先推理。在 OpenAI 形态的路线上，请求字段根据端点自己的拒绝来协商，并按端点和模型缓存；如果每种写法都被拒绝，运行会警告一次，然后不带该字段继续。在 `anthropic` 上是 `thinking: {"type": "disabled"}`。在 `codex` 上会被拒绝（子进程没有请求体）；在自行构建请求的路线上会被警告为不起作用。`--extra_body` 中设置的字段优先。 |
-| `--extra_body JSON` | 附加到每个请求体上的字段，适用于构建请求体的路线（`openai`、`groq`、`xai`、`litellm`、`--model orcarouter`、`anthropic`）；其他路线会忽略它并说明。它也会进入能力探测和 JSON 各级请求，所以端点是按本次运行实际发出的请求来评定的。它合并在具名参数之上，所以这里的字段优先于对应的参数。 |
+| `--extra_body JSON` | 附加到每个请求体上的字段，适用于构建请求体的路线（`openai`、`groq`、`xai`、`litellm`、`--model orcarouter`、`--model apiroute`、`anthropic`）；其他路线会忽略它并说明。它也会进入能力探测和 JSON 各级请求，所以端点是按本次运行实际发出的请求来评定的。它合并在具名参数之上，所以这里的字段优先于对应的参数。 |
 | `--extra_headers JSON` | 附加到每个请求上的 HTTP 头，适用路线同上。它设在客户端上，所以能力探测、模型检查和模型列表都会带上它们。值必须是字符串。 |
 | `--quiet` | 不显示 EPUB 进度条和段落回显，报告和错误照常显示。 |
 | `--proxy URL` | 为本次运行设置 HTTP/HTTPS 代理环境变量。 |
@@ -93,6 +93,7 @@
 | `--api_format groq` \| `xai` \| `litellm` | Groq、xAI 和 LiteLLM 代理（`http://localhost:4000`）上的 OpenAI 形态。每种都自带地址，所以格式加一个 key 就是完整的路线。必须写 `--model`：这些模型目录更新很快，所以不预设任何模型。 |
 | `--model codex` | 使用 ChatGPT 套餐的 Codex CLI 侧车，等同于 `--api_format codex`。它运行 `gpt-6-luna`；`--api_format codex --model <id>` 可以指定其他模型（侧车还提供 `gpt-5.6-luna`、`gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.5`、`gpt-5.2`）。 |
 | `--model orcarouter` | OrcaRouter 网关及其智能路由模型 `orcarouter/auto`。不需要 `--api_base`；如果你传了，以你的为准。key 来自 `BBM_ORCAROUTER_API_KEY`。它不是旧别名：不会改写任何东西。 |
+| `--model apiroute` | API Route 网关及其默认模型 `claude-3-7-sonnet-20250219`。不需要 `--api_base`；如果你传了，以你的为准。key 来自 `BBM_APIROUTE_API_KEY`。 |
 | `--model_list IDS` | 轮换使用的多个模型 id，逗号分隔。单个模型应该写在 `--model` 里；在两个参数里都写模型会报错。与 `--use_context session` 同用会被拒绝：轮换会让每个请求都成为全价的缓存未命中，还会在一段对话里混用多个模型。 |
 | `--source_lang LANG` | 源语言。明确指定时，它会作为依据写进每条大模型路线的提示词，在 `qwen`/`customapi` 上还会写进请求本身；默认 `auto`。 |
 | `--interval SECONDS` | 请求之间的间隔，默认 `0.01`。只有 `gemini` 路线用它控制节奏。 |

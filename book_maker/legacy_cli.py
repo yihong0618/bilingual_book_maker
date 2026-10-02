@@ -87,6 +87,7 @@ _KEY_FLAGS = (
     "--caiyun_key",
     "--deepl_key",
     "--orcarouter_key",
+    "--apiroute_key",
 )
 
 # `--model` alias -> the key flag that alias used to read.
@@ -102,6 +103,7 @@ _ALIAS_KEY_FLAG = {
     "deepl": "--deepl_key",
     # a live route, not a legacy alias; only its key flag is old
     "orcarouter": "--orcarouter_key",
+    "apiroute": "--apiroute_key",
 }
 
 
