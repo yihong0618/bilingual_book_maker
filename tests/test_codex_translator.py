@@ -398,6 +398,140 @@ class TestQuotaExhaustion:
         assert len(t.slept) <= 3
 
 
+class TestCapacityRetry:
+    """`Selected model is at capacity` is Codex throttling a network it does
+    not like, not a missing model and not a dead run. It carries no reset
+    time, so it is waited out a minute at a time, for as long as it lasts."""
+
+    MESSAGE = (
+        "the codex turn did not complete: Selected model is at capacity. "
+        "Please try a different model."
+    )
+
+    def _spent(self):
+        return RateLimits(
+            used_percent=100,
+            window_minutes=300,
+            resets_at=10_000,
+            plan_type="plus",
+            reached_type="rate_limit_reached",
+        )
+
+    def _healthy(self):
+        return RateLimits(
+            used_percent=10,
+            window_minutes=300,
+            resets_at=10_000,
+            plan_type="plus",
+            reached_type=None,
+        )
+
+    def _codex_failing(self, fail_times, message=None, answers=None):
+        slept = []
+        t = _codex(answers or ["译文"], sleeper=slept.append)
+        state = {"left": fail_times}
+        real = t.server.run_turn
+
+        def run_turn(thread_id, text, output_schema=None, timeout=None):
+            if state["left"] > 0:
+                state["left"] -= 1
+                raise CodexTurnFailed(message or self.MESSAGE)
+            return real(thread_id, text, output_schema, timeout)
+
+        t.server.run_turn = run_turn
+        t.slept = slept
+        return t
+
+    def test_it_waits_a_minute_and_retries_the_same_thread(self):
+        t = self._codex_failing(2)
+        assert t.translate("text", needprint=False) == "译文"
+        assert t.slept == [60, 60]
+        # the thread is fine — reopening it would re-pay ~17k of preamble
+        assert len(t.server.threads) == 1
+
+    def test_every_retry_is_announced_with_the_network_hint(self, capsys):
+        t = self._codex_failing(2)
+        t.translate("text", needprint=False)
+        out = " ".join(capsys.readouterr().out.split())
+        assert out.count("residential network or another account") == 2
+        assert "Selected model is at capacity" in out
+
+    def test_any_other_turn_failure_still_ends_the_run(self):
+        """Only the capacity refusal is non-fatal; nothing else changed."""
+        t = self._codex_failing(1, message="the codex turn did not complete: boom")
+        with pytest.raises(CodexTurnFailed):
+            t.translate("text", needprint=False)
+        assert t.slept == []
+
+    def test_a_capacity_retry_is_followed_by_a_quota_wait(self):
+        slept = []
+        t = _codex(["译文"], sleeper=slept.append, clock=lambda: 9_000)
+        script = ["capacity", "capacity", "quota"]
+        real = t.server.run_turn
+
+        def run_turn(thread_id, text, output_schema=None, timeout=None):
+            if script:
+                if script.pop(0) == "capacity":
+                    raise CodexTurnFailed(self.MESSAGE)
+                t.server.set_limits(self._spent())  # the push that explains it
+                raise CodexTurnFailed("rate limit reached")
+            return real(thread_id, text, output_schema, timeout)
+
+        t.server.run_turn = run_turn
+        original = t._wait_out_reset
+
+        def wait(limits):  # a real reset clears the window
+            done = original(limits)
+            t.server.set_limits(self._healthy())
+            return done
+
+        t._wait_out_reset = wait
+        assert t.translate("text", needprint=False) == "译文"
+        assert slept == [60, 60, 10_000 - 9_000 + 60]
+
+    def test_capacity_waiting_does_not_spend_the_quota_allowance(self):
+        """The two counters are separate: however long capacity was waited
+        out, a spent window still gets its full MAX_WAITS_PER_TURN."""
+        slept = []
+        t = _codex(["译文"], sleeper=slept.append, clock=lambda: 9_000)
+        capacity_left = {"n": 2}
+
+        def run_turn(thread_id, text, output_schema=None, timeout=None):
+            if capacity_left["n"] > 0:
+                capacity_left["n"] -= 1
+                raise CodexTurnFailed(self.MESSAGE)
+            t.server.set_limits(self._spent())  # and it never clears
+            raise CodexTurnFailed("rate limit reached")
+
+        t.server.run_turn = run_turn
+        with pytest.raises(CodexTurnFailed):
+            t.translate("text", needprint=False)
+        wait = 10_000 - 9_000 + 60
+        assert slept == [60, 60, wait, wait, wait]
+
+    def test_the_classifier_thread_is_not_reopened_on_a_capacity_retry(self):
+        """`ClassifierThread.ask` treats a CodexTurnFailed as a dropped
+        thread and opens a new one. Capacity is retried below that catch, so
+        it must never cost a thread."""
+        slept = []
+        t = _codex(["verdict"], sleeper=slept.append)
+        session = t.classify_session()
+        session.start("TRUNK")
+        state = {"left": 1}
+        real = t.server.run_turn
+
+        def run_turn(thread_id, text, output_schema=None, timeout=None):
+            if state["left"] > 0:
+                state["left"] -= 1
+                raise CodexTurnFailed(self.MESSAGE)
+            return real(thread_id, text, output_schema, timeout)
+
+        t.server.run_turn = run_turn
+        assert session.ask("units 1-3") == "verdict"
+        assert slept == [60]
+        assert len(t.server.threads) == 1  # reopened zero times
+
+
 class TestUserPrompt:
     """`--prompt` adds to the thread instructions; it does not replace them."""
 
@@ -729,11 +863,17 @@ class TestQuiet:
         t.translate("two")
         assert "of the window remaining" in capsys.readouterr().out
 
-    def test_preflight_says_nothing_about_a_healthy_window(self, capsys):
+    # PIN: lead 260925, skill field test,
+    # docs/260925-docs-SKILL_FIELD_TEST_FRICTIONS.md -- the one signed-in
+    # line matters during a paid run, so --quiet keeps it; only the
+    # per-unit quota line is silenced.
+    def test_preflight_says_the_healthy_window_once_even_when_quiet(self, capsys):
         t = _codex()
         t.quiet = True
         t.preflight()
-        assert capsys.readouterr().out == ""
+        out = capsys.readouterr().out
+        assert out.count("Codex: signed in") == 1
+        assert "of the window remaining" in out
 
     def test_preflight_still_warns_about_a_spent_one(self, capsys):
         limits = RateLimits(

@@ -39,6 +39,20 @@ from book_maker.translator.capabilities import (
 REQUEST = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
 
 
+@pytest.fixture(autouse=True)
+def _no_backoff_naps(monkeypatch):
+    """Sit out none of the retry waits.
+
+    The probe retries on a patient exponential wait, so a Mock that raises
+    made the test wait for real — `test_a_broken_listing_does_not_break_the_
+    verdict` spent 4s in `tenacity.nap`. Every stop here counts attempts,
+    not seconds, so the verdicts and the attempt counts are unchanged; what
+    the waits are is pinned in tests/test_translate_with_backoff.py. The
+    `time.sleep` the concurrency tests below use is their own, not this one.
+    """
+    monkeypatch.setattr("tenacity.nap.time.sleep", lambda _seconds: None)
+
+
 def _completion(content, finish_reason="stop"):
     message = SimpleNamespace(content=content)
     return SimpleNamespace(

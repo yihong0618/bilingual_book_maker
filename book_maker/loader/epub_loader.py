@@ -391,6 +391,10 @@ class EPUBBookLoader(BaseBookLoader):
         # not rule out, so "none" inside plan mode is refused, not defaulted.
         self.plan_classify = "none"
         self.plan_classify_model = None  # user-chosen classifier; failure blocks
+        # The run's `Classifier` (book_maker/classifier.py) when the CLI
+        # resolved one (`--classify-model`, the provider's classify_model);
+        # None asks the translating model, as plan mode always did.
+        self.classify_translator = None
         self._plan_css = None
         self._plan_overrides = None
         self._plan_partitions = {}  # file_name -> (soup, FilePlan), see _plan_partition
@@ -1146,6 +1150,23 @@ class EPUBBookLoader(BaseBookLoader):
         route = "substrict" if request_budget is not None else self._partition_route()
         print(plan_budget_notice(self._prompt_overhead(), route))
 
+    def _restore_session_handoff(self):
+        """Seed a resumed session from the handoff the interrupted run left.
+
+        Once per run, and only when every gate is open: `--resume` was asked
+        for, this run is a session (`--use_context session` — the codex route
+        is excluded because its thread does not survive the process, which
+        the CLI already says), and the translator finds a readable snapshot.
+        A `<book>_handoff.md` sitting beside a book is otherwise inert: a
+        fresh run, or a windowed one, must translate exactly as it would have
+        if the file were not there.
+        """
+        if not self.resume or self.context_mode != "session":
+            return
+        restore = getattr(self.translate_model, "restore_session_handoff", None)
+        if restore is not None:
+            restore()
+
     def _narrate_session_compact_budget(self):
         """Say once what window this session run compacts at.
 
@@ -1868,7 +1889,7 @@ class EPUBBookLoader(BaseBookLoader):
         try:
             decisions, _candidates = classify_plan(
                 ledger,
-                self.translate_model,
+                self.classify_translator or self.translate_model,
                 model=self.plan_classify_model,
             )
         except PlanUnresolvedError as e:
@@ -2695,6 +2716,23 @@ class EPUBBookLoader(BaseBookLoader):
             summary = getattr(self.translate_model, "usage_summary", lambda: None)()
             if summary:
                 print(summary)
+        except Exception:
+            pass
+        # A classifier on a translator (or a service) of its own is metered
+        # apart, and billed on a line of its own.
+        classifier = getattr(self, "classify_translator", None)
+        if classifier is None or not getattr(classifier, "separate", False):
+            return
+        try:
+            from book_maker.endpoints import CLASSIFIER_USAGE
+
+            summary = classifier.usage.summary() if classifier.usage else None
+            if summary:
+                print(
+                    CLASSIFIER_USAGE.format(
+                        model=classifier.model, base=classifier.where(), summary=summary
+                    )
+                )
         except Exception:
             pass
 
@@ -3791,6 +3829,10 @@ class EPUBBookLoader(BaseBookLoader):
         # checkpoint written into another language (or under another prompt,
         # or by another model) is not this run's to continue.
         self._check_resume_run_fingerprint()
+        # And after it, never before: the fingerprint is what says this
+        # checkpoint is this run's to continue, so a handoff left beside the
+        # book must not seed anything until that has been agreed.
+        self._restore_session_handoff()
         self.helper = EPUBBookLoaderHelper(
             self.translate_model,
             self.accumulated_num,

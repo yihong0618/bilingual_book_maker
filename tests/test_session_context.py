@@ -7,6 +7,7 @@ feature replaces.
 """
 
 import json
+import re
 
 import pytest
 
@@ -17,6 +18,7 @@ from book_maker.session_context import (
     compact_budget_for,
     estimate_tokens,
     handoff_prompt,
+    parse_snapshot,
 )
 
 
@@ -128,8 +130,8 @@ class TestHandoffPrompt:
 
     def test_summary_alone_when_the_style_is_fixed(self):
         prompt = handoff_prompt(with_style=False)
-        assert "1." in prompt and "summary" in prompt.lower()
-        assert "2." not in prompt
+        assert "## Summary" in prompt
+        assert "## Style" not in prompt
 
     def test_style_is_requested_by_default(self):
         """Only a user-supplied style turns it off."""
@@ -137,7 +139,7 @@ class TestHandoffPrompt:
 
     def test_style_is_asked_for_when_the_user_has_not_fixed_one(self):
         prompt = handoff_prompt(with_style=True)
-        assert "2." in prompt and "style" in prompt.lower()
+        assert "## Style" in prompt
 
     def test_a_user_style_is_not_asked_for(self):
         """It is already known, so asking wastes output tokens and invites
@@ -150,34 +152,48 @@ class TestHandoffPrompt:
         would follow anyway, which costs a line and says nothing."""
         assert "different from general translation" in handoff_prompt()
 
-    def test_sections_are_numbered_from_one_without_gaps(self):
-        prompt = handoff_prompt(with_style=True)
-        assert prompt.index("1.") < prompt.index("2.")
-        assert "3." not in prompt
+    def test_the_sections_are_shown_in_order_and_never_numbered(self):
+        """Owner ruling 260913: the prompt is a shown template, because
+        models mirror numbering back into the report and a number read back
+        is a line of a capped seed spent on furniture."""
+        prompt = handoff_prompt(with_style=True, with_glossary=True)
+        assert prompt.index("## Summary") < prompt.index("## Style")
+        assert prompt.index("## Style") < prompt.index("## Renderings")
+        assert not [
+            line for line in prompt.splitlines() if re.match(r"^\s{0,3}\d+[.)]\s", line)
+        ]
 
 
 class TestHandoffReport:
     def test_persists_and_reloads(self, tmp_path):
         path = tmp_path / "book_handoff.md"
-        HandoffReport(window=1, summary="so far").append_to(path)
+        HandoffReport(window=1, summary="so far").write_snapshot(path)
         assert "so far" in path.read_text(encoding="utf-8")
 
-    def test_appends_without_clobbering(self, tmp_path):
+    def test_the_snapshot_replaces_the_previous_one(self, tmp_path):
+        """The redesign (owner ruling 260913): one current handoff on disk,
+        not a log of every window. The file's size is the size of the
+        handoff, whatever the book's length."""
         path = tmp_path / "book_handoff.md"
-        HandoffReport(window=1, summary="first").append_to(path)
-        HandoffReport(window=2, summary="second").append_to(path)
+        HandoffReport(window=1, summary="first").write_snapshot(path)
+        HandoffReport(window=2, summary="second").write_snapshot(path)
         body = path.read_text(encoding="utf-8")
-        assert "first" in body and "second" in body
+        assert "second" in body and "first" not in body
 
     def test_seed_text_carries_the_summary(self):
         seed = HandoffReport(window=1, summary="so far").seed_text()
         assert "so far" in seed
 
-    def test_latest_seed_reads_back_the_last_window(self, tmp_path):
+    def test_the_snapshot_reads_back(self, tmp_path):
         path = tmp_path / "book_handoff.md"
-        HandoffReport(window=1, summary="first").append_to(path)
-        HandoffReport(window=2, summary="second").append_to(path)
-        assert "second" in HandoffReport.latest_seed(path)
+        HandoffReport(
+            window=4, summary="so far", style_note="terse", glossary_lines="A → B\n"
+        ).write_snapshot(path)
+        snapshot = parse_snapshot(path)
+        assert snapshot.window == 4
+        assert snapshot.summary == "so far"
+        assert snapshot.style_note == "terse"
+        assert snapshot.glossary.lookup("A").translation == "B"
 
-    def test_latest_seed_of_missing_file_is_empty(self, tmp_path):
-        assert HandoffReport.latest_seed(tmp_path / "nope.md") == ""
+    def test_a_missing_file_reads_back_as_nothing(self, tmp_path):
+        assert parse_snapshot(tmp_path / "nope.md") is None

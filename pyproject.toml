@@ -25,11 +25,48 @@ dependencies = [
     "pydantic>=2.0",
     "requests",
     "rich",
+    # SOCKS proxies: httpx honours all_proxy=socks5://… (common in front of
+    # the API for many of this tool's users) only with socksio, and raises
+    # on every request without it. The pinned requirements.txt used to
+    # carry it through a stale lock entry; declared, so a pip install has
+    # it too.
+    "socksio",
     "tenacity",
     "tiktoken",
     "tqdm",
     "PyMuPDF",
 ]
+
+[project.optional-dependencies]
+# The PDF reading edition (--to-epub): docling reads the PDF with layout
+# and table models, pdfium measures what a page shows so a scanned page is
+# told from a typed one before the models start. Deliberately not a base
+# dependency -- it brings PyTorch, and most of this tool's users translate
+# EPUBs and never open a PDF. A PDF without it is refused with the install
+# line, never read by something weaker.
+#
+# This declares WHAT is needed, never WHICH PyTorch build. A PyPI package
+# cannot express "the CPU build": PEP 735 groups are not emitted into
+# distributions and exclude index servers, direct references are banned
+# from public indexes, and uv's --torch-backend cannot be inherited by a
+# dependent. So the CPU/CUDA choice lives in requirements-pdf-cpu.txt,
+# requirements-pdf-gpu.txt and docs/en/installation-pdf.md instead.
+#
+# The OCR runtimes ride along (owner 250925): onnxruntime runs the models
+# already inside the rapidocr package (docling brings rapidocr), so a fresh
+# install downloads nothing on first use; ocrmac, Apple's Vision engine, is
+# macOS only, so `auto` reads with ocrmac on every Mac. Named here rather
+# than as docling[rapidocr,ocrmac]: docling-slim splits its onnxruntime
+# bound by Python version, which pdm's lock cannot resolve into one pin.
+pdf = [
+    "docling>=2.129,<3",
+    "pypdfium2>=5",
+    "onnxruntime>=1.17,<2",
+    "ocrmac>=1.0,<2; sys_platform == 'darwin'",
+]
+# The retired spelling, for one release. `--with-ocr` used to start a
+# second engine; OCR is now one option of the one parser.
+ocr = ["bbook_maker[pdf]"]
 
 [project.scripts]
 bbook_maker = "book_maker.cli:main"
@@ -37,30 +74,43 @@ bbook_maker = "book_maker.cli:main"
 [project.urls]
 Homepage = "https://github.com/yihong0618/bilingual_book_maker"
 
+# The two requirement files are regenerated together by
+# tools/export_requirements.sh: hash-pinned exports of the default and ocr
+# groups from one lock. The pdm-autoexport entry that used to sit here
+# wrote the base file alone, without hashes, on every lock update, which is
+# not what the committed file is; it is gone so a lock update cannot undo
+# the split.
 [tool.pdm]
 plugins = ["pdm-autoexport"]
-[[tool.pdm.autoexport]]
-filename = "requirements.txt"
-without-hashes = true
 [build-system]
 requires = ["pdm-backend>=2.0.0"]
 build-backend = "pdm.backend"
 [tool.pdm.version]
 source = "scm"
 
+# The lock only (the extra itself stays >=1.17,<2, so pip picks the newest
+# onnxruntime that has a wheel for the interpreter): 1.24 ships no Python
+# 3.10 wheel, and the pinned requirement files must install on every Python
+# this project supports.
+[tool.pdm.resolution.overrides]
+onnxruntime = ">=1.17,<1.24"
+
 [tool.pytest.ini_options]
 markers = [
     "corpus: the 45-book ./epub-sample acceptance gate (slow, offline; run with -m corpus)",
     "live_provider: calls a real translation provider (needs keys and network; run with -m live_provider)",
+    "pdf_route_ci: the PDF route end to end on docling and Pandoc, the pdf-route CI job's smoke (fetches docling's models on a first run; run with -m pdf_route_ci)",
 ]
-# Two different reasons to stay out of a bare `pytest`, both deselected here:
+# Three reasons to stay out of a bare `pytest`, all deselected here:
 # the corpus gate is an acceptance run, not a unit-test run — it partitions
-# every sample book and writes real EPUBs — and live_provider spends real
-# quota, which a fork's CI run has neither key nor secret for. The CLI
+# every sample book and writes real EPUBs — live_provider spends real
+# quota, which a fork's CI run has neither key nor secret for, and
+# pdf_route_ci runs docling for real and fetches its models, which is the
+# pdf-route CI job's work (it installs the route; the base job does not). The CLI
 # contract tests are integration tests too and do stay in the default run,
-# because they go through an offline stand-in. Both markers are asked for by
+# because they go through an offline stand-in. Each marker is asked for by
 # name; the default selection is hermetic.
-addopts = "-m 'not corpus and not live_provider'"
+addopts = "-m 'not corpus and not live_provider and not pdf_route_ci'"
 
 [tool.black]
 target-version = ["py312"]

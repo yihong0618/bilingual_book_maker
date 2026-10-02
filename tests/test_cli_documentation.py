@@ -68,7 +68,7 @@ def _documented_options(path: Path) -> set[str]:
 
 def test_cli_references_mention_every_long_option():
     expected = _long_cli_options()
-    for name in ("README.md", "README-CN.md", "docs/cmd.md"):
+    for name in ("README.md", "README-CN.md", "docs/en/cmd.md"):
         documented = _documented_options(ROOT / name)
         assert (
             documented == expected
@@ -108,6 +108,8 @@ _FOREIGN_FLAGS = frozenset(
         "--mount",
         "--tag",
         "--user",
+        "--gpus",  # docker run, in the README's ocr-tag paragraph
+        "--platform",  # docker run/pull: the amd64 image on an arm64 host
         "--flag",
         "--git-common-dir",
     }
@@ -119,18 +121,22 @@ _FOREIGN_FLAGS = frozenset(
 _REFERENCES = (
     "README.md",
     "README-CN.md",
-    "docs/cmd.md",
-    "docs/migration.md",
-    "docs/model_lang.md",
-    "docs/env_settings.md",
-    "docs/quickstart.md",
-    "docs/index.md",
-    "docs/prompt.md",
-    "docs/book_source.md",
-    "docs/installation.md",
+    "docs/en/cmd.md",
+    "docs/en/migration.md",
+    "docs/en/model_lang.md",
+    "docs/en/env_settings.md",
+    "docs/en/quickstart.md",
+    "docs/en/index.md",
+    "docs/en/prompt.md",
+    "docs/en/book_source.md",
+    "docs/en/installation.md",
     ".agents/skills/bbm-plan/SKILL.md",
     ".agents/skills/bbm-plan/references/providers.md",
     ".agents/skills/bbm-plan/references/prompt-files.md",
+    ".agents/skills/bbm-plan/references/route-setup.md",
+    ".agents/skills/bbm-plan/references/epub-plan-mode.md",
+    ".agents/skills/bbm-plan/references/pdf-route.md",
+    ".agents/skills/bbm-plan/references/plain-formats.md",
     ".agents/skills/bbm-plan/assets/env.example",
 )
 

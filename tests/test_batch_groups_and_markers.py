@@ -1044,3 +1044,16 @@ class TestLanguageSpec:
         )
 
         assert single_field_name("zh-hant") == "zh_hant_translation"
+
+
+# PIN: lead 260925, skill field test, docs/260925-docs-SKILL_FIELD_TEST_FRICTIONS.md
+# -- the skipped totals count characters while the `batches:` line beside
+# them counts units; the line says so.
+def test_the_plan_report_says_its_skipped_totals_are_characters():
+    from book_maker.loader.plan import TranslationPlan
+
+    fp = _partition("<p>Press <code>Ctrl+C</code> to stop it now.</p>")
+    plan = TranslationPlan([fp], exclude_tags=("code",), poetry_group_size=8)
+    lines = plan.report().splitlines()
+    assert f"skipped characters: excluded-tag={len('Ctrl+C')}" in lines
+    assert not any(line.startswith("skipped: ") for line in lines)

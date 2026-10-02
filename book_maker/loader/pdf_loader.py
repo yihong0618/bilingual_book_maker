@@ -3,6 +3,7 @@ from pathlib import Path
 
 from tqdm import tqdm
 
+from book_maker.session_context import handoff_path
 from book_maker.utils import prompt_config_to_kwargs
 
 from .base_loader import BaseBookLoader
@@ -179,6 +180,11 @@ class PDFBookLoader(BaseBookLoader):
         single_translate=False,
         context_flag=False,
         context_paragraph_limit=0,
+        context_mode="window",
+        context_compact_at=None,
+        no_context_compact=False,
+        glossary=None,
+        glossary_auto=None,
         temperature=1.0,
         source_lang="auto",
         parallel_workers=1,
@@ -194,6 +200,14 @@ class PDFBookLoader(BaseBookLoader):
             api_base=model_api_base,
             temperature=temperature,
             source_lang=source_lang,
+            context_flag=context_flag,
+            context_paragraph_limit=context_paragraph_limit,
+            context_mode=context_mode,
+            context_compact_at=context_compact_at,
+            no_context_compact=no_context_compact,
+            glossary=glossary,
+            glossary_auto=glossary_auto,
+            handoff_path=handoff_path(pdf_name),
             **prompt_config_to_kwargs(prompt_config),
         )
         self.is_test = is_test

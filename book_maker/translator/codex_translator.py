@@ -23,6 +23,7 @@ from pathlib import Path
 from threading import Lock
 
 from rich import print
+from rich.markup import escape
 
 from ..codex_client import (
     CodexAppServer,
@@ -32,11 +33,11 @@ from ..codex_client import (
 )
 from ..glossary import Glossary
 from ..session_context import (
-    HandoffReport,
+    WindowText,
     compact_budget_for,
     estimate_tokens,
     handoff_prompt,
-    strip_handoff_glossary,
+    seed_cap,
 )
 from .base_translator import Base
 
@@ -64,7 +65,7 @@ QUOTA_WARN_PERCENT = 90
 # own. (`compact_budget_for` is uniform today, so nothing differs yet — the
 # lookup exists so a model that prices its cache very differently can be
 # special-cased there rather than at every call site.)
-DEFAULT_MODEL = "gpt-5.6-luna"
+DEFAULT_MODEL = "gpt-6-luna"
 
 # A minute past the reset, because the server's clock and ours are not the
 # same and coming back a second early just burns another failed turn.
@@ -77,6 +78,27 @@ MAX_WAIT_SECONDS = 6 * 60 * 60
 # Depletion is expected to clear on the first wait. Allowing a couple more
 # covers a reset that lands late; beyond that something else is wrong.
 MAX_WAITS_PER_TURN = 3
+
+# How long to sit out a "selected model is at capacity" refusal before asking
+# again. An owner-chosen patience interval, not a measured optimum: capacity
+# comes back when Codex stops throttling the network, and nothing in the
+# protocol says when that is.
+CAPACITY_RETRY_SECONDS = 60
+
+# The prefix `codex_client._turn_text` puts in front of the server's own
+# message; stripped so the warning reads as the server's words, not ours.
+_TURN_FAILED_PREFIX = "the codex turn did not complete: "
+
+
+def _server_message(exc):
+    return str(exc).removeprefix(_TURN_FAILED_PREFIX)
+
+
+def _is_at_capacity(exc):
+    """Codex refusing the model for want of capacity, rather than a real
+    turn failure. Deliberately narrow: every other `CodexTurnFailed` keeps
+    its existing behaviour."""
+    return "at capacity" in str(exc).lower()
 
 
 class ClassifierThread:
@@ -228,6 +250,10 @@ class Codex(Base):
         self._question_threads = {}
         self._window = 1
         self._window_tokens = 0
+        # This window's texts, our only copy of a thread that lives in the
+        # sidecar. Read once per compaction, to ground what it reports.
+        self._window_sources = []
+        self._window_translations = []
         self._turn_lock = Lock()
         self._last_remaining = None
         self._sleep = kwargs.pop("sleeper", time.sleep)
@@ -266,9 +292,9 @@ class Codex(Base):
             return None
         plan = f" ({limits.plan_type} plan)" if limits.plan_type else ""
         self._last_remaining = limits.remaining_percent
-        if self.quiet and limits.used_percent < QUOTA_WARN_PERCENT:
-            # --quiet keeps warnings and errors; a healthy window is neither.
-            return limits
+        # One line, printed under --quiet too: during a paid run the share
+        # of the window left matters (lead 260925, skill field test). The
+        # per-unit line in `_report_quota` stays quiet.
         if limits.used_percent >= QUOTA_WARN_PERCENT:
             print(
                 f"[bold yellow]Warning:[/bold yellow] only "
@@ -342,29 +368,53 @@ class Codex(Base):
         return True
 
     def _run_turn(self, thread_id, payload):
-        """One turn, sitting out a spent quota window rather than failing."""
-        for attempt in range(MAX_WAITS_PER_TURN + 1):
+        """One turn, sitting out the two non-fatal refusals rather than failing.
+
+        A spent quota window is bounded by `MAX_WAITS_PER_TURN`: the snapshot
+        says when it resets, so a third wait that still does not clear it
+        means the cause is something else. "Selected model is at capacity" is
+        not bounded — it is Codex throttling, carrying no reset time and no
+        attempt that could be the last useful one — so it is retried for as
+        long as it keeps coming, which is what the retry philosophy asks of a
+        non-fatal error. The two counters stay separate so capacity waiting
+        never eats the quota path's allowance.
+        """
+        quota_waits = 0
+        while True:
             limits = self.server.latest_rate_limits()
             # Proactive: a pushed update may already say we are out.
-            if limits is not None and limits.depleted and attempt < MAX_WAITS_PER_TURN:
-                if self._wait_out_reset(limits):
-                    continue
+            if (
+                limits is not None
+                and limits.depleted
+                and quota_waits < MAX_WAITS_PER_TURN
+                and self._wait_out_reset(limits)
+            ):
+                quota_waits += 1
+                continue
             try:
                 return self.server.run_turn(thread_id, payload)
-            except CodexTurnFailed:
+            except CodexTurnFailed as exc:
+                if _is_at_capacity(exc):
+                    print(
+                        f"[yellow]codex: {escape(_server_message(exc))} — usually "
+                        f"Codex rate-limiting a suspicious network, not a missing "
+                        f"model; retrying in {CAPACITY_RETRY_SECONDS} s. If you see "
+                        f"this often, try switching to a residential network or "
+                        f"another account.[/yellow]"
+                    )
+                    self._sleep(CAPACITY_RETRY_SECONDS)
+                    continue
                 # Only treat this as a quota stop if the quota says so —
                 # a failed turn has many other causes.
                 limits = self.server.latest_rate_limits()
                 if (
-                    attempt >= MAX_WAITS_PER_TURN
+                    quota_waits >= MAX_WAITS_PER_TURN
                     or limits is None
                     or not limits.depleted
                     or not self._wait_out_reset(limits)
                 ):
                     raise
-        raise CodexTurnFailed(
-            "the codex quota was still spent after waiting for its reset"
-        )
+                quota_waits += 1
 
     def close(self):
         if self._started:
@@ -414,9 +464,11 @@ class Codex(Base):
         """Whether this run learns renderings from its own handoff reports.
 
         The thread is always the history here, so there is always a compact
-        turn to learn from: this route is on unless `--glossary-auto off`.
+        turn to learn from — but since 260913 that is not reason enough: the
+        section costs output on every compaction and needs a model that
+        answers it with names, so this route waits to be asked too.
         """
-        return self.glossary_auto is not False
+        return self.glossary_auto is True
 
     def _budget(self):
         """How many estimated tokens a thread may carry before it rolls over."""
@@ -431,45 +483,50 @@ class Codex(Base):
         one turn where re-reading the whole window earns its cost, because it
         is being turned into the thing that replaces it.
         """
+        prompt = handoff_prompt(
+            with_glossary=self.glossary_auto_on,
+            with_style=not self.style_note,
+        )
         try:
-            report_text = self._run_turn(
-                self._thread_id,
-                handoff_prompt(
-                    with_glossary=self.glossary_auto_on,
-                    with_style=not self.style_note,
-                ),
-            )
+            report_text = self._run_turn(self._thread_id, prompt)
         except CodexTurnFailed as e:
             print(
                 f"[yellow]ℹ handoff report failed ({e}); starting the next "
                 f"codex thread without a summary[/yellow]"
             )
             report_text = ""
-
-        glossary_lines = self._learn_from_handoff(report_text)
-
-        report = HandoffReport(
-            window=self._window,
-            style_note=self.style_note,
-            # Same as the API path: the renderings block is parsed into
-            # `glossary_lines`, so keeping it in the prose too would write
-            # every term twice.
-            summary=(
-                strip_handoff_glossary(report_text)
-                if self.glossary_auto_on
-                else report_text.strip()
-            ),
-            glossary_lines=glossary_lines,
-        )
-        if report_text:
+        window = WindowText.of(self._window_sources, self._window_translations)
+        # Same as the API path: split, trimmed by shape, never judged — a
+        # reply is only refused for being empty (owner ruling 260913), and on
+        # this route an empty reply is already the rollover shape below.
+        report = self._handoff_report(self._window, report_text)
+        # Learning is not gated on the summary, the way the API routes do not
+        # gate it either: a reply that is nothing but a renderings block still
+        # observed those renderings, and dropping them because the prose was
+        # missing loses the one part of it that parsed. Writing the snapshot
+        # IS gated below — a report with no summary would overwrite a good
+        # one on disk with an empty seed.
+        report.glossary_lines = self._learn_from_handoff(report_text, window)
+        if report.has_summary():
             self._show_handoff(report)
-        if self.handoff_path and report_text:
-            report.append_to(self.handoff_path)
+            if self.handoff_path:
+                try:
+                    report.write_snapshot(self.handoff_path)
+                except OSError as e:
+                    # The units in this thread are already translated and
+                    # billed; a file that could not be written is not worth
+                    # losing them over.
+                    print(
+                        f"[yellow]ℹ could not write {self.handoff_path} ({e}); "
+                        f"the run continues without a saved handoff[/yellow]"
+                    )
 
         self._window += 1
         self._window_tokens = 0
+        self._window_sources = []
+        self._window_translations = []
         self._thread_id = None
-        self._ensure_thread(seed=report.seed_text() if report_text else "")
+        self._ensure_thread(seed=report.seed_text(seed_cap(self._budget())))
 
     def _start_empty_thread(self):
         """Roll over with no handoff report, because the user asked for none.
@@ -480,6 +537,8 @@ class Codex(Base):
         """
         self._window += 1
         self._window_tokens = 0
+        self._window_sources = []
+        self._window_translations = []
         self._thread_id = None
         self._ensure_thread(seed="")
         if self.quiet:
@@ -526,6 +585,12 @@ class Codex(Base):
             self._report_quota()
 
             self._window_tokens += estimate_tokens(text) + estimate_tokens(translated)
+            # The thread itself lives in the sidecar, so this is the only
+            # copy of the window's text on our side — and grounding a
+            # harvested rendering needs one. Cleared on every rollover, so
+            # it holds at most a window's worth.
+            self._window_sources.append(text)
+            self._window_translations.append(translated)
             if self._window_tokens >= self._budget():
                 if self.no_context_compact:
                     self._start_empty_thread()

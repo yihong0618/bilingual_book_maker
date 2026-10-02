@@ -460,9 +460,7 @@ class TestApiRoute:
             "--key": "K",
             "--model": "apiroute",
         }
-        assert "--apiroute_key" in notices(
-            "--model", "apiroute", "--apiroute_key", "K"
-        )
+        assert "--apiroute_key" in notices("--model", "apiroute", "--apiroute_key", "K")
 
     def test_the_model_is_passed_through_untranslated(self):
         assert rewrite("--model", "apiroute/claude-3-7-sonnet-20250219") == [

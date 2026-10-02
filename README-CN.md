@@ -6,6 +6,8 @@
 
 bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制作多语言版本的 epub/txt/md/srt/pdf 文件和图书。请仅将其用于您有权翻译的内容——您持有必要权利的作品、许可或授权允许您翻译的作品、公有领域图书，或适用法律另行允许的使用方式。请在使用之前阅读项目的 **[免责声明](./disclaimer.md)**。
 
+各类文件的使用指南、全部参数，以及默认值背后的测量，见 [wiki](https://github.com/yihong0618/bilingual_book_maker/wiki/首页)。用 Codex 或 Claude Code 等编程智能体的话，仓库自带的技能会替你问清情况、选好参数并运行：[用智能体翻译](https://github.com/yihong0618/bilingual_book_maker/wiki/用智能体翻译)。
+
 [![Stars](https://img.shields.io/github/stars/yihong0618/bilingual_book_maker)](https://github.com/yihong0618/bilingual_book_maker/stargazers)
 [![CI](https://github.com/yihong0618/bilingual_book_maker/actions/workflows/make_test_ebook.yaml/badge.svg)](https://github.com/yihong0618/bilingual_book_maker/actions/workflows/make_test_ebook.yaml)
 [![PyPI](https://img.shields.io/pypi/v/bbook-maker.svg)](https://pypi.org/project/bbook-maker/)
@@ -21,7 +23,7 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 ## 支持的接口
 
 支持 OpenAI 和 Anthropic 格式的 API 接口。
-通常需要三个字段，使用官方接口时两个，模型如 `gpt-5.6-luna`（默认）
+通常需要三个字段，使用官方接口时两个，模型如 `gpt-6-luna`（默认）
 或 `claude-sonnet-4-6`。
 在 `--api_format` 填 `openai` 或 `anthropic` 即可指定 API 请求格式。
 该参数也可以选择常规翻译引擎（`google`、`caiyun`、`deepl`、`deeplfree`、
@@ -29,11 +31,11 @@ bilingual_book_maker 是一个 AI 翻译工具，使用 ChatGPT 帮助用户制�
 
 `--provider` 是另一种传凭据的方式，通过 JSON 配置文件 `bbm_providers.json`。
 
-epub 标签分类在支持 JSON Schema 的接口上自动开启，在其他任何能对话的接口（含 codex 路由和普通转售代理）上也会开启，改为让模型直接回答 `skip`/`translate`；只有完全不能对话的路由（机器翻译引擎）才只翻译 `p` 标签，
-因此诗歌等内容可能不会被翻译。详见计划模式。
+epub 标签分类在支持 JSON Schema 的接口上自动开启，在其他任何能对话的接口（含 codex 路由和普通转售代理）上也会开启，改为让模型直接回答 `skip`/`translate`；只有完全不能对话的路由（翻译服务）才只翻译 `p` 标签，
+因此诗歌等内容可能不会被翻译。详见[计划模式](#计划模式)。
 
 旧参数（`--model gpt4o`、`--model gemini`、`--openai_key` 等）仍然可用：详见
-[模型与语言](./docs/model_lang.md)。
+[模型与语言](https://github.com/yihong0618/bilingual_book_maker/wiki/模型与语言说明)。
 
 ## 准备
 
@@ -62,13 +64,13 @@ python3 make_book.py --book_name test_books/animal_farm.epub --provider openai -
 
 ```shell
 python3 make_book.py --book_name test_books/animal_farm.epub \
-  --key sk-... --model gpt-5.6-luna --api_base https://api.openai.com/v1 --test --use_context session
+  --key sk-... --model gpt-6-luna --api_base https://api.openai.com/v1 --test --use_context session
 ```
 
 使用[Codex](https://developers.openai.com/codex/cli)订阅：
 
 ```shell
-python3 make_book.py --book_name test_books/animal_farm.epub --model gpt-5.6-luna --api_format codex --test
+python3 make_book.py --book_name test_books/animal_farm.epub --model gpt-6-luna --api_format codex --test
 ```
 
 或者交给 coding agent
@@ -89,12 +91,12 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   那家的地址，所以格式加一个 `--key` 就是一条完整命令。
 - **其他 OpenAI 兼容 API**: `--api_base`（以 `/v1` 结尾）、
   `--key`即 API key，以及模型标识符 `--model`。省略 `--api_base`即使用openai官方API，
-  省略`--model`即使用 gpt-5.6-luna。
+  省略`--model`即使用 gpt-6-luna。
 - 或使用`--provider`进行翻译: `bbm_providers.example.json` 里预设了以下厂家（Gemini、Qwen、xAI、Groq、OrcaRouter、API Route、Ollama、LiteLLM、
   SiliconFlow、OpenRouter）：复制为 `bbm_providers.json`，并修改其中的key，
   例如`--provider gemini` 就是使用其中 Gemini 的api。
-- `--use_context session` 使用会话模式翻译；历史默认在 8k 时压缩（`--context-compact-at` 可改）。它维护一份缓存的历史以保持前后一致，并自动从交接报告中积累术语表（`--glossary-auto`），使人名、术语全书统一——是 OpenAI 兼容接口的推荐用法，下方示例均已带上。
-- 旧的预设名和 key 参数仍然可用，见 [从旧参数迁移](./docs/migration.md)。
+- `--use_context session` 使用会话模式翻译；历史默认在 8k 时压缩（`--context-compact-at` 可改）。它维护一份缓存的历史以保持前后一致，使人名、术语全书统一，也可以从交接报告中积累术语表（`--glossary-auto on`，默认关闭）——是 OpenAI 兼容接口的推荐用法，下方示例均已带上。
+- 旧的预设名和 key 参数仍然可用，见 [从旧参数迁移](https://github.com/yihong0618/bilingual_book_maker/wiki/从旧参数迁移)。
 
 ## 支持的翻译服务
 * DeepL
@@ -217,7 +219,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 * [Codex](https://developers.openai.com/codex/cli)
 
   使用 ChatGPT/Codex 订阅额度。需要安装
-  [Codex CLI](https://developers.openai.com/codex/cli) 默认使用`gpt-5.6-luna`，可使用 `--api_format codex --model <id>`指定模型。整本书只开一个 session 并复用，到达 `--context-compact-at` 时压缩；
+  [Codex CLI](https://developers.openai.com/codex/cli) 默认使用`gpt-6-luna`，可使用 `--api_format codex --model <id>`指定模型。整本书只开一个 session 并复用，到达 `--context-compact-at` 时压缩；
   运行在沙箱中，shell、MCP 服务器、浏览全部关闭。但hooks可能仍会触发。
 
   ```shell
@@ -265,22 +267,22 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 ## 使用说明
 
-- 翻译完会生成一本 `{book_name}_bilingual.epub` 的双语书
+- 翻译完会生成一本 `{book_name}_bilingual.epub` 的双语书；TXT、MD、SRT 输入分别生成 `{book_name}_bilingual.txt`、`{book_name}_bilingual.md`、`{book_name}_bilingual.srt`
 - 如果出现了错误或使用 `CTRL+C` 中断命令，不想接下来继续翻译了，会生成一本 `{book_name}_bilingual_temp.epub` 的书，直接改成你想要的名字就可以了
 
 ## 参数说明
 
 - `--model`:
 
-  接口所用的模型 ID，按接口自己的拼写。openai 格式下默认 `gpt-5.6-luna`。第二列是该 ID 需要的 `--api_format`：
+  接口所用的模型 ID，按接口自己的拼写。openai 格式下默认 `gpt-6-luna`。第二列是该 ID 需要的 `--api_format`：
 
   | 模型 | `--api_format` | 说明 |
   |------|---------------|------|
-  | `gpt-5.6-luna` | `openai` | 默认值，OpenAI 官方地址 |
+  | `gpt-6-luna` | `openai` | 默认值，OpenAI 官方地址 |
   | `claude-sonnet-4-6` | `anthropic` | Anthropic 官方地址 |
   | `gpt-4o-mini` | `openai` | OpenAI |
 
-  旧的预设值仍然可以写，会被改写成真实模型 ID 并打印说明，对照表见[从旧参数迁移](./docs/migration.md)。其他任何接口：`--api_base <url> --key <key> --model <id>`，或一条 `--provider` 配置（见「自定义 API Provider」章节）。
+  旧的预设值仍然可以写，会被改写成真实模型 ID 并打印说明，对照表见[从旧参数迁移](https://github.com/yihong0618/bilingual_book_maker/wiki/从旧参数迁移)。其他任何接口：`--api_base <url> --key <key> --model <id>`，或一条 `--provider` 配置（见「自定义 API Provider」章节）。
 
 - `--key`:
 
@@ -299,7 +301,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   | `groq` | 需要：`--key`，或 `$BBM_API_KEY`、`$BBM_GROQ_API_KEY`、`$GROQ_API_KEY` | GroqCloud；必须写 `--model` |
   | `xai` | 需要：`--key`，或 `$BBM_API_KEY`、`$BBM_XAI_API_KEY`、`$XAI_API_KEY` | xAI；必须写 `--model` |
   | `litellm` | 本机代理不需要；否则 `--key` 或 `$LITELLM_MASTER_KEY` | LiteLLM 代理，不写 `--api_base` 就是 `http://localhost:4000`；必须写 `--model` |
-  | `codex` | 不需要：`codex login`（Codex CLI） | 本地 `codex app-server` 侧车，消耗 ChatGPT/Codex 套餐额度，默认 `gpt-5.6-luna` |
+  | `codex` | 不需要：`codex login`（Codex CLI） | 本地 `codex app-server` 侧车，消耗 ChatGPT/Codex 套餐额度，默认 `gpt-6-luna` |
   | `orcarouter` | 需要：`--key` 或 `$BBM_ORCAROUTER_API_KEY` | 使用OrcaRouter |
   | `apiroute` | 需要：`--key` 或 `$BBM_APIROUTE_API_KEY` | 使用API Route（默认 `claude-3-7-sonnet-20250219`） |
   | `google` | 不需要 | 免费谷歌翻译 |
@@ -321,7 +323,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--language`: 指定目标语言
 
-  - 可以写语言标签（`--language zh-hant`）、语言名（`--language "Traditional Chinese"`），或用 `--language "zh-hant:Traditional Chinese"` 同时指定两者——冒号前的标签用于 JSON 结构化输出字段名，冒号后的名字是发给模型的说法。预设值 `zh-hans`。另见[可用标签](./docs/languages.md)。
+  - 可以写语言标签（`--language zh-hant`）、语言名（`--language "Traditional Chinese"`），或用 `--language "zh-hant:Traditional Chinese"` 同时指定两者——冒号前的标签用于 JSON 结构化输出字段名，冒号后的名字是发给模型的说法。预设值 `zh-hans`。另见[可用标签](https://github.com/yihong0618/bilingual_book_maker/wiki/语言标签)。
 
 - `--source_lang`: 源语言。写了就会附加提示词（"Translate from English"），在 `--api_format qwen`（请求里就是一对语言）和 `--api_format customapi` 还会写进请求本身；默认自动检测。
 
@@ -424,7 +426,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
   - `--context-compact-at`:
 
-    仅 session 模式。历史在被压缩成交接报告前可以达到的估算 token 预算。默认 `8192`，最小值 `500`。
+    仅 session 模式。历史在被压缩成交接报告前可以达到的估算 token 预算。默认 `8192`，最小值 `1500`。
 
   - `--no-context-compact`:
 
@@ -433,7 +435,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 - `--glossary` / `--terminology`:
 
   一个 `term → translation` 术语文件（每行一条，`#` 之后是注释，txt格式）。
-  仅 openai 系与 codex 路由、且书籍为 EPUB 或 Markdown 时生效。
+  仅 openai 系与 codex 路由、且书籍为 EPUB、Markdown 或 PDF 时生效。
   
   钉住一个术语就等于让译文照此表述，所以只钉你能负责的译法。
 
@@ -457,7 +459,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--no_disclosure`:
 
-  epub 输出会在书籍简介下方加 "Translated by gpt-5.6-luna, 2026."；附带该参数则不加。同时关闭翻译元数据（`--translation-metadata`，包含模型、日期和词汇表）。
+  epub 输出会在书籍简介下方加 "Translated by gpt-6-luna, 2026."；附带该参数则不加。同时关闭翻译元数据（`--translation-metadata`，包含模型、日期和词汇表）。
 
 - `--translation_style`:
 
@@ -473,6 +475,10 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
   为 PDF 输入选择额外生成的双语 PDF 版式。默认 `none` 不额外生成 PDF；
   `all` 会同时尝试上下对照和左右对照。双语 TXT 和 EPUB 输出不受该参数影响。
+
+- `--to-epub`、`--pdf-ocr`、`--ocr-lang`、`--ocr-engine`、`--ocr-replace-layer`、`--pages`、`--device`、`--pdf-image-dpi`（仅限 PDF）：
+
+  把 PDF 变成带目录的双语 EPUB，见 [PDF 转双语 EPUB](#pdf-转-双语-epub)。
 
 - `--sentence_mode`:
 
@@ -506,6 +512,14 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
   ```shell
   python3 "make_book.py" --book_name "test_books/animal_farm.epub" --retranslate 'test_books/animal_farm_bilingual.epub' 'index_split_002.html' 'in spite of the present book shortage which' ''
+  ```
+
+- `--no-thinking`:
+
+  让推理模型回答前不要先思考：翻译一段散文，思考带不来质量，只多花 token 和时间。
+
+  ```shell
+  python3 make_book.py --book_name book.epub --no-thinking
   ```
 
 - `--extra_body`:
@@ -628,6 +642,55 @@ python3 make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'http
 python make_book.py --book_name 'animal_farm.epub' --key XXXXX --api_base 'https://example-endpoint.openai.azure.com/openai/v1' --model 'deployment-name' --use_context session
 ```
 
+## 功能
+
+### 计划模式
+
+EPUB 默认按计划翻译：整本书切分成单元，由模型按标签签名决定翻译哪些，诗歌、列表、表格单元格都不会漏掉，相邻单元合成一次请求。`--plan-classify` 决定由谁判断：`auto`（默认）、`agent`（你自己或编程智能体，通过计划文件）、`all` 或 `none`。
+
+```shell
+# 预览哪些会翻译、哪些跳过（不需要 key）
+python3 make_book.py --book_name my_book.epub --plan-dry-run
+# 自己或让编程智能体决定计划，然后重跑同一条命令开始翻译
+python3 make_book.py --book_name my_book.epub --key ${key} --plan-classify agent
+```
+
+`--plan-dry-run` 同时遵守 `--only_filelist` / `--exclude_filelist`。`--classify-model` 让另一个模型来分类，填 `jev` 使用 Jev 分类器；`--classify-base-url`、`--classify-key`、`--classify-min-confidence` 与它配合。更多：[计划模式](https://github.com/yihong0618/bilingual_book_maker/wiki/计划模式)、[EPUB 推荐设置](https://github.com/yihong0618/bilingual_book_maker/wiki/EPUB-推荐设置)。
+
+### 会话模式
+
+`--use_context session` 整本书保持一段对话，人名和文风前后一致。历史按缓存价重读，达到 `--context-compact-at`（默认 8192 token）时压缩成一份简短的交接报告；`--no-context-compact` 则让下一个窗口从空白开始。在支持提示缓存的接口上最合适。更多：[会话模式](https://github.com/yihong0618/bilingual_book_maker/wiki/会话模式)。
+
+### PDF 转 **双语** EPUB
+
+`--to-epub` 把 PDF 变成可重排、带目录的双语 EPUB：每段后面紧跟译文，图和行间公式保留为图片。需要从代码库安装 PDF 依赖，以及 [Pandoc](https://pandoc.org/installing.html) 3.1.12 或更新版本，见[安装 PDF 依赖](https://github.com/yihong0618/bilingual_book_maker/wiki/安装-PDF-扩展)。
+
+```shell
+pip install ".[pdf]"
+# 先翻两页，核对 paper_pages-1-2_book/source.md 里的标题
+python3 make_book.py --book_name paper.pdf --to-epub --pages 1-2 --key ${key} --use_context session
+# 再翻整个文件
+python3 make_book.py --book_name paper.pdf --to-epub --key ${key} --use_context session
+```
+
+#### 扫描件（OCR）
+
+`--pdf-ocr` 读取没有文字层的页面。`--ocr-lang` 指定要识别的语言（`iso:zh`、`iso:ja` 等），`--ocr-engine` 选择引擎（`auto`、`rapidocr`、`ocrmac`、`easyocr`、`tesseract`），`--ocr-replace-layer` 在自带文字层有误时重读每一页。更多：[选哪个 OCR 引擎](https://github.com/yihong0618/bilingual_book_maker/wiki/选择-OCR-引擎)。
+
+```shell
+python3 make_book.py --book_name scan.pdf --to-epub --pdf-ocr --ocr-lang iso:zh --key ${key}
+```
+
+#### 页码、插图和公式
+
+`--pages 12-30`（或 `1,3,5-7`）只翻译这些页，输出 `paper_pages-12-30_bilingual.epub`。插图按 200 DPI 绘制，`--pdf-image-dpi 300` 让细小的标注更清楚。行间公式保留为图片，`--no-formula-images` 关掉这一点。
+
+#### 版面与硬件
+
+`--img-model MODEL` 把每一页交给视觉模型，纠正版面识别出错的地方，比如标题、图题和代码；`--img-base-url`、`--img-key` 指向另一个接口。`--device` 选择提取模型在哪里运行（`auto`、`cpu`、`cuda`、`mps`、`xpu`）。
+
+更多：[PDF 转双语 EPUB](https://github.com/yihong0618/bilingual_book_maker/wiki/PDF-转双语-EPUB)、[PDF 推荐设置](https://github.com/yihong0618/bilingual_book_maker/wiki/PDF-推荐设置)。
+
 ## Docker
 
 如果不想配置本地环境，可以直接使用 [Docker](https://www.docker.com/)。每次合并到 `main`（对应 `latest` 标签）以及每次发布版本标签时，都会自动构建镜像并发布到 GitHub Container Registry：
@@ -664,7 +727,22 @@ docker run --rm -v ${folder_path}:/book ghcr.io/yihong0618/bilingual_book_maker:
 docker run --rm -v /home/user/my_books:/book ghcr.io/yihong0618/bilingual_book_maker:latest --book_name /book/animal_farm.epub --api_format google --test --test_num 1 --language zh-hant
 ```
 
-容器以非 root 用户（uid 1000）运行。在 Linux 上，如果挂载的文件夹对该 uid 不可写，加上 `--user $(id -u)`（只写 uid 即可——镜像内部目录对组保持可写，正是为了这种情况）。API key 也可以用环境变量传入（`-e OPENAI_API_KEY=sk-XXX`）来代替 `--key`。
+容器以 root 运行，所以往挂载的文件夹里写东西总是可以的；在 Linux 上写出的文件归 root 所有（事后 `chown` 一下，或者加 `--user $(id -u)`）。API key 也可以用环境变量传入（`-e OPENAI_API_KEY=sk-XXX`）来代替 `--key`。
+
+`pdf` 标签加上了 `--to-epub` 需要的 Pandoc 和 PDF 相关的包，有好几个 GB：
+
+```shell
+docker run --rm -v "${folder_path}":/book -v bbm-models:/root/.cache ghcr.io/yihong0618/bilingual_book_maker:pdf --book_name /book/paper.pdf --to-epub --key "${openai_key}" --use_context session
+```
+
+要用 GPU，按你的机器看：
+
+- 带 NVIDIA 显卡的 Linux：用 `pdf-cuda` 标签；装好 NVIDIA Container Toolkit，加 `--gpus all`。
+- 带 NVIDIA 显卡的 Windows：一样用 `pdf-cuda` 标签，通过 Docker Desktop 的 WSL2 后端。
+- Mac（Apple 芯片）：Docker 用不到 GPU，请直接在本机安装运行。
+- 带 NVIDIA 显卡的 arm64 Linux：用 `pdf` 标签，在处理器上运行（`pdf-cuda` 只有 amd64）。
+
+更多：[Docker](https://github.com/yihong0618/bilingual_book_maker/wiki/Docker-安装)。
 
 如果想自己构建镜像而不是拉取：
 

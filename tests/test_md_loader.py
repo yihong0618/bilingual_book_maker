@@ -646,3 +646,33 @@ def test_markdown_parallel_interrupt_persists_contiguous_prefix_and_resumes(tmp_
     assert content.count("<T>One.</T>") == 1
     assert content.count("<T>Two.</T>") == 1
     assert content.count("<T>Three.</T>") == 1
+
+
+def test_every_block_knows_the_source_line_it_starts_on(tmp_path):
+    # PIN (lead 260925 with astra consult, docs/260925-docs-SKILL_FIELD_TEST_FRICTIONS.md):
+    # a block's 1-based start line is its identity in what the run reports
+    # back (the reading edition's echo warning names "line N" of source.md).
+    book = tmp_path / "book.md"
+    book.write_text(
+        "---\ntitle: x\n---\n"  # 1-3
+        "# Heading\n"  # 4
+        "\n"
+        "First line of a paragraph\nand its second line.\n"  # 6-7
+        "```\ncode\n```\n"  # 8-10
+        "| a | b |\n| --- | --- |\n| 1 | 2 |\n"  # 11-13
+        "![img](x.png)\n"  # 14
+        "Last paragraph.",  # 15, no trailing newline
+        encoding="utf-8",
+    )
+    loader = make_loader(book)
+    assert [(block.line, block.text.splitlines()[0]) for block in loader.md_blocks] == [
+        (1, "---"),
+        (4, "# Heading"),
+        (6, "First line of a paragraph"),
+        (8, "```"),
+        (11, "| a | b |"),
+        (14, "![img](x.png)"),
+        (15, "Last paragraph."),
+    ]
+    _, batches = loader._enumerate_render_items()
+    assert [line for batch in batches for line in batch.block_lines] == [4, 6, 15]

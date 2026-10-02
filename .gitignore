@@ -137,6 +137,14 @@ log/
 # for user do not want to push
 *.srt
 *.txt
+# the exported dependency pins are tracked; the rule above is for run output
+# This is an ALLOWLIST under `*.txt` above: a requirements file that is not
+# named here is silently never committed, however it was added (seen 260921 --
+# the two PDF files below were written, committed past, and absent from the
+# repo while CI and the Dockerfile referenced them).
+!requirements.txt
+!requirements-pdf-cpu.txt
+!requirements-pdf-gpu.txt
 *.bin
 *.epub
 

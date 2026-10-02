@@ -1,24 +1,137 @@
 site_name: bilingual book maker
+# Path-independent: the same tree publishes from upstream and from any fork.
+# The publish workflow sets these three from the repository it runs in; a
+# local `mkdocs serve` or `mkdocs build` falls back to upstream's values.
+site_url: !ENV [DOCS_SITE_URL, "https://yihong0618.github.io/bilingual_book_maker/"]
+repo_url: !ENV [DOCS_REPO_URL, "https://github.com/yihong0618/bilingual_book_maker"]
+repo_name: !ENV [DOCS_REPO_NAME, "yihong0618/bilingual_book_maker"]
+edit_uri: edit/main/docs/
+
 theme:
   name: material
   features:
-    - navigation.tabs
-    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
     - content.code.copy
+    - content.tabs.link
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
 
-nav: 
-  - Home : index.md
-  - Getting started: 
-    - Installation: installation.md
-    - QuickStart: quickstart.md
-  - Usage:
-    - Model and languages: model_lang.md
-    - Language tags and names: languages.md
-    - Command line options: cmd.md
-    - Migrating from the old flags: migration.md
-    - Translate from different source: book_source.md
-    - Environment setting: env_settings.md
-    - Tweak the prompt: prompt.md
-    - Session grouping evaluation: session_grouping_eval.md
-  - Disclaimer: disclaimer.md
-    
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+  - toc:
+      permalink: true
+
+nav:
+  - English:
+      - Home: en/index.md
+      - Quick start: en/quickstart.md
+      - Translate with an agent: en/agent-skill.md
+      - Installation:
+          - Python: en/installation.md
+          - Docker: en/docker.md
+      - EPUB:
+          - Translate an EPUB: en/formats/epub.md
+          - Recommended settings: en/features/recommended-epub.md
+          - Plan mode: en/features/plan-mode.md
+      - PDF:
+          - PDF to bilingual EPUB: en/features/pdf-to-epub.md
+          - Recommended settings: en/features/recommended-pdf.md
+          - Which OCR engine: en/features/pdf-ocr-engines.md
+          - Installing the PDF extra: en/installation-pdf.md
+          - PDF flags and the text route: en/formats/pdf.md
+      - Other formats:
+          - TXT: en/formats/txt.md
+          - SRT: en/formats/srt.md
+          - Markdown: en/formats/md.md
+          - Which page for which file: en/book_source.md
+      - Endpoints and models:
+          - Translating with an LLM: en/llm-args.md
+          - Session mode: en/features/session-mode.md
+          - Provider file and extra models: en/providers.md
+          - Translation services: en/machine-args.md
+          - Environment variables: en/env_settings.md
+          - Prompt files: en/prompt.md
+          - Model and language notes: en/model_lang.md
+          - Language tags: en/languages.md
+          - Migrating from old flags: en/migration.md
+      - Evaluation:
+          - Measurements behind the parameters: en/evaluation/index.md
+          - Units and tokens per request: en/evaluation/grouping-batch-size.md
+          - Session compact budget: en/evaluation/session-compact-budget.md
+          - Jev as the plan classifier: en/evaluation/plan-classifier-jev.md
+          - OCR engines on scanned pages: en/evaluation/pdf-ocr-engines.md
+          - Region roles with an image model: en/evaluation/pdf-structure-llm-roles.md
+      - Reference:
+          - Command line options: en/cmd.md
+          - Disclaimer: en/disclaimer.md
+  - 中文:
+      - 首页: zh/index.md
+      - 快速开始: zh/quickstart.md
+      - 用智能体翻译: zh/agent-skill.md
+      - 安装:
+          - Python 安装: zh/installation.md
+          - Docker 安装: zh/docker.md
+      - EPUB:
+          - 翻译 EPUB: zh/formats/epub.md
+          - EPUB 推荐设置: zh/features/recommended-epub.md
+          - 计划模式: zh/features/plan-mode.md
+      - PDF:
+          - PDF 转双语 EPUB: zh/features/pdf-to-epub.md
+          - PDF 推荐设置: zh/features/recommended-pdf.md
+          - 选择 OCR 引擎: zh/features/pdf-ocr-engines.md
+          - 安装 PDF 扩展: zh/installation-pdf.md
+          - PDF 参数与纯文本路线: zh/formats/pdf.md
+      - 其他格式:
+          - TXT 文件: zh/formats/txt.md
+          - SRT 字幕: zh/formats/srt.md
+          - Markdown 文件: zh/formats/md.md
+          - 各类文件对应的页面: zh/book_source.md
+      - 端点与模型:
+          - 用大模型翻译: zh/llm-args.md
+          - 会话模式: zh/features/session-mode.md
+          - 提供方文件与额外模型: zh/providers.md
+          - 翻译服务: zh/machine-args.md
+          - 环境变量: zh/env_settings.md
+          - 提示词文件: zh/prompt.md
+          - 模型与语言说明: zh/model_lang.md
+          - 语言标签: zh/languages.md
+          - 从旧参数迁移: zh/migration.md
+      - 评测:
+          - 参数背后的测量: zh/evaluation/index.md
+          - 每次请求的单元数与 token 数: zh/evaluation/grouping-batch-size.md
+          - 会话压缩预算: zh/evaluation/session-compact-budget.md
+          - 用 Jev 做计划分类器: zh/evaluation/plan-classifier-jev.md
+          - 扫描页上的 OCR 引擎: zh/evaluation/pdf-ocr-engines.md
+          - 用图像模型判定区域角色: zh/evaluation/pdf-structure-llm-roles.md
+      - 参考:
+          - 命令行参数: zh/cmd.md
+          - 免责声明: zh/disclaimer.md
+
+not_in_nav: |
+  /en/session_grouping_eval.md
+  /zh/session_grouping_eval.md

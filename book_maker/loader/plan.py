@@ -1982,7 +1982,7 @@ class TranslationPlan:
         skipped = self.skipped_totals
         if skipped:
             skip_desc = ", ".join(f"{k}={v}" for k, v in skipped.most_common())
-            lines.append(f"skipped: {skip_desc}")
+            lines.append(f"skipped characters: {skip_desc}")
         # Keyed by file as well as group id: `build_plan` threads one id
         # supply through the whole book, but the loader partitions each file
         # on its own and starts again at 0, so a bare id set would fold every

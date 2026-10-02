@@ -17,7 +17,38 @@ from book_maker.loader import BOOK_LOADER_DICT
 from book_maker.legacy_cli import translate_legacy_argv
 from book_maker.loader.classify import can_session_classify
 from book_maker.loader.ledger import PlanLedgerError
-from book_maker.loader.plan import GENERAL_GROUP_MAX_UNITS
+from book_maker.loader.plan import (
+    GENERAL_GROUP_MAX_UNITS,
+    SESSION_BUDGET_CEILING,
+    SESSION_BUDGET_FLOOR,
+    SUBSTRICT_BUDGET_FLOOR,
+)
+from book_maker.endpoints import (
+    CLASSIFY_BASE_WITHOUT_MODEL,
+    HELP_CLASSIFY_BASE_URL,
+    HELP_CLASSIFY_KEY,
+    HELP_CLASSIFY_MIN_CONFIDENCE,
+    HELP_CLASSIFY_MODEL,
+    HELP_IMG_BASE_URL,
+    HELP_IMG_KEY,
+    HELP_IMG_MODEL,
+    IMG_BASE_WITHOUT_MODEL,
+    JEV_FORMAT,
+    SOURCE_CLI,
+    SOURCE_PROVIDER,
+    apply_run_extras,
+)
+from book_maker.pipeline.messages import (
+    HELP_OCR_ENGINE_CLI,
+    HELP_OCR_REPLACE_LAYER,
+    HELP_PDF_IMAGE_DPI_CLI,
+    OCR_REPLACE_NEEDS_OCR,
+)
+from book_maker.pipeline.pdf_figures import (
+    FIGURE_POLICY_DEFAULT,
+    parse_pdf_image_dpi,
+)
+from book_maker.pipeline.pdf_settings import OCR_ENGINES
 from book_maker.prompt_file import parse_prompt_markdown
 from book_maker.provider_loader import resolve_provider
 from book_maker.session_context import DEFAULT_COMPACT_BUDGET, compact_budget_notice
@@ -98,7 +129,7 @@ def language_guidance(spec):
         f"matched no known language tag, so nothing is stamped on the "
         f"output markup. Use the tag (--language zh-hant) or state both "
         f'(--language "zh-hant:Traditional Chinese"); the tags are '
-        f"listed in docs/languages.md."
+        f"listed in docs/en/languages.md."
     )
 
 
@@ -139,7 +170,7 @@ LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1", "0.0.0.0", "host.docker.internal
 # The loaders that actually forward context settings into the translator. The
 # others accept `context_flag` and drop it, so a session budget passed with
 # them would silently do nothing.
-CONTEXT_AWARE_BOOK_TYPES = ("epub", "md", "markdown")
+CONTEXT_AWARE_BOOK_TYPES = ("epub", "md", "markdown", "pdf")
 
 # LLM formats that can resolve a model on their own, so --model is optional.
 MODEL_OPTIONAL_FORMATS = ("codex",)
@@ -148,7 +179,7 @@ MODEL_OPTIONAL_FORMATS = ("codex",)
 # format asks for an id; the other three name what their own route used to
 # run by default, so `--api_format gemini` alone is a working command.
 DEFAULT_MODELS = {
-    "openai": "gpt-5.6-luna",
+    "openai": "gpt-6-luna",
     "gemini": "gemini-flash-latest",
     "qwen": "qwen-mt-turbo",
 }
@@ -271,6 +302,9 @@ def apply_provider(options):
         route = resolve_provider(options.provider)
     except ValueError as err:
         raise SystemExit(str(err))
+    # The entry's image and classify endpoints (`img_*`, `classify_*`) are
+    # read by `book_maker.endpoints`, after the run's own is settled.
+    options.provider_route = route
     # The entry's key belongs to the entry's *address*, and travels only as
     # far as that address does. Either flag can move it: --api_base says so
     # outright, and --api_format moves an entry that has no base_url of its
@@ -604,9 +638,27 @@ def prompt_adoption_line(prompt_config, translate_model, api_format):
     return line
 
 
-# Below this a window cannot hold even one paragraph with its translation, so
-# every unit would trigger a paid handoff report.
-MIN_COMPACT_BUDGET = 500
+# The smallest window this tool will run a session in. OWNER-SET (260913),
+# raised from 500, and the honest case for it is geometry rather than price.
+#
+# Measured (260913 eval C, the low-budget cost curve on the pre-redesign
+# tree): the curve is **flat** from 500 to 3000 — a run at 500 cost only
+# 1.06-1.12x the same run at 2000 — so there is no measured cost knee here to
+# point at, and nothing below claims one. What the curve does show is seams:
+# 10 compactions at 500 against 6 at 3000, each one a place where the context
+# is condensed and something can be lost.
+#
+# Chosen, from what a window is *for*: a window holds `budget` tokens minus
+# the seed that opens it, and the seed is about 300 (SEED_TARGET_TOKENS). At
+# 1500 that seed is a fifth of the window and four fifths are content; the
+# ratio gets worse quickly below it, and as the budget approaches the seed
+# size the per-content overhead diverges — every window pays for a handoff
+# report to carry less and less book. 1500 is where the owner drew that line.
+#
+# An operator who wants a context shorter than this does not want session
+# mode: window mode re-sends a few paragraphs and never compacts at all,
+# which is what the refusal below says.
+MIN_COMPACT_BUDGET = 1500
 
 
 def compact_budget(value):
@@ -617,9 +669,12 @@ def compact_budget(value):
         raise argparse.ArgumentTypeError(f"expected a whole number, got {value!r}")
     if budget < MIN_COMPACT_BUDGET:
         raise argparse.ArgumentTypeError(
-            f"a compact budget of {budget} is too small to be useful; use at "
-            f"least {MIN_COMPACT_BUDGET} estimated tokens (a window that "
-            f"short is a handoff report and little else)"
+            f"a compact budget of {budget} is too small for a session; use at "
+            f"least {MIN_COMPACT_BUDGET} estimated tokens. Most of a window "
+            f"that short is the handoff report that opens it. If you want the "
+            f"model to carry less context than that, do not use session mode "
+            f"— plain --use_context re-sends the last few paragraphs and "
+            f"never compacts"
         )
     return budget
 
@@ -654,12 +709,16 @@ class GlossaryPath(argparse.Action):
 
 
 def glossary_auto_flag(value):
-    """`--glossary-auto {on,off}` as the tri-state the translator wants.
+    """`--glossary-auto {on,off}` as the boolean the translator wants.
 
-    None means the operator said nothing, and the run defaults it: on where
-    there is a session to learn from, off where there is not.
+    Off unless the operator asked for it (owner ruling 260913). It used to
+    default on wherever a session ran, on the reasoning that a session has a
+    compact turn and the terms are free once it does. They are not free: the
+    section costs output on every compaction, and harvesting names from a
+    model's prose takes a model that can be trusted to answer with names.
+    Most runs do not need it, so it is now something a run asks for.
     """
-    return {"on": True, "off": False}.get(value)
+    return value == "on"
 
 
 def batch_unit_cap(value):
@@ -733,6 +792,20 @@ COVERAGE_WARN_ABOVE = 0.9
 # difference); these are the values a run gets when they were left alone.
 PLAN_MIN_COVERAGE_DEFAULT = 0.5
 POETRY_GROUP_SIZE_DEFAULT = 8
+
+
+def classify_min_confidence(value):
+    """argparse type for --classify-min-confidence: the Jev gate, 0 to 1.
+
+    The same rule as BBM_JEV_MIN_CONFIDENCE (`parse_min_confidence`), said
+    at parse time, so a typo stops the run before anything is paid for.
+    """
+    from book_maker.classifier import parse_min_confidence
+
+    try:
+        return parse_min_confidence(value)
+    except ValueError as err:
+        raise argparse.ArgumentTypeError(f"--classify-min-confidence {err}")
 
 
 def coverage_fraction(value):
@@ -870,38 +943,33 @@ def resolve_plan_mode(
     return "model", reason
 
 
-def resolve_classify_mode(options):
-    """`(classify mode, still-auto)` from the two --plan-classify flags.
+def resolve_classify_mode(options, book_type=None):
+    """`(classify mode, still-auto)` from --plan-classify and --classify-model.
 
-    Pure: it resolves what the command asked for and refuses nothing. The
-    one contradiction the CLI stops on (a classifier model named alongside a
-    mode that classifies nothing) is deliberately left as it was typed, so
-    the refusal that owns that message is the one the run meets.
+    Pure: it resolves what the command asked for and refuses nothing.
+    Naming a classifier on an epub is naming the mode it belongs to, unless
+    the command chose one (`agent` hands the rows to the operator's agent,
+    `all` asks nothing). On another book the classifier serves whatever that route
+    classifies, and plan mode, which is epub-only, is not asked for.
     """
     mode = options.plan_classify
     plan_auto = mode == "auto"
     if plan_auto:
         # tag mode until the endpoint's probe settles it
         mode = "none"
-    if options.plan_classify_model:
-        # naming a classifier is naming the mode it belongs to
+    classify_model = getattr(options, "classify_model", "") or getattr(
+        options, "plan_classify_model", ""
+    )
+    if classify_model and book_type in (None, "epub"):
         plan_auto = False
         if mode not in ("all", "agent"):
             mode = "model"
     return mode, plan_auto
 
 
-def _route_can_session_classify(translate_model):
-    """Whether this route's class can hold a classifier conversation.
-
-    The class, not an instance: the compatibility pass runs before any
-    translator is built. `can_session_classify` asks the same question of
-    the same attribute, so the two answers cannot drift.
-    """
-    from book_maker.translator.base_translator import Base
-
-    factory = getattr(translate_model, "classify_session", None)
-    return factory is not None and factory is not Base.classify_session
+# The name the compatibility tests import; `can_session_classify` takes the
+# route's class as well as an instance.
+_route_can_session_classify = can_session_classify
 
 
 def plan_mode_expected(facts):
@@ -918,9 +986,11 @@ def plan_mode_expected(facts):
         return True
     if not facts.plan_auto or facts.translate_tags_given:
         return False
+    if facts.classifier_owner == "separate":
+        return True  # the resolved classifier plans it, whatever the route
     if facts.api_format == PLAN_AUTO_FORMAT:
         return True
-    return _route_can_session_classify(facts.translate_model)
+    return can_session_classify(facts.translate_model)
 
 
 # ---------------------------------------------------------- flag compatibility
@@ -980,11 +1050,16 @@ def prompt_has_system(facts):
     return bool((facts.prompt_config or {}).get("system"))
 
 
-# Loaders that read the tag-selection flags. Markdown reads the exclusions
-# and nothing else; everything outside epub ignores the styling flags, the
-# worker count and the context switch.
+# Loaders that read the tag-selection flags: epub alone. Markdown reads
+# neither the selections nor the exclusions; everything outside epub ignores
+# the styling flags, outside epub and Markdown the worker count, and outside
+# epub, Markdown and pdf the context switch.
 TAG_AWARE_BOOK_TYPES = ("epub",)
-EXCLUDE_AWARE_BOOK_TYPES = ("epub", "md", "markdown")
+EXCLUDE_AWARE_BOOK_TYPES = ("epub",)
+# Loaders that group by `--accumulated_num`: epub (a token budget) and srt
+# (a character count). txt, Markdown and the legacy pdf loader group by
+# `--batch_size` and ignore it.
+ACCUMULATED_AWARE_BOOK_TYPES = ("epub", "srt")
 PARALLEL_AWARE_BOOK_TYPES = ("epub", "md", "markdown")
 
 # Engines that detect the source language themselves, so `--source_lang`
@@ -1014,6 +1089,39 @@ def _c7_ignored_tag_flags(f):
     if f.book_type not in EXCLUDE_AWARE_BOOK_TYPES and f.exclude_translate_tags_given:
         flags.append("--exclude-translate-tags")
     return flags
+
+
+def _a8_grouped_session(f):
+    """A8's premise: a history that grows, grouped by `--accumulated_num`.
+
+    The history is the flag on a loader that forwards it, or a route whose
+    thread is always one (codex); the grouping is the loader's, and only
+    epub and srt read `--accumulated_num` — a Markdown or txt run groups by
+    `--batch_size`, so neither half of the warning is true there.
+    """
+    if f.book_type not in ACCUMULATED_AWARE_BOOK_TYPES:
+        return False
+    if getattr(f.translate_model, "SESSION_CONTEXT_ALWAYS_ON", False):
+        return True
+    return (
+        f.options.context_mode == "session" and f.book_type in CONTEXT_AWARE_BOOK_TYPES
+    )
+
+
+def _c35_ignoring_classifier(f):
+    """Who ignores `--classify-min-confidence` this run, or None when a
+    Jev-wire classifier reads it."""
+    from book_maker.endpoints import is_jev_wire
+
+    if getattr(f.options, "classify_min_confidence", None) is None:
+        return None
+    if f.classifier_owner is None:
+        return "this run asks no classifier and"
+    choice = f.classify_choice
+    if is_jev_wire(choice.model, choice.api_base):
+        return None
+    model = choice.model or (f.model_names[0] if f.model_names else "")
+    return model or "the run's model"
 
 
 def _c8_ignored_style_flags(f):
@@ -1055,8 +1163,7 @@ COMPAT_RULES = (
             "--batch / --batch-use are broken on epub: queueing lives on a "
             "path the epub loader never takes, so the run translates the "
             "whole book live at full price and then submits an empty batch "
-            "job — and --batch never writes the book at all. Drop the flag, "
-            "or batch a txt/srt book."
+            "job — and --batch never writes the book at all. Drop the flag."
         ),
     ),
     CompatRule(
@@ -1087,11 +1194,51 @@ COMPAT_RULES = (
         ),
     ),
     CompatRule(
+        "A13",
+        "stop",
+        lambda f: f.options.to_epub and f.book_type != "pdf",
+        lambda f: (
+            f"--to-epub is the PDF route: it reads a PDF's text layer, translates "
+            f"the Markdown it recovers and builds the EPUB from that. A "
+            f"{f.book_type} book has no PDF to read, and the flag changes "
+            f"which route the run takes rather than being ignored. Drop "
+            f"--to-epub."
+        ),
+    ),
+    CompatRule(
+        "A14",
+        "stop",
+        lambda f: bool(getattr(f.options, "img_base_url", None))
+        and not getattr(f.options, "img_model", None),
+        lambda f: IMG_BASE_WITHOUT_MODEL,
+    ),
+    CompatRule(
+        "A15",
+        "stop",
+        lambda f: bool(getattr(f.options, "classify_base_url", None))
+        and not getattr(f.options, "classify_model", None),
+        lambda f: CLASSIFY_BASE_WITHOUT_MODEL,
+    ),
+    # The PDF route's own flag, so it is checked by the route before a page
+    # is read (`pdf_route_stops`, from `run_to_epub`): the flag is stripped
+    # from the inner translation run, whose table never sees it.
+    CompatRule(
+        "A16",
+        "stop",
+        lambda f: getattr(f.options, "ocr_replace_layer", False)
+        and f.options.to_epub
+        and not f.options.pdf_ocr,
+        lambda f: OCR_REPLACE_NEEDS_OCR,
+    ),
+    CompatRule(
         "A10",
         "stop",
         lambda f: f.book_type == "epub"
         and f.classify_mode == "model"
-        and f.api_format not in LLM_FORMATS,
+        and f.api_format not in LLM_FORMATS
+        # a resolved classifier (cli or provider) is asked instead of this
+        # format (lead ruling 260923, Codex finding 4)
+        and f.classifier_owner != "separate",
         lambda f: (
             f"{f.classify_flag} asks an LLM to rule on every plan "
             f"signature, and the "
@@ -1101,6 +1248,16 @@ COMPAT_RULES = (
             f"--plan-classify agent to decide the plan yourself, "
             f"--plan-classify all to translate the whole partition, or "
             f"translate through an LLM route."
+        ),
+    ),
+    CompatRule(
+        "A12",
+        "stop",
+        lambda f: f.api_format == "codex" and f.options.no_thinking,
+        lambda f: (
+            "--no-thinking has no request to travel in on the codex route: "
+            "the route drives the codex CLI as a subprocess, which owns its "
+            "own reasoning settings."
         ),
     ),
     CompatRule(
@@ -1116,7 +1273,7 @@ COMPAT_RULES = (
     CompatRule(
         "A8",
         "warn",
-        lambda f: session_run_expected(f)
+        lambda f: _a8_grouped_session(f)
         and not f.plan_mode
         and (f.options.accumulated_num or 1) <= 1,
         lambda f: (
@@ -1146,7 +1303,13 @@ COMPAT_RULES = (
     CompatRule(
         "A11",
         "warn",
-        lambda f: f.api_format == "codex" and f.plan_mode,
+        # Only when the codex route's own model will classify the plan:
+        # `agent` and `all` ask no model, and a separate classifier asks
+        # another one (lead 260925, skill field test).
+        lambda f: f.api_format == "codex"
+        and f.plan_mode
+        and f.classify_mode not in NEVER_CLASSIFIES
+        and f.classifier_owner != "separate",
         lambda f: (
             f"the codex route classifies the plan in a thread of its own, "
             f"and codex sends {CODEX_CLASSIFIER_PREAMBLE_TOKENS} tokens of "
@@ -1162,7 +1325,7 @@ COMPAT_RULES = (
         and not f.translate_tags_given
         and f.api_format in LLM_FORMATS
         and f.api_format != PLAN_AUTO_FORMAT
-        and not _route_can_session_classify(f.translate_model),
+        and not can_session_classify(f.translate_model),
         lambda f: (
             f"the {f.api_format} route does not plan automatically: it "
             f"offers no JSON-schema verdict and holds no classifier "
@@ -1221,7 +1384,7 @@ COMPAT_RULES = (
         and bool(_b12_given_compact_flags(f)),
         lambda f: (
             f"{' and '.join(_b12_given_compact_flags(f))} reach the "
-            f"translator for epub and markdown books only; on a "
+            f"translator for epub, markdown, and pdf books only; on a "
             f"{f.book_type} book the codex thread keeps its own default "
             f"budget."
         ),
@@ -1238,9 +1401,10 @@ COMPAT_RULES = (
     CompatRule(
         "C2",
         "warn",
-        lambda f: f.book_type != "epub" and f.accumulated_num_given,
+        lambda f: f.book_type not in ACCUMULATED_AWARE_BOOK_TYPES
+        and f.accumulated_num_given,
         lambda f: (
-            f"--accumulated_num is read by the epub loader only; a "
+            f"--accumulated_num is read by the epub and srt loaders only; a "
             f"{f.book_type} run groups with --batch_size."
         ),
     ),
@@ -1371,6 +1535,19 @@ COMPAT_RULES = (
         ),
     ),
     CompatRule(
+        "C25",
+        "warn",
+        lambda f: f.options.no_thinking
+        and f.api_format != "codex"
+        and not getattr(f.translate_model, "SUPPORTS_REQUEST_EXTRAS", False),
+        lambda f: (
+            f"--no-thinking is carried by the openai-shaped routes and "
+            f"anthropic, which merge the field into a request body built "
+            f"here. The {f.api_format} route builds its own, so the flag "
+            f"reaches nothing and this run is unchanged by it."
+        ),
+    ),
+    CompatRule(
         "C20",
         "warn",
         lambda f: f.options.glossary_auto == "on" and not session_run_expected(f),
@@ -1388,8 +1565,8 @@ COMPAT_RULES = (
         lambda f: bool(f.options.glossary_path)
         and f.book_type not in CONTEXT_AWARE_BOOK_TYPES,
         lambda f: (
-            f"{_glossary_flag(f)} is forwarded by the epub and markdown "
-            f"loaders only; a {f.book_type} run sends the model no glossary "
+            f"{_glossary_flag(f)} is forwarded by the epub, markdown, and "
+            f"pdf loaders only; a {f.book_type} run sends the model no glossary "
             f"block, and the file will be ignored."
         ),
     ),
@@ -1427,7 +1604,209 @@ COMPAT_RULES = (
             f"report for one; the setting is accepted and learns nothing."
         ),
     ),
+    CompatRule(
+        "C26",
+        "warn",
+        lambda f: bool(f.options.device) and not f.options.to_epub,
+        lambda f: (
+            "--device chooses where the PDF's extraction models run, and they "
+            "only run on the --to-epub route; this run reads it and does "
+            "nothing with it."
+        ),
+    ),
+    CompatRule(
+        "C27",
+        "warn",
+        lambda f: f.options.pdf_ocr and not f.options.to_epub,
+        lambda f: (
+            "--pdf-ocr reads the PDF's pages that carry no text layer, and "
+            "that route only runs with --to-epub; this run reads it and does "
+            "nothing with it."
+        ),
+    ),
+    CompatRule(
+        "C28",
+        "warn",
+        lambda f: bool(f.options.pages) and not f.options.to_epub,
+        lambda f: (
+            "--pages selects the pages the PDF route reads, and that route only "
+            "runs with --to-epub; this run reads it and translates the whole file."
+        ),
+    ),
+    CompatRule(
+        "C29",
+        "warn",
+        lambda f: bool(f.options.ocr_lang)
+        and not (f.options.to_epub and f.options.pdf_ocr),
+        lambda f: (
+            "--ocr-lang names the languages the PDF's OCR models read, and "
+            "they only run on the --to-epub route with --pdf-ocr; this run "
+            "reads it and does nothing with it."
+        ),
+    ),
+    CompatRule(
+        "C36",
+        "warn",
+        lambda f: (getattr(f.options, "ocr_engine", None) or "auto") != "auto"
+        and not (f.options.to_epub and f.options.pdf_ocr),
+        lambda f: (
+            f"--ocr-engine {f.options.ocr_engine} chooses the engine the PDF's "
+            f"OCR reads with, and it only runs on the --to-epub route with "
+            f"--pdf-ocr; this run reads it and does nothing with it."
+        ),
+    ),
+    CompatRule(
+        "C30",
+        "warn",
+        lambda f: not f.options.formula_images and not f.options.to_epub,
+        lambda f: (
+            "--no-formula-images turns off the pictures the PDF route keeps "
+            "of display formulas, and that route only runs with --to-epub; "
+            "this run reads it and does nothing with it."
+        ),
+    ),
+    CompatRule(
+        "C37",
+        "warn",
+        lambda f: getattr(f.options, "pdf_image_dpi", FIGURE_POLICY_DEFAULT.value)
+        != FIGURE_POLICY_DEFAULT.value
+        and not f.options.to_epub,
+        lambda f: (
+            f"--pdf-image-dpi {f.options.pdf_image_dpi} sets how sharp a PDF's "
+            f"figures are drawn, and it only runs on the --to-epub route; this "
+            f"run reads it and does nothing with it."
+        ),
+    ),
+    CompatRule(
+        "C34",
+        "warn",
+        lambda f: getattr(f.options, "ocr_replace_layer", False)
+        and not f.options.to_epub,
+        lambda f: (
+            "--ocr-replace-layer has the PDF route's OCR engine re-read pages "
+            "that carry a text layer, and that route only runs with --to-epub; "
+            "this run reads it and does nothing with it."
+        ),
+    ),
+    CompatRule(
+        "C31",
+        "warn",
+        lambda f: any(
+            getattr(f.options, dest, None)
+            for dest in ("img_model", "img_base_url", "img_key")
+        ),
+        lambda f: (
+            "--img-model, --img-base-url and --img-key choose the vision model "
+            "for the steps that look at a page image, and only the PDF route "
+            "(--to-epub on a PDF) has one; this run reads them and does "
+            "nothing with them."
+        ),
+    ),
+    CompatRule(
+        "C32",
+        "warn",
+        lambda f: f.book_type == "epub"
+        and f.classify_mode in NEVER_CLASSIFIES
+        and any(
+            getattr(f.options, dest, None)
+            for dest in ("classify_model", "classify_base_url", "classify_key")
+        ),
+        lambda f: (
+            f"{_typed_classify_flag(f.options)} names a classifier, and "
+            f"--plan-classify {f.classify_mode} "
+            + (
+                "translates the whole partition without classifying anything"
+                if f.classify_mode == "all"
+                # owner 260924: agent mode never pre-fills; a pre-filled plan
+                # makes the agent less accurate
+                else "leaves every row to your agent and asks no model"
+            )
+            + "; it is ignored this run."
+        ),
+    ),
+    CompatRule(
+        "C35",
+        "warn",
+        lambda f: _c35_ignoring_classifier(f) is not None,
+        lambda f: (
+            f"--classify-min-confidence applies only to a Jev-compatible "
+            f"classifier; {_c35_ignoring_classifier(f)} ignores it."
+        ),
+    ),
+    CompatRule(
+        "C33",
+        "warn",
+        lambda f: f.book_type != "epub" and _ignored_classifier(f.options) is not None,
+        lambda f: (
+            f"Nothing on this route classifies yet, so "
+            f"{_ignored_classifier(f.options)} is ignored on a {f.book_type} book."
+        ),
+    ),
 )
+
+
+def _ignored_classifier(options):
+    """What names a classifier this command carries, or None (row C33)."""
+    if classify_flags_typed(options):
+        return _typed_classify_flag(options)
+    route = getattr(options, "provider_route", None)
+    if getattr(route, "classify_model", ""):
+        return "the provider entry's classify_model"
+    return None
+
+
+# The `--plan-classify` modes that never ask a classifier. `all` decides
+# every row the same way; `agent` hands every row to a coding agent
+# undecided. PIN (owner 260924): agent mode never pre-fills -- an agent
+# given a plan with verdicts already in it judges less accurately. (The
+# owner's exception, "unless the given context is not enough for
+# judgement", is not built.)
+NEVER_CLASSIFIES = ("all", "agent")
+
+
+def preview_classify_choice(options, model_names, api_format):
+    """The classify choice `main` will make, without a key (or SystemExit)."""
+    from book_maker.endpoints import resolve_classify_endpoint, run_choice
+
+    return resolve_classify_endpoint(
+        options,
+        run_choice(
+            model_names[0] if model_names else "", options.api_base, None, api_format
+        ),
+        getattr(options, "provider_route", None),
+        with_key=False,
+    )
+
+
+def is_separate_classifier(choice):
+    """Whether `choice` is a classifier other than the run's translator:
+    named (cli or provider) and on a route that can be asked."""
+    return (
+        choice is not None
+        and choice.source in (SOURCE_CLI, SOURCE_PROVIDER)
+        and (choice.api_format in LLM_FORMATS or choice.api_format == JEV_FORMAT)
+    )
+
+
+def classify_flags_typed(options):
+    """The `--classify-*` flags the command typed (either spelling)."""
+    return [
+        flag
+        for flag, dest in (
+            ("--classify-model", "classify_model"),
+            ("--classify-base-url", "classify_base_url"),
+            ("--classify-key", "classify_key"),
+        )
+        if getattr(options, dest, None)
+    ]
+
+
+def _typed_classify_flag(options):
+    """The classify flag the command typed first, for a message naming it."""
+    if getattr(options, "classify_model_flag", ""):
+        return options.classify_model_flag
+    typed = classify_flags_typed(options)
+    return typed[0] if typed else "--classify-model"
 
 
 def preview_endpoint(options):
@@ -1459,6 +1838,63 @@ def preview_endpoint(options):
     return api_format, route or FORMAT_DICT.get(api_format)
 
 
+class _AsksNothing(Exception):
+    pass
+
+
+def endpoint_preview_lines(options):
+    """`Classifier: ...` and `Image model: ...`, as the run would resolve them.
+
+    The same resolvers the run calls (`book_maker.endpoints`), on a copy of
+    the options and without a key, so a preview needs no credentials and
+    rewrites nothing. A choice the run would refuse is printed with the
+    refusal instead of stopping the preview.
+    """
+    from book_maker.endpoints import (
+        is_jev_wire,
+        resolve_classify_endpoint,
+        resolve_image_endpoint,
+        run_choice,
+    )
+
+    copy = argparse.Namespace(**vars(options))
+    try:
+        names, api_format, _keys = resolve_endpoint(copy)
+    except SystemExit:
+        names, api_format = [], PLAN_AUTO_FORMAT
+    run = run_choice(names[0] if names else "", copy.api_base, None, api_format)
+    provider = getattr(copy, "provider_route", None)
+    lines = []
+    mode = getattr(copy, "plan_classify", None)
+    try:
+        if mode in NEVER_CLASSIFIES:
+            raise _AsksNothing(mode)
+        choice = resolve_classify_endpoint(copy, run, provider, with_key=False)
+        model = choice.model or "the run's model"
+        line = f"Classifier: {model} at {choice.where()} ({choice.source})"
+        if is_jev_wire(choice.model, choice.api_base):
+            # the gate the run's JevBackend will use (flag, variable, constant)
+            from book_maker.classifier import jev_min_confidence
+
+            gate = jev_min_confidence(getattr(copy, "classify_min_confidence", None))
+            line += f" gate {gate:g}"
+        lines.append(line)
+    except _AsksNothing:
+        lines.append(f"Classifier: none (--plan-classify {mode} asks nothing)")
+    except SystemExit as err:
+        lines.append(f"Classifier: refused: {err}")
+    try:
+        choice = resolve_image_endpoint(copy, run, provider, with_key=False)
+        lines.append(
+            "Image model: off"
+            if choice is None
+            else f"Image model: {choice.model} at {choice.where()} ({choice.source})"
+        )
+    except SystemExit as err:
+        lines.append(f"Image model: refused: {err}")
+    return lines
+
+
 def dry_run_plan_divergence(facts):
     """How the real run's plan will differ from this preview, or None.
 
@@ -1480,7 +1916,7 @@ def dry_run_plan_divergence(facts):
     """
     api_format = facts.api_format or PLAN_AUTO_FORMAT
     translator = facts.translate_model or FORMAT_DICT.get(api_format)
-    can_talk = translator is not None and _route_can_session_classify(translator)
+    can_talk = translator is not None and can_session_classify(translator)
     if (
         facts.translate_tags_given
         or facts.options.plan_classify == "none"
@@ -1506,8 +1942,9 @@ def dry_run_plan_divergence(facts):
         )
     return (
         f"the {api_format} route has no JSON-schema verdict, so the real run "
-        f"classifies this partition over a plain session — three signatures "
-        f"a turn, replies checked verbatim. The partition below is what it "
+        f"classifies this partition over a plain session — five signatures "
+        f"a turn, fewer when the endpoint keeps missing the reply format, "
+        f"replies checked verbatim. The partition below is what it "
         f"will be asked about; which rows come back skipped can differ from "
         f"a schema-classified run."
     )
@@ -1534,6 +1971,13 @@ DRY_RUN_RULES = (
             f"each, so the real run can make more requests than these."
         ),
     ),
+    # C31 and C32 read only the command, so the preview can say them as the
+    # run would; the same predicate and sentence, under an id of their own.
+    *(
+        rule._replace(id=f"{rule.id}:dry-run")
+        for rule in COMPAT_RULES
+        if rule.id in ("C31", "C32")
+    ),
 )
 
 
@@ -1548,6 +1992,19 @@ def normalize_options(options, given=None):
     """
     options.context_flag, options.context_mode = resolve_context_mode(options)
     given = given or SimpleNamespace()
+    # `--plan-classify-model` is the old name of `--classify-model`; typed
+    # together, the current name wins (lead 260923: the alias is kept for
+    # old command lines, not to override new ones), and the message that
+    # names the flag names the one that was typed.
+    old_name = getattr(options, "plan_classify_model", "") or ""
+    new_name = getattr(options, "classify_model", "") or ""
+    if old_name and not new_name:
+        options.classify_model = old_name
+    options.classify_model_flag = (
+        "--classify-model"
+        if new_name
+        else ("--plan-classify-model" if old_name else "")
+    )
     given.accumulated_num = options.accumulated_num is not None
     given.batch_units = options.batch_units is not None
     given.plan_min_coverage = options.plan_min_coverage is not None
@@ -1619,17 +2076,32 @@ def run_facts(options, given, **resolved):
         key_given=given.key,
         source_language=source_evidence(options.source_lang),
         batch_units=GENERAL_GROUP_MAX_UNITS,
+        # set by a caller that knows a classifier other than the run's
+        # translator is resolved without handing over its choice (the
+        # compatibility tests); `main` passes the choice itself
+        classifier_resolved=False,
+        # the classify choice resolved without a key (see main); None where
+        # nothing classifies (not an epub, or --plan-classify all/agent)
+        classify_choice=None,
     )
     # The one parse of `--prompt` this run does. The rows below ask about it,
     # and `main` announces and re-raises from the same pair rather than
     # reading the file again.
     facts.prompt_config, facts.prompt_error = read_prompt_config(options.prompt_arg)
     facts.__dict__.update(resolved)
+    # Who classifies this run's plan: None when nothing does, "separate" for
+    # a classifier other than the run's translator (cli or provider), "run"
+    # for the run's own translator. The rows read this one fact.
+    if facts.classifier_resolved or is_separate_classifier(facts.classify_choice):
+        facts.classifier_owner = "separate"
+    elif facts.classify_choice is None:
+        facts.classifier_owner = None
+    else:
+        facts.classifier_owner = "run"
     facts.plan_mode = plan_mode_expected(facts)
     facts.classify_flag = (
-        "--plan-classify-model"
-        if options.plan_classify_model
-        else f"--plan-classify {facts.classify_mode}"
+        getattr(options, "classify_model_flag", "")
+        or f"--plan-classify {facts.classify_mode}"
     )
     facts.codex_ignored_flags = [
         flag
@@ -1662,6 +2134,56 @@ def check_compatibility(facts, rules=COMPAT_RULES):
         raise SystemExit(1)
     for rule in tripped:
         print(f"[bold yellow]Warning:[/bold yellow] {rule.say(facts)}")
+
+
+# Stop rows about the PDF route's own flags. They read the options alone,
+# and `translation_argv` strips those flags from the inner run, so the
+# route asks these itself (`run_to_epub`), before anything is extracted.
+PDF_ROUTE_STOP_ROWS = ("A16",)
+
+
+def pdf_route_stops(options):
+    """The route-owned stop rows' sentences for a `--to-epub` PDF run."""
+    facts = SimpleNamespace(options=options, book_type="pdf")
+    return [
+        rule.say(facts)
+        for rule in COMPAT_RULES
+        if rule.id in PDF_ROUTE_STOP_ROWS and rule.level == "stop" and rule.when(facts)
+    ]
+
+
+def compat_stops(options, book_type):
+    """The stop rows' sentences for a parsed command line, without running it.
+
+    For a caller that runs the translation later and cannot afford to hear
+    a refusal then: the `--to-epub` route extracts a PDF before its inner
+    run reaches `check_compatibility`. The endpoint is resolved on a copy of
+    the options, as `main` resolves it; an endpoint that does not resolve is
+    itself the refusal. Warn rows are left to the run that will print them.
+    """
+    copy = argparse.Namespace(**vars(options))
+    given = normalize_options(copy)
+    try:
+        names, api_format, _keys = resolve_endpoint(copy)
+    except SystemExit as err:
+        return [str(err)]
+    route = ROUTE_DICT.get(names[0]) if len(names) == 1 else None
+    classify_mode, plan_auto = resolve_classify_mode(copy, book_type)
+    facts = run_facts(
+        copy,
+        given,
+        book_type=book_type,
+        api_format=api_format,
+        translate_model=route or FORMAT_DICT.get(api_format),
+        model_names=names,
+        classify_mode=classify_mode,
+        plan_auto=plan_auto,
+    )
+    return [
+        rule.say(facts)
+        for rule in COMPAT_RULES
+        if rule.level == "stop" and rule.when(facts)
+    ]
 
 
 def build_parser():
@@ -1711,7 +2233,7 @@ def build_parser():
         "name a route instead of a model: 'orcarouter' or 'apiroute' sends the run "
         "to the respective gateway. Old alias values, 'codex' among them, are "
         "translated to their format or model with a note; prefer "
-        "'--api_format codex'. Defaults to gpt-5.6-luna on the openai format; "
+        "'--api_format codex'. Defaults to gpt-6-luna on the openai format; "
         "the anthropic format needs an id",
     )
     parser.add_argument(
@@ -1856,13 +2378,46 @@ def build_parser():
         "rerun the same command afterwards to translate",
     )
     parser.add_argument(
+        "--classify-model",
+        dest="classify_model",
+        type=str,
+        default="",
+        metavar="MODEL",
+        help=HELP_CLASSIFY_MODEL,
+    )
+    parser.add_argument(
+        "--classify-base-url",
+        dest="classify_base_url",
+        type=str,
+        default="",
+        metavar="URL",
+        help=HELP_CLASSIFY_BASE_URL,
+    )
+    parser.add_argument(
+        "--classify-key",
+        dest="classify_key",
+        type=str,
+        default="",
+        metavar="KEY",
+        help=HELP_CLASSIFY_KEY,
+    )
+    parser.add_argument(
+        "--classify-min-confidence",
+        dest="classify_min_confidence",
+        type=classify_min_confidence,
+        default=None,
+        metavar="P",
+        help=HELP_CLASSIFY_MIN_CONFIDENCE,
+    )
+    # The old name of --classify-model (owner 260923): still accepted,
+    # hidden from the help, merged by `normalize_options`, where the new
+    # name wins when both are typed (4f82d36).
+    parser.add_argument(
         "--plan-classify-model",
         dest="plan_classify_model",
         type=str,
         default="",
-        help="model for plan-signature classification (default: the "
-        "translating model). When set explicitly, a classification failure "
-        "aborts the run instead of falling back to the heuristic plan",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--exclude-translate-tags",
@@ -1898,7 +2453,7 @@ def build_parser():
         dest="accumulated_num",
         type=accumulated_tokens,
         default=None,
-        help="""Wait for how many tokens have been accumulated before starting the translation.
+        help=f"""Wait for how many tokens have been accumulated before starting the translation.
 gpt3.5 limits the total_token to 4090.
 For example, if you use --accumulated_num 1600, maybe openai will output 2200 tokens
 and maybe 200 tokens for other messages in the system messages user messages, 1600+2200+200=4000,
@@ -1908,10 +2463,10 @@ length share one request up to this many tokens (at most --max-batch-units units
 per request; half that when the endpoint verifies JSON mode but not a strict
 schema).
 Untyped, every plan run derives a default from the run's own prompt overhead:
-1600 with the stock prompts, up to 2000 under a fat custom --prompt, and half
-that (floor 800) per request on an endpoint without a strict-schema verdict —
+{SESSION_BUDGET_FLOOR} with the stock prompts, up to {SESSION_BUDGET_CEILING} under a fat custom --prompt, and half
+that (floor {SUBSTRICT_BUDGET_FLOOR}) per request on an endpoint without a strict-schema verdict —
 the same margin that halves the unit cap there. Session runs (codex included)
-keep the un-halved value: 1600-2000 is their measured default. The run
+keep the un-halved value: {SESSION_BUDGET_FLOOR}-{SESSION_BUDGET_CEILING} is their chosen default (an owner's margin, not a measurement). The run
 narrates the number and the route class it chose; pass 1 to turn grouping
 off. Minimum 1.
 """,
@@ -1923,7 +2478,8 @@ off. Minimum 1.
         default=None,
         help="EPUB plan mode only: the most units --accumulated_num's token "
         f"budget may put in one request. Default {GENERAL_GROUP_MAX_UNITS}, "
-        "half the level a fault-emergence eval measured content faults at; "
+        "a quarter of the level a fault-emergence eval measured content "
+        "faults at; "
         "lower it for a weaker model. An endpoint that verifies JSON mode "
         "but not a strict schema carries half this many.",
     )
@@ -1960,6 +2516,125 @@ off. Minimum 1.
         choices=["none", "top-bottom", "side-by-side", "all"],
         default="none",
         help="PDF output layout for PDF inputs: top-bottom, side-by-side, all, or none",
+    )
+    parser.add_argument(
+        "--to-epub",
+        dest="to_epub",
+        action="store_true",
+        help="PDF only: extract the PDF's text layer to Markdown, translate "
+        "it, and write an EPUB with navigation next to the PDF "
+        "(<name>_bilingual.epub); figures stay pictures; the working bundle "
+        "stays in <name>_book/ for editing and resume.",
+    )
+    parser.add_argument(
+        "--pdf-ocr",
+        dest="pdf_ocr",
+        action="store_true",
+        help="PDF only, with --to-epub: read pages that carry no text layer "
+        "with the OCR models; such pages are refused without it. Off by "
+        "default -- a born-digital PDF is already readable, and OCR costs "
+        "several times the time without changing what is read. Layout and "
+        "table detection run either way.",
+    )
+    parser.add_argument(
+        "--ocr-replace-layer",
+        dest="ocr_replace_layer",
+        action="store_true",
+        help=HELP_OCR_REPLACE_LAYER,
+    )
+    parser.add_argument(
+        "--no-formula-images",
+        dest="formula_images",
+        action="store_false",
+        default=True,
+        help="PDF only, with --to-epub: leave display formulas as "
+        "placeholders instead of cropping each one from the page as an "
+        "image. The parser never reads equations, so without the images "
+        "the mathematics is missing from the book entirely; the images "
+        "cost no model and no time, so turn this off only if you want the "
+        "text alone.",
+    )
+    parser.add_argument(
+        "--pdf-image-dpi",
+        dest="pdf_image_dpi",
+        type=parse_pdf_image_dpi,
+        default=FIGURE_POLICY_DEFAULT.value,
+        metavar="N",
+        help=HELP_PDF_IMAGE_DPI_CLI.format(default=FIGURE_POLICY_DEFAULT.value),
+    )
+    parser.add_argument(
+        "--device",
+        dest="device",
+        default=None,
+        choices=("auto", "cpu", "cuda", "mps", "xpu"),
+        help="PDF only, with --to-epub: which processor the extraction models "
+        "run on. The default detects one and falls back to the CPU. CPU is "
+        "fully supported and produces the same output; it is slower.",
+    )
+    parser.add_argument(
+        "--with-ocr",
+        dest="with_ocr",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--no-gpu",
+        dest="no_gpu",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--ocr-lang",
+        dest="ocr_lang",
+        default=None,
+        metavar="LANGS",
+        help="PDF only, with --to-epub --pdf-ocr: the languages the OCR engine "
+        "reads on pages with no text layer (every page with "
+        "--ocr-replace-layer), comma-separated, in the engine's "
+        "own codes (rapidocr: ch, en, latin; easyocr: ch_sim, ja, ko; ocrmac: "
+        "zh-Hans, ja-JP) or as iso: tags (iso:zh); rapidocr, the default "
+        "engine on macOS and CPU, reads only the first language and takes "
+        "iso:zh, not ch_sim; the run names the engine and languages it used. "
+        "Without it the engine reads its own default languages and a scanned "
+        "page in another script comes out wrong.",
+    )
+    parser.add_argument(
+        "--ocr-engine",
+        dest="ocr_engine",
+        default="auto",
+        choices=OCR_ENGINES,
+        help=HELP_OCR_ENGINE_CLI,
+    )
+    parser.add_argument(
+        "--pages",
+        dest="pages",
+        default=None,
+        metavar="PAGES",
+        help="PDF only, with --to-epub: the pages to read, numbered from 1 "
+        "(1-20, or 1,3,5-7); the rest of the PDF is left out. The book and "
+        "its bundle get the selection in their names (<name>_pages-1-20_...), "
+        "so a chapter never overwrites the whole book.",
+    )
+    parser.add_argument(
+        "--img-model",
+        dest="img_model",
+        default=None,
+        metavar="MODEL",
+        help=HELP_IMG_MODEL,
+    )
+    parser.add_argument(
+        "--img-base-url",
+        dest="img_base_url",
+        default=None,
+        metavar="URL",
+        help=HELP_IMG_BASE_URL,
+    )
+    parser.add_argument(
+        "--img-key",
+        dest="img_key",
+        default=None,
+        metavar="KEY",
+        help=HELP_IMG_KEY,
     )
     parser.add_argument(
         "--retranslate",
@@ -2020,8 +2695,11 @@ off. Minimum 1.
         f"route included, --use_context or not — uses "
         f"{DEFAULT_COMPACT_BUDGET}, printed at start. It also bounds the "
         f"plan classifier's own conversation on endpoints that classify over "
-        f"a plain session (which restarts there, no handoff). An explicit "
-        f"value always wins; minimum 500",
+        f"a plain session (which restarts there, no handoff). It bounds the "
+        f"whole window, the handoff seed that opens it included, so it can "
+        f"be set to a model's input limit. An explicit value always wins; "
+        f"minimum {MIN_COMPACT_BUDGET} — below that, use plain --use_context "
+        f"rather than a session",
     )
     parser.add_argument(
         "--no-context-compact",
@@ -2044,7 +2722,7 @@ off. Minimum 1.
         "request are sent with it, so a long file costs nothing on the "
         "paragraphs it does not touch. A term pinned here says what the "
         "translation says, so pin only renderings you can stand behind. Read "
-        "by the openai- and codex-shaped routes for epub and markdown books",
+        "by the openai- and codex-shaped routes for epub, markdown, and pdf books",
     )
     parser.add_argument(
         "--glossary-auto",
@@ -2053,10 +2731,11 @@ off. Minimum 1.
         default=None,
         help="whether a session run also keeps the renderings its own handoff "
         "reports establish, so recurring names stay unified across a context "
-        "window seam. On by default wherever a session runs (--use_context "
-        "session, and the codex route's one thread); 'off' asks the compact "
-        "turn for a summary only. Learned terms live in this run and in "
-        "<book>_handoff.md, and nowhere else",
+        "window seam. Off unless you ask for it, and it needs a session to "
+        "learn from (--use_context session, or the codex route's one thread) "
+        "as well as a model that can be trusted to answer with names rather "
+        "than prose — most runs need neither. Learned terms live in this run "
+        "and in <book>_handoff.md, and nowhere else",
     )
     parser.add_argument(
         "--context_paragraph_limit",
@@ -2147,6 +2826,16 @@ off. Minimum 1.
         'openai route, \'{"thinking": {"type": "disabled"}}\' on anthropic',
     )
     parser.add_argument(
+        "--no-thinking",
+        dest="no_thinking",
+        action="store_true",
+        help="Ask the model not to reason before answering (thinking buys "
+        "nothing on a paragraph and costs tokens and time). On "
+        "OpenAI-format endpoints the request field is negotiated from the "
+        "endpoint's own rejections; on the anthropic format it is thinking: "
+        "disabled; the codex route does not take it.",
+    )
+    parser.add_argument(
         "--extra_headers",
         dest="extra_headers",
         type=str,
@@ -2178,13 +2867,134 @@ def parse_args(argv):
     return build_parser().parse_args(argv)
 
 
-def main():
+# Said in one place because two runs have to say it: `main` refuses the pair
+# below, and the `--to-epub` harness refuses it *before* it pays for a PDF
+# extraction, which is the only way an operator hears it in time. The
+# condition is the parsed options and nothing else -- no endpoint, no
+# translator -- so both callers can ask it at the moment they can act on it.
+PARALLEL_SESSION_REFUSAL = (
+    "--parallel-workers is not supported with --use_context session: one "
+    "history is the context, and a worker cannot share it. Use bare "
+    "--use_context to keep the workers, or drop --parallel-workers to keep "
+    "the session."
+)
+
+
+def parallel_session_conflict(options):
+    """Whether this command line asks for workers and one session history."""
+    return (
+        getattr(options, "parallel_workers", 1) > 1
+        and getattr(options, "context_mode", None) == "session"
+    )
+
+
+# The PDF route's retired spellings. `--with-ocr` named a thing that no
+# longer exists -- it used to start a second engine beside the Java one --
+# and `--no-gpu` was a size knob in disguise. Both keep working for a
+# release, because a person with them in a script deserves a sentence
+# rather than an argparse error.
+PDF_ALIASES = (
+    (
+        "with_ocr",
+        "--with-ocr is now --pdf-ocr; it reads pages with no text layer. "
+        "Layout and table detection no longer need it -- they always run.",
+    ),
+    (
+        "no_gpu",
+        "--no-gpu is now --device cpu.",
+    ),
+)
+
+
+def retire_pdf_aliases(options):
+    """Map the retired PDF spellings onto the current ones.
+
+    Returns the notices to print. An explicit `--device` wins over
+    `--no-gpu`: the operator who wrote the current flag meant it.
+    """
+    notices = []
+    for attribute, notice in PDF_ALIASES:
+        if not getattr(options, attribute, False):
+            continue
+        notices.append(notice)
+        if attribute == "with_ocr":
+            options.pdf_ocr = True
+        elif attribute == "no_gpu" and not options.device:
+            options.device = "cpu"
+    return notices
+
+
+def run_to_epub(options, argv):
+    """`--to-epub` on a PDF: the bundle pipeline instead of the PDF loader.
+
+    Imported here, not at the top of the module: the pipeline pulls in
+    Pandoc handling and, one stage further, the PDF parser, and a run that
+    never asked for the route must not pay for either. Every failure on this
+    path is a `PipelineError` carrying the sentence the operator needs, so
+    it is printed as one line rather than raised as a traceback.
+    """
+    from book_maker.pipeline.errors import PipelineError
+    from book_maker.pipeline.messages import STAGE_FAILED
+    from book_maker.pipeline.pdf_figures import FigurePolicy
+    from book_maker.pipeline.to_epub import pdf_to_epub
+
+    # The route's own stop rows, which the inner run cannot see (A16).
+    stops = pdf_route_stops(options)
+    if stops:
+        for sentence in stops:
+            print(f"[bold red]Error: {escape(sentence)}[/bold red]")
+        raise SystemExit(1)
+    try:
+        pdf_to_epub(
+            options.book_name,
+            argv,
+            device=options.device,
+            pdf_ocr=options.pdf_ocr,
+            ocr_lang=options.ocr_lang,
+            pages=options.pages,
+            formula_images=options.formula_images,
+            ocr_replace_layer=options.ocr_replace_layer,
+            ocr_engine=options.ocr_engine,
+            img_model=options.img_model,
+            img_base_url=options.img_base_url,
+            img_key=options.img_key,
+            quiet=options.quiet,
+            figure_policy=FigurePolicy("dpi", options.pdf_image_dpi),
+        )
+    except PipelineError as err:
+        detail = (
+            STAGE_FAILED.format(stage=err.stage, detail=err.detail)
+            if err.stage
+            else err.detail
+        )
+        print(f"[bold red]Error: {escape(detail)}[/bold red]")
+        raise SystemExit(1)
+    except KeyboardInterrupt:
+        # The stages save what they finished; the next run resumes from the
+        # bundle rather than extracting or translating it again.
+        print(
+            "[bold yellow]Interrupted. Rerun the same command to "
+            "resume.[/bold yellow]"
+        )
+        raise SystemExit(130)
+
+
+def main(argv=None, *, markdown_loader_class=None):
+    """The command line, and the one seam an in-process caller may use.
+
+    `argv` defaults to the real command line, so nothing about a normal run
+    changes. A caller that already holds the arguments (the Markdown/EPUB
+    bundle harness in tools/) passes them here instead of rewriting
+    `sys.argv`, and `markdown_loader_class` lets it substitute its own
+    `MarkdownBookLoader` subclass for md books only — a reading-edition
+    formatter and a completion record — so it gets this module's validation,
+    endpoint resolution and compatibility checks rather than a second copy
+    of them. Both default to None and the run is byte-for-byte the old one.
+    """
     # Old command lines are rewritten into the endpoint surface before the
     # parser sees them; see book_maker/legacy_cli.py.
-    legacy = translate_legacy_argv(sys.argv[1:])
-    for notice in legacy.notices:
-        print(f"[yellow]deprecated:[/yellow] {escape(notice)}")
-
+    raw_argv = sys.argv[1:] if argv is None else list(argv)
+    legacy = translate_legacy_argv(raw_argv)
     options = parse_args(legacy.argv)
     # None is "not typed": --accumulated_num keeps its explicitness (plan
     # mode defaults the budget by context mode, and an explicit 1 must still
@@ -2213,6 +3023,28 @@ def main():
     if not os.path.isfile(options.book_name):
         print(f"Error: the book {options.book_name!r} does not exist.")
         exit(1)
+
+    for notice in retire_pdf_aliases(options):
+        print(f"[yellow]deprecated:[/yellow] {escape(notice)}")
+
+    if options.to_epub and get_book_type(options.book_name) == "pdf":
+        # The PDF reading edition, which is a different route rather than a
+        # different setting: the PDF is extracted to Markdown and it is that
+        # Markdown this same CLI then translates, with the route's own flags
+        # stripped. So the divert is here, before an endpoint is resolved --
+        # everything below belongs to that inner run, which resolves it for
+        # a md book with the whole compatibility table applied to the book
+        # it is really translating. A PDF without the flag falls through to
+        # the legacy loader, unchanged.
+        # The inner run gets the command line as typed, not the rewritten
+        # one: the legacy rewrite also names the env variable an old alias
+        # implied its key lives in, and that is read by the run that
+        # resolves the endpoint, which is the inner one. It prints the
+        # deprecation notices too, which is why they wait until here.
+        return run_to_epub(options, raw_argv)
+
+    for notice in legacy.notices:
+        print(f"[yellow]deprecated:[/yellow] {escape(notice)}")
 
     if options.plan_dry_run:
         # No translation happens, so no credentials are needed: build the
@@ -2266,7 +3098,7 @@ def main():
                 print(
                     f"note: the preview assumes the stock prompt overhead "
                     f"(budget {dry_budget}); a large custom prompt can "
-                    f"raise the real run's budget, up to 2000"
+                    f"raise the real run's budget, up to {SESSION_BUDGET_CEILING}"
                 )
         plan = build_plan(
             book,
@@ -2286,6 +3118,10 @@ def main():
         # cannot promise a window the run does not use.
         if options.context_mode == "session" and not options.no_context_compact:
             print(compact_budget_notice(options.context_compact_at))
+        # Which endpoints the run would ask, resolved as the run resolves
+        # them, without a key (a dry run needs no credentials).
+        for line in endpoint_preview_lines(options):
+            print(escape(line))
         # What this preview cannot know: whether the real run will be in plan
         # mode at all, and how far the endpoint will be trusted with one
         # request. Both change the numbers just printed.
@@ -2298,6 +3134,8 @@ def main():
                 api_format=dry_format,
                 translate_model=dry_model,
                 batch_units=batch_units,
+                # C32 asks it; the preview is an epub by construction
+                classify_mode=resolve_classify_mode(options, "epub")[0],
             ),
             rules=DRY_RUN_RULES,
         )
@@ -2374,13 +3212,8 @@ def main():
 
     # Session mode is one growing history. Workers cannot share it, and one
     # each is window mode at session prices.
-    if options.parallel_workers > 1 and options.context_mode == "session":
-        print(
-            "[bold red]Error: --parallel-workers is not supported with "
-            "--use_context session: one history is the context, and a worker "
-            "cannot share it. Use bare --use_context to keep the workers, or "
-            "drop --parallel-workers to keep the session.[/bold red]"
-        )
+    if parallel_session_conflict(options):
+        print(f"[bold red]Error: {PARALLEL_SESSION_REFUSAL}[/bold red]")
         exit(1)
 
     # Parallel workers each get a clone carrying their own chapter context.
@@ -2408,10 +3241,23 @@ def main():
             f"now only support files of these formats: {','.join(support_type_list)}",
         )
 
-    # Which mode the two --plan-classify flags asked for. Resolved here
-    # because the compatibility table asks about it; the one contradiction
-    # between them is still refused further down, where its message lives.
-    classify_mode, plan_auto = resolve_classify_mode(options)
+    # Which mode --plan-classify and --classify-model asked for. Resolved
+    # here because the compatibility table asks about it.
+    classify_mode, plan_auto = resolve_classify_mode(options, book_type)
+    # Who will classify (`--classify-model`, the provider's classify_model,
+    # else the run's own translator), resolved here without a key because
+    # rows depend on it (A10, A11, C35, and whether `auto` plans on a route
+    # that could not classify by itself). A choice that cannot be made is
+    # refused now, in its own words.
+    previewed_classify_choice = None
+    if book_type == "epub" and classify_mode not in NEVER_CLASSIFIES:
+        try:
+            previewed_classify_choice = preview_classify_choice(
+                options, model_names, api_format
+            )
+        except SystemExit as err:
+            print(f"[bold red]Error: {escape(redact(str(err)))}[/bold red]")
+            exit(1)
 
     # The compatibility table: every combination that would be paid for and
     # then wasted, degraded or ignored. After the endpoint is resolved (the
@@ -2426,6 +3272,7 @@ def main():
         classify_mode=classify_mode,
         plan_auto=plan_auto,
         batch_units=batch_units,
+        classify_choice=previewed_classify_choice,
     )
     check_compatibility(facts)
 
@@ -2444,6 +3291,31 @@ def main():
         options.api_base,
         endpoint_env_keys + legacy.env_keys,
     )
+    # The classify endpoint (`--classify-model`, else the provider entry's
+    # classify_model, else the run's own), resolved with its key before the
+    # book is opened: an endpoint of another format, or one with no key, is
+    # refused while nothing has been spent. Plan mode is its only user.
+    # `--plan-classify all` and `agent` ask nothing, so nothing is resolved
+    # for them and no key is demanded (row C32 says the flags are ignored
+    # with `all`; agent mode never pre-fills, see NEVER_CLASSIFIES).
+    classify_choice = None
+    if book_type == "epub" and classify_mode not in NEVER_CLASSIFIES:
+        from book_maker.endpoints import resolve_classify_endpoint, run_choice
+
+        try:
+            classify_choice = resolve_classify_endpoint(
+                options,
+                run_choice(
+                    model_names[0] if model_names else "",
+                    options.api_base,
+                    API_KEY,
+                    api_format,
+                ),
+                getattr(options, "provider_route", None),
+            )
+        except SystemExit as err:
+            print(f"[bold red]Error: {escape(redact(str(err)))}[/bold red]")
+            exit(1)
 
     # Read before the book is opened: a glossary that will not parse is the
     # operator's typo, and finding it after the first paid request would mean
@@ -2471,6 +3343,10 @@ def main():
 
     book_loader = BOOK_LOADER_DICT.get(book_type)
     assert book_loader is not None, "unsupported loader"
+    if markdown_loader_class is not None and book_type == "md":
+        # md only: the substitute is a MarkdownBookLoader subclass, and
+        # every other format keeps the registered loader.
+        book_loader = markdown_loader_class
     # `--language zh-hant:Traditional Chinese`: the tag is stamped on the
     # output and names the structured field, the name is what the model is
     # asked for. A bare value resolves the way it always has.
@@ -2493,7 +3369,7 @@ def main():
             glossary_auto=glossary_auto_flag(options.glossary_auto),
         )
     elif options.context_mode == "session":
-        # txt, srt and pdf never hand context to the model, so a session
+        # txt and srt never hand context to the model, so a session
         # budget would quietly do nothing at all.
         print(
             f"[bold yellow]Warning:[/bold yellow] --use_context session is "
@@ -2567,14 +3443,20 @@ def main():
             # which is what every result file already on disk was written
             # under.
             e.translate_model.language_field_tag = target.tag
-    price_table = getattr(options, "price_table", None)
-    if price_table is not None and hasattr(e.translate_model, "usage"):
-        # the bar shows what was spent instead of token counts
-        e.translate_model.usage.prices = price_table
-    # Request extras, on the routes that build a request these can join.
-    # Setting an arbitrary attribute on the others used to print success and
-    # then silently drop the fields.
-    if options.extra_body or options.extra_headers:
+    # The price table (the bar shows what was spent instead of token
+    # counts), --no-thinking and the request extras, each on the routes that
+    # carry it: --no-thinking is a field in the request body, and the table
+    # above has already stopped the codex route and warned every route that
+    # builds no body of ours. Setting an arbitrary attribute on the others
+    # used to print success and then silently drop the fields.
+    try:
+        extras = apply_run_extras(e.translate_model, options)
+    except SystemExit as err:
+        print(f"[bold red]Error:[/bold red] {err}")
+        exit(1)
+    if (
+        options.extra_body or options.extra_headers
+    ) and not translate_model.SUPPORTS_REQUEST_EXTRAS:
         extras_given = [
             flag
             for flag, value in (
@@ -2583,89 +3465,38 @@ def main():
             )
             if value
         ]
-        if not translate_model.SUPPORTS_REQUEST_EXTRAS:
-            # Named by capability, not by format: `groq`, `xai`, `litellm`
-            # and `orcarouter` are the openai request path and do take them,
-            # and naming the format would have told those runs otherwise.
-            print(
-                f"[bold yellow]Warning:[/bold yellow] "
-                f"{' and '.join(extras_given)} "
-                f"{'is' if len(extras_given) == 1 else 'are'} ignored by the "
-                f"{api_format} route, which builds no request they could "
-                f"join; the run continues without them."
-            )
-        else:
-            extras = {}
-            for flag, dest in (
-                ("--extra_body", "extra_body"),
-                ("--extra_headers", "extra_headers"),
-            ):
-                raw = getattr(options, dest)
-                if not raw:
-                    continue
-                try:
-                    parsed = json.loads(raw)
-                except json.JSONDecodeError as ex:
-                    print(f"[bold red]Error:[/bold red] invalid JSON in {flag}: {ex}")
-                    exit(1)
-                if not isinstance(parsed, dict):
-                    # A list or a bare string would be accepted by the SDK
-                    # and rejected by the endpoint, one paid request later.
-                    print(
-                        f"[bold red]Error:[/bold red] {flag} must be a JSON "
-                        f"object, not {type(parsed).__name__}."
-                    )
-                    exit(1)
-                extras[dest] = parsed
-            if "extra_headers" in extras and not all(
-                isinstance(v, str) for v in extras["extra_headers"].values()
-            ):
-                # httpx raises on a non-string header value, deep in the
-                # first request rather than here.
-                print(
-                    "[bold red]Error:[/bold red] --extra_headers values must "
-                    "all be strings."
-                )
-                exit(1)
-            e.translate_model.set_request_extras(**extras)
-            if "extra_body" in extras:
-                # Through redact(): a body field is not where a credential
-                # belongs, but a gateway that wants the key in the body gets
-                # it repeated here, and the echo must not print it either.
-                print(
-                    f"[bold blue]--extra_body:[/bold blue] "
-                    f"{escape(redact(str(extras['extra_body'])))}"
-                )
-            if "extra_headers" in extras:
-                # Names only. A header is where a credential goes —
-                # Authorization, X-API-Key — and echoing the value would put
-                # it in every log and CI artifact the run touches.
-                names = ", ".join(sorted(extras["extra_headers"]))
-                print(
-                    f"[bold blue]--extra_headers:[/bold blue] {escape(names)} "
-                    f"(values not shown)"
-                )
+        # Named by capability, not by format: `groq`, `xai`, `litellm`
+        # and `orcarouter` are the openai request path and do take them,
+        # and naming the format would have told those runs otherwise.
+        print(
+            f"[bold yellow]Warning:[/bold yellow] "
+            f"{' and '.join(extras_given)} "
+            f"{'is' if len(extras_given) == 1 else 'are'} ignored by the "
+            f"{api_format} route, which builds no request they could "
+            f"join; the run continues without them."
+        )
+    if "extra_body" in extras:
+        # Through redact(): a body field is not where a credential belongs,
+        # but a gateway that wants the key in the body gets it repeated
+        # here, and the echo must not print it either.
+        print(
+            f"[bold blue]--extra_body:[/bold blue] "
+            f"{escape(redact(str(extras['extra_body'])))}"
+        )
+    if "extra_headers" in extras:
+        # Names only. A header is where a credential goes — Authorization,
+        # X-API-Key — and echoing the value would put it in every log and CI
+        # artifact the run touches.
+        names = ", ".join(sorted(extras["extra_headers"]))
+        print(
+            f"[bold blue]--extra_headers:[/bold blue] {escape(names)} "
+            f"(values not shown)"
+        )
     # other options
     if options.sentence_mode:
         e.sentence_mode = True
     if options.allow_navigable_strings:
         e.allow_navigable_strings = True
-    # --plan-classify-model names a classifier, which only makes sense in
-    # model mode; asking for it alongside a no-classification mode is a
-    # contradiction, not a preference to resolve silently. (The modes
-    # themselves are resolved by resolve_classify_mode above, which leaves
-    # this combination as typed so this refusal still owns it.)
-    if options.plan_classify_model and classify_mode in ("all", "agent"):
-        reason = (
-            "agent mode makes no API call"
-            if classify_mode == "agent"
-            else "all mode skips classification"
-        )
-        print(
-            f"[bold red]Error:[/bold red] --plan-classify-model cannot be "
-            f"combined with --plan-classify {classify_mode} ({reason})"
-        )
-        exit(1)
     # Plan mode is epub-only, and 'agent' in particular promises to stop
     # before spending anything; silently translating a txt/md book instead
     # would be the exact opposite of what was asked.
@@ -2705,7 +3536,6 @@ def main():
         # translate-everything decision, and the loader has to know it was
         # made rather than infer it from the absence of one.
         e.plan_classify = classify_mode
-        e.plan_classify_model = options.plan_classify_model or None
     if options.quiet and hasattr(e, "quiet"):
         e.quiet = True
         # The translator prints echoes of its own — handoff reports, window
@@ -2799,6 +3629,34 @@ def main():
     if options.batch_use_flag:
         e.batch_use_flag = options.batch_use_flag
 
+    # A fixed engine (google, deepl ...) has no model to ask; a run on one
+    # classifies only through a classifier at an address of its own, and
+    # row A10 has stopped the rest.
+    if (
+        classify_choice is not None
+        and hasattr(e, "classify_translator")
+        and (
+            classify_choice.api_format in LLM_FORMATS
+            or classify_choice.api_format == "jev"
+        )
+    ):
+        from book_maker.endpoints import build_classifier
+
+        e.classify_translator = build_classifier(
+            classify_choice, e.translate_model, options, language, prompt_config
+        )
+        if e.classify_translator.separate:
+            print(f"classifier: {escape(e.classify_translator.describe())}")
+
+    classifier = getattr(e, "classify_translator", None)
+    separate = getattr(classifier, "separate", False)
+    enter_plan = False
+    if plan_auto and book_type == "epub" and not translate_tags_given and separate:
+        # A classifier of its own plans the book whatever the run's route can
+        # answer (lead ruling 260923, Codex finding 4); grouping still reads
+        # the run translator's own verdict.
+        plan_auto = False
+        enter_plan = True
     if plan_auto:
         # the verdict is cached, so the first translation does not pay again
         try:
@@ -2821,13 +3679,28 @@ def main():
             # LLM rules on the rows. Which channel carries the question is
             # the endpoint's business, settled again in classify_plan.
             print(f"plan mode: on ({reason})")
-            e.plan_mode = True
-            e.plan_auto = True
-            e.plan_fallback_tags = options.translate_tags
-            e.translate_tags = "auto"
-            e.plan_classify = "model"
+            enter_plan = True
         else:
             print(f"plan mode: off ({reason})")
+    if enter_plan:
+        e.plan_mode = True
+        e.plan_auto = True
+        e.plan_fallback_tags = options.translate_tags
+        e.translate_tags = "auto"
+        e.plan_classify = "model"
+    if (
+        separate
+        and book_type == "epub"
+        and getattr(e, "plan_mode", False)
+        and getattr(e, "plan_classify", None) == "model"
+    ):
+        # Model mode with a classifier of its own, whether `auto` chose it
+        # above or a flag asked for it (`--classify-model`, `--plan-classify
+        # model`), says who plans the book (lead 260925, skill field test;
+        # docs/en/features/plan-mode.md promises it). `auto` on a route that
+        # plans by itself has said its own line above, and never has a
+        # separate classifier there.
+        print(f"plan mode: on (classified by {escape(classifier.describe())})")
 
     try:
         e.make_bilingual_book()

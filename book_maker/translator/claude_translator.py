@@ -11,12 +11,14 @@ from anthropic import (
 )
 
 from .base_translator import Base
+from .reasoning import ANTHROPIC_NO_THINKING
 from ..config import config
 from ..session_context import (
-    HandoffReport,
+    SEED_MAX_TOKENS,
     SessionHistory,
     compact_budget_for,
     handoff_prompt,
+    seed_cap,
 )
 from ..redaction import remember
 from ..structured import RungRejected
@@ -271,6 +273,18 @@ class Claude(Base):
         """
         return self.session is None
 
+    def request_extra_body(self, model=None):
+        """See `Base.request_extra_body`.
+
+        One spelling, no negotiation: `thinking` is part of the anthropic
+        wire format itself rather than a vendor extension, so every endpoint
+        that speaks the format takes the field and there is nothing to learn
+        by being refused. `--extra_body` still wins the merge.
+        """
+        if not self.no_thinking:
+            return self.extra_body or None
+        return {**ANTHROPIC_NO_THINKING, **self.extra_body}
+
     def set_request_extras(self, extra_body=None, extra_headers=None):
         """See `Base.set_request_extras`. Headers ride on the client."""
         self.extra_body = extra_body or {}
@@ -449,21 +463,22 @@ class Claude(Base):
         being condensed into what replaces it.
         """
         budget = self._session_budget()
+        # This route carries no glossary of its own (SUPPORTS_GLOSSARY is
+        # False on it), so the compact turn is never asked for a renderings
+        # block nobody would read.
+        prompt = handoff_prompt(with_glossary=False, with_style=not self.style_note)
         messages = [
             *self.session.messages(),
-            {
-                "role": "user",
-                # This route carries no glossary of its own (SUPPORTS_GLOSSARY
-                # is False on it), so the compact turn is never asked for a
-                # renderings block nobody would read.
-                "content": handoff_prompt(
-                    with_glossary=False, with_style=not self.style_note
-                ),
-            },
+            {"role": "user", "content": prompt},
         ]
         try:
             r = self.client.messages.create(
-                max_tokens=4096,
+                # Layer (b) of the seed bound: this route's native cap, and
+                # unlike the openai one it is a required field, so there is no
+                # spelling to discover and nothing to fall back to. It was
+                # 4096 — an order of magnitude above what a handoff report
+                # measures — which bounded nothing the seed cares about.
+                max_tokens=SEED_MAX_TOKENS,
                 messages=messages,
                 # The same system message every other request on this route
                 # sends, `--source_lang` note included: the compact turn
@@ -472,7 +487,7 @@ class Claude(Base):
                 system=self.standing_instructions(),
                 temperature=self.temperature,
                 model=self.model,
-                extra_body=self.extra_body or None,
+                extra_body=self.request_extra_body(),
                 **self._cache_kwargs(),
             )
             self._note_usage(r)
@@ -481,28 +496,25 @@ class Claude(Base):
             self._compact_failed(e, budget)
             return
         if not report_text.strip():
-            # A 200 carrying no text at all — an empty or tool-only content
-            # list, which a gateway can answer with. Nothing was raised, so
-            # this used to count as a successful compaction: the window was
-            # reset and seeded with the empty string, throwing away the whole
-            # accumulated context and buying nothing for it. It is a compact
-            # that produced no report, so it takes the failure path, and it is
-            # not a report, so it is not printed as one.
-            self._compact_failed("the endpoint returned an empty report", budget)
+            # A 200 carrying nothing — an empty or tool-only content list,
+            # which a gateway can answer with. Nothing was raised, so this
+            # used to count as a successful compaction: the window was reset
+            # and seeded with the empty string, throwing away the whole
+            # accumulated context and buying nothing for it. Emptiness is the
+            # only thing refused here (owner ruling 260913); a reply that is
+            # merely poor is seeded, bounded by the cap.
+            self._compact_failed("the endpoint returned an empty reply", budget)
             return
         self._compact_failures = 0
 
-        report = HandoffReport(
-            window=self.session.windows,
-            # A style the user fixed is handed on verbatim, so it cannot be
-            # eroded window by window by a model re-describing it.
-            style_note=self.style_note,
-            summary=report_text.strip(),
-        )
+        # This route never asks for renderings (`with_glossary=False` above),
+        # so nothing is parsed out of the prose — only the split and the
+        # shape-based tidy every route's seed gets.
+        report = self._handoff_report(self.session.windows, report_text)
         self._show_handoff(report)
         if self.handoff_path:
             try:
-                report.append_to(self.handoff_path)
+                report.write_snapshot(self.handoff_path)
             except OSError as e:
                 # The paragraph is already translated and billed. Failing here
                 # would lose it over a file that is not what was asked for.
@@ -510,41 +522,18 @@ class Claude(Base):
                     f"[yellow]ℹ could not write {self.handoff_path} ({e}); "
                     f"the run continues without a saved handoff[/yellow]"
                 )
-        self.session.reset(seed=report.seed_text())
+        self.session.reset(seed=report.seed_text(seed_cap(budget)))
 
-    def _compact_failed(self, reason, budget):
-        """A compact that came back with no usable report: retry, or start clean.
+    def _compact_failed(self, reason, budget, force_give_up=False):
+        """The shared failure path, plus the one refusal only this route sees.
 
-        Keeping the window is the default, and the reason the retry exists:
-        one rate-limited or dropped request is not grounds for throwing away a
-        book's worth of accumulated context, and the budget stays exceeded, so
-        the next unit simply tries again.
+        An endpoint saying the history itself is what it refused cannot be
+        retried at all: the retry is deferred to a paragraph whose request
+        carries that same history and is refused before it.
         """
-        self._compact_failures += 1
-        # Give up on attempts, once the window has outgrown its budget badly
-        # enough that retrying is the wrong bet, or as soon as the endpoint
-        # says the history is what it refused — that last one cannot be
-        # retried at all, because the retry is deferred to a paragraph whose
-        # request carries this same history and is refused before it.
-        give_up = (
-            _history_too_long(reason)
-            or self._compact_failures >= self.COMPACT_ATTEMPTS
-            or self.session.estimated_tokens() > 2 * budget
+        super()._compact_failed(
+            reason, budget, force_give_up=force_give_up or _history_too_long(reason)
         )
-        print(
-            f"[yellow]ℹ handoff report failed ({reason}); "
-            + (
-                "starting the next context window without a summary"
-                if give_up
-                else "keeping the current context and retrying on the next paragraph"
-            )
-            + "[/yellow]"
-        )
-        if give_up:
-            # Bounded: without this the history would grow past the budget
-            # forever on a persistently failing endpoint.
-            self._compact_failures = 0
-            self.session.reset(seed="")
 
     def _chat_completion(self, prompt, model=None):
         """One question, one answer — the channel plan classification needs.
@@ -564,7 +553,7 @@ class Claude(Base):
                 max_tokens=4096,
                 model=model or self.model,
                 messages=[{"role": "user", "content": prompt}],
-                extra_body=self.extra_body or None,
+                extra_body=self.request_extra_body(),
             )
         except (BadRequestError, UnprocessableEntityError) as e:
             self.warn_if_extras_refused(e)
@@ -587,7 +576,7 @@ class Claude(Base):
                 system=self.standing_instructions(),
                 temperature=self.temperature,
                 model=self.model,
-                extra_body=self.extra_body or None,
+                extra_body=self.request_extra_body(),
                 **self._cache_kwargs(),
             )
         except APIStatusError as e:

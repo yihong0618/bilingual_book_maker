@@ -22,23 +22,151 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-jobs:
-  build:
-    name: Build and push
-    runs-on: ubuntu-latest
+# `bash` here means `bash -eo pipefail`, so a failing `docker run` on the
+# left of a pipe fails its step (the implicit default shell has no pipefail).
+defaults:
+  run:
+    shell: bash
 
-    steps:
+# Three images from one Dockerfile (see its header): `core` is the default
+# image (`latest`, `basic`, `<version>`, `sha-…`); `pdf` adds Pandoc and the
+# PDF route with PyTorch's CPU build (`pdf`, `<version>-pdf`, `sha-…-pdf`),
+# for amd64 and arm64; `pdf-cuda` is the same route on the official PyTorch
+# CUDA runtime image (`pdf-cuda`, `<version>-pdf-cuda`, `sha-…-pdf-cuda`),
+# amd64 only.
+#
+# Every platform builds on its own native runner (no QEMU) and pushes by
+# digest; one merge job per image then writes the multi-arch manifest and
+# the tags (docker/build-push-action's "distribute build across multiple
+# runners" pattern). Layer cache lives in the registry, one ref per image and
+# architecture, and `pdf` also reads core's, so the dependency layers the
+# two share (the Dockerfile's `core-deps` stage) hit.
+# Pull requests build every image without pushing and without writing the
+# cache: a fork PR has no registry credentials.
+
+jobs:
+  build-core:
+    name: Build core (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: core, arch: amd64, runner: ubuntu-latest }
+          - { target: core, arch: arm64, runner: ubuntu-24.04-arm }
+    steps: &build_steps
       - uses: actions/checkout@v6
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
+      # GHCR wants a lowercase repository name; metadata-action lowercases
+      # its own output, but the digest push and the cache refs use this.
+      - name: Image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      # pdf-cuda's base alone is 3.4 GB compressed; the hosted runner's
+      # preinstalled toolchains are removed to make room for it.
+      - name: Free disk space
+        if: matrix.target == 'pdf-cuda'
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      # Pull requests build but never push, so a fork PR needs no credentials.
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Labels only; the tags are written by the merge job.
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          platforms: linux/${{ matrix.arch }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
+          cache-from: |
+            type=registry,ref=${{ env.IMAGE }}:buildcache-${{ matrix.target }}-${{ matrix.arch }}
+            type=registry,ref=${{ env.IMAGE }}:buildcache-core-${{ matrix.arch }}
+          cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref={0}:buildcache-{1}-{2},mode=max', env.IMAGE, matrix.target, matrix.arch) || '' }}
+
+      - name: Disk after the build
+        if: always() && matrix.target == 'pdf-cuda'
+        run: |
+          df -h /
+          docker buildx du | tail -3
+
+      - name: Export digest
+        if: github.event_name != 'pull_request'
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "$RUNNER_TEMP/digests/${digest#sha256:}"
+
+      # `--` separates the image from the architecture, so the pattern
+      # `digests--pdf--*` never picks up pdf-cuda's digests.
+      - name: Upload digest
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests--${{ matrix.target }}--${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # pdf starts from core's dependency stage, so it starts once core's cache
+  # is in the registry. pdf-cuda's base is the PyTorch image, not core; it builds
+  # beside pdf.
+  build-pdf:
+    name: Build ${{ matrix.target }} (${{ matrix.arch }})
+    needs: build-core
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: pdf, arch: amd64, runner: ubuntu-latest }
+          - { target: pdf, arch: arm64, runner: ubuntu-24.04-arm }
+          - { target: pdf-cuda, arch: amd64, runner: ubuntu-latest }
+    steps: *build_steps
+
+  merge-core:
+    name: Publish core
+    needs: build-core
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { target: core, rolling: latest, alias: basic, suffix: "" }
+    steps: &merge_steps
+      - name: Image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - name: Download digests
+        uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests--${{ matrix.target }}--*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -51,18 +179,152 @@ jobs:
         with:
           # metadata-action lowercases the repository name for us.
           images: ghcr.io/${{ github.repository }}
+          # A semver tag would otherwise add `latest` implicitly, for every
+          # image, so a release could publish a PDF image as `latest`. The
+          # rolling tags are the explicit `raw` rule below and nothing else:
+          # `latest`/`pdf`/`pdf-cuda` follow the default branch, releases get
+          # `<version>`, `<version>-pdf` and `<version>-pdf-cuda`.
+          flavor: |
+            latest=false
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=semver,pattern={{version}}
-            type=sha
+            type=raw,value=${{ matrix.rolling }},enable={{is_default_branch}}
+            type=raw,value=${{ matrix.alias }},enable=${{ matrix.alias != '' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+            type=semver,pattern={{version}},suffix=${{ matrix.suffix }}
+            type=sha,suffix=${{ matrix.suffix }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v7
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          ls -l
+          mapfile -t tags < <(jq -r '.tags[] | ("-t", .)' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          sources=()
+          for digest in *; do sources+=("$IMAGE@sha256:$digest"); done
+          docker buildx imagetools create "${tags[@]}" "${sources[@]}"
+
+      - name: Inspect image
+        run: docker buildx imagetools inspect "$IMAGE:${{ steps.meta.outputs.version }}"
+
+  merge-pdf:
+    name: Publish ${{ matrix.target }}
+    needs: build-pdf
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: pdf, rolling: pdf, alias: "", suffix: -pdf }
+          - { target: pdf-cuda, rolling: pdf-cuda, alias: "", suffix: -pdf-cuda }
+    steps: *merge_steps
+
+  # Pulls each image just published under its `sha-…` tag and runs it on
+  # the CPU. pdf-cuda runs here too: there is no GPU on a hosted runner, so
+  # `torch.cuda.is_available()` prints False and only the import is checked.
+  # pdf is also run on arm64, the image every Mac pulls.
+  smoke:
+    name: Smoke ${{ matrix.target }} (${{ matrix.arch }})
+    needs: [merge-core, merge-pdf]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: core, suffix: "", arch: amd64, runner: ubuntu-latest }
+          - { target: pdf, suffix: -pdf, arch: amd64, runner: ubuntu-latest }
+          - { target: pdf, suffix: -pdf, arch: arm64, runner: ubuntu-24.04-arm }
+          - { target: pdf-cuda, suffix: -pdf-cuda, arch: amd64, runner: ubuntu-latest }
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Free disk space
+        if: matrix.target == 'pdf-cuda'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
         with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA::7}${{ matrix.suffix }}"
+          echo "IMAGE=$image" >> "$GITHUB_ENV"
+          docker pull "$image"
+          size=$(docker image inspect --format '{{.Size}}' "$image")
+          echo "image size: $image $size bytes ($((size / 1024 / 1024)) MiB)"
+          echo "| ${{ matrix.target }} | ${{ matrix.arch }} | $((size / 1024 / 1024)) MiB |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: --help
+        run: |
+          help=$(docker run --rm "$IMAGE" --help)
+          sed -n 1,5p <<< "$help"
+
+      # core carries no PDF route at all: the split is the point of it.
+      - name: Python packages
+        run: |
+          if [ "${{ matrix.target }}" = core ]; then
+            docker run --rm --entrypoint python "$IMAGE" -c "import importlib.util as u, book_maker.cli; missing = [m for m in ('docling', 'torch') if u.find_spec(m) is None]; print('absent from core:', missing); assert missing == ['docling', 'torch']"
+          else
+            docker run --rm --entrypoint python "$IMAGE" -c "import docling, torch; print(torch.__version__, torch.cuda.is_available())"
+            # pdf must be the CPU build, pdf-cuda the CUDA 12.6 one (no GPU
+            # here, so is_available() is False either way).
+            expected=${{ matrix.target == 'pdf-cuda' && '12.6' || 'None' }}
+            docker run --rm --entrypoint python "$IMAGE" -c "import sys, torch, torchvision; print('torch.version.cuda', torch.version.cuda, 'torchvision', torchvision.__version__, sys.executable); assert str(torch.version.cuda) == '$expected'"
+          fi
+
+      - name: Pandoc
+        if: matrix.target != 'core'
+        run: docker run --rm --entrypoint pandoc "$IMAGE" --version | sed -n 1p
+
+      # A two-page PDF written by the tests' own helper (standard library
+      # only), translated over the free Google route on the CPU.
+      - name: --to-epub
+        if: matrix.target != 'core'
+        run: |
+          book="$RUNNER_TEMP/book"
+          mkdir -p "$book"
+          PYTHONPATH=. python3 - "$book/two.pdf" <<'EOF'
+          import pathlib
+          import sys
+
+          sys.path.insert(0, "tests")
+          from pipeline_helpers import write_pdf
+
+          write_pdf(
+              pathlib.Path(sys.argv[1]),
+              pages=(
+                  "Chapter one. The quick brown fox jumps over the lazy dog.",
+                  "Chapter two. A second page of plain text for the smoke test.",
+              ),
+          )
+          EOF
+          docker run --rm \
+            -v "$book":/book \
+            -v bbm-models:/root/.cache \
+            "$IMAGE" \
+            --book_name /book/two.pdf \
+            --to-epub \
+            --api_format google \
+            --language zh-hans \
+            --test \
+            --test_num 2 \
+            --device cpu
+          test -f "$book/two_bilingual.epub"
+          python3 -m zipfile -l "$book/two_bilingual.epub"
+          python3 - "$book/two_bilingual.epub" <<'EOF'
+          import sys
+          import zipfile
+
+          with zipfile.ZipFile(sys.argv[1]) as epub:
+              pages = [epub.read(n).decode() for n in epub.namelist() if n.endswith(".xhtml")]
+          assert any('class="bbm-translation"' in page for page in pages), "no translation in the EPUB"
+          print("translation blocks:", sum(page.count('class="bbm-translation"') for page in pages))
+          EOF

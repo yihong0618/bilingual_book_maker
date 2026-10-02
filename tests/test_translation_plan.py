@@ -3575,3 +3575,35 @@ class TestOperatorFindings:
         (tmp_path / ("." + src.stem + ".temp.bin")).unlink()
         _make_loader(tmp_path, FakeModel)
         assert "existing progress cache" not in capsys.readouterr().out
+
+
+class _NeverAsked:
+    """A classify backend that fails the test the moment it is asked."""
+
+    name = "schema"
+
+    def can(self, question):
+        pytest.fail("agent mode asked the classifier whether it could answer")
+
+    def ask(self, question):
+        pytest.fail("agent mode asked the classifier a question")
+
+    def why_not(self, question):
+        return "never asked"
+
+
+def test_agent_mode_never_prefills_even_with_a_classifier(tmp_path):
+    # PIN (owner 260924): agent mode never pre-fills; a pre-filled plan makes the agent less accurate. Record: docs/260923-feat-ENDPOINT_OVERRIDES_CLASSIFIER_JEV.md
+    from book_maker.classifier import Classifier
+
+    loader, src = _make_loader(tmp_path, FakeModel)
+    loader.classify_translator = Classifier(
+        None, "cls-model", backends=[_NeverAsked()], source="cli", separate=True
+    )
+    loader.plan_classify = "agent"
+    with pytest.raises(SystemExit) as exit_info:
+        loader.make_bilingual_book()
+    assert exit_info.value.code == PLAN_HANDOFF_EXIT_CODE
+    data = json.loads(src.with_name(src.stem + "_plan.json").read_text())
+    assert data["signatures"]
+    assert [row for row in data["signatures"] if row["decided_by"] == "llm"] == []

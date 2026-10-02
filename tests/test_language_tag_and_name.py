@@ -43,7 +43,7 @@ from book_maker.utils import (
 
 REPO = Path(__file__).resolve().parent.parent
 HERMETIC = Path(__file__).resolve().parent / "hermetic"
-DOC = REPO / "docs" / "languages.md"
+DOC = REPO / "docs" / "en" / "languages.md"
 
 
 # ------------------------------------------------------------ the parse
@@ -361,6 +361,25 @@ def _translate(tmp_path, language):
     return package, document
 
 
+@pytest.fixture(scope="session")
+def translated(tmp_path_factory):
+    """One run per language asked for, shared by the tests that read it.
+
+    `_translate` is a subprocess, and nearly all of its ~2.7s is the
+    provider SDKs the CLI imports on the way to a book of two paragraphs.
+    Both halves of the stamp are read off the same written file, so the two
+    sites below are two assertions about one run, not two runs.
+    """
+    cache = {}
+
+    def run(language):
+        if language not in cache:
+            cache[language] = _translate(tmp_path_factory.mktemp("lang"), language)
+        return cache[language]
+
+    return run
+
+
 class TestTheStamp:
     """What lands in the file is the tag, never the name a model was given.
 
@@ -369,15 +388,15 @@ class TestTheStamp:
     on each inserted paragraph (`stamp_translation`).
     """
 
-    def test_a_pinned_tag_is_what_the_book_declares(self, tmp_path):
-        package, document = _translate(tmp_path, "zh-hant:Traditional Chinese")
+    def test_a_pinned_tag_is_what_the_book_declares(self, translated):
+        package, document = translated("zh-hant:Traditional Chinese")
 
         declared = re.findall(r"<dc:language>([^<]*)</dc:language>", package)
         assert declared[0] == "zh-hant"
         assert "Traditional Chinese" not in package
 
-    def test_a_pinned_tag_is_what_the_inserted_markup_carries(self, tmp_path):
-        package, document = _translate(tmp_path, "zh-hant:Traditional Chinese")
+    def test_a_pinned_tag_is_what_the_inserted_markup_carries(self, translated):
+        package, document = translated("zh-hant:Traditional Chinese")
 
         assert 'lang="zh-hant"' in document
         assert "Traditional Chinese" not in document
@@ -452,7 +471,7 @@ class TestTheGuidanceLine:
         "Note: --language Klingon matched no known language tag, so nothing "
         "is stamped on the output markup. Use the tag (--language zh-hant) "
         'or state both (--language "zh-hant:Traditional Chinese"); the tags '
-        "are listed in docs/languages.md."
+        "are listed in docs/en/languages.md."
     )
 
     def test_free_text_that_matched_nothing_is_narrated_once(self):
@@ -493,7 +512,7 @@ def _alias_rows():
 
 
 class TestTheLanguageDocIsInStep:
-    """docs/languages.md is the address the guidance line sends people to.
+    """docs/en/languages.md is the address the guidance line sends people to.
 
     A table that has grown past it sends them to a page that does not list
     the language they were told to look up, which is worse than no page.
@@ -507,7 +526,7 @@ class TestTheLanguageDocIsInStep:
             if f"| `{tag}` | {name} |" not in text
         ]
 
-        assert not missing, f"not in docs/languages.md: {', '.join(missing)}"
+        assert not missing, f"not in docs/en/languages.md: {', '.join(missing)}"
 
     def test_every_other_accepted_spelling_is_listed(self):
         text = DOC.read_text(encoding="utf-8")
@@ -517,7 +536,7 @@ class TestTheLanguageDocIsInStep:
             if f"| `{alias}` | `{tag}` |" not in text
         ]
 
-        assert not missing, f"not in docs/languages.md: {', '.join(missing)}"
+        assert not missing, f"not in docs/en/languages.md: {', '.join(missing)}"
 
     def test_the_doc_lists_nothing_the_tables_dropped(self):
         """The other direction: a row left behind by a removed entry."""

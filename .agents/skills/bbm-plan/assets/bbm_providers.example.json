@@ -3,11 +3,24 @@
     "openai": {
       "api_style": "openai",
       "base_url": "https://api.openai.com/v1",
-      "default_models": ["gpt-5.6-luna"],
+      "default_models": ["gpt-6-luna"],
       "env_key": "OPENAI_API_KEY",
+      "img_model": "gpt-6-luna",
       "prices": {
-        "gpt-5.6-luna": {"input": 0.20, "output": 1.20, "cached_input": 0.02}
+        "gpt-6-luna": {"input": 0.10, "output": 0.50, "cached_input": 0.01}
       }
+    },
+    "openai-jev": {
+      "api_style": "openai",
+      "base_url": "https://api.openai.com/v1",
+      "default_models": ["gpt-6-luna"],
+      "env_key": "OPENAI_API_KEY",
+      "img_model": "gpt-6-luna",
+      "prices": {
+        "gpt-6-luna": {"input": 0.10, "output": 0.50, "cached_input": 0.01}
+      },
+      "classify_model": "jev",
+      "classify_env_key": "JEV_API_KEY"
     },
     "anthropic": {
       "api_style": "anthropic",
@@ -29,7 +42,7 @@
     "xai": {
       "api_style": "xai",
       "base_url": "https://api.x.ai/v1",
-      "default_models": ["grok-beta"],
+      "default_models": ["grok-4.3"],
       "env_key": "BBM_XAI_API_KEY"
     },
     "groq": {
@@ -71,6 +84,12 @@
       "base_url": "https://FILL-ME.example.com/v1",
       "default_models": ["FILL-ME-model-id"],
       "env_key": "GATEWAY_API_KEY"
+    },
+    "jev": {
+      "api_style": "jev",
+      "base_url": "https://api.typesafe.ai",
+      "default_models": ["jev"],
+      "env_key": "JEV_API_KEY"
     }
   }
 }

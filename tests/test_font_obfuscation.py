@@ -12,6 +12,7 @@ pass on any key it computed, right or wrong.
 """
 
 import hashlib
+import re
 import zipfile
 
 import pytest
@@ -407,6 +408,15 @@ def test_re_obfuscating_nothing_leaves_the_file_untouched(tmp_path):
     assert path.stat().st_ino == inode, "the archive was rewritten anyway"
 
 
+# ebooklib stamps dcterms:modified from the wall clock to the second, so two
+# builds straddling a second differ in content.opf (flaked on CI 260926).
+_MODIFIED = re.compile(rb'(<meta property="dcterms:modified">)[^<]*(</meta>)')
+
+
+def _unstamped(payload):
+    return _MODIFIED.sub(rb"\1\2", payload)
+
+
 def test_every_other_member_survives_the_rewrite(tmp_path):
     """Only the fonts change; the member list and every other payload are
     exactly what ebooklib wrote."""
@@ -417,7 +427,7 @@ def test_every_other_member_survives_the_rewrite(tmp_path):
     output = tmp_path / "book_bilingual.epub"
 
     with zipfile.ZipFile(output) as archive:
-        after = {n: archive.read(n) for n in archive.namelist()}
+        after = {n: _unstamped(archive.read(n)) for n in archive.namelist()}
 
     # rebuild the same book without the re-obfuscation step to compare
     loader2 = _load(path)
@@ -425,7 +435,7 @@ def test_every_other_member_survives_the_rewrite(tmp_path):
     loader2._reobfuscate_written = lambda *args, **kwargs: None
     loader2.make_bilingual_book()
     with zipfile.ZipFile(output) as archive:
-        before = {n: archive.read(n) for n in archive.namelist()}
+        before = {n: _unstamped(archive.read(n)) for n in archive.namelist()}
 
     assert set(after) - set(before) == {ENCRYPTION_PATH}
     changed = {n for n in before if before[n] != after.get(n)}

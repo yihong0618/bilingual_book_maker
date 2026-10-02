@@ -5,7 +5,7 @@ operator, but a reader must still be able to see what could have gone wrong
 with the translation. So the whole visible apparatus is a single small
 paragraph below the book's own intro —
 
-    Translated by gpt-5.6-luna, 2026.
+    Translated by gpt-6-luna, 2026.
 
 — and the package metadata says nothing at all: no `bbm:` metas, no
 `dc:contributor`, no `dc:description`. What survives of the old apparatus is

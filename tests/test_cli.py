@@ -71,10 +71,42 @@ def _run(tmp_path, *args):
     return proc, src.parent / (src.stem + "_plan.json")
 
 
-def test_plan_classify_implies_plan_mode(tmp_path):
+@pytest.fixture(scope="session")
+def shared_run(tmp_path_factory):
+    """One subprocess per distinct command line, shared by the tests that
+    only read its result.
+
+    A `_run` costs ~2.5s — interpreter start, the provider SDKs the CLI
+    imports, and a full parse of animal_farm.epub — and a dozen command
+    lines here were being spawned two to five times over, once per
+    assertion that wanted its own test. The tests stay separate; the
+    subprocess stops being. Sharing is only safe for reads: a test that
+    edits the plan file, reruns in the same directory, or needs a
+    directory of a particular shape keeps its own `_run`.
+
+    Returns the same `(proc, plan_path)` pair `_run` does, so the run
+    directory is `plan_path.parent`.
+    """
+    cache = {}
+
+    def run(*args):
+        if args not in cache:
+            cache[args] = _run(tmp_path_factory.mktemp("shared"), *args)
+        return cache[args]
+
+    return run
+
+
+@pytest.fixture(scope="session")
+def shared_help():
+    """`--help` is pure output; three tests read different lines of it."""
+    return _cli("--help")
+
+
+def test_plan_classify_implies_plan_mode(shared_run):
     # any classification choice is a choice to have a plan; no second flag
     # is needed to enter plan mode
-    proc, plan = _run(tmp_path, "--plan-classify", "agent")
+    proc, plan = shared_run("--plan-classify", "agent")
     # the handoff is not a finished translation, and says so
     assert proc.returncode == PLAN_HANDOFF_EXIT_CODE
     assert plan.exists()
@@ -90,9 +122,9 @@ def test_api_key_is_the_same_flag_as_key(tmp_path):
     assert "--api_key" not in proc.stdout
 
 
-def test_no_classify_flag_keeps_legacy_tag_mode(tmp_path):
+def test_no_classify_flag_keeps_legacy_tag_mode(shared_run):
     # the flag is opt-in: without it nothing about today's behavior changes
-    proc, plan = _run(tmp_path, "--test", "--test_num", "1")
+    proc, plan = shared_run("--test", "--test_num", "1")
     assert proc.returncode == 0
     assert not plan.exists()
 
@@ -123,10 +155,10 @@ def test_all_mode_ignores_an_existing_plan(tmp_path):
     assert "ignores the existing plan" in " ".join(proc.stdout.split())
 
 
-def test_most_is_the_old_name_of_all(tmp_path):
+def test_most_is_the_old_name_of_all(shared_run):
     # the mode translates the whole partition, and "all" is what that is.
     # Old command lines keep working and are corrected once, out loud.
-    proc, plan = _run(tmp_path, "--plan-classify", "most", "--test", "--test_num", "1")
+    proc, plan = shared_run("--plan-classify", "most", "--test", "--test_num", "1")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "--plan-classify most is now --plan-classify all" in " ".join(
         proc.stdout.split()
@@ -134,9 +166,8 @@ def test_most_is_the_old_name_of_all(tmp_path):
     assert not plan.exists()
 
 
-def test_the_retired_name_is_not_advertised():
-    proc = _cli("--help")
-    text = " ".join(proc.stdout.split())
+def test_the_retired_name_is_not_advertised(shared_help):
+    text = " ".join(shared_help.stdout.split())
     assert "--plan-classify {auto,none,all,model,agent}" in text
     # the choices list is the whole advertisement; "most" is parsed, not shown
     assert "'most'" not in text
@@ -161,18 +192,18 @@ def test_translate_tags_auto_is_an_ordinary_tag(tmp_path):
     assert "Translation plan" not in proc.stdout
 
 
-def test_default_tags_are_overridden_quietly(tmp_path):
+def test_default_tags_are_overridden_quietly(shared_run):
     # the untouched default "p" is not a selection worth a warning
-    proc, plan = _run(tmp_path, "--plan-classify", "agent")
+    proc, plan = shared_run("--plan-classify", "agent")
     assert proc.returncode == PLAN_HANDOFF_EXIT_CODE
     assert plan.exists()
     assert "ignoring --translate-tags" not in proc.stdout
 
 
-def test_plan_dry_run_writes_a_fresh_plan(tmp_path):
+def test_plan_dry_run_writes_a_fresh_plan(shared_run):
     # regression: the dry-run path kept a reference to the removed
     # --plan-no-classify option and crashed right after writing the plan
-    proc, plan = _run(tmp_path, "--plan-dry-run")
+    proc, plan = shared_run("--plan-dry-run")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert plan.exists()
     assert "plan written to" in proc.stdout
@@ -210,27 +241,27 @@ def test_classify_flag_rejects_non_epub_books(tmp_path):
     assert "epub-only" in proc.stdout
 
 
-def test_agent_mode_rejects_a_classifier_model(tmp_path):
-    proc, _ = _run(
+def test_agent_mode_accepts_a_classifier_model(tmp_path):
+    # PIN (owner 260924): agent mode never pre-fills; a pre-filled plan makes the agent less accurate. Record: docs/260923-feat-ENDPOINT_OVERRIDES_CLASSIFIER_JEV.md
+    # So a named classifier is accepted and not resolved at all: no key is
+    # demanded for it, and the plan is written and handed over.
+    proc, plan = _run(
         tmp_path, "--plan-classify", "agent", "--plan-classify-model", "gpt-4o"
     )
-    assert proc.returncode == 1
-    assert "cannot be combined" in proc.stdout
+    assert "cannot be combined" not in proc.stdout
+    assert plan.exists(), proc.stdout + proc.stderr
 
 
-def test_all_mode_rejects_a_classifier_model(tmp_path):
-    # 'all' explicitly skips classification; naming a classifier alongside
-    # it is a contradiction, not a preference to resolve silently
-    proc, _ = _run(
-        tmp_path, "--plan-classify", "all", "--plan-classify-model", "gpt-4o"
-    )
-    assert proc.returncode == 1
-    assert "cannot be combined" in proc.stdout
+# 'all' with a classifier: row C32's warn, fixtures in test_flag_compat.py
+# (a CLI run here would translate the whole book).
 
 
 def test_classify_model_flag_implies_model_mode(tmp_path):
     # naming a classifier is asking for model mode; it must not silently
-    # sit in none mode doing nothing
+    # sit in none mode doing nothing. On a fixed engine (google) the named
+    # model is asked at the host its id implies (lead ruling 260923, Codex
+    # finding 4), so with no key for it the run stops, naming the flag,
+    # before anything is parsed or written.
     proc, plan = _run(
         tmp_path,
         "--plan-classify-model",
@@ -239,19 +270,92 @@ def test_classify_model_flag_implies_model_mode(tmp_path):
         "--test_num",
         "1",
     )
-    # google translates through one fixed engine with no model to ask, and a
-    # classifier that cannot run must block rather than degrade into
-    # translating undecided rows. Refused at the CLI now (audit row A10):
-    # the run used to parse the whole book and write a plan file nothing had
-    # decided before dying in the classifier.
     assert proc.returncode == 1
     flat = " ".join(proc.stdout.split())
-    assert "--plan-classify-model" in flat
-    assert "no model to ask" in flat
-    # and it must say what to do instead, not just what failed
-    assert "--plan-classify agent" in flat
-    # nothing was parsed or written on the way to the refusal
+    assert "No API key for the openai endpoint" in flat
+    assert "pass --classify-key" in flat
+    assert "no model to ask" not in flat  # A10 does not fire: a classifier exists
     assert not plan.exists()
+
+
+def _fixed_engine_with_a_provider_classifier(tmp_path, *extra):
+    """A google run whose provider entry supplies the classifier (Codex
+    finding 4): the entry is an OpenAI gateway with a classify_model at an
+    address of its own, and the run's --api_format moves translation to the
+    fixed engine."""
+    src = _provider_book(
+        tmp_path,
+        api_style="openai",
+        base_url="https://gw.example/v1",
+        classify_model="cls-model",
+        classify_base_url="https://cls.example/v1",
+        classify_env_key="BBM_TEST_CLS_KEY",
+    )
+    return _cli_in(
+        tmp_path,
+        "--book_name",
+        str(src),
+        "--provider",
+        "p",
+        "--api_format",
+        "google",
+        "--test",
+        "--test_num",
+        "1",
+        *extra,
+        BBM_TEST_CLS_KEY="sk-cls",
+    )
+
+
+@pytest.mark.parametrize("mode", [[], ["--plan-classify", "model"]])
+def test_a_fixed_engine_plans_with_the_provider_s_classifier(tmp_path, mode):
+    """PIN (lead ruling 260923, Codex finding 4): A10 and `auto` read the
+    resolved classify choice. A fixed-engine run with a provider classifier
+    is not stopped, and in auto it plans; the classifier (the offline
+    OpenAI stand-in at the entry's classify address) is what is asked."""
+    proc = _fixed_engine_with_a_provider_classifier(tmp_path, *mode)
+    out = " ".join(proc.stdout.split())
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "no model to ask" not in out
+    assert "classifier: cls-model at https://cls.example/v1" in out
+    assert "offline model list: ['cls-model']" in out
+    assert "llm classification:" in out
+    # PIN: lead 260925, skill field test,
+    # docs/260925-docs-SKILL_FIELD_TEST_FRICTIONS.md -- the same line on
+    # every path a separate classifier plans the book, once.
+    assert out.count("plan mode: on (classified by cls-model") == 1
+    plan = json.loads((tmp_path / f"{BOOK.stem}_plan.json").read_text())
+    assert {row["decided_by"] for row in plan["signatures"]} <= {"llm", "rule"}
+    assert any(row["decided_by"] == "llm" for row in plan["signatures"])
+
+
+# PIN: lead 260925, skill field test, docs/260925-docs-SKILL_FIELD_TEST_FRICTIONS.md
+# -- `--classify-model` typed on the command line printed only the
+# `classifier:` line, while a provider entry's classifier also printed
+# `plan mode: on (classified by ...)`. Both paths say the plan-mode line.
+def test_a_classifier_typed_on_the_command_line_says_plan_mode_is_on(tmp_path):
+    src = tmp_path / BOOK.name
+    src.write_bytes(BOOK.read_bytes())
+    proc = _cli_in(
+        tmp_path,
+        "--book_name",
+        str(src),
+        "--api_format",
+        "google",
+        "--classify-model",
+        "cls-model",
+        "--classify-base-url",
+        "https://cls.example/v1",
+        "--classify-key",
+        "sk-cls",
+        "--test",
+        "--test_num",
+        "1",
+    )
+    out = " ".join(proc.stdout.split())
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "classifier: cls-model at https://cls.example/v1" in out
+    assert out.count("plan mode: on (classified by cls-model") == 1
 
 
 def test_naming_a_model_for_a_fixed_engine_fails_loud(tmp_path):
@@ -295,7 +399,7 @@ def test_the_openai_format_defaults_to_a_model(tmp_path):
         "--book_name", str(src), "--key", "sk-test", "--test", "--test_num", "1"
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "offline model list: ['gpt-5.6-luna']" in proc.stdout
+    assert "offline model list: ['gpt-6-luna']" in proc.stdout
 
 
 def test_an_old_key_flag_alone_lands_on_the_default_model(tmp_path):
@@ -307,7 +411,7 @@ def test_an_old_key_flag_alone_lands_on_the_default_model(tmp_path):
         "--book_name", str(src), "--openai_key", "sk-test", "--test", "--test_num", "1"
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "offline model list: ['gpt-5.6-luna']" in proc.stdout
+    assert "offline model list: ['gpt-6-luna']" in proc.stdout
     assert "gpt-3.5-turbo" not in proc.stdout
 
 
@@ -1265,14 +1369,16 @@ def test_batch_is_refused_on_every_route_without_the_batch_api(tmp_path):
     # the loader calls batch_init / add_to_batch_translate_queue /
     # is_completed_batch on the translator, so a route that has none of them
     # used to accept the flag and die on AttributeError partway through
+    from concurrent.futures import ThreadPoolExecutor
+
     from book_maker.translator import FORMAT_DICT
 
     src = tmp_path / BOOK.name
     src.write_bytes(BOOK.read_bytes())
-    for fmt, cls in FORMAT_DICT.items():
-        if cls.SUPPORTS_BATCH_API:
-            continue
-        proc = _cli(
+    formats = [f for f, cls in FORMAT_DICT.items() if not cls.SUPPORTS_BATCH_API]
+
+    def refuse(fmt):
+        return fmt, _cli(
             "--book_name",
             str(src),
             "--api_format",
@@ -1286,17 +1392,32 @@ def test_batch_is_refused_on_every_route_without_the_batch_api(tmp_path):
             "--test_num",
             "1",
         )
-        output = " ".join((proc.stdout + proc.stderr).split())
-        assert proc.returncode != 0, fmt
-        assert f"the {fmt} format does not have" in output, output
+
+    # ten routes, ten interpreter starts: the loop is the assertion (a new
+    # route without the Batch API must be refused too, with no test edit),
+    # so it stays exhaustive and the waiting is overlapped instead. Four at
+    # a time — each subprocess imports the provider SDKs, and this machine's
+    # test allowance is memory-bound, not core-bound.
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for fmt, proc in pool.map(refuse, formats):
+            output = " ".join((proc.stdout + proc.stderr).split())
+            assert proc.returncode != 0, fmt
+            assert f"the {fmt} format does not have" in output, output
 
 
-def test_batch_is_refused_on_the_codex_format(tmp_path):
-    # codex has no Batch API; the run used to die partway through with
-    # AttributeError: batch_init, after plan quota had already been spent
+@pytest.fixture(scope="session")
+def codex_batch_run(tmp_path_factory):
+    """`--model codex --batch`, run once for the two tests that read it."""
+    tmp_path = tmp_path_factory.mktemp("codex_batch")
     src = tmp_path / BOOK.name
     src.write_bytes(BOOK.read_bytes())
-    proc = _cli("--book_name", str(src), "--model", "codex", "--batch")
+    return _cli("--book_name", str(src), "--model", "codex", "--batch")
+
+
+def test_batch_is_refused_on_the_codex_format(codex_batch_run):
+    # codex has no Batch API; the run used to die partway through with
+    # AttributeError: batch_init, after plan quota had already been spent
+    proc = codex_batch_run
     assert proc.returncode == 1
     flat = " ".join(proc.stdout.split())
     assert "--batch" in flat
@@ -1321,11 +1442,8 @@ def test_a_resumed_codex_run_says_continuity_restarts(tmp_path):
     assert "new thread" in " ".join(proc.stdout.split())
 
 
-def test_a_codex_run_without_resume_says_nothing_about_threads(tmp_path):
-    src = tmp_path / BOOK.name
-    src.write_bytes(BOOK.read_bytes())
-    proc = _cli("--book_name", str(src), "--model", "codex", "--batch")
-    assert "new thread" not in proc.stdout
+def test_a_codex_run_without_resume_says_nothing_about_threads(codex_batch_run):
+    assert "new thread" not in codex_batch_run.stdout
 
 
 def test_session_context_is_refused_on_a_format_that_has_none(tmp_path):
@@ -1401,9 +1519,9 @@ def test_the_formats_that_carry_chapter_context_are_not_refused():
     assert not FORMAT_DICT["caiyun"].SUPPORTS_PARALLEL_CONTEXT
 
 
-def test_the_old_mode_name_still_works_and_says_it_moved(tmp_path):
+def test_the_old_mode_name_still_works_and_says_it_moved(shared_run):
     # scripts written before the rename keep running
-    proc, plan = _run(tmp_path, "--plan-classify", "most", "--test", "--test_num", "1")
+    proc, plan = shared_run("--plan-classify", "most", "--test", "--test_num", "1")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert not plan.exists()
     assert "--plan-classify most is now --plan-classify all" in " ".join(
@@ -1411,10 +1529,9 @@ def test_the_old_mode_name_still_works_and_says_it_moved(tmp_path):
     )
 
 
-def test_the_old_mode_name_is_not_advertised():
-    proc = _cli("--help")
-    assert "{auto,none,all,model,agent}" in " ".join(proc.stdout.split())
-    assert "'most'" not in proc.stdout
+def test_the_old_mode_name_is_not_advertised(shared_help):
+    assert "{auto,none,all,model,agent}" in " ".join(shared_help.stdout.split())
+    assert "'most'" not in shared_help.stdout
 
 
 def test_a_zero_compact_budget_is_refused_like_any_other_too_small_one():
@@ -1702,8 +1819,8 @@ def test_a_negative_batch_units_is_refused_the_same_way(tmp_path):
     assert proc.returncode == 2, proc.stdout + proc.stderr
 
 
-def test_batch_units_is_recorded_in_the_plan(tmp_path):
-    proc, plan = _run(tmp_path, "--max-batch-units", "4", "--plan-dry-run")
+def test_batch_units_is_recorded_in_the_plan(shared_run):
+    proc, plan = shared_run("--max-batch-units", "4", "--plan-dry-run")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert json.loads(plan.read_text())["batch_units"] == 4
 
@@ -1722,39 +1839,96 @@ def test_the_old_spelling_still_reaches_the_same_dest():
     assert new.batch_units_deprecated_flag is None
 
 
-def test_the_old_spelling_plans_exactly_as_the_new_one_does(tmp_path):
-    proc, plan = _run(tmp_path, "--batch_units", "4", "--plan-dry-run")
+def test_the_old_spelling_plans_exactly_as_the_new_one_does(shared_run):
+    proc, plan = shared_run("--batch_units", "4", "--plan-dry-run")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert json.loads(plan.read_text())["batch_units"] == 4
 
 
-def test_the_old_spelling_earns_one_notice_naming_the_new_one(tmp_path):
-    proc, _ = _run(tmp_path, "--batch_units", "4", "--plan-dry-run")
+def test_the_old_spelling_earns_one_notice_naming_the_new_one(shared_run):
+    proc, _ = shared_run("--batch_units", "4", "--plan-dry-run")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     flat = " ".join(proc.stdout.split())
     assert flat.count("--batch_units is now --max-batch-units") == 1
 
 
-def test_the_new_spelling_earns_no_notice(tmp_path):
-    proc, _ = _run(tmp_path, "--max-batch-units", "4", "--plan-dry-run")
+def test_the_new_spelling_earns_no_notice(shared_run):
+    proc, _ = shared_run("--max-batch-units", "4", "--plan-dry-run")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "deprecated" not in proc.stdout
 
 
-def test_help_advertises_only_the_new_spelling():
-    proc = _cli("--help")
-    assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "--max-batch-units" in proc.stdout
-    assert "--batch_units" not in proc.stdout
+def test_help_advertises_only_the_new_spelling(shared_help):
+    assert shared_help.returncode == 0, shared_help.stdout + shared_help.stderr
+    assert "--max-batch-units" in shared_help.stdout
+    assert "--batch_units" not in shared_help.stdout
 
 
-def test_batch_units_defaults_to_the_measured_cap(tmp_path):
-    # half the level the 260905 fault-emergence sweep measured faults at
+def test_batch_units_defaults_to_the_measured_cap(shared_run):
+    # a quarter of the level the 260905 fault-emergence sweep measured faults at
     from book_maker.loader.plan import GENERAL_GROUP_MAX_UNITS
 
-    proc, plan = _run(tmp_path, "--plan-dry-run")
+    proc, plan = shared_run("--plan-dry-run")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert json.loads(plan.read_text())["batch_units"] == GENERAL_GROUP_MAX_UNITS
+
+
+def _help_of(parser, dest):
+    return next(a.help for a in parser._actions if a.dest == dest)
+
+
+def test_accumulated_num_help_is_formatted_from_the_budget_constants(monkeypatch):
+    # PIN (owner ruling 260907, AGENTS.md "Model choice in evals"; packet H
+    # 260924, docs/260923-docs-WIKI_MODERNIZE.md "Findings for the owner"):
+    # the help said "1600 ... up to 2000" long after the constants moved to
+    # 1200 / 1600 / 800. It is formatted from plan.py's constants so it
+    # cannot drift again: patched values must show up in the help.
+    import book_maker.cli as cli
+    from book_maker.loader.plan import (
+        SESSION_BUDGET_CEILING,
+        SESSION_BUDGET_FLOOR,
+        SUBSTRICT_BUDGET_FLOOR,
+    )
+
+    text = " ".join(_help_of(cli.build_parser(), "accumulated_num").split())
+    assert f"{SESSION_BUDGET_FLOOR} with the stock prompts" in text
+    assert f"up to {SESSION_BUDGET_CEILING} under a fat custom" in text
+    assert f"(floor {SUBSTRICT_BUDGET_FLOOR})" in text
+    assert f"{SESSION_BUDGET_FLOOR}-{SESSION_BUDGET_CEILING} is their" in text
+    assert "2000" not in text
+
+    monkeypatch.setattr(cli, "SESSION_BUDGET_FLOOR", 1111)
+    monkeypatch.setattr(cli, "SESSION_BUDGET_CEILING", 2222)
+    monkeypatch.setattr(cli, "SUBSTRICT_BUDGET_FLOOR", 333)
+    text = " ".join(_help_of(cli.build_parser(), "accumulated_num").split())
+    assert "1111 with the stock prompts" in text
+    assert "up to 2222 under a fat custom" in text
+    assert "(floor 333)" in text
+    assert "1111-2222 is their" in text
+
+
+def test_max_batch_units_help_says_a_quarter_of_the_onset():
+    # PIN (packet H 260924): the default is 16, a quarter of the 64-unit
+    # fault onset (plan.py GENERAL_GROUP_MAX_UNITS), not half of it
+    from book_maker.cli import build_parser
+
+    text = " ".join(_help_of(build_parser(), "batch_units").split())
+    assert "a quarter of the level" in text
+    assert "half the level" not in text
+
+
+def test_ocr_lang_help_names_iso_tags_and_the_replace_layer_scope():
+    # PIN (packet H items 1 and 13, 260924): docling 2.129 takes iso: tags,
+    # rapidocr (the default engine on macOS/CPU) reads the first language
+    # and refuses ch_sim (measured 260924,
+    # docs/260924-feat-PDF_OCR_REPLACE_LAYER.md), and --ocr-replace-layer
+    # has every page read
+    from book_maker.cli import build_parser
+
+    text = " ".join(_help_of(build_parser(), "ocr_lang").split())
+    assert "on pages with no text layer (every page with --ocr-replace-layer)" in text
+    assert "or as iso: tags (iso:zh)" in text
+    assert "reads only the first language and takes iso:zh, not ch_sim" in text
 
 
 def test_an_untyped_accumulated_num_reaches_the_parser_as_none():
@@ -1770,26 +1944,26 @@ def test_an_untyped_accumulated_num_reaches_the_parser_as_none():
     )
 
 
-def test_a_session_dry_run_previews_the_default_budget(tmp_path):
+def test_a_session_dry_run_previews_the_default_budget(shared_run):
     # --plan-dry-run must group the way the run will: session mode defaults
     # the token budget, so the preview's plan carries it too
     from book_maker.loader.plan import session_token_budget
 
-    proc, plan = _run(tmp_path, "--plan-dry-run", "--use_context", "session")
+    proc, plan = shared_run("--plan-dry-run", "--use_context", "session")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     # a dry run has no translator to measure a prompt overhead against, so
     # the preview carries the floor
     assert json.loads(plan.read_text())["token_budget"] == session_token_budget(None)
 
 
-def test_a_plain_dry_run_previews_the_derived_budget_and_names_both_routes(tmp_path):
+def test_a_plain_dry_run_previews_the_derived_budget_and_names_both_routes(shared_run):
     # 260906: the derived default is no longer session-only, so a dry run
     # without --use_context session previews one too. It cannot know the
     # endpoint's schema verdict — there is no endpoint — so it groups at the
     # schema-verified derivation and says both numbers out loud.
     from book_maker.loader.plan import derived_token_budget
 
-    proc, plan = _run(tmp_path, "--plan-dry-run")
+    proc, plan = shared_run("--plan-dry-run")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert json.loads(plan.read_text())["token_budget"] == derived_token_budget(
         None, "schema"
@@ -1863,15 +2037,15 @@ def test_an_explicit_one_keeps_the_session_dry_run_ungrouped(tmp_path):
 # --------------------------------------------------------------------------
 
 
-def test_poetry_group_size_still_shapes_the_plan(tmp_path):
+def test_poetry_group_size_still_shapes_the_plan(shared_run):
     # deprecated is not removed: the flag reaches the plan exactly as before
-    proc, plan = _run(tmp_path, "--poetry-group-size", "5", "--plan-dry-run")
+    proc, plan = shared_run("--poetry-group-size", "5", "--plan-dry-run")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert json.loads(plan.read_text())["poetry_group_size"] == 5
 
 
-def test_poetry_group_size_warns_and_points_at_the_units_cap(tmp_path):
-    proc, _ = _run(tmp_path, "--poetry-group-size", "5", "--plan-dry-run")
+def test_poetry_group_size_warns_and_points_at_the_units_cap(shared_run):
+    proc, _ = shared_run("--poetry-group-size", "5", "--plan-dry-run")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     flat = " ".join(proc.stdout.split())
     assert flat.count("--poetry-group-size:") == 1
@@ -1879,8 +2053,8 @@ def test_poetry_group_size_warns_and_points_at_the_units_cap(tmp_path):
     assert "--max-batch-units" in flat
 
 
-def test_an_untyped_poetry_group_size_says_nothing(tmp_path):
-    proc, plan = _run(tmp_path, "--plan-dry-run")
+def test_an_untyped_poetry_group_size_says_nothing(shared_run):
+    proc, plan = shared_run("--plan-dry-run")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "--poetry-group-size" not in proc.stdout
     # and the default is unchanged
@@ -1906,10 +2080,10 @@ def _compact_line(text):
     return found.group(0) if found else None
 
 
-def test_the_session_dry_run_previews_the_pinned_budget(tmp_path):
+def test_the_session_dry_run_previews_the_pinned_budget(shared_run):
     from book_maker.session_context import DEFAULT_COMPACT_BUDGET
 
-    proc, _ = _run(tmp_path, "--plan-dry-run", "--use_context", "session")
+    proc, _ = shared_run("--plan-dry-run", "--use_context", "session")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert _compact_line(proc.stdout) == (
         f"session: compacting at {DEFAULT_COMPACT_BUDGET} estimated tokens "
@@ -1938,16 +2112,13 @@ def test_a_windowed_dry_run_previews_no_compaction_at_all(tmp_path):
     assert _compact_line(proc.stdout) is None
 
 
-def test_the_preview_and_the_run_print_the_same_line(tmp_path):
+def test_the_preview_and_the_run_print_the_same_line(shared_run):
     # the preview's whole job is to say what the run will do; these two
     # lines come from one function so they cannot drift
     from book_maker.session_context import DEFAULT_COMPACT_BUDGET
 
-    (tmp_path / "a").mkdir()
-    (tmp_path / "b").mkdir()
-    preview, _ = _run(tmp_path / "a", "--plan-dry-run", "--use_context", "session")
-    real, _ = _run(
-        tmp_path / "b",
+    preview, _ = shared_run("--plan-dry-run", "--use_context", "session")
+    real, _ = shared_run(
         "--use_context",
         "session",
         "--test",
@@ -1977,8 +2148,8 @@ def test_the_run_narrates_an_explicit_budget_as_the_flag(tmp_path):
     )
 
 
-def test_a_run_with_no_session_narrates_no_compaction(tmp_path):
-    proc, _ = _run(tmp_path, "--test", "--test_num", "1")
+def test_a_run_with_no_session_narrates_no_compaction(shared_run):
+    proc, _ = shared_run("--test", "--test_num", "1")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert _compact_line(proc.stdout) is None
 
@@ -1999,18 +2170,18 @@ def test_no_code_path_reaches_for_the_deleted_derivation():
 # --------------------------------------------------------------------------
 
 
-def test_a_finished_epub_run_ends_with_the_absolute_path(tmp_path):
-    proc, _ = _run(tmp_path, "--test", "--test_num", "1")
+def test_a_finished_epub_run_ends_with_the_absolute_path(shared_run):
+    proc, plan = shared_run("--test", "--test_num", "1")
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
-    output = tmp_path / "animal_farm_bilingual.epub"
+    output = plan.parent / "animal_farm_bilingual.epub"
     assert output.exists()
     lines = [line for line in proc.stdout.splitlines() if line.strip()]
     assert lines[-1].strip() == f"Bilingual book saved: {output.resolve()}"
 
 
-def test_the_saved_line_is_printed_exactly_once(tmp_path):
-    proc, _ = _run(tmp_path, "--test", "--test_num", "1")
+def test_the_saved_line_is_printed_exactly_once(shared_run):
+    proc, _ = shared_run("--test", "--test_num", "1")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert proc.stdout.count("Bilingual book saved:") == 1
 

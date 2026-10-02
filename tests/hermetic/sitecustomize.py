@@ -42,6 +42,24 @@ if not Path(book_maker.__file__).resolve().is_relative_to(_REPO):
     os._exit(1)
 
 
+# Retries happen at full speed here. This branch retries patiently on
+# purpose — exponential waits, no attempt cap, because a real user's flaky
+# provider may clear minutes later — and a CLI subprocess that meets an
+# endpoint it cannot reach sits out those waits for real. Measured 260913:
+# `--api_format litellm` against nothing on localhost:4000 took 10.3s wall
+# for 1.8s of CPU; the other 8.5s was `tenacity.nap`. No CLI contract test
+# asserts how long a wait is (tests/test_translate_with_backoff.py pins the
+# waits themselves, in-process, off the retry object) and every stop here is
+# `stop_after_attempt`, so the attempt counts and the printed lines are
+# exactly what they were — only the waiting is gone.
+try:
+    import tenacity.nap
+
+    tenacity.nap.time.sleep = lambda _seconds: None
+except Exception:  # pragma: no cover - tenacity is a hard dependency
+    pass
+
+
 class OfflineTranslator:
     """Deterministic, no network. Mirrors the surface the loaders call.
 

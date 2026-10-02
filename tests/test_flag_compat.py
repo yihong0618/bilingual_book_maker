@@ -168,6 +168,203 @@ class TestStops:
         assert proc.returncode == 1
         assert "records no progress at all" in _flat(proc)
 
+    def test_to_epub_on_a_book_that_is_not_a_pdf(self, tmp_path):
+        # A13: --to-epub changes which route the run takes — it reads a PDF
+        # with OCR and translates the Markdown that comes back. On an epub
+        # there is nothing to read, and ignoring the flag would leave the
+        # operator waiting for a file that is never written.
+        proc = _cli(
+            "--book_name",
+            str(_book(tmp_path)),
+            "--api_format",
+            "google",
+            "--to-epub",
+        )
+        assert proc.returncode == 1
+        assert "--to-epub is the PDF route" in _flat(proc)
+
+    def test_an_image_base_without_its_model(self, tmp_path):
+        # A14: --img-base-url says where --img-model is served; alone it
+        # names nothing to ask there
+        proc = _cli(
+            "--book_name",
+            str(_book(tmp_path)),
+            "--api_format",
+            "google",
+            "--img-base-url",
+            "http://127.0.0.1:9/v1",
+        )
+        assert proc.returncode == 1
+        assert "no --img-model was given" in _flat(proc)
+
+    def test_replacing_the_layer_without_ocr_is_refused_on_the_route(self, tmp_path):
+        # A16 (packet G; owner ruling 260923): --ocr-replace-layer replaces
+        # the layer with what the OCR engine reads, so it needs --pdf-ocr.
+        # The route strips the flag from its inner run, so the route asks
+        # the row itself before a page is read (`pdf_route_stops`).
+        pdf = tmp_path / "scan.pdf"
+        pdf.write_bytes(b"%PDF-1.7\n%fake\n")
+        proc = _cli(
+            "--book_name",
+            str(pdf),
+            "--api_format",
+            "google",
+            "--to-epub",
+            "--ocr-replace-layer",
+        )
+        assert proc.returncode == 1
+        assert "re-reads pages that already carry a text layer" in _flat(proc)
+        assert "so it needs --pdf-ocr." in _flat(proc)
+        # stopped before the bundle was made
+        assert not (tmp_path / "scan_book").exists()
+
+    def test_replacing_the_layer_with_ocr_is_not_refused(self):
+        f = facts(
+            ["--book_name", "b.pdf", "--to-epub", "--pdf-ocr", "--ocr-replace-layer"],
+            book_type="pdf",
+        )
+        assert tripped(f) == []
+
+    def test_a_classify_base_without_its_model(self, tmp_path):
+        # A15: the same for the classify endpoint
+        proc = _cli(
+            "--book_name",
+            str(_book(tmp_path)),
+            "--api_format",
+            "google",
+            "--classify-base-url",
+            "http://127.0.0.1:9/v1",
+        )
+        assert proc.returncode == 1
+        assert "no --classify-model was given" in _flat(proc)
+
+    def test_agent_mode_with_a_classify_model_is_warned_about(self):
+        # PIN (owner 260924): agent mode never pre-fills, so a classifier
+        # named beside it is ignored, and C32 says so (lead 260924; it had
+        # been exempt while the lead thought agent mode asked a session)
+        f = facts(
+            [
+                "--book_name",
+                "b.epub",
+                "--plan-classify",
+                "agent",
+                "--classify-model",
+                "m",
+            ]
+        )
+        assert "C32" in tripped(f)
+
+    def test_a10_reads_the_resolved_classifier(self):
+        """PIN (lead ruling 260923, Codex finding 4): a fixed-engine run is
+        stopped only when no classifier of its own was resolved (cli or
+        provider), not by which raw flags were typed."""
+        argv = ["--book_name", "b.epub", "--plan-classify", "model"]
+        assert "A10" in tripped(facts(argv, api_format="google"))
+        f = facts(argv, api_format="google", classifier_resolved=True)
+        assert "A10" not in tripped(f)
+
+    def test_a_provider_classifier_on_a_book_nothing_classifies(self, capsys):
+        # C33, the provider half: an entry's classify_model on a plain md run
+        # warns now (intended, lead ruling 260923)
+        from book_maker.provider_loader import ProviderRoute
+
+        f = facts(["--book_name", "b.md"], book_type="md")
+        assert "C33" not in tripped(f)
+        route = ProviderRoute("openai", "", ["m"], "")
+        route.classify_model = "cls"
+        f.options.provider_route = route
+        assert "C33" in tripped(f)
+        check_compatibility(f)
+        assert (
+            "the provider entry's classify_model is ignored on a md book"
+            in " ".join(capsys.readouterr().out.split())
+        )
+
+    def test_to_epub_on_a_pdf_is_not_refused(self):
+        # the same flag on the book it is for: no row fires, and the run is
+        # diverted into the pipeline rather than stopped
+        f = facts(["--book_name", "b.pdf", "--to-epub"], book_type="pdf")
+        assert tripped(f) == []
+
+    def test_pdf_ocr_beside_to_epub_is_not_warned_about(self):
+        f = facts(["--book_name", "b.pdf", "--to-epub", "--pdf-ocr"], book_type="pdf")
+        assert "C27" not in tripped(f)
+
+    def test_pages_beside_to_epub_is_not_warned_about(self):
+        f = facts(
+            ["--book_name", "b.pdf", "--to-epub", "--pages", "6-7"], book_type="pdf"
+        )
+        assert "C28" not in tripped(f)
+
+    def test_pages_without_to_epub_is_warned_about(self):
+        f = facts(["--book_name", "b.pdf", "--pages", "6-7"], book_type="pdf")
+        assert "C28" in tripped(f)
+
+    def test_ocr_lang_beside_pdf_ocr_is_not_warned_about(self):
+        f = facts(
+            ["--book_name", "b.pdf", "--to-epub", "--pdf-ocr", "--ocr-lang", "ja"],
+            book_type="pdf",
+        )
+        assert tripped(f) == []
+
+    def test_ocr_lang_without_pdf_ocr_is_inert_even_on_the_route(self):
+        f = facts(
+            ["--book_name", "b.pdf", "--to-epub", "--ocr-lang", "ja"], book_type="pdf"
+        )
+        assert "C29" in tripped(f)
+
+    def test_an_ocr_engine_beside_pdf_ocr_is_not_warned_about(self):
+        f = facts(
+            [
+                "--book_name",
+                "b.pdf",
+                "--to-epub",
+                "--pdf-ocr",
+                "--ocr-engine",
+                "ocrmac",
+            ],
+            book_type="pdf",
+        )
+        assert tripped(f) == []
+
+    def test_the_default_engine_is_never_warned_about(self):
+        f = facts(["--book_name", "b.pdf", "--ocr-engine", "auto"], book_type="pdf")
+        assert "C36" not in tripped(f)
+
+    def test_an_ocr_engine_without_pdf_ocr_is_inert_even_on_the_route(self):
+        f = facts(
+            ["--book_name", "b.pdf", "--to-epub", "--ocr-engine", "easyocr"],
+            book_type="pdf",
+        )
+        assert "C36" in tripped(f)
+
+    def test_image_dpi_beside_to_epub_is_not_warned_about(self):
+        f = facts(
+            ["--book_name", "b.pdf", "--to-epub", "--pdf-image-dpi", "300"],
+            book_type="pdf",
+        )
+        assert "C37" not in tripped(f)
+
+    def test_the_default_image_dpi_is_never_warned_about(self):
+        f = facts(["--book_name", "b.pdf"], book_type="pdf")
+        assert "C37" not in tripped(f)
+
+    def test_device_without_the_route_is_inert(self):
+        # --device chooses where the extraction models run, and they only
+        # run on the --to-epub route
+        f = facts(["--book_name", "b.pdf", "--device", "cpu"], book_type="pdf")
+        assert "C26" in tripped(f)
+
+    def test_device_beside_to_epub_is_not_warned_about(self):
+        # the quality tier on the CPU is a supported configuration, not a
+        # degraded one, so naming the device on the route warns about
+        # nothing (design 260921: --device never selects a parser)
+        f = facts(
+            ["--book_name", "b.pdf", "--to-epub", "--device", "cpu"],
+            book_type="pdf",
+        )
+        assert tripped(f) == []
+
     def test_two_of_the_three_are_fine(self, tmp_path):
         # only the triple is refused: the pairs each work
         f = facts(
@@ -246,6 +443,20 @@ class TestStops:
         )
         assert proc.returncode == 1
         assert "implemented by the epub loader only" in _flat(proc)
+
+    def test_no_thinking_is_refused_on_codex(self, tmp_path):
+        # A12: the route runs the codex CLI as a subprocess, so there is no
+        # request body a reasoning control could be written into; accepting
+        # the flag would translate a whole book as if it had been honoured
+        proc = _cli(
+            "--book_name",
+            str(_book(tmp_path)),
+            "--api_format",
+            "codex",
+            "--no-thinking",
+        )
+        assert proc.returncode == 1
+        assert "no request to travel in on the codex route" in _flat(proc)
 
     def test_a_stop_silences_the_warnings(self, capsys):
         # a warning about a run that is not going to happen is noise in
@@ -439,7 +650,7 @@ WARN_FIXTURES = [
         "C2",
         ["--accumulated_num", "1200"],
         {"book_type": "txt"},
-        "--accumulated_num is read by the epub loader only",
+        "--accumulated_num is read by the epub and srt loaders only",
     ),
     (
         "C3",
@@ -513,7 +724,7 @@ WARN_FIXTURES = [
         # read and then reaches nothing
         "C19",
         ["--api_format", "google", "--glossary", str(GLOSSARY)],
-        {"api_format": "google"},
+        {"api_format": "google", "book_type": "pdf"},
         "The google route does not",
     ),
     (
@@ -524,6 +735,14 @@ WARN_FIXTURES = [
         "--terminology is carried by",
     ),
     (
+        # C25: the MT engines and the native vendor SDKs build their own
+        # request; the flag is read, reaches nothing, and must say so
+        "C25",
+        ["--api_format", "google", "--no-thinking"],
+        {"api_format": "google"},
+        "reaches nothing and this run is unchanged",
+    ),
+    (
         # C20: the derived glossary comes out of a compact turn, and a
         # windowed run has none
         "C20",
@@ -532,11 +751,11 @@ WARN_FIXTURES = [
         "keeps no session to compact",
     ),
     (
-        # C21: txt, srt and pdf loaders forward no context at all
+        # C21: txt and srt loaders forward no context at all
         "C21",
         ["--glossary", str(GLOSSARY)],
         {"book_type": "txt"},
-        "forwarded by the epub and markdown loaders only",
+        "forwarded by the epub, markdown, and pdf loaders only",
     ),
     (
         # C22: only the epub format carries the record file
@@ -557,8 +776,131 @@ WARN_FIXTURES = [
         # a renderings block — auto-learning has nothing to read
         "C24",
         ["--glossary-auto", "on", "--use_context", "session"],
-        {"api_format": "anthropic"},
+        {"api_format": "anthropic", "book_type": "pdf"},
         "never asks its report",
+    ),
+    (
+        # C26: the extraction models only run on the --to-epub route, so on
+        # any other run there is no device for the flag to choose
+        "C26",
+        ["--device", "cpu"],
+        {},
+        "only run on the --to-epub route",
+    ),
+    (
+        # C27: --pdf-ocr reads the pages with no text layer, and the route
+        # only runs with --to-epub
+        "C27",
+        ["--pdf-ocr"],
+        {},
+        "only runs with --to-epub",
+    ),
+    (
+        # C28: --pages selects what the PDF route reads, and the route only
+        # runs with --to-epub; the legacy loader translates the whole file
+        "C28",
+        ["--pages", "6-7"],
+        {},
+        "translates the whole file",
+    ),
+    (
+        # C29: --ocr-lang names what the OCR models read, and they only run
+        # on the --to-epub route with --pdf-ocr
+        "C29",
+        ["--ocr-lang", "ch_sim,en"],
+        {},
+        "only run on the --to-epub route with --pdf-ocr",
+    ),
+    (
+        # C36: --ocr-engine chooses the engine the PDF route's OCR reads
+        # with, and OCR only runs on the --to-epub route with --pdf-ocr
+        # (packet K, 260924; same shape as C29)
+        "C36",
+        ["--ocr-engine", "ocrmac"],
+        {},
+        "--ocr-engine ocrmac chooses the engine the PDF's OCR reads with, and "
+        "it only runs on the --to-epub route with --pdf-ocr; this run reads it "
+        "and does nothing with it.",
+    ),
+    (
+        # C30: --no-formula-images turns off the pictures the PDF route
+        # keeps of display formulas, and that route needs --to-epub
+        "C30",
+        ["--no-formula-images"],
+        {},
+        "only runs with --to-epub",
+    ),
+    (
+        # C37: --pdf-image-dpi sets how sharp the PDF route draws figures,
+        # and that route needs --to-epub (packet Q, owner 260925)
+        "C37",
+        ["--pdf-image-dpi", "300"],
+        {},
+        "--pdf-image-dpi 300 sets how sharp a PDF's figures are drawn, and it "
+        "only runs on the --to-epub route; this run reads it and does nothing "
+        "with it.",
+    ),
+    (
+        # C34: --ocr-replace-layer re-reads pages on the PDF route, which
+        # only runs with --to-epub (packet G, 260923)
+        "C34",
+        ["--pdf-ocr", "--ocr-replace-layer"],
+        {},
+        "--ocr-replace-layer has the PDF route's OCR engine re-read pages",
+    ),
+    (
+        # C31: the image model serves the PDF route's page-image steps, and
+        # no other route has one (packet F, 260923)
+        "C31",
+        ["--img-model", "gpt-5.6-luna"],
+        {},
+        "only the PDF route (--to-epub on a PDF) has one",
+    ),
+    (
+        "C31:key",
+        ["--img-key", "k"],
+        {},
+        "does nothing with them",
+    ),
+    (
+        # C32: a classifier named beside --plan-classify all, which asks
+        # nothing
+        "C32",
+        ["--plan-classify", "all", "--classify-model", "gpt-5.6-luna"],
+        {},
+        "--classify-model names a classifier, and --plan-classify all",
+    ),
+    (
+        # C32 for agent mode too (owner 260924: agent mode never pre-fills)
+        "C32:agent",
+        ["--plan-classify", "agent", "--classify-model", "gpt-5.6-luna"],
+        {},
+        "--plan-classify agent leaves every row to your agent and asks no model",
+    ),
+    (
+        # C33: nothing but plan mode classifies yet (lead ruling 260923,
+        # Codex finding 3)
+        "C33",
+        ["--classify-model", "gpt-5.6-luna"],
+        {"book_type": "md"},
+        "Nothing on this route classifies yet, so --classify-model is ignored "
+        "on a md book.",
+    ),
+    (
+        # C35: the Jev gate on a classifier that has none (packet H item 14,
+        # owner ruling 260924); with no choice resolved the run classifies
+        # nothing at all
+        "C35",
+        ["--classify-min-confidence", "0.9"],
+        {"book_type": "md"},
+        "--classify-min-confidence applies only to a Jev-compatible "
+        "classifier; this run asks no classifier and ignores it.",
+    ),
+    (
+        "C32:old-name",
+        ["--plan-classify", "all", "--plan-classify-model", "gpt-5.6-luna"],
+        {},
+        "--plan-classify-model names a classifier",
     ),
 ]
 
@@ -605,6 +947,22 @@ class TestNoiseGuard:
         check_compatibility(f)
         assert capsys.readouterr().out == ""
 
+    def test_pdf_context_and_glossary_are_not_reported_as_ignored(self):
+        f = facts(
+            [
+                "--book_name",
+                "b.pdf",
+                "--key",
+                "sk-test",
+                "--use_context",
+                "--glossary",
+                str(GLOSSARY),
+            ],
+            book_type="pdf",
+        )
+        assert "C5" not in tripped(f)
+        assert "C21" not in tripped(f)
+
     def test_the_usual_test_run_trips_nothing(self, capsys):
         f = facts(
             ["--book_name", "b.epub", "--key", "sk-test", "--test", "--test_num", "8"]
@@ -635,6 +993,181 @@ class TestNoiseGuard:
         )
         assert proc.returncode == 0, proc.stdout + proc.stderr
         assert "Warning:" not in proc.stdout
+
+
+class TestRowsFollowWhatTheLoadersRead:
+    """PIN (packet H, 260924; findings in docs/260923-docs-WIKI_MODERNIZE.md,
+    "Findings for the owner" item 2): four rows named flags or loaders the
+    code does not match. The code is right and the rows follow it: srt reads
+    --accumulated_num (C2), Markdown groups by --batch_size so A8's
+    grouping-off premise and its suggestion are both false there, no loader
+    implements --batch (A1 suggested a txt/srt book), and Markdown ignores
+    --exclude-translate-tags (C7)."""
+
+    def test_c2_is_quiet_on_srt_which_reads_the_flag(self):
+        f = facts(
+            ["--book_name", "b.srt", "--accumulated_num", "1200"], book_type="srt"
+        )
+        assert "C2" not in tripped(f)
+
+    def test_c2_still_warns_on_markdown_and_names_both_loaders(self, capsys):
+        f = facts(["--book_name", "b.md", "--accumulated_num", "1200"], book_type="md")
+        assert "C2" in tripped(f)
+        check_compatibility(f)
+        out = " ".join(capsys.readouterr().out.split())
+        assert "read by the epub and srt loaders only; a md run groups" in out
+
+    def test_a8_is_quiet_on_markdown_which_groups_by_batch_size(self):
+        f = facts(
+            [
+                "--book_name",
+                "b.md",
+                "--use_context",
+                "session",
+                "--plan-classify",
+                "none",
+            ],
+            book_type="md",
+        )
+        assert "A8" not in tripped(f)
+
+    def test_a8_is_quiet_on_txt_even_on_the_codex_thread(self):
+        f = facts(
+            ["--book_name", "b.txt", "--api_format", "codex"],
+            api_format="codex",
+            book_type="txt",
+        )
+        assert "A8" not in tripped(f)
+
+    def test_a8_still_warns_on_srt_on_the_codex_thread(self, capsys):
+        # srt groups by --accumulated_num and the codex thread is a session,
+        # so both halves of the warning hold there
+        f = facts(
+            ["--book_name", "b.srt", "--api_format", "codex"],
+            api_format="codex",
+            book_type="srt",
+        )
+        assert "A8" in tripped(f)
+
+    def test_a8_is_quiet_on_srt_with_the_flag_the_loader_ignores(self):
+        # txt and srt never forward --use_context session (the run says
+        # so itself), so there is no growing history to warn about
+        f = facts(["--book_name", "b.srt", "--use_context", "session"], book_type="srt")
+        assert "A8" not in tripped(f)
+
+    def test_a1_suggests_no_loader_that_does_not_batch(self, capsys):
+        f = facts(["--book_name", "b.epub", "--batch"])
+        assert "A1" in tripped(f)
+        with pytest.raises(SystemExit):
+            check_compatibility(f)
+        out = " ".join(capsys.readouterr().out.split())
+        assert "never writes the book at all. Drop the flag." in out
+        assert "txt" not in out and "srt" not in out
+
+    def test_c7_names_exclude_translate_tags_on_markdown(self, capsys):
+        f = facts(
+            ["--book_name", "b.md", "--exclude-translate-tags", "sup"],
+            book_type="md",
+        )
+        assert "C7" in tripped(f)
+        check_compatibility(f)
+        out = " ".join(capsys.readouterr().out.split())
+        assert "--exclude-translate-tags select markup inside an epub" in out
+
+    def test_c7_is_quiet_on_epub_which_reads_the_exclusions(self):
+        f = facts(["--book_name", "b.epub", "--exclude-translate-tags", "sup"])
+        assert "C7" not in tripped(f)
+
+    def test_a_plain_markdown_run_trips_nothing(self, capsys):
+        f = facts(["--book_name", "b.md", "--key", "sk-test"], book_type="md")
+        assert tripped(f) == []
+        check_compatibility(f)
+        assert capsys.readouterr().out == ""
+
+
+class TestTheJevGateFlag:
+    """PIN (owner ruling 260924, packet H item 14): --classify-min-confidence
+    is read by a Jev-compatible classifier only; C35 says so for any other,
+    naming the model that ignores it, and a Jev-wire choice is silent."""
+
+    def _choice(self, model, base=""):
+        from book_maker.endpoints import EndpointChoice
+
+        return EndpointChoice(model, base, None, "openai", "cli")
+
+    def test_c35_names_a_chat_classifier_that_ignores_it(self, capsys):
+        f = facts(
+            [
+                "--book_name",
+                "b.epub",
+                "--classify-model",
+                "gpt-5.6-luna",
+                "--classify-min-confidence",
+                "0.9",
+            ],
+            classify_choice=self._choice("gpt-5.6-luna"),
+        )
+        assert "C35" in tripped(f)
+        check_compatibility(f)
+        out = " ".join(capsys.readouterr().out.split())
+        assert (
+            "--classify-min-confidence applies only to a Jev-compatible "
+            "classifier; gpt-5.6-luna ignores it." in out
+        )
+
+    def test_c35_names_the_run_model_when_the_run_classifies(self, capsys):
+        f = facts(
+            ["--book_name", "b.epub", "--classify-min-confidence", "0.9"],
+            classify_choice=self._choice(""),
+            model_names=["run-model"],
+        )
+        check_compatibility(f)
+        assert "run-model ignores it." in " ".join(capsys.readouterr().out.split())
+
+    @pytest.mark.parametrize(
+        "model,base",
+        [
+            ("jev-latest", "https://api.typesafe.ai"),
+            ("typesafe-ai/jev", "https://ai-gateway.vercel.sh/typesafe"),
+            ("m", "https://gw.example/v1/systemone"),
+        ],
+    )
+    def test_c35_is_silent_for_a_jev_wire_classifier(self, model, base):
+        f = facts(
+            ["--book_name", "b.epub", "--classify-min-confidence", "0.9"],
+            classify_choice=self._choice(model, base),
+        )
+        assert "C35" not in tripped(f)
+
+    def test_c35_is_silent_without_the_flag(self):
+        f = facts(
+            ["--book_name", "b.epub", "--classify-model", "gpt-5.6-luna"],
+            classify_choice=self._choice("gpt-5.6-luna"),
+        )
+        assert "C35" not in tripped(f)
+
+    def test_the_preview_prints_the_gate_for_a_jev_classifier(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.delenv("BBM_JEV_MIN_CONFIDENCE", raising=False)
+        book = str(_book(tmp_path))
+        proc = _cli(
+            "--book_name",
+            book,
+            "--plan-dry-run",
+            "--classify-model",
+            "jev",
+            "--classify-min-confidence",
+            "0.9",
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert "Classifier: jev-latest at https://api.typesafe.ai (cli) gate 0.9" in (
+            _flat(proc)
+        )
+        proc = _cli("--book_name", book, "--plan-dry-run", "--classify-model", "jev")
+        assert "(cli) gate 0.95" in _flat(proc)
+        proc = _cli("--book_name", book, "--plan-dry-run")
+        assert " gate " not in _flat(proc)
 
 
 class TestTheLegacySystemVariableIsDeprecated:
@@ -769,6 +1302,32 @@ def test_every_row_id_is_unique():
 
 
 class TestDryRunPreview:
+    def test_the_preview_says_c31_and_c32_as_the_run_would(self, tmp_path):
+        # PIN (packet H item 10, 260924; docs/260923-docs-WIKI_MODERNIZE.md,
+        # W2 worker contradiction 5): the preview checks DRY_RUN_RULES only,
+        # so an image model or an ignored classifier went unmentioned there
+        book = str(_book(tmp_path))
+        proc = _cli("--book_name", book, "--plan-dry-run", "--img-model", "m")
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert "only the PDF route (--to-epub on a PDF) has one" in _flat(proc)
+        proc = _cli(
+            "--book_name",
+            book,
+            "--plan-dry-run",
+            "--plan-classify",
+            "all",
+            "--classify-model",
+            "m",
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert "--classify-model names a classifier, and --plan-classify all" in (
+            _flat(proc)
+        )
+        proc = _cli("--book_name", book, "--plan-dry-run", "--classify-model", "m")
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert "names a classifier" not in _flat(proc)
+        assert "only the PDF route" not in _flat(proc)
+
     def test_the_preview_says_when_the_run_will_not_be_planned(self, tmp_path):
         # B2: --translate-tags turns plan mode off, and then the real run
         # translates that selection instead of this plan
@@ -781,6 +1340,46 @@ class TestDryRunPreview:
         )
         assert proc.returncode == 0, proc.stdout + proc.stderr
         assert "each turn plan mode off" in _flat(proc)
+
+    def test_the_preview_names_the_classify_and_image_endpoints(self, tmp_path):
+        # packet F: the preview mirrors the run's two resolutions, without a
+        # key; the run's own model classifies unless one is named, and the
+        # image model is off unless one is named
+        proc = _cli(
+            "--book_name",
+            str(_book(tmp_path)),
+            "--plan-dry-run",
+            "--api_format",
+            "openai",
+            "--model",
+            "gpt-5.6-luna",
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        out = _flat(proc)
+        assert (
+            "Classifier: gpt-5.6-luna at the openai endpoint's default host (run)"
+            in out
+        )
+        assert "Image model: off" in out
+        proc = _cli(
+            "--book_name",
+            str(_book(tmp_path)),
+            "--plan-dry-run",
+            "--api_format",
+            "openai",
+            "--model",
+            "gpt-5.6-luna",
+            "--classify-model",
+            "jev",
+            "--img-model",
+            "vision-m",
+            "--img-base-url",
+            "http://127.0.0.1:9/v1",
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        out = _flat(proc)
+        assert "Classifier: jev-latest at https://api.typesafe.ai (cli)" in out
+        assert "Image model: vision-m at http://127.0.0.1:9/v1 (cli)" in out
 
     def test_the_preview_says_its_request_count_is_a_floor(self, tmp_path):
         # B3: below strict decoding the run halves both the per-request unit
@@ -997,3 +1596,30 @@ def test_block_size_no_longer_claims_it_needs_single_translate():
     )
     assert "single_translate" not in help_text
     assert "--accumulated_num" in help_text
+
+
+# PIN: lead 260925, skill field test, docs/260925-docs-SKILL_FIELD_TEST_FRICTIONS.md
+# -- A11 (codex's ~17k-token classifier preamble) printed on
+# `--plan-classify agent`, which asks no model. It prints only when the
+# codex route's own model will classify the plan.
+@pytest.mark.parametrize(
+    "argv, resolved, fires",
+    [
+        ([], {}, True),
+        (["--plan-classify", "model"], {}, True),
+        (["--plan-classify", "agent"], {}, False),
+        (["--plan-classify", "all"], {}, False),
+        (["--plan-classify", "none"], {}, False),
+        (["--plan-classify", "model"], {"classifier_resolved": True}, False),
+        ([], {"classifier_resolved": True}, False),
+    ],
+)
+def test_the_codex_preamble_warning_needs_the_codex_model_to_classify(
+    argv, resolved, fires
+):
+    f = facts(
+        ["--book_name", "b.epub", "--api_format", "codex", *argv],
+        api_format="codex",
+        **resolved,
+    )
+    assert ("A11" in tripped(f)) is fires
