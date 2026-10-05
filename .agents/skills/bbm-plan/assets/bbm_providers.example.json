@@ -69,6 +69,12 @@
       "default_models": ["anthropic/claude-haiku-4.5"],
       "env_key": "OPENROUTER_API_KEY"
     },
+    "cheaperinference": {
+      "api_style": "openai",
+      "base_url": "https://api.cheaperinference.com/v1",
+      "default_models": ["gpt-5.4-mini"],
+      "env_key": "CHEAPER_INFERENCE_API_KEY"
+    },
     "ollama": {
       "api_style": "openai",
       "base_url": "http://localhost:11434/v1",
