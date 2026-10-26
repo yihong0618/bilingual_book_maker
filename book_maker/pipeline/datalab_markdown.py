@@ -48,6 +48,8 @@ FOOTNOTE = re.compile(r"^<sup>[*†‡§¶‖#0-9]{1,3}</sup>\s*\S")
 RUNS_ON = re.compile(r"[\w,\-$]$")
 # The first character of a continuation: lower case, a digit or a formula.
 CONTINUES = re.compile(r"^[a-z0-9$(]")
+# An ordered-list item's number.
+ENUMERATOR = re.compile(r"^\(?\d{1,3}[.)]\s")
 # A thematic break, which Datalab writes above a page's footnotes.
 RULE = re.compile(r"^([-*_])( *\1){2,} *$")
 MARKER = re.compile(r"^<!--\s*page\s+(\d+)\s*-->$")
@@ -138,9 +140,11 @@ def _math(blocks):
                 return ""
             count += 1
             # A pipe table cell holds inlines only, and an unescaped bar
-            # would end the cell: inline form there, bars escaped.
+            # would end the cell: inline form there, bars spelled out (a
+            # norm's `\|` as `\Vert`, before the single bars).
             if in_table:
-                return "$" + tex.replace("|", r"\vert{}") + "$"
+                tex = tex.replace(r"\|", r"\Vert{}").replace("|", r"\vert{}")
+                return "$" + tex + "$"
             if BLOCK_DISPLAY.search(match.group("attrs") or ""):
                 return f"$${tex}$$"
             return f"${tex}$"
@@ -188,6 +192,12 @@ def _join_across_pages(blocks):
             index += 1
             continue
         head, tail = blocks[before], blocks[after]
+        # Two numbered items in a row are a list, not a cut paragraph; a
+        # number opening the next page after prose ("Pioneer" / "10. The")
+        # still continues it.
+        if ENUMERATOR.match(head.lstrip()) and ENUMERATOR.match(tail.lstrip()):
+            index += 1
+            continue
         if not (
             _kind(head) == "prose"
             and _kind(tail) == "prose"

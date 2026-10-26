@@ -370,7 +370,9 @@ def test_quiet_echoes_no_translated_block(tmp_path, capsys):
     loader = make_loader(book)
     loader.quiet = True
     loader.make_bilingual_book()
-    assert "First paragraph." not in capsys.readouterr().out
+    captured = capsys.readouterr()
+    assert "First paragraph." not in captured.out
+    assert "batch" not in captured.err, "the progress bar still printed"
     assert "<T>First paragraph.</T>" in (tmp_path / "book_bilingual.md").read_text(
         encoding="utf-8"
     )

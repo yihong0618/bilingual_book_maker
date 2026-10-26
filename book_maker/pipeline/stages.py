@@ -131,8 +131,13 @@ def docling_only_flags(options):
         typed.append("--img-model")
     if getattr(options, "formula_images", True) is False:
         typed.append("--no-formula-images")
+    # The CLI keeps the resolution as `pdf_image_dpi`, the harness as a
+    # `figure_policy` (its `--pdf-image-dpi` and `--figure-policy`).
     dpi = getattr(options, "pdf_image_dpi", None)
-    if dpi is not None and dpi != FIGURE_POLICY_DEFAULT.value:
+    policy = getattr(options, "figure_policy", None)
+    if (dpi is not None and dpi != FIGURE_POLICY_DEFAULT.value) or (
+        policy is not None and policy != FIGURE_POLICY_DEFAULT
+    ):
         typed.append("--pdf-image-dpi")
     return ", ".join(typed)
 

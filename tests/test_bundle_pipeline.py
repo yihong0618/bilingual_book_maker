@@ -365,6 +365,16 @@ def test_a_block_with_no_words_outside_its_maths_is_carried_not_sent(
     assert bilingual.count("$Q_1$") == 1
 
 
+def test_prose_with_combining_marks_is_still_sent(tmp_path, pandoc, fake_format):
+    """Devanagari vowel signs are combining marks, not letters to `\\w`: no
+    two letters stand side by side in "मैं भी हूँ।", and it is prose."""
+    text = "# शीर्षक\n\nमैं भी हूँ।\n"
+    bundle = prepared(tmp_path, pandoc, text)
+    translate_bundle(bundle, OPTIONS, pandoc=pandoc)
+    sent = [t for i in FakeTranslator.instances for t in i.translated]
+    assert any("मैं भी हूँ" in t for t in sent), sent
+
+
 def test_a_code_fence_the_source_does_not_have_is_dropped_from_the_reply(
     tmp_path, pandoc, fake_format, monkeypatch
 ):

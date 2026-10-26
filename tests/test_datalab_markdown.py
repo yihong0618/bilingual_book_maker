@@ -89,6 +89,13 @@ def test_a_rule_with_no_footnotes_under_it_ends_the_paragraph():
     )
 
 
+def test_two_numbered_items_across_the_break_stay_two_items():
+    no_join(
+        "1. The first instruction contains more than forty characters",
+        "2. The second instruction is separate.",
+    )
+
+
 def test_a_hyphen_at_the_break_is_kept():
     text = (
         f"{{4}}{SEP}\n\nThus U is independent of the order in which the charges "
@@ -154,6 +161,11 @@ def test_math_elements_become_dollar_math_inline_in_a_table():
     assert "$9.110 \\times 10^{-28}$" in text
     # A bar inside a cell would end the cell.
     assert "$\\vert{}a\\vert{}$" in text
+
+
+def test_a_norm_in_a_table_cell_keeps_its_double_bars():
+    text = joined(f"{{0}}{SEP}\n\n| a | b |\n|---|---|\n| <math>\\|v\\|</math> | 1 |\n")
+    assert "$\\Vert{}v\\Vert{}$" in text
 
 
 def test_a_block_math_element_outside_a_table_is_display_math():

@@ -392,14 +392,20 @@ class MarkdownBookLoader(BaseBookLoader):
         ]
         if not pending:
             return results
-        if getattr(self.translate_model, "batch_queue", None) is not None:
+        batched = getattr(self.translate_model, "batch_queue", None) is not None
+        if batched:
             self._run_message_batch(pending)
+        # A batch replay answers from stored results on one thread: the shared
+        # translator swaps its prompt per request, and a worker entering
+        # mid-swap would build a body the batch never saw and pay for it live.
+        workers = 1 if batched else self.parallel_workers
 
         pbar = tqdm(
             total=len(batches),
             initial=len(batches) - len(pending),
             unit="batch",
             leave=not self.is_test,
+            disable=self.quiet,
         )
         report_lock = threading.Lock()
 
@@ -418,9 +424,9 @@ class MarkdownBookLoader(BaseBookLoader):
                 pbar.update(1)
 
         try:
-            if self.context_flag and self.parallel_workers > 1:
+            if self.context_flag and workers > 1:
                 self._translate_sections_parallel(pending, results, report)
-            elif self.context_flag or min(self.parallel_workers, len(pending)) <= 1:
+            elif self.context_flag or min(workers, len(pending)) <= 1:
                 for index, batch in pending:
                     results[index] = self._translate_batch(
                         batch.block_texts,
@@ -428,7 +434,7 @@ class MarkdownBookLoader(BaseBookLoader):
                     )
                     report(batch, results[index])
             else:
-                effective_workers = min(self.parallel_workers, len(pending))
+                effective_workers = min(workers, len(pending))
                 with ThreadPoolExecutor(max_workers=effective_workers) as executor:
                     futures = {
                         executor.submit(

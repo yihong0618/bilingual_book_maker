@@ -24,6 +24,7 @@ unless the harness asks for this class.
 
 import json
 import re
+import unicodedata
 import time
 from pathlib import Path
 
@@ -72,6 +73,7 @@ NOT_PROSE = [
     (r"<[^>\n]+>", 0),
 ]
 WORD = re.compile(r"[^\W\d_]{2}")
+NON_LATIN_LETTER = re.compile(r"[^\W\d_a-zA-Z]")
 # A code fence the source block does not have: one in a reply turns the rest
 # of the chapter into a code block (Purcell 261026: `$q$```, 199 figures lost).
 FENCE = re.compile(r"`{3,}|~{3,}")
@@ -205,6 +207,13 @@ class ReadingEditionMarkdownLoader(MarkdownBookLoader):
         bare = stripped
         for pattern, flags in NOT_PROSE:
             bare = re.sub(pattern, " ", bare, flags=flags)
+        # What is left of a label is lone Latin letters (`(c)`, `$Q_1$`'s
+        # neighbours). Any other letter is prose: a Devanagari word can be one
+        # letter and its vowel signs ("मैं भी हूँ।"), and the signs, like the
+        # accents of decomposed Latin, are marks, not letters, to `\w`.
+        if NON_LATIN_LETTER.search(bare):
+            return False
+        bare = "".join(c for c in bare if not unicodedata.category(c).startswith("M"))
         return not WORD.search(bare)
 
     @staticmethod

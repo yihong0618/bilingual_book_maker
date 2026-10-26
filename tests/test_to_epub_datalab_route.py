@@ -158,3 +158,22 @@ def test_the_engine_flag_is_the_route_s_own_and_never_reaches_the_inner_run():
         ["--to-epub", "--pdf-parser", "datalab", "--model", "m", "--batch-api"]
     )
     assert kept == ["--model", "m", "--batch-api"]
+
+
+def test_the_harness_figure_policy_is_refused_with_datalab():
+    """The harness keeps `--pdf-image-dpi` as `figure_policy`; it slipped past
+    the check and a paid conversion was sent for a setting Datalab ignores."""
+    from types import SimpleNamespace
+
+    from book_maker.pipeline import stages
+
+    options = SimpleNamespace(
+        pdf_parser="datalab", figure_policy=FigurePolicy("dpi", 300)
+    )
+    with pytest.raises(PipelineError) as refused:
+        stages.check_pdf_options("pdf", options)
+    assert "--pdf-image-dpi" in refused.value.detail
+    default = SimpleNamespace(
+        pdf_parser="datalab", figure_policy=FigurePolicy("dpi", 200)
+    )
+    stages.check_pdf_options("pdf", default)
