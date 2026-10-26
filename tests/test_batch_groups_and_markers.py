@@ -1057,3 +1057,48 @@ def test_the_plan_report_says_its_skipped_totals_are_characters():
     lines = plan.report().splitlines()
     assert f"skipped characters: excluded-tag={len('Ctrl+C')}" in lines
     assert not any(line.startswith("skipped: ") for line in lines)
+
+
+def test_a_placeholder_is_not_a_delimiter():
+    """The Markdown loader protects maths as `@@BBM_MD_PROTECT_0@@`; a
+    reply carrying them must split on the standalone `@@` alone (Datalab
+    textbook, 261026: 9 of 16 batches came back "misaligned")."""
+    from unittest.mock import patch
+
+    from book_maker.translator.claude_translator import Claude
+
+    with patch("book_maker.translator.claude_translator.Anthropic"):
+        translator = Claude("k", "Chinese")
+    reply = (
+        "在 @@BBM_MD_PROTECT_0@@ 厘米处。\n\n@@\n\n第二段 @@BBM_MD_PROTECT_1@@ 与 "
+        "@@BBM_MD_PROTECT_2@@。\n@@\n第三段"
+    )
+    assert translator._extract_paragraphs(reply, 3) == [
+        "在 @@BBM_MD_PROTECT_0@@ 厘米处。",
+        "第二段 @@BBM_MD_PROTECT_1@@ 与 @@BBM_MD_PROTECT_2@@。",
+        "第三段",
+    ]
+
+
+def test_a_paragraph_enumerating_its_points_is_not_cut_at_them():
+    """`(1) ... (2) ... (3)` in the book's own text is not segment numbering
+    (Purcell 261026: a three-segment batch cut at a paragraph's three
+    points, every translation shifted)."""
+    from unittest.mock import patch
+
+    from book_maker.translator.claude_translator import Claude
+
+    with patch("book_maker.translator.claude_translator.Anthropic"):
+        translator = Claude("k", "Chinese")
+    reply = (
+        "它的行为如下:(1) 产生偶极场;(2) 受到力矩;(3) 散度为零。"
+        "\n\n@@\n\n第二段。\n\n@@\n\n第三段。"
+    )
+    assert translator._extract_paragraphs(reply, 3) == [
+        "它的行为如下:(1) 产生偶极场;(2) 受到力矩;(3) 散度为零。",
+        "第二段。",
+        "第三段。",
+    ]
+    # Numbers without the delimiter are one reply, a mismatch the loader
+    # divides, never three made-up pieces.
+    assert len(translator._extract_paragraphs("(1) 甲 (2) 乙 (3) 丙", 3)) == 1

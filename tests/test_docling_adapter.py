@@ -1311,21 +1311,21 @@ def test_a_non_pdf_run_imports_neither_docling_nor_torch(tmp_path, pandoc, monke
 
 
 @pytest.mark.parametrize("command", ["extract", "run"])
-def test_the_parser_selector_is_gone_and_is_refused(tmp_path, pdf, command, capsys):
-    """An unshipped flag gets no compatibility alias, only a refusal.
+def test_the_parser_selector_names_docling_or_datalab_only(
+    tmp_path, pdf, command, capsys
+):
+    """`--pdf-parser` selects docling or the hosted Datalab, nothing else.
 
-    PIN (owner 260921,
-    docs/260921-plan-PDF_DOCLING_ONLY_AND_INSTALL_ROUTES.md): a two-tier
-    design that would have kept a second, zero-model parser behind
-    `--pdf-parser` was considered and rejected the same day -- the JRE it
-    needed is a system install rather than a pip extra, the speed saving
-    was under three seconds on a five-page cut, and the quality gap was
-    not trivial (cell recall 0.519 vs 0.995, 60 of 134 headings, 51.4
-    debris translation units per paper vs 4.8). There is one parser, so
-    the flag has nothing to select. Do not invert or delete this pin.
+    History: owner 260921 (docs/260921-plan-PDF_DOCLING_ONLY_AND_INSTALL_ROUTES.md)
+    kept one parser and refused the selector, rejecting a second,
+    zero-model *local* parser (OpenDataLoader's Java route: a JRE system
+    install, cell recall 0.519 vs 0.995, 60 of 134 headings). Superseded
+    261026 by the owner: "build as an alternative to local ocr and pdf
+    processing stage of pdf2epub in bbm - datalab" -- the selector exists
+    again for the hosted engine. The rejected local engine stays refused.
 
     Deliberately not taking the `pandoc` fixture: argparse refuses the
-    unknown flag before anything looks for Pandoc, so this pin runs on a
+    unknown value before anything looks for Pandoc, so this pin runs on a
     base install too rather than skipping where it is least watched.
     """
     harness = load_harness()
@@ -1339,11 +1339,12 @@ def test_the_parser_selector_is_gone_and_is_refused(tmp_path, pdf, command, caps
                 "--output",
                 str(tmp_path / "b"),
                 "--pdf-parser",
-                "docling",
+                "opendataloader",
             ]
         )
     assert exited.value.code == 2
-    assert "--pdf-parser" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "--pdf-parser" in err and "docling" in err and "datalab" in err
 
 
 @pytest.mark.parametrize(

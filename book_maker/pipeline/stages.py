@@ -16,6 +16,7 @@ from .messages import (
     EXTRACTION_REUSED_OTHER_RUNTIME,
     OCR_REPLACE_NEEDS_OCR,
     PDF_OPTIONS_INERT,
+    PDF_PARSER_DOCLING_ONLY,
     SOURCE_REASON_EXTRACT,
     SOURCE_REASON_IMPORT,
     SOURCE_REASON_PAGES,
@@ -26,6 +27,7 @@ from .messages import (
     STAGE_COMPLETE,
     STRUCTURE_NOT_REUSED,
 )
+from .pdf_figures import FIGURE_POLICY_DEFAULT
 from .pdf_settings import (
     OCR_MODE_REPLACE_LAYER,
     ExtractionSettings,
@@ -41,6 +43,10 @@ PDF_SUFFIXES = {".pdf"}
 # `book_maker.pipeline.docling_parser.PARSER` is the same string, and a
 # test holds them equal.
 PDF_PARSER = "docling"
+# The hosted engine (`--pdf-parser datalab`), the alternative to docling's
+# local models; `book_maker.pipeline.datalab.PARSER` is the same string.
+DATALAB_PARSER = "datalab"
+PDF_PARSERS = (PDF_PARSER, DATALAB_PARSER)
 
 
 def source_kind(path):
@@ -88,11 +94,47 @@ def check_pdf_options(kind, options):
         or engine != "auto"
     ):
         raise PipelineError(PDF_OPTIONS_INERT)
+    parser = getattr(options, "pdf_parser", None) or PDF_PARSER
+    if parser == DATALAB_PARSER:
+        flags = docling_only_flags(options)
+        if flags:
+            raise PipelineError(PDF_PARSER_DOCLING_ONLY.format(flags=flags))
     if replace_layer and not pdf_ocr:
         raise PipelineError(OCR_REPLACE_NEEDS_OCR)
     if pdf_ocr:
         check_ocr_engine(engine)
     return device_for(device)
+
+
+def docling_only_flags(options):
+    """The docling options typed on `options`, as a phrase, or "".
+
+    What configures docling's local models -- OCR, its engine, mode and
+    languages, the device, the image model, the formula crops, the figure
+    resolution (Datalab returns its own figure crops) -- has
+    nothing to act on when Datalab reads the PDF, and a run that accepted
+    one would honour it in name only. Read as typed: a default is not a
+    choice.
+    """
+    typed = []
+    if getattr(options, "pdf_ocr", False):
+        typed.append("--pdf-ocr")
+    if getattr(options, "ocr_replace_layer", False):
+        typed.append("--ocr-replace-layer")
+    if (getattr(options, "ocr_engine", None) or "auto") != "auto":
+        typed.append("--ocr-engine")
+    if getattr(options, "ocr_lang", None):
+        typed.append("--ocr-lang")
+    if getattr(options, "device", None):
+        typed.append("--device")
+    if (getattr(options, "img_model", None) or "").strip():
+        typed.append("--img-model")
+    if getattr(options, "formula_images", True) is False:
+        typed.append("--no-formula-images")
+    dpi = getattr(options, "pdf_image_dpi", None)
+    if dpi is not None and dpi != FIGURE_POLICY_DEFAULT.value:
+        typed.append("--pdf-image-dpi")
+    return ", ".join(typed)
 
 
 def device_for(device):
@@ -174,6 +216,12 @@ def _verdict(bundle, input_path, parser, pages, settings, device):
             return False, SOURCE_REASON_PARSER, []
         if (extraction.get("page_range") or None) != (pages or None):
             return False, SOURCE_REASON_PAGES, []
+        if parser == DATALAB_PARSER:
+            from .datalab import request_for
+
+            if extraction.get("request") != request_for(pages):
+                return False, SOURCE_REASON_SETTINGS, []
+            return done[0], None, []
         if ExtractionSettings.from_manifest(extraction).identity() != (
             settings.identity()
         ):
@@ -254,8 +302,13 @@ def prepare(
     structure=None,
     ocr_replace_layer=False,
     ocr_engine="auto",
+    parser=PDF_PARSER,
 ):
-    """Import or extract, chosen by the input's suffix alone.
+    """Import or extract, chosen by the input's suffix and `parser`.
+
+    A PDF is read by docling (the default) or by Datalab
+    (`parser="datalab"`, `datalab.extract_pdf`); a Markdown file is
+    imported whichever is named.
 
     The extraction settings are built from `ocr`, `ocr_engine`, `ocr_lang`,
     `formula_images` and `ocr_replace_layer` unless `settings` is given,
@@ -289,7 +342,7 @@ def prepare(
     finished, reason, lines = _verdict(
         bundle,
         input_path,
-        PDF_PARSER if kind == "pdf" else None,
+        (parser or PDF_PARSER) if kind == "pdf" else None,
         pages,
         settings,
         device,
@@ -309,6 +362,12 @@ def prepare(
         print(line)
     if kind == "markdown":
         return import_markdown(bundle, input_path, pandoc=pandoc, reason=reason)
+    if parser == DATALAB_PARSER:
+        from .datalab import extract_pdf as datalab_extract
+
+        return datalab_extract(
+            bundle, input_path, pandoc=pandoc, page_range=pages, reason=reason
+        )
     from .docling_parser import extract_pdf
 
     return extract_pdf(

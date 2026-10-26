@@ -49,12 +49,35 @@ HEADING_ATTRIBUTES = re.compile(r"\s+\{((?:[#.][^\s{}]+|[\w-]+=)[^{}]*)\}\s*$")
 # Spans the ordinary Markdown path does not protect, added here so the
 # reading edition can carry them through a translation unchanged: maths
 # (`markdown_spans.MATH_SPANS`, display forms first) and footnote references.
-EXTRA_PROTECTED = [*MATH_SPANS, (r"\[\^[^\]\s]+\]", 0)]
+NOTE_MARK = r"<(?P<mark>sup|sub)>[^<>\n]{1,4}</(?P=mark)>"
+EXTRA_PROTECTED = [
+    *MATH_SPANS,
+    (r"\[\^[^\]\s]+\]", 0),
+    # A short superscript or subscript is a note mark or an index (`<sup>†</sup>`,
+    # 525 of them in a Datalab textbook): kept whole, so a reply cannot split
+    # its tags -- Google answered `</sup>(sup)` and the XHTML broke (261026).
+    (NOTE_MARK, re.I),
+]
 
 # Blocks kept once, in the source language, and never sent to the model.
 FOOTNOTE_DEFINITION = re.compile(r"^\[\^[^\]\s]+\]:")
 HTML_TABLE = re.compile(r"^\s*<table\b", re.I)
 DISPLAY_MATH = re.compile(r"\$\$.+?\$\$|\\\[.+?\\\]", re.DOTALL)
+# What is left of a block once its maths and markup are taken out; a block
+# with no two letters in a row in it has nothing for the model to translate.
+NOT_PROSE = [
+    *MATH_SPANS,
+    (r"!\[[^\]\n]*\]\([^)]*\)", 0),
+    (r"\[\^[^\]\s]+\]", 0),
+    (r"<[^>\n]+>", 0),
+]
+WORD = re.compile(r"[^\W\d_]{2}")
+# A code fence the source block does not have: one in a reply turns the rest
+# of the chapter into a code block (Purcell 261026: `$q$```, 199 figures lost).
+FENCE = re.compile(r"`{3,}|~{3,}")
+# The inline HTML a translation may carry; one whose tags do not pair up is
+# not XML, and Pandoc writes raw HTML into the XHTML as it stands.
+INLINE_TAG = re.compile(r"<(/?)(sup|sub|b|i|em|strong|u|small)\b[^>]*?(/?)>", re.I)
 
 # Removed from the translated copy of a paragraph. The image belongs to the
 # source block above it -- one picture, not two -- and a second footnote
@@ -174,12 +197,15 @@ class ReadingEditionMarkdownLoader(MarkdownBookLoader):
             return True
         if HTML_TABLE.match(stripped):
             return True
-        # Display math with nothing else in the block: translating it would
-        # send the formula to the model and then print it twice.
-        without_math = DISPLAY_MATH.sub("", stripped)
-        return bool(DISPLAY_MATH.search(stripped)) and not re.search(
-            r"\w", without_math
-        )
+        # Nothing but maths, markup and numbering -- display math, a figure's
+        # `$\mathbf{J}$`, `$\phi = -\int \mathbf{E} \cdot d\mathbf{s}$  (2.7)`:
+        # translating it would print the formula twice, and a model shown
+        # only placeholders answers with a note about them (Purcell 261026:
+        # 625 such blocks, 25 answered "your text is only placeholders").
+        bare = stripped
+        for pattern, flags in NOT_PROSE:
+            bare = re.sub(pattern, " ", bare, flags=flags)
+        return not WORD.search(bare)
 
     @staticmethod
     def _protect_inline_markdown(text):
@@ -259,7 +285,7 @@ class ReadingEditionMarkdownLoader(MarkdownBookLoader):
             result.append(self._heading_line(match, None))
             result.append(self._translation_block(self._shield_marker("", translation)))
             return
-        translation = self._translation_text(translated_text)
+        translation = self._translation_text(source_text, translated_text)
         if not self.single_translate:
             result.append(source_text)
         if translation:
@@ -271,16 +297,31 @@ class ReadingEditionMarkdownLoader(MarkdownBookLoader):
             result.append(source_text)
 
     @staticmethod
-    def _translation_text(translated_text):
+    def _translation_text(source_text, translated_text):
         """The translated paragraph, with what belongs to the source removed.
 
         `_restore_inline_markdown` puts every protected span back into both
         copies, which is right for a link or a code span and wrong for an
         image and a footnote reference: the first would print the picture
         twice, the second would make Pandoc emit two identically-worded
-        definitions of one note. The surrounding translated prose stays.
+        definitions of one note. The surrounding translated prose stays. So
+        does a code fence only when the source block has one, and inline
+        HTML only when its tags still pair up; otherwise the tags go and
+        their text stays.
         """
         cleaned = TRANSLATION_ONLY_DROP.sub("", translated_text)
+        if not FENCE.search(source_text):
+            cleaned = FENCE.sub("", cleaned)
+        # A note mark came back whole from its token; the model's own tags
+        # are judged around it.
+        parts = re.split(f"({NOTE_MARK})", cleaned, flags=re.I)
+        marks, prose = parts[1::3], parts[0::3]
+        if not _tags_pair_up("".join(prose)):
+            prose = [INLINE_TAG.sub("", piece) for piece in prose]
+            cleaned = "".join(
+                piece + (marks[i] if i < len(marks) else "")
+                for i, piece in enumerate(prose)
+            )
         cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
         cleaned = re.sub(r"[ \t]+([,.;:!?)\u3001\u3002\uff0c\uff0e])", r"\1", cleaned)
         return cleaned.strip()
@@ -406,9 +447,10 @@ class ReadingEditionMarkdownLoader(MarkdownBookLoader):
 
         Models return `## 第一章` for `## Chapter One`; kept as a heading it
         would be a second TOC entry for the same chapter, and kept with the
-        hashes visible it would be neither.
+        hashes visible it would be neither. A heading never holds a code
+        fence, so one in the reply is the model's, and goes.
         """
-        stripped = text.strip()
+        stripped = FENCE.sub("", text).strip()
         stripped = re.sub(r"^#{1,6}\s*", "", stripped)
         stripped = HEADING_ATTRIBUTES.sub("", stripped)
         return stripped.strip()
@@ -489,6 +531,20 @@ class ReadingEditionMarkdownLoader(MarkdownBookLoader):
         path.write_text(
             json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
+
+
+def _tags_pair_up(text):
+    open_tags = []
+    for match in INLINE_TAG.finditer(text):
+        closing, name, self_closing = match.groups()
+        name = name.lower()
+        if self_closing:
+            continue
+        if not closing:
+            open_tags.append(name)
+        elif not open_tags or open_tags.pop() != name:
+            return False
+    return not open_tags
 
 
 def echo_warning(lines):

@@ -34,6 +34,9 @@ class MarkdownBatch:
 
 
 class MarkdownBookLoader(BaseBookLoader):
+    # Set by the CLI from --quiet: no echo of each translated block.
+    quiet = False
+
     def __init__(
         self,
         md_name,
@@ -165,7 +168,10 @@ class MarkdownBookLoader(BaseBookLoader):
                 self._append_block(table_lines, translatable=False, line=start + 1)
                 continue
 
-            if self._is_pass_through_line(stripped):
+            if self._is_pass_through_line(stripped) or (
+                self._is_thematic_break(stripped)
+                and not (current_paragraph and set(stripped) == {"-"})
+            ):
                 flush(i)
                 current_paragraph = []
                 self._append_block([line], translatable=False, line=i + 1)
@@ -246,6 +252,13 @@ class MarkdownBookLoader(BaseBookLoader):
             or stripped_line.startswith("![")
             or bool(re.match(r"^<!--.*-->$", stripped_line))
         )
+
+    @staticmethod
+    def _is_thematic_break(stripped_line):
+        # A rule has nothing to translate, and its echo inside a translation
+        # div opens a YAML metadata block for Pandoc. A bare run of `-` right
+        # under a paragraph line is that line's setext underline instead.
+        return bool(re.fullmatch(r"([-*_])( *\1){2,} *", stripped_line))
 
     @staticmethod
     def _is_special_text(text):
@@ -379,6 +392,8 @@ class MarkdownBookLoader(BaseBookLoader):
         ]
         if not pending:
             return results
+        if getattr(self.translate_model, "batch_queue", None) is not None:
+            self._run_message_batch(pending)
 
         pbar = tqdm(
             total=len(batches),
@@ -392,7 +407,9 @@ class MarkdownBookLoader(BaseBookLoader):
             # Lock so parallel workers emit each batch as one uninterleaved
             # block; also serializes pbar updates.
             with report_lock:
-                for source, target in zip(batch.block_texts, translated):
+                for source, target in zip(
+                    batch.block_texts, () if self.quiet else translated
+                ):
                     # escape(): Markdown text is full of [bracketed] spans
                     # that rich would otherwise eat or crash on as markup.
                     print(escape(source))
@@ -433,6 +450,37 @@ class MarkdownBookLoader(BaseBookLoader):
 
         self.p_to_save = self._contiguous_results(results)
         return results
+
+    def _run_message_batch(self, pending):
+        """`--batch-api`: record every pending request, then batch them.
+
+        The collection pass walks the same `_translate_batch` the live run
+        does, so each request is built exactly as it will be replayed; the
+        translator records it and raises `BatchPending` instead of sending
+        it (`claude_batch`). Nothing is written to the book or the resume
+        state here. Once the batch has ended, the caller translates as
+        usual and every recorded request is answered from the batch.
+        """
+        from book_maker.translator.claude_batch import BatchPending
+
+        queue = self.translate_model.batch_queue
+        queue.mode = queue.COLLECT
+        for _, batch in pending:
+            try:
+                self._translate_batch(batch.block_texts, batch.breadcrumb)
+            except BatchPending:
+                continue
+        print(
+            f"--batch-api: {len(queue.pending)} new request(s) for "
+            f"{len(pending)} untranslated batch(es)"
+        )
+        self.translate_model.run_batch()
+        good, bad = queue.summary()
+        if bad:
+            print(
+                f"[yellow]--batch-api: {bad} request(s) came back without a "
+                f"usable translation; they are sent live now[/yellow]"
+            )
 
     def _translate_sections_parallel(self, pending, results, report):
         """Translate independent Markdown sections concurrently while keeping
@@ -771,7 +819,10 @@ class MarkdownBookLoader(BaseBookLoader):
 
     @staticmethod
     def _restore_inline_markdown(text, replacements):
-        for token, original in replacements.items():
+        # Newest first: a later pass can wrap an earlier token, as the reading
+        # edition's maths does around a "link" inside a formula
+        # (`$[(v_0 + \Delta v)/c](2Mc \Delta v/r)$`, Purcell 261026).
+        for token, original in reversed(replacements.items()):
             text = text.replace(token, original)
         return text
 

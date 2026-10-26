@@ -294,6 +294,143 @@ def test_math_tables_and_footnotes_are_preserved_once_and_not_translated(
     assert body.count("The definition of the note.") == 1
 
 
+def test_an_html_line_break_in_a_table_cell_exports_as_well_formed_xhtml(
+    tmp_path, pandoc, fake_format
+):
+    """Datalab writes `<br>` inside pipe-table cells and the preflight accepts
+    it; copied verbatim it made the XHTML not well-formed, after the whole
+    Purcell translation was paid for (261026)."""
+    text = (
+        "# Contents\n\n"
+        "| Section | Title | Page |\n"
+        "|---|---|---|\n"
+        "| 10.11 | The Field of a Charge,<br>and Gauss's Law | 379 |\n\n"
+        "A line<br>broken in prose, `code <br> kept`, and<br/>self-closed.\n"
+    )
+    bundle = prepared(tmp_path, pandoc, text)
+    translate_bundle(bundle, OPTIONS, pandoc=pandoc)
+    export_epub(bundle, pandoc=pandoc)  # refuses a document that is not XML
+    with zipfile.ZipFile(bundle.epub) as archive:
+        body = "".join(
+            archive.read(name).decode("utf-8")
+            for name in archive.namelist()
+            if name.endswith(".xhtml")
+        )
+    assert "<br>" not in body
+    assert "Charge,<br />and" in body
+    assert "<code>code &lt;br&gt; kept</code>" in body
+
+
+def test_a_heading_with_a_formula_passes_the_navigation_check(
+    tmp_path, pandoc, fake_format
+):
+    """`## FREE CURRENTS, AND THE FIELD $\\mathbf{H}$` (Purcell 11.10): the
+    contents entry is MathML, the outline used to drop the formula, and the
+    export refused the book after its translation was paid for (261026)."""
+    text = (
+        "# Magnetic Fields in Matter\n\n"
+        "## Free Currents, and the Field $\\mathbf{H}$\n\n"
+        "Some prose about $\\mathbf{H}$.\n"
+    )
+    bundle = prepared(tmp_path, pandoc, text)
+    translate_bundle(bundle, OPTIONS, pandoc=pandoc)
+    export_epub(bundle, pandoc=pandoc)  # refuses a contents it cannot match
+    with zipfile.ZipFile(bundle.epub) as archive:
+        nav = archive.read("EPUB/nav.xhtml").decode("utf-8")
+    assert "Free Currents, and the Field <math" in nav
+
+
+def test_a_block_with_no_words_outside_its_maths_is_carried_not_sent(
+    tmp_path, pandoc, fake_format
+):
+    """Datalab's figure labels and numbered equations (Purcell 261026): shown
+    only placeholders, the model answered with a note about them, or echoed
+    the formula so the book printed it twice."""
+    text = (
+        "# Fields\n\n"
+        "$\\mathbf{J}$\n\n"
+        "$Q_1$   $\\varphi_1$\n\n"
+        "$\\mathbf{E} = -\\nabla \\phi$  (2.15)\n\n"
+        "**(c)**\n\n"
+        "The current density $\\mathbf{J}$ is a vector.\n"
+    )
+    bundle = prepared(tmp_path, pandoc, text)
+    translate_bundle(bundle, OPTIONS, pandoc=pandoc)
+    sent = [t for i in FakeTranslator.instances for t in i.translated]
+    assert all("BBM_MD_PROTECT" not in t or "current density" in t for t in sent)
+    assert any("current density" in t for t in sent)
+    assert len(sent) == 2, sent  # the heading and the one sentence
+    bilingual = bundle.bilingual_markdown.read_text(encoding="utf-8")
+    assert bilingual.count("$\\mathbf{E} = -\\nabla \\phi$") == 1
+    assert bilingual.count("$Q_1$") == 1
+
+
+def test_a_code_fence_the_source_does_not_have_is_dropped_from_the_reply(
+    tmp_path, pandoc, fake_format, monkeypatch
+):
+    """`$q$```: the prompt's fence, echoed after a reply, made every block up
+    to the next stray fence a code block -- 199 of the book's 440 figures."""
+    answer = FakeTranslator._answer
+
+    def fenced(self, text):
+        return answer(self, text) + "```"
+
+    monkeypatch.setattr(FakeTranslator, "_answer", fenced)
+    text = (
+        "# Fields\n\n"
+        "A first paragraph.\n\n"
+        "![](assets/plate.png)\n\n"
+        "A second paragraph.\n\n"
+        "```\ncode the book has\n```\n"
+    )
+    bundle = prepared(tmp_path, pandoc, text)
+    translate_bundle(bundle, OPTIONS, pandoc=pandoc)
+    bilingual = bundle.bilingual_markdown.read_text(encoding="utf-8")
+    assert bilingual.count("```") == 2, bilingual
+    kinds = block_kinds(blocks(pandoc, bilingual))
+    assert kinds.count("CodeBlock") == 1
+    export_epub(bundle, pandoc=pandoc)  # refuses an EPUB missing a figure
+
+
+def test_a_formula_that_looks_like_a_link_comes_back_whole(
+    tmp_path, pandoc, fake_format
+):
+    """`$[(v_0 + \\Delta v)/c](2Mc \\Delta v/r)$`: the link pattern ran first
+    and the maths token wrapped its token, which was left in the book."""
+    formula = "$[(v_0 + \\Delta v)/c](2Mc \\Delta v/r)$"
+    text = f"# Motion\n\nThe extra force has the magnitude {formula} here.\n"
+    bundle = prepared(tmp_path, pandoc, text)
+    translate_bundle(bundle, OPTIONS, pandoc=pandoc)
+    bilingual = bundle.bilingual_markdown.read_text(encoding="utf-8")
+    assert "BBM_MD_PROTECT" not in bilingual
+    assert bilingual.count(formula) == 2
+
+
+def test_inline_tags_a_reply_broke_do_not_break_the_epub(
+    tmp_path, pandoc, fake_format, monkeypatch
+):
+    """Google answered a Datalab note mark `<sup>†</sup>` as `</sup>(sup)`;
+    Pandoc wrote it into the XHTML as it stood (261026)."""
+    answer = FakeTranslator._answer
+
+    def mangled(self, text):
+        reply = answer(self, text)
+        return reply.replace("<b>", "</b>(b)") if "<b>" in reply else reply
+
+    monkeypatch.setattr(FakeTranslator, "_answer", mangled)
+    text = (
+        "# Notes\n\n"
+        "A remark that ends with a mark.<sup>†</sup> And a <b>bold</b> word.\n"
+    )
+    bundle = prepared(tmp_path, pandoc, text)
+    translate_bundle(bundle, OPTIONS, pandoc=pandoc)
+    sent = "\n".join(t for i in FakeTranslator.instances for t in i.translated)
+    assert "<sup>" not in sent, "the note mark went to the model"
+    bilingual = bundle.bilingual_markdown.read_text(encoding="utf-8")
+    assert bilingual.count("<sup>†</sup>") == 2
+    export_epub(bundle, pandoc=pandoc)  # refuses a document that is not XML
+
+
 def test_repeated_headings_get_distinct_identifiers(tmp_path, pandoc, fake_format):
     text = "# Notes\n\nFirst.\n\n# Notes\n\nSecond.\n"
     bundle = prepared(tmp_path, pandoc, text)

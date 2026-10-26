@@ -32,6 +32,7 @@ from .messages import NAV_INVALID
 
 XHTML_NS = "http://www.w3.org/1999/xhtml"
 OPS_NS = "http://www.idpf.org/2007/ops"
+MATHML_NS = "http://www.w3.org/1998/Math/MathML"
 CONTAINER_NS = "urn:oasis:names:tc:opendocument:xmlns:container"
 OPF_NS = "http://www.idpf.org/2007/opf"
 
@@ -249,7 +250,22 @@ def nest(outline):
 
 
 def _text(element):
-    return _normal("".join(element.itertext()))
+    return _normal("".join(_pieces(element)))
+
+
+def _pieces(element):
+    # A formula reads as its TeX, which is what the outline holds for it:
+    # Pandoc's MathML carries the glyphs and the TeX annotation both.
+    if element.tag == f"{{{MATHML_NS}}}math":
+        tex = element.find(
+            f".//{{{MATHML_NS}}}annotation[@encoding='application/x-tex']"
+        )
+        yield "".join(element.itertext()) if tex is None else (tex.text or "")
+        return
+    yield element.text or ""
+    for child in element:
+        yield from _pieces(child)
+        yield child.tail or ""
 
 
 def _normal(text):

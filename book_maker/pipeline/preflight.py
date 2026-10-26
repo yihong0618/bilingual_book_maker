@@ -530,7 +530,7 @@ def plain_text(inlines):
             parts.append(content)
         elif kind in ("Space", "SoftBreak", "LineBreak"):
             parts.append(" ")
-        elif kind == "Code":
+        elif kind in ("Code", "Math"):
             parts.append(content[1])
         elif kind in (
             "Emph",

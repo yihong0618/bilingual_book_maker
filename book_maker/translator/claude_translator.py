@@ -169,6 +169,11 @@ class Claude(Base):
     SUPPORTS_SESSION_CONTEXT = True
     SUPPORTS_PARALLEL_CONTEXT = True
     SUPPORTS_REQUEST_EXTRAS = True
+    SUPPORTS_MESSAGE_BATCHES = True
+
+    # `--batch-api`: a `claude_batch.ClaudeBatchQueue` every translation
+    # request goes through (`_create`); None sends each one live.
+    batch_queue = None
 
     # Session-mode state, declared here so the window-mode path is well
     # defined on any instance — including the test fixtures that build one
@@ -563,6 +568,37 @@ class Claude(Base):
         self._note_usage(r, model)
         return _reply_text(r)
 
+    def attach_batch_queue(self, queue):
+        """Send translation requests through `queue` (`--batch-api`).
+
+        The batch calls get a client of their own, pinned to the key in use
+        now: a batch is read back with the credentials that created it, and
+        `rotate_key` moves the translation client on. Longer timeout too --
+        a create carries the whole book.
+        """
+        self.batch_queue = queue
+        self.batch_client = self.client.with_options(
+            api_key=self.client.api_key, timeout=600
+        )
+
+    def run_batch(self):
+        """Submit what the collection pass recorded and wait for it."""
+        self.batch_queue.run(self.batch_client, note_usage=self._note_usage)
+
+    def _create(self, **params):
+        """`messages.create`, or the batch's stored reply for the same request.
+
+        Returns `(message, replayed)`. A replayed reply was metered when the
+        batch was read, so the caller does not count it again. In the
+        collection pass a request with no stored reply raises
+        `BatchPending` from here, before anything is sent.
+        """
+        if self.batch_queue is not None:
+            stored = self.batch_queue.request(params)
+            if stored is not None:
+                return stored, True
+        return self.client.messages.create(**params), False
+
     def translate(self, text):
         self.rotate_key()
 
@@ -570,7 +606,7 @@ class Claude(Base):
         messages = self.create_messages(text, self.create_context_messages())
 
         try:
-            r = self.client.messages.create(
+            r, replayed = self._create(
                 max_tokens=4096,
                 messages=messages,
                 system=self.standing_instructions(),
@@ -581,7 +617,8 @@ class Claude(Base):
             )
         except APIStatusError as e:
             self._explain_wrong_shape(e)
-        self._note_usage(r)
+        if not replayed:
+            self._note_usage(r)
         # Blocks first, fences second: the strip has to see the final joined
         # text, or a reply split across two text blocks ("```" + "译文```")
         # keeps its wrapper. Everything downstream — the batch splitter, the

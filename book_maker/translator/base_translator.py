@@ -314,6 +314,11 @@ class Base(ABC):
     # translator, so accepting it would be an AttributeError partway in.
     SUPPORTS_BATCH_API = False
 
+    # Does this route implement `--batch-api` -- Anthropic's Message Batches
+    # under the ordinary loop (`claude_batch`)? Only the Claude translator
+    # does; anywhere else the flag is refused before a book is read.
+    SUPPORTS_MESSAGE_BATCHES = False
+
     # Does this route carry --extra_body / --extra_headers? True where the
     # request is built here from an SDK that takes them. The codex route is
     # a subprocess with no request to merge into, and the fixed-endpoint MT
@@ -1315,32 +1320,25 @@ class Base(ABC):
         Returns:
             List of extracted paragraphs
         """
-        result_list = []
-
-        # First try to extract by paragraph numbers (1), (2), etc.
-        for i in range(1, paragraph_count + 1):
-            pattern = rf"\({i}\)\s*(.*?)(?=\s*\({i + 1}\)|\Z)"
-            match = re.search(pattern, text, re.DOTALL)
-            if match:
-                result_list.append(match.group(1).strip())
-
-        # If exact pattern matching failed, try another approach
-        if len(result_list) != paragraph_count:
-            pattern = r"\((\d+)\)\s*(.*?)(?=\s*\(\d+\)|\Z)"
-            matches = re.findall(pattern, text, re.DOTALL)
-            if matches:
-                # Sort by paragraph number
-                matches.sort(key=lambda x: int(x[0]))
-                result_list = [match[1].strip() for match in matches]
-
-        # Fallback: try splitting by BATCH_DELIMITER with flexible whitespace
-        if len(result_list) != paragraph_count:
-            # Extract the core delimiter (e.g., '@@' from BATCH_DELIMITER)
-            core_delimiter = BATCH_DELIMITER.strip()
-            # Split by the core delimiter with any surrounding whitespace/newlines
-            parts = re.split(r"\s*" + re.escape(core_delimiter) + r"\s*", text)
-            # Filter out empty strings
-            result_list = [p.strip() for p in parts if p.strip()]
+        # Only the delimiter the request was sent with splits a reply. Two
+        # rungs used to run first and read `(1) ... (2) ...` as segment
+        # numbers -- left from a prompt that numbered its paragraphs, which
+        # nothing sends any more -- so a paragraph enumerating its own
+        # points was cut at them whenever their count matched the batch,
+        # delimiters or not (Purcell, 261026: "Both effects (1) and (2)",
+        # translations shifted one slot, "和" standing for a paragraph).
+        #
+        # The delimiter counts only where it stands on its own, not where
+        # it is part of a word: the Markdown loader's placeholders for
+        # maths, links and code are `@@BBM_MD_PROTECT_0@@`, and splitting
+        # inside them cut every maths-bearing reply into the wrong count (a
+        # Datalab textbook, 261026: 9 of 16 batches, each then retranslated
+        # one paragraph at a time).
+        core_delimiter = BATCH_DELIMITER.strip()
+        parts = re.split(
+            r"\s*(?<![\w@])" + re.escape(core_delimiter) + r"(?![\w@])\s*", text
+        )
+        result_list = [p.strip() for p in parts if p.strip()]
 
         # There used to be a last rung here: split on every non-blank line.
         # It manufactured a plausible *wrong* count out of a perfectly correct

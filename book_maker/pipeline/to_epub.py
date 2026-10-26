@@ -1,4 +1,4 @@
-"""`make_book.py --to-epub`: a PDF in, a bilingual EPUB beside it.
+"""`make_book.py --to-epub`: a PDF (or Markdown) in, a bilingual EPUB beside it.
 
 The same three stages the staged harness runs, in one command, over a bundle
 that stays on disk. Nothing is reimplemented here: `prepare` extracts,
@@ -24,11 +24,25 @@ from types import SimpleNamespace
 from .bundle import Bundle, parse_ocr_lang, parse_pages
 from .epub_export import export_epub
 from .errors import PipelineError
-from .messages import PANDOC_ON_PATH, PANDOC_REQUIRED, TO_EPUB_BUNDLE, TO_EPUB_COPY
+from .messages import (
+    PANDOC_ON_PATH,
+    PANDOC_REQUIRED,
+    PDF_OPTIONS_INERT,
+    PDF_PARSER_DOCLING_ONLY,
+    TO_EPUB_BUNDLE,
+    TO_EPUB_COPY,
+)
 from .pdf_figures import FIGURE_POLICY_DEFAULT, render_figures
 from .pdf_settings import check_ocr_engine
 from .preflight import find_pandoc
-from .stages import device_for, prepare
+from .stages import (
+    DATALAB_PARSER,
+    PDF_PARSER,
+    device_for,
+    docling_only_flags,
+    prepare,
+    source_kind,
+)
 from .translate import (
     BilingualEdited,
     check_options,
@@ -67,6 +81,8 @@ OWNED_VALUE_OPTIONS = (
     # can never reach the inner run.
     "--figure-policy",
     "--pdf-image-dpi",
+    # Which engine reads the PDF: docling's local models or Datalab.
+    "--pdf-parser",
 )
 
 
@@ -153,6 +169,7 @@ def pdf_to_epub(
     quiet=False,
     pandoc=None,
     figure_policy=FIGURE_POLICY_DEFAULT,
+    pdf_parser=PDF_PARSER,
     prepare_stage=prepare,
     figure_stage=render_figures,
     translate_stage=translate_bundle,
@@ -160,11 +177,35 @@ def pdf_to_epub(
 ):
     """Extract, translate and export one PDF. Returns the EPUB beside it.
 
+    `pdf_parser` picks the engine that reads a PDF: docling (local models)
+    or datalab (the hosted Convert API). A Markdown file -- one Datalab
+    wrote earlier, say -- is imported instead, and neither engine runs.
+
     The stage functions are parameters so the routing can be tested without
     a PDF parser, a model or Pandoc; the defaults are the real stages and
     nothing else is injectable.
     """
     pdf = Path(pdf_path)
+    kind = source_kind(pdf)
+    parser = pdf_parser or PDF_PARSER
+    # docling's own switches with another engine, or with no engine at all,
+    # are refused before anything is read or sent.
+    typed = SimpleNamespace(
+        pdf_ocr=pdf_ocr,
+        ocr_replace_layer=ocr_replace_layer,
+        ocr_engine=ocr_engine,
+        ocr_lang=ocr_lang,
+        device=device,
+        img_model=img_model,
+        formula_images=formula_images,
+        pdf_image_dpi=figure_policy.value,
+    )
+    flags = docling_only_flags(typed)
+    if (flags or pages) and kind != "pdf":
+        raise PipelineError(PDF_OPTIONS_INERT)
+    if flags and parser == DATALAB_PARSER:
+        raise PipelineError(PDF_PARSER_DOCLING_ONLY.format(flags=flags))
+    docling = kind == "pdf" and parser == PDF_PARSER
     # All resolved before the PDF is opened: an unusable Pandoc, a
     # translation option or a page selection that does not parse must not
     # cost an extraction.
@@ -177,7 +218,7 @@ def pdf_to_epub(
     options = check_options(translation_argv(argv))
     parse_pages(pages)  # a selection that does not parse is refused here too
     parse_ocr_lang(ocr_lang)  # and an empty language list
-    if pdf_ocr:
+    if pdf_ocr and docling:
         # and an OCR engine this install cannot run (auto never is)
         check_ocr_engine(ocr_engine)
     # The image model (`--img-model`, else the provider entry's img_model,
@@ -189,7 +230,11 @@ def pdf_to_epub(
     image = SimpleNamespace(
         img_model=img_model, img_base_url=img_base_url, img_key=img_key
     )
-    if (img_model or "").strip() or getattr(translation, "provider", None):
+    # docling's pass only: Datalab and an import never load it, a provider
+    # entry's img_model included.
+    if docling and (
+        (img_model or "").strip() or getattr(translation, "provider", None)
+    ):
         from .docling_parser import image_request
 
         structure = image_request(image, translation)
@@ -214,6 +259,7 @@ def pdf_to_epub(
         progress=not quiet,
         structure=structure,
         # Handed on only when asked for, as the stage's seams take it.
+        **({"parser": parser} if parser != PDF_PARSER else {}),
         **({"ocr_replace_layer": True} if ocr_replace_layer else {}),
         **({"ocr_engine": ocr_engine} if (ocr_engine or "auto") != "auto" else {}),
     )
