@@ -13,7 +13,7 @@ warning, so never pass them.
 |---|---|---|---|
 | `.txt` | `--batch_size 20` | lines are sent in groups; 20 gives the model more context per request and halves the request count. Lower it if the model starts merging or dropping lines | `docs/en/formats/txt.md` |
 | `.srt` | `--accumulated_num 400` | consecutive subtitle blocks share one request up to that many characters (capped at 512) | `docs/en/formats/srt.md` |
-| `.md` | `--prompt prompt_md.json "${CONTEXT[@]}" --batch_size 20` | the shipped Markdown prompt keeps the markup; a session keeps names consistent; outside plan mode each request re-reads the history, so a larger `--batch_size` keeps the request count down | `docs/en/formats/md.md` |
+| `.md` | `--prompt prompt_md.json "${CONTEXT[@]}" --batch_size 20` (a bilingual `.md`; for an EPUB, `--to-epub` and `references/pdf-route.md`) | the shipped Markdown prompt keeps the markup; a session keeps names consistent; outside plan mode each request re-reads the history, so a larger `--batch_size` keeps the request count down | `docs/en/formats/md.md` |
 | `.pdf`, as text (only when the user asked for txt) | `--batch_size 20` | the old text route: a bilingual `.txt` with no structure, plus an attempted EPUB | `docs/en/formats/pdf.md#the-text-route-no-to-epub` |
 
 ```bash
@@ -25,7 +25,13 @@ What does not apply, so do not pass it:
 - **TXT and SRT carry no context**: `--use_context` (either mode),
   `--context-compact-at`, `--glossary` are ignored with a warning. Only
   Markdown and the PDF text route take the `CONTEXT` array and `--glossary`.
-- `--quiet` is EPUB only; the run warns. Keep the log redirect.
+- `--quiet` works on Markdown (and EPUB); on TXT and SRT the run warns.
+  Keep the log redirect either way.
+- `--batch-api` (anthropic route, Markdown only): Anthropic's Message
+  Batches at half the price, without `CONTEXT` (refused with
+  `--use_context`). The run waits for the batch (status every 30 s) and a
+  rerun polls it rather than paying again; the details and its failure
+  lines are in `references/pdf-route.md`.
 - `--parallel-workers` works on Markdown only (not with a session); TXT and
   SRT stay serial.
 - On an SRT book a replaced `user` template must itself say that each

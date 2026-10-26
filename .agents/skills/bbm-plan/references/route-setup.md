@@ -223,6 +223,7 @@ text is on `docs/en/cmd.md`.
 | `--no-thinking` | on/off | *off* | a reasoning model (local Qwen3-class, or a hosted one that thinks by default) spends tokens and time before every paragraph. Refused on codex |
 | `--extra_body` / `--extra_headers` | JSON object | *unset* | the endpoint needs a vendor field or a header. A field in `--extra_body` wins over `--no-thinking` |
 | `--temperature` | float | *unset* | output is erratic; lower it and check the markup again. codex ignores it |
+| `--batch-api` | on/off | *off* | anthropic route, Markdown book or `--to-epub`, a long book and a user who can wait: Anthropic's Message Batches, half the price. Refused with `--use_context` (either mode), so `CONTEXT` stays empty; EPUB, TXT and SRT books are refused too. Not `--batch`, which is the OpenAI Batch API |
 
 ### Context and consistency
 

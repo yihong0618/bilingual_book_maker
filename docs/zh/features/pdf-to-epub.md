@@ -30,6 +30,7 @@ python make_book.py --book_name paper.pdf --to-epub --use_context session
 | 参数 | 作用 |
 |---|---|
 | `--to-epub` | 走这条路线。 |
+| `--pdf-parser ENGINE` | `docling`（默认，本地模型）或 `datalab`：见[用 Datalab 代替本地模型](#用-datalab-代替本地模型)。 |
 | `--pdf-ocr` | 读取没有文字层的页面。默认关闭：原生数字 PDF 本来就能直接读取，OCR 要多花好几倍的时间，读出的内容却不会变。无论开不开，版面、标题和表格检测都会运行。 |
 | `--ocr-replace-layer` | 配合 `--pdf-ocr`：对每一页做 OCR，用识别结果代替 PDF 自带的文字层。默认关闭：保留已有的文字层，只对没有文字层的页面做 OCR。适用于文字层有误的扫描件（识别成了别的语言，或者是劣质 OCR 留下的乱码）；在干净的扫描件上，文字层比本地引擎读得更好。打开或关闭它，下一次运行都会重新读取 PDF。 |
 | `--ocr-lang LANGS` | 配合 `--pdf-ocr`：OCR 引擎要识别的语言，用引擎自己的代码。`auto` 在 Mac 上选 ocrmac，其他系统上选 rapidocr；pdf 扩展把两者都装好了，都不需要下载任何东西。测量数据见[选择 OCR 引擎](pdf-ocr-engines.md)。各引擎的代码：rapidocr 用 `ch`、`en`、`latin`；easyocr 用 `ch_sim`、`ja`、`ko`；ocrmac 用 `zh-Hans`、`ja-JP`。在 BCP-47 标签前加 `iso:`（`iso:zh`、`iso:ja`、`iso:zh-Hant`）在所有引擎上都有效，所以不确定会用哪个引擎时，这是稳妥的写法。rapidocr 没有 `ch_sim`：中文请写 `iso:zh`。rapidocr 每次运行只识别一种语言，取第一个。运行时会打印实际使用的引擎和语言。 |
@@ -56,6 +57,20 @@ docling 把每一页切成若干区域并给它们打上标签：正文、标题
 
 判定结果保存在 `<name>_book/.work/extraction/decisions.json`。提取结束时，运行会单独打印一行这一步的 token 用量：`Image model (<model> at <address>): …`。
 
+## 用 Datalab 代替本地模型
+
+如果你已经有 [Datalab](https://www.datalab.to) 的密钥，`--pdf-parser datalab` 会把 PDF 交给托管的 Datalab Convert API，而不在本机运行 docling 的模型。在环境变量里设置 `DATALAB_API_KEY`；没有它，运行会在发送任何内容之前停下。
+
+```bash
+python make_book.py --book_name scan.pdf --to-epub --pdf-parser datalab --pages 1-2 --test
+```
+
+- **有什么不同。** Datalab 自己识别扫描页、插图和每一个公式，包括行内公式：它们以 LaTeX 返回，EPUB 里显示为 MathML。本机不运行任何模型，所以不需要 PDF 扩展；Pandoc 仍然需要。
+- **花费。** 由 Datalab 按页计费（balanced 模式约每页 0.3 美分；一本 507 页的扫描教材花了 1.52 美元）。PDF 会上传到 Datalab。
+- **不适用的参数。** `--pdf-ocr`、`--ocr-replace-layer`、`--ocr-engine`、`--ocr-lang`、`--device`、`--img-model`、`--no-formula-images` 和 `--pdf-image-dpi` 都是 docling 的设置，与 Datalab 一起使用会被拒绝。`--pages` 可用。重跑会复用已有的转换；换一个 `--pages` 就是一次新的转换。
+- **`source.md` 里要看什么。** Datalab 的模型会在每张图后面写一段对图的描述；它会被保留并翻译，不想要就在 `source.md` 里删掉这些段落。标题层级是 Datalab 猜的：完整运行前先改好。被分页截断的段落，在没有其他解释时会接回去；页眉会被去掉。
+- **Datalab 已经生成的 Markdown 文件**可以直接交给 `--to-epub`：`--book_name book.md --to-epub`。它的分页符会被读成页标记，不运行任何引擎。
+
 ## 手工修补译文
 
 如果某一段译文有误，在 `<name>_book/book_bilingual.md` 里改正，然后做两步：
@@ -69,7 +84,7 @@ docling 把每一页切成若干区域并给它们打上标签：正文、标题
 
 ## 已知限制
 
-- 行内数学公式可能无法正确显示。只有行间公式会被裁剪成图片；句子里的数学式按提取器读到的文字原样输出。
+- 行内数学公式可能无法正确显示。只有行间公式会被裁剪成图片；句子里的数学式按提取器读到的文字原样输出。使用 `--pdf-parser datalab` 时，每个公式都会解码为 LaTeX 并显示为 MathML。
 
 ## 可能出现的问题
 
@@ -86,6 +101,9 @@ docling 把每一页切成若干区域并给它们打上标签：正文、标题
 - **`--img-model needs an OpenAI-compatible endpoint; … resolves to the … format.`** 图像模型要在本次运行的端点或 `--img-base-url` 上询问，而那个端点不是 OpenAI 形式的。给一个 OpenAI 兼容的 `--img-base-url`（以及 `--img-key`），或者去掉 `--img-model`。
 - **`--img-base-url names where --img-model is served, and no --img-model was given. …`** 把模型也写上。
 - **`--ocr-replace-layer re-reads pages that already carry a text layer with the OCR engine, so it needs --pdf-ocr.`** 加上 `--pdf-ocr`。
+- **`--pdf-parser datalab sends the PDF to Datalab Convert, which needs a key: …`** 设置 `DATALAB_API_KEY`，或者去掉 `--pdf-parser datalab`，在本机读取 PDF。
+- **`--pdf-parser datalab does not run docling, and these options only configure docling: …`** 去掉它列出的参数。
+- **`… apply only to PDF input.`** 对 Markdown 文件用了 PDF 参数；去掉它。
 
 ### 提取期间
 

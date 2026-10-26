@@ -13,7 +13,7 @@ This is also the loader behind [PDF to bilingual EPUB](../features/pdf-to-epub.m
 
 ## What you get
 
-- `<name>_bilingual.md` beside the input: each block followed by its translation. With `--single_translate`, the translation only.
+- `<name>_bilingual.md` beside the input: each block followed by its translation. With `--single_translate`, the translation only. With `--to-epub`, a bilingual EPUB instead, built as for a PDF: [PDF to bilingual EPUB](../features/pdf-to-epub.md).
 - On a session run, `<name>_handoff.md` with the latest handoff report.
 - On Ctrl+C or an error: `<name>_bilingual_temp.txt` and a checkpoint. Rerun with `--resume`.
 
@@ -58,6 +58,8 @@ These work the same on every format.
 | `--test_num N` | How many, with `--test` (default 10). |
 | `--resume` | Continue an interrupted run from its checkpoint. |
 | `--single_translate` | Write the translation only, without the original. |
+| `--batch-api` | Anthropic's Message Batches API at half the price (anthropic format; not with `--use_context`). One run submits every request as one batch, waits for it and writes the book; an interrupted run resumes the same batch. |
+| `--quiet` | No progress bar and no echo of each translated block. |
 
 ### Markdown flags
 

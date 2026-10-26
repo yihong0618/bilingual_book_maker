@@ -30,6 +30,7 @@ The route's flags:
 | flag | what it does |
 |---|---|
 | `--to-epub` | Take this route. |
+| `--pdf-parser ENGINE` | `docling` (default, the local models) or `datalab`: see [Datalab instead of the local models](#datalab-instead-of-the-local-models). |
 | `--pdf-ocr` | Read pages that have no text layer. Off by default: a born-digital PDF is already readable, and OCR costs several times the time without changing what is read. Layout, heading and table detection run either way. |
 | `--ocr-replace-layer` | With `--pdf-ocr`: OCR every page and use that text instead of the text layer the PDF carries. Off by default: a layer is kept and only pages without one are OCR'd. For a scan whose layer is wrong (another language, or garbage from a poor OCR); on a clean scan the layer reads better than the local engine. Turning it on or off reads the PDF again on the next run. |
 | `--ocr-lang LANGS` | With `--pdf-ocr`: the languages the OCR engine reads, in its own codes. `auto` picks ocrmac on a Mac and rapidocr elsewhere; the pdf extra installs both, and neither downloads anything. [Which OCR engine](pdf-ocr-engines.md) has the measurement. The codes: rapidocr `ch`, `en`, `latin`; easyocr `ch_sim`, `ja`, `ko`; ocrmac `zh-Hans`, `ja-JP`. A BCP-47 tag behind `iso:` (`iso:zh`, `iso:ja`, `iso:zh-Hant`) works on every engine, so it is the safe choice when you do not know which one will run. rapidocr has no `ch_sim`: for Chinese write `iso:zh`. rapidocr reads one language per run and uses the first. The run prints the engine and languages it used. |
@@ -56,6 +57,20 @@ docling cuts each page into regions and labels them: text, heading, title, capti
 
 The decisions are kept in `<name>_book/.work/extraction/decisions.json`. At the end of the extraction the run prints the pass's token usage on its own line: `Image model (<model> at <address>): …`.
 
+## Datalab instead of the local models
+
+If you already have a [Datalab](https://www.datalab.to) key, `--pdf-parser datalab` sends the PDF to the hosted Datalab Convert API instead of running docling's models. Set `DATALAB_API_KEY` in the environment; without it the run stops before anything is sent.
+
+```bash
+python make_book.py --book_name scan.pdf --to-epub --pdf-parser datalab --pages 1-2 --test
+```
+
+- **What changes.** Datalab reads scanned pages, figures and every equation itself, inline ones too: they arrive as LaTeX and the EPUB shows them as MathML. Nothing runs locally, so the PDF extra is not needed; Pandoc still is.
+- **What it costs.** Billed per page by Datalab (balanced mode, about 0.3 ¢ a page; a 507-page scanned textbook cost $1.52). The PDF is uploaded to Datalab.
+- **Flags that do not apply.** `--pdf-ocr`, `--ocr-replace-layer`, `--ocr-engine`, `--ocr-lang`, `--device`, `--img-model`, `--no-formula-images` and `--pdf-image-dpi` configure docling and are refused with Datalab. `--pages` works. A rerun reuses the conversion; another `--pages` is a new one.
+- **What to read in `source.md`.** Datalab's model writes a description of each figure as a paragraph after the image; it is kept and translated, so delete those paragraphs if you do not want them. Heading levels are Datalab's guess: fix them before the full run. A paragraph a page break cut is joined back when nothing else explains the break, and running heads are dropped.
+- **A Markdown file Datalab already wrote** can be passed to `--to-epub` directly: `--book_name book.md --to-epub`. Its page separators are read as page markers and no engine runs.
+
 ## Mend a translation by hand
 
 If a translated paragraph is wrong, correct it in `<name>_book/book_bilingual.md`, then take two steps:
@@ -69,7 +84,7 @@ Every PDF starts with two pages and a few translated blocks (`--pages 1-2 --test
 
 ## Known limitations
 
-- Inline math equations may not be displayed correctly. Only display formulas are cropped as pictures; maths inside a sentence arrives as whatever text the extractor read from it.
+- Inline math equations may not be displayed correctly. Only display formulas are cropped as pictures; maths inside a sentence arrives as whatever text the extractor read from it. With `--pdf-parser datalab` every equation is decoded to LaTeX and shown as MathML.
 
 ## What can go wrong
 
@@ -86,6 +101,9 @@ Every failure on this route prints one line starting with `Error:`, before anyth
 - **`--img-model needs an OpenAI-compatible endpoint; … resolves to the … format.`** The image model is asked at the run's endpoint, or at `--img-base-url`, and that endpoint is not OpenAI-shaped. Give an OpenAI-compatible `--img-base-url` (and `--img-key`), or drop `--img-model`.
 - **`--img-base-url names where --img-model is served, and no --img-model was given. …`** Name the model too.
 - **`--ocr-replace-layer re-reads pages that already carry a text layer with the OCR engine, so it needs --pdf-ocr.`** Add `--pdf-ocr`.
+- **`--pdf-parser datalab sends the PDF to Datalab Convert, which needs a key: …`** Set `DATALAB_API_KEY`, or leave out `--pdf-parser datalab` to read the PDF locally.
+- **`--pdf-parser datalab does not run docling, and these options only configure docling: …`** Drop the options it names.
+- **`… apply only to PDF input.`** A PDF option given with a Markdown file; drop it.
 
 ### During extraction
 

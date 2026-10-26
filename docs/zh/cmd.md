@@ -23,8 +23,9 @@
 | `--translation_style CSS` | 应用于 EPUB 译文条目的 CSS。 |
 | `--translation_color COLOR` | 只设颜色的简写；`--translation_style` 优先。 |
 | `--pdf_layout MODE` | 额外生成的 PDF 输出：`none`、`top-bottom`、`side-by-side` 或 `all`。 |
-| `--to-epub` | 仅限 PDF：用 docling 读取 PDF，翻译得到的 Markdown，在其旁边写出 `<name>_bilingual.epub`；插图保留为图片；包留在 `<name>_book/` 里，便于编辑和续跑。需要 `pdf` 扩展和 PATH 上的 Pandoc 3.1.12+；不需要 Java。见 [installation-pdf.md](installation-pdf.md)。 |
+| `--to-epub` | PDF 或 Markdown：用 docling（或 Datalab，见 `--pdf-parser`）读取 PDF，或直接使用 `.md` 文件，翻译得到的 Markdown，在其旁边写出 `<name>_bilingual.epub`；插图保留为图片；包留在 `<name>_book/` 里，便于编辑和续跑。需要 `pdf` 扩展和 PATH 上的 Pandoc 3.1.12+；不需要 Java。见 [installation-pdf.md](installation-pdf.md)。 |
 | `--pdf-ocr` | 仅限 PDF，配合 `--to-epub`：读取没有文字层的页面，不加这个参数时这些页面会被拒绝。默认关闭；OCR 要多花好几倍的时间，而且对原生数字 PDF 没有任何改变。无论开不开，版面、标题和表格都会被检测。 |
+| `--pdf-parser ENGINE` | 仅限 PDF，配合 `--to-epub`：读取 PDF 的引擎。`docling`（默认）在本机运行模型；`datalab` 把 PDF 交给托管的 Datalab Convert API（需要 `DATALAB_API_KEY`，按页计费），由它识别扫描页、公式（LaTeX，在 EPUB 中显示为 MathML）和插图，因此与 `--pdf-ocr`、`--ocr-engine`、`--ocr-lang`、`--ocr-replace-layer`、`--device`、`--img-model`、`--no-formula-images` 同用会被拒绝。Datalab 的分页标记、表格里的 `<math>` 以及被分页切断的段落会在导入时改写。`.md` 文件（包括 Datalab 生成的）可以直接交给 `--to-epub`。 |
 | `--ocr-replace-layer` | 仅限 PDF，配合 `--to-epub --pdf-ocr`：对每一页做 OCR，并替换 PDF 自带的文字层，而不是保留它。默认关闭；测得它比一个完好的文字层差，是给有错的文字层用的。读出为空的页面保持为空，并会被点名。 |
 | `--no-formula-images` | 仅限 PDF，配合 `--to-epub`：让行间公式保留为 `<!-- formula-not-decoded -->` 占位符，而不是把每个公式从页面上裁剪成图片。解析器能找到公式，但从不读取它们，所以这些图片是数学内容能进入书中的唯一途径；它们不花模型费用，也不花可测量的时间。段落里的行内数学不算公式区域，无论如何都不在覆盖范围内。 |
 | `--pdf-image-dpi N` | PDF，`--to-epub`：插图清晰度，以 PDF 自身页面尺寸下的 DPI 计；默认 200，标注很小时用 300；换一个值重新运行只会重绘插图 |
@@ -73,10 +74,11 @@
 | `--parallel-workers N` | 并行处理 EPUB 章节或 Markdown 批次/分节；默认 `1`。与 `--use_context session` 同用（只有一份历史）以及在 `codex` 格式上（只有一个线程）会被拒绝。 |
 | `--batch` | 提交一个 ChatGPT Batch API 任务。在 EPUB 上会被拒绝（那里走不到队列路径：运行会按全价实时翻译，并提交一个空任务，而不是写出书），在不支持 Batch API 的路线上也会被拒绝。TXT、SRT 和 Markdown 加载器也没有实现它（运行会实时翻译），所以目前没有任何格式用到它。 |
 | `--batch-use` | 使用之前提交的批量任务。在 EPUB 上会被拒绝，与 `--batch` 相同。 |
+| `--batch-api` | anthropic 格式，Markdown 书和 `--to-epub`：通过 Anthropic 的 Message Batches API 翻译，价格减半。一次运行收集全部请求、提交一个批次（状态文件在续跑文件旁边，`--to-epub` 时在书包的 `.work/` 里）、等待它完成并写出书；中断后重跑会继续轮询同一个批次，而不会重新提交。批次没有给出可用译文的请求，以及对未对齐回复的修复，会实时发送。与 `--use_context`、`--batch`/`--batch-use`、其他格式和其他书籍类型同用会被拒绝。 |
 | `--no-thinking` | 让模型回答前不要先推理。在 OpenAI 形态的路线上，请求字段根据端点自己的拒绝来协商，并按端点和模型缓存；如果每种写法都被拒绝，运行会警告一次，然后不带该字段继续。在 `anthropic` 上是 `thinking: {"type": "disabled"}`。在 `codex` 上会被拒绝（子进程没有请求体）；在自行构建请求的路线上会被警告为不起作用。`--extra_body` 中设置的字段优先。 |
 | `--extra_body JSON` | 附加到每个请求体上的字段，适用于构建请求体的路线（`openai`、`groq`、`xai`、`litellm`、`--model orcarouter`、`anthropic`）；其他路线会忽略它并说明。它也会进入能力探测和 JSON 各级请求，所以端点是按本次运行实际发出的请求来评定的。它合并在具名参数之上，所以这里的字段优先于对应的参数。 |
 | `--extra_headers JSON` | 附加到每个请求上的 HTTP 头，适用路线同上。它设在客户端上，所以能力探测、模型检查和模型列表都会带上它们。值必须是字符串。 |
-| `--quiet` | 不显示 EPUB 进度条和段落回显，报告和错误照常显示。 |
+| `--quiet` | 不显示 EPUB/Markdown 进度条和段落回显，报告和错误照常显示。 |
 | `--proxy URL` | 为本次运行设置 HTTP/HTTPS 代理环境变量。 |
 
 ### 端点与凭据
