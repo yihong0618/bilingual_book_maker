@@ -94,6 +94,14 @@ def test_two_numbered_items_across_the_break_stay_two_items():
         "1. The first instruction contains more than forty characters",
         "2. The second instruction is separate.",
     )
+    no_join(
+        "(a) The first instruction contains more than forty characters",
+        "(b) the second instruction is separate.",
+    )
+    no_join(
+        "1000. The first instruction contains more than forty characters",
+        "1001. The second instruction is separate.",
+    )
 
 
 def test_a_hyphen_at_the_break_is_kept():

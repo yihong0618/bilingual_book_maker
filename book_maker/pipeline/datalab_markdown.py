@@ -48,8 +48,9 @@ FOOTNOTE = re.compile(r"^<sup>[*†‡§¶‖#0-9]{1,3}</sup>\s*\S")
 RUNS_ON = re.compile(r"[\w,\-$]$")
 # The first character of a continuation: lower case, a digit or a formula.
 CONTINUES = re.compile(r"^[a-z0-9$(]")
-# An ordered-list item's number.
-ENUMERATOR = re.compile(r"^\(?\d{1,3}[.)]\s")
+# An ordered-list item's enumerator: `1.`, `1000)`, `(a)`, `iv.`, the forms
+# the reading edition takes for a list marker.
+ENUMERATOR = re.compile(r"^\(?(?:\d+|[a-zA-Z]{1,4})[.)]\s")
 # A thematic break, which Datalab writes above a page's footnotes.
 RULE = re.compile(r"^([-*_])( *\1){2,} *$")
 MARKER = re.compile(r"^<!--\s*page\s+(\d+)\s*-->$")
