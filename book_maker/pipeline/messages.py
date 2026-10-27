@@ -424,7 +424,7 @@ PANDOC_ON_PATH = (
     "Pandoc is required for --to-epub. Install it and make sure pandoc is on PATH."
 )
 TO_EPUB_BUNDLE = "Working bundle: {path}"
-TO_EPUB_COPY = "Bilingual EPUB saved beside the PDF: {path}"
+TO_EPUB_COPY = "Bilingual EPUB saved beside the source file: {path}"
 TRANSLATION_REUSED = (
     "Translation reused: {path} (same source and settings; delete it to "
     "translate again)."
