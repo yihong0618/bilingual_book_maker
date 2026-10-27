@@ -22,6 +22,7 @@ from book_maker.cli import attach_message_batches, message_batch_state_path
 from book_maker.loader.md_loader import MarkdownBookLoader
 from book_maker.translator.base_translator import BATCH_DELIMITER
 from book_maker.translator.claude_batch import (
+    PARALLEL_SET_ASIDE,
     BatchFailed,
     BatchPending,
     ClaudeBatchQueue,
@@ -336,10 +337,11 @@ def test_the_collection_pass_records_and_never_sends(tmp_path):
 
 
 def test_parallel_workers_do_not_replay_the_batch_concurrently(
-    tmp_path, fake, monkeypatch
+    tmp_path, fake, monkeypatch, capsys
 ):
     """The shared translator swaps its prompt per request: a worker entering
-    mid-swap builds a body the batch never saw and pays for it live."""
+    mid-swap builds a body the batch never saw and pays for it live. The run
+    says that the flag was set aside."""
 
     class NoPool:
         def __init__(self, *args, **kwargs):
@@ -350,3 +352,5 @@ def test_parallel_workers_do_not_replay_the_batch_concurrently(
     loader.parallel_workers = 2
     loader.make_bilingual_book()
     assert len(fake.created) == 1 and fake.live == []
+    out = " ".join(capsys.readouterr().out.split())
+    assert " ".join(PARALLEL_SET_ASIDE.split()) in out

@@ -210,6 +210,7 @@ intentionally.
 | `--test` / `--test_num` | flag + integer | *unset*: the smoke is optional (step 4) | a smoke: `--test --test_num 8`, or ~20 on poetry-heavy books once the first N units are known to be body text |
 | `--quiet` | on/off | **on for every paid run** | never off for a run that translates |
 | `--resume` | on/off | **off on the first run, on for every rerun** | never off after a crash. A cache written with `--only_filelist` is refused by the full run, whose filters differ |
+| `--batch-api` | on/off | *off* | anthropic route (a Claude model), a long book, and a user who would rather wait (status every 30 s, usually minutes, at most 24 h) than pay full price: Anthropic's Message Batches, half the price. Refused with `--use_context` in either mode, so `CONTEXT` stays empty: the trade is the session's consistency for the price, say so. Plan mode still classifies live, once (the plan file is reused). `--parallel-workers` is set aside. A rerun polls the same batch, never pays twice |
 | `--parallel-workers` | integer | **1 (sequential)** | a long book where wall-clock matters more than consistency. Then drop to bare `--use_context`: **session is refused with it**, and window context is per chapter, so continuity stops at every chapter boundary. Never on codex |
 
 ### Never pass in plan mode

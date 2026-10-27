@@ -604,17 +604,27 @@ class Claude(Base):
 
         # Create messages with context
         messages = self.create_messages(text, self.create_context_messages())
+        params = dict(
+            max_tokens=4096,
+            messages=messages,
+            system=self.standing_instructions(),
+            temperature=self.temperature,
+            model=self.model,
+            extra_body=self.request_extra_body(),
+            **self._cache_kwargs(),
+        )
+
+        # The EPUB loader's collection copy (`claude_batch`): every request
+        # is recorded and answered with its own source, stored reply or not,
+        # so the copy takes the same path through the book whatever the
+        # store already holds. A grouped request's source is the joined
+        # segments, which split back into exactly the segments sent.
+        if self.batch_queue is not None and self.batch_queue.stand_in:
+            self.batch_queue.collect(params)
+            return text
 
         try:
-            r, replayed = self._create(
-                max_tokens=4096,
-                messages=messages,
-                system=self.standing_instructions(),
-                temperature=self.temperature,
-                model=self.model,
-                extra_body=self.request_extra_body(),
-                **self._cache_kwargs(),
-            )
+            r, replayed = self._create(**params)
         except APIStatusError as e:
             self._explain_wrong_shape(e)
         if not replayed:

@@ -556,9 +556,9 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 - `--batch-api`:
 
   Send the translation through Anthropic's Message Batches API at half the price
-  (anthropic format; Markdown books and `--to-epub`; not with `--use_context`). One run
-  collects every request, submits one batch, waits for it and writes the book; an
-  interrupted run resumes the same batch.
+  (anthropic format; EPUB and Markdown books and `--to-epub`; not with `--use_context`).
+  One run collects every request, submits one batch, waits for it and writes the book; an
+  interrupted run resumes the same batch. `--parallel-workers` is set aside.
 
 - `--batch` / `--batch-use`:
 

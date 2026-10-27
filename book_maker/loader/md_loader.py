@@ -11,6 +11,7 @@ from rich.markup import escape
 from tqdm import tqdm
 
 from book_maker.session_context import handoff_path
+from book_maker.translator.claude_batch import PARALLEL_SET_ASIDE
 from book_maker.utils import prompt_config_to_kwargs
 
 from .base_loader import BaseBookLoader
@@ -399,6 +400,8 @@ class MarkdownBookLoader(BaseBookLoader):
         # translator swaps its prompt per request, and a worker entering
         # mid-swap would build a body the batch never saw and pay for it live.
         workers = 1 if batched else self.parallel_workers
+        if batched and self.parallel_workers > 1:
+            print(PARALLEL_SET_ASIDE)
 
         pbar = tqdm(
             total=len(batches),

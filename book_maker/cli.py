@@ -1258,11 +1258,23 @@ COMPAT_RULES = (
     CompatRule(
         "A19",
         "stop",
-        lambda f: getattr(f.options, "batch_api", False) and f.book_type != "md",
+        lambda f: getattr(f.options, "batch_api", False)
+        and f.book_type not in ("epub", "md"),
         lambda f: (
-            f"--batch-api runs on Markdown books and the --to-epub route only; "
-            f"the {f.book_type} loader sends its requests one at a time. Drop "
-            f"--batch-api."
+            f"--batch-api runs on EPUB and Markdown books and the --to-epub "
+            f"route only; the {f.book_type} loader sends its requests one at a "
+            f"time. Drop --batch-api."
+        ),
+    ),
+    CompatRule(
+        "A21",
+        "stop",
+        lambda f: getattr(f.options, "batch_api", False)
+        and bool(f.options.retranslate),
+        lambda f: (
+            "--retranslate redoes a stretch of a finished bilingual book one "
+            "request at a time; --batch-api has nothing to collect there. "
+            "Drop --batch-api."
         ),
     ),
     CompatRule(
@@ -2868,13 +2880,14 @@ off. Minimum 1.
         "--batch-api",
         dest="batch_api",
         action="store_true",
-        help="anthropic format, Markdown books and --to-epub: send the "
+        help="anthropic format, EPUB and Markdown books and --to-epub: send the "
         "translation through Anthropic's Message Batches API at half the "
         "price. One run collects every request, submits them as a batch, "
         "waits for it (usually minutes, at most 24 hours) and writes the "
         "book; an interrupted run resumes the same batch. Requests the "
         "batch did not answer usably, and the repair of a misaligned reply, "
-        "are sent live. Not with --use_context.",
+        "are sent live. Not with --use_context; --parallel-workers is set "
+        "aside.",
     )
     parser.add_argument(
         "--interval",

@@ -74,7 +74,7 @@
 | `--parallel-workers N` | 并行处理 EPUB 章节或 Markdown 批次/分节；默认 `1`。与 `--use_context session` 同用（只有一份历史）以及在 `codex` 格式上（只有一个线程）会被拒绝。 |
 | `--batch` | 提交一个 ChatGPT Batch API 任务。在 EPUB 上会被拒绝（那里走不到队列路径：运行会按全价实时翻译，并提交一个空任务，而不是写出书），在不支持 Batch API 的路线上也会被拒绝。TXT、SRT 和 Markdown 加载器也没有实现它（运行会实时翻译），所以目前没有任何格式用到它。 |
 | `--batch-use` | 使用之前提交的批量任务。在 EPUB 上会被拒绝，与 `--batch` 相同。 |
-| `--batch-api` | anthropic 格式，Markdown 书和 `--to-epub`：通过 Anthropic 的 Message Batches API 翻译，价格减半。一次运行收集全部请求、提交一个批次（状态文件在续跑文件旁边，`--to-epub` 时在书包的 `.work/` 里）、等待它完成并写出书；中断后重跑会继续轮询同一个批次，而不会重新提交。批次没有给出可用译文的请求，以及对未对齐回复的修复，会实时发送。与 `--use_context`、`--batch`/`--batch-use`、其他格式和其他书籍类型同用会被拒绝。 |
+| `--batch-api` | anthropic 格式，EPUB 书、Markdown 书和 `--to-epub`：通过 Anthropic 的 Message Batches API 翻译，价格减半。一次运行收集全部请求、提交一个批次（状态文件在续跑文件旁边，`--to-epub` 时在书包的 `.work/` 里）、等待它完成并写出书；中断后重跑会继续轮询同一个批次，而不会重新提交。批次没有给出可用译文的请求，以及对未对齐回复的修复，会实时发送。`--parallel-workers` 会被搁置。与 `--use_context`、`--batch`/`--batch-use`、`--retranslate`、其他格式和其他书籍类型同用会被拒绝。 |
 | `--no-thinking` | 让模型回答前不要先推理。在 OpenAI 形态的路线上，请求字段根据端点自己的拒绝来协商，并按端点和模型缓存；如果每种写法都被拒绝，运行会警告一次，然后不带该字段继续。在 `anthropic` 上是 `thinking: {"type": "disabled"}`。在 `codex` 上会被拒绝（子进程没有请求体）；在自行构建请求的路线上会被警告为不起作用。`--extra_body` 中设置的字段优先。 |
 | `--extra_body JSON` | 附加到每个请求体上的字段，适用于构建请求体的路线（`openai`、`groq`、`xai`、`litellm`、`--model orcarouter`、`anthropic`）；其他路线会忽略它并说明。它也会进入能力探测和 JSON 各级请求，所以端点是按本次运行实际发出的请求来评定的。它合并在具名参数之上，所以这里的字段优先于对应的参数。 |
 | `--extra_headers JSON` | 附加到每个请求上的 HTTP 头，适用路线同上。它设在客户端上，所以能力探测、模型检查和模型列表都会带上它们。值必须是字符串。 |

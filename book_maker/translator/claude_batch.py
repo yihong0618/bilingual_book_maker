@@ -16,6 +16,13 @@ book twice:
    misaligned reply, one paragraph at a time) and anything the batch did
    not answer usably is sent live.
 
+The EPUB loader cannot skip a request and go on: it has several dispatch
+paths and rewrites the book as it goes. It collects with a throwaway copy
+of itself instead, and the queue's `stand_in` switch makes the translator
+answer every request with its own source text after recording it
+(`Claude.translate`), so that copy walks the whole book exactly as the
+real pass will, sending nothing and writing nothing.
+
 A request is identified by the hash of its effective body, the JSON the
 SDK would send, so the replay finds exactly what the collection recorded.
 That only holds when a request depends on nothing but its own text, which
@@ -56,6 +63,10 @@ SUBMIT_UNKNOWN = (
     "(https://console.anthropic.com/workspaces/default/batches). If one was "
     'created, put its id into the file\'s "batches" list; if none was, '
     'delete the "submitting" entry. Then run again.'
+)
+PARALLEL_SET_ASIDE = (
+    "--batch-api: --parallel-workers is set aside; the batch answers the "
+    "requests together, and the book is then written one request at a time"
 )
 STATE_OTHER_ENDPOINT = (
     "{path} records Message Batches made at {old} with {old_model}; this run "
@@ -129,6 +140,9 @@ class ClaudeBatchQueue:
         self.endpoint = endpoint
         self.model = model
         self.mode = self.COLLECT
+        # Set while the EPUB loader's collection copy walks the book: the
+        # translator records each request and answers it with its source.
+        self.stand_in = False
         self.pending = {}
         self.sleep = sleep
         self.state = self._load()
@@ -149,10 +163,21 @@ class ClaudeBatchQueue:
 
             return Message.model_validate(result["message"])
         if self.mode == self.COLLECT:
-            if result is None and not self._submitted(key):
-                self.pending[key] = body
+            self.collect(params)
             raise BatchPending(key)
         return None
+
+    def collect(self, params):
+        """Record `params` for the next batch unless it is already answered.
+
+        A request with any stored result -- usable or not -- or one already
+        in a submitted batch is not recorded again: the first is answered
+        from the store or sent live by the replay, the second is waited for.
+        """
+        body = effective_body(params)
+        key = request_key(body)
+        if key not in self.state["results"] and not self._submitted(key):
+            self.pending[key] = body
 
     # -- the loader's side --------------------------------------------
     def run(self, client, note_usage=None):

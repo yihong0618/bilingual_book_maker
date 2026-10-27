@@ -473,9 +473,9 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--batch-api`：
 
-  通过 Anthropic 的 Message Batches API 翻译，价格减半（anthropic 格式；Markdown 书和
+  通过 Anthropic 的 Message Batches API 翻译，价格减半（anthropic 格式；EPUB 书、Markdown 书和
   `--to-epub`；不能与 `--use_context` 同用）。一次运行收集全部请求、提交一个批次、等待它完成并写出书；
-  中断后重跑会继续同一个批次。
+  中断后重跑会继续同一个批次。`--parallel-workers` 会被搁置。
 
 - `--batch` / `--batch-use`:
 

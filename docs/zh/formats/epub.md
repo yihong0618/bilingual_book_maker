@@ -101,6 +101,7 @@ bbook_maker \
 | `--glossary FILE` | `term -> translation` 形式的固定译法，只随包含这些术语的请求发送。适用于 openai 系和 codex 路线。`--terminology` 是同一个参数。 |
 | `--glossary-auto on\|off` | 保留会话的交接报告里确立的译名。除非你要求，否则关闭。 |
 | `--parallel-workers N` | 同时翻译几个章节（2 到 4 比较有用）。与会话模式同用或在 codex 上会被拒绝。 |
+| `--batch-api` | anthropic 格式：所有请求都通过 Anthropic 的 Message Batches API 发送，价格减半。运行先把整本书走一遍收集请求（不发送也不写入任何东西），提交一个批次，等它完成后写出书；重跑会继续轮询同一个批次。不能与 `--use_context` 同用；`--parallel-workers` 会被搁置。 |
 | `--translation_style CSS` | 译文段落的 CSS。 |
 | `--translation_color COLOR` | 只设颜色；`--translation_style` 优先。 |
 | `--no_disclosure` | 去掉那一行 AI 翻译署名，同时不写元数据文件。 |

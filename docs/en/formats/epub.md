@@ -101,6 +101,7 @@ These work the same on every format.
 | `--glossary FILE` | `term -> translation` pins, sent with the requests they occur in. openai-shaped and codex routes. `--terminology` is the same flag. |
 | `--glossary-auto on\|off` | Keep the renderings a session's handoff reports establish. Off unless asked for. |
 | `--parallel-workers N` | Translate several chapters at once (2 to 4 is useful). Refused with a session and on codex. |
+| `--batch-api` | Anthropic format: every request goes through Anthropic's Message Batches API, at half the price. The run walks the book once to collect the requests (nothing is sent or written), submits one batch, waits for it and writes the book; a rerun polls the same batch. Not with `--use_context`; `--parallel-workers` is set aside. |
 | `--translation_style CSS` | CSS for the translated paragraphs. |
 | `--translation_color COLOR` | Color only; `--translation_style` wins. |
 | `--no_disclosure` | Leave out the one-line AI-translation credit, and the metadata file. |

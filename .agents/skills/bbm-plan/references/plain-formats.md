@@ -27,7 +27,7 @@ What does not apply, so do not pass it:
   Markdown and the PDF text route take the `CONTEXT` array and `--glossary`.
 - `--quiet` works on Markdown (and EPUB); on TXT and SRT the run warns.
   Keep the log redirect either way.
-- `--batch-api` (anthropic route, Markdown only): Anthropic's Message
+- `--batch-api` (anthropic route, Markdown here; EPUB too): Anthropic's Message
   Batches at half the price, without `CONTEXT` (refused with
   `--use_context`). The run waits for the batch (status every 30 s) and a
   rerun polls it rather than paying again; the details and its failure
