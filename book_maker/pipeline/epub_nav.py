@@ -52,6 +52,14 @@ CONTAINER = "META-INF/container.xml"
 TRANSLATION_CLASS = "bbm-translation"
 NAV_SEPARATOR = " / "
 HEADING_TAGS = {f"h{level}" for level in range(1, 7)}
+# Containers whose content a contents label keeps but whose box it cannot:
+# a label is one line inside a link.
+BLOCK_TAGS = HEADING_TAGS | {
+    "address", "article", "aside", "blockquote", "dd", "details", "div", "dl",
+    "dt", "figcaption", "figure", "footer", "header", "li", "main", "ol", "p",
+    "pre", "section", "summary", "table", "tbody", "td", "tfoot", "th",
+    "thead", "tr", "ul",
+}  # fmt: skip
 
 
 def refuse(detail, stage):
@@ -125,9 +133,51 @@ def heading_translation(root, fragment):
     return None
 
 
+def label_runs(division):
+    """A translation div as runs of inline content, one run per block.
+
+    Each run is a list of strings and inline elements, in order; blocks
+    nested in blocks (a quotation's paragraphs, a list's items) are runs of
+    their own. The rewrite builds a label from these runs and the check
+    reads its text from them, so the two cannot disagree.
+    """
+    runs = []
+
+    def walk(block):
+        run = [block.text] if block.text else []
+        for child in block:
+            if isinstance(child.tag, str) and _local(child.tag) in BLOCK_TAGS:
+                if run:
+                    runs.append(run)
+                run = []
+                walk(child)
+            elif isinstance(child.tag, str):
+                run.append(child)
+            if child.tail:
+                run.append(child.tail)
+        if run:
+            runs.append(run)
+
+    walk(division)
+    return [run for run in runs if _normal(_run_text(run))]
+
+
 def translation_text(division):
-    """A translation div as one line of text: its paragraphs, space-joined."""
-    return _normal(" ".join(_text(child) for child in _element_children(division)))
+    """A translation div as one line of text: its blocks, space-joined."""
+    return _normal(" ".join(_run_text(run) for run in label_runs(division)))
+
+
+def _run_text(run):
+    return "".join(
+        piece if isinstance(piece, str) else _inline_text(piece) for piece in run
+    )
+
+
+def _inline_text(element):
+    # An image in a label is its alt text (`epub_bilingual_nav`).
+    if _local(element.tag) == "img":
+        return element.get("alt") or ""
+    return "".join(_pieces(element))
 
 
 def labelled(original, translation):

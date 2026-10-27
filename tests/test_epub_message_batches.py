@@ -310,3 +310,40 @@ def test_an_interrupted_collection_submits_nothing_and_leaves_the_loader_alone(
     assert fake.created == [] and fake.live == []
     assert [item.content for item in loader.origin_book.get_items()] == before
     assert sorted(p.name for p in tmp_path.iterdir()) == ["book.epub"]
+
+
+def test_a_plan_the_walk_gave_up_is_given_up_by_the_real_pass_too(
+    tmp_path, monkeypatch
+):
+    """An automatic plan that fails once and would succeed on a second try:
+    the batch was collected in tag mode, so the real pass must translate in
+    tag mode, not build the plan again and send its requests live."""
+    live_dir, batch_dir = tmp_path / "live", tmp_path / "batch"
+    live_dir.mkdir()
+    batch_dir.mkdir()
+    write_epub(live_dir / "book.epub")
+    write_epub(batch_dir / "book.epub")
+
+    live = FakeAnthropic()
+    make_loader(live_dir / "book.epub", live, batch=False).make_bilingual_book()
+
+    attempts = []
+    prepare = EPUBBookLoader._prepare_translation_plan
+
+    def fails_once(self):
+        attempts.append(self._dry_run)
+        if len(attempts) == 1:
+            raise RuntimeError("the classifier did not answer")
+        return prepare(self)
+
+    monkeypatch.setattr(EPUBBookLoader, "_prepare_translation_plan", fails_once)
+    fake = FakeAnthropic()
+    fake.processing_polls = 0
+    loader = make_loader(batch_dir / "book.epub", fake, mode="plan")
+    loader.plan_auto = True
+    loader.make_bilingual_book()
+
+    assert attempts == [True]
+    assert fake.live == []
+    assert batched_keys(fake) == list(dict.fromkeys(live_keys(live)))
+    assert book_text(bilingual(batch_dir)) == book_text(bilingual(live_dir))

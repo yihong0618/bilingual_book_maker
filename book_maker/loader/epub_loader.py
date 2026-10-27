@@ -1423,6 +1423,9 @@ class EPUBBookLoader(BaseBookLoader):
             f"--translate-tags {self.plan_fallback_tags} selection "
             f"instead[/bold yellow]"
         )
+        self._give_up_plan()
+
+    def _give_up_plan(self):
         self.plan_mode = False
         self.translate_tags = self.plan_fallback_tags
         self._plan_fingerprint = None
@@ -3876,6 +3879,12 @@ class EPUBBookLoader(BaseBookLoader):
             twin._make_bilingual_book()
         finally:
             queue.stand_in = previous
+        # An automatic plan the walk gave up (a classification that failed,
+        # a conflict) is given up here too, without asking again: a plan
+        # that succeeded now would send requests the batch never saw. A
+        # plan the walk built is reused from its saved file.
+        if self.plan_mode and not twin.plan_mode:
+            self._give_up_plan()
         del twin
         if self.translate_model._fatal_error_detected:
             return False

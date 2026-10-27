@@ -603,6 +603,12 @@ Same
 第二行
 :::
 
+## Quoted {#quoted}
+
+::: {.bbm-translation lang="zh-hans"}
+> 电场 $E$
+:::
+
 Text.
 """
 
@@ -628,6 +634,7 @@ def test_each_contents_entry_reads_original_and_translation(tmp_path, pandoc):
         # this reader joins a formula's glyph and its TeX annotation
         "The Field / 电场 与 𝑬\\mathbf{E}，见 前文",
         "Two Lines / 第一行 第二行",
+        "Quoted / 电场 EE",
     ]
     _, xml = nav_document(bundle.epub)
     entry = xml[xml.index('#field"') : xml.index("</a>", xml.index('#field"'))]
@@ -637,6 +644,10 @@ def test_each_contents_entry_reads_original_and_translation(tmp_path, pandoc):
     assert "<math" in entry and "\\mathbf{E}" in entry
     assert "<a " not in entry.partition(">")[2]
     assert "<p" not in entry and " id=" not in entry
+    # A translation in a block of another kind keeps its words and maths,
+    # not its box.
+    quoted = xml[xml.index('#quoted"') : xml.index("</a>", xml.index('#quoted"'))]
+    assert "<math" in quoted and "<blockquote" not in quoted
     # The NCX is plain text: a formula reads as its TeX. Pandoc opens it
     # with the title page, which has no heading.
     assert ncx_labels(bundle.epub) == [
@@ -646,6 +657,7 @@ def test_each_contents_entry_reads_original_and_translation(tmp_path, pandoc):
         "Same",
         "The Field / 电场 与 \\mathbf{E}，见 前文",
         "Two Lines / 第一行 第二行",
+        "Quoted / 电场 E",
     ]
 
 

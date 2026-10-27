@@ -38,6 +38,7 @@ from .epub_nav import (
     _package_path,
     _text,
     heading_translation,
+    label_runs,
     labelled,
     translation_text,
 )
@@ -134,19 +135,21 @@ def _relabel_ncx(data, ncx_path, chapters):
 
 
 def _inline(division):
-    """The div's content as inline nodes: `[text, element, ...]`."""
+    """The div's content as inline nodes: `[text, element, ...]`.
+
+    One run per block (`label_runs`), space-joined, so a quotation or a list
+    in the translation keeps its words and its MathML but not its box.
+    """
     holder = etree.Element(f"{{{XHTML_NS}}}span")
-    first = True
-    for block in division:
-        if not isinstance(block.tag, str):
-            continue
-        if not first:
-            _append(holder, " ", [])
-        first = False
-        if etree.QName(block).localname == "p":
-            _append(holder, block.text or "", [deepcopy(child) for child in block])
-        else:
-            _append(holder, " ".join(block.itertext()).strip(), [])
+    for position, run in enumerate(label_runs(division)):
+        pieces = [" "] if position else []
+        pieces += [p if isinstance(p, str) else deepcopy(p) for p in run]
+        for piece in pieces:
+            if isinstance(piece, str):
+                _append(holder, piece, [])
+            else:
+                piece.tail = None
+                holder.append(piece)
     etree.strip_tags(holder, f"{{{XHTML_NS}}}a")
     for image in list(holder.iter(f"{{{XHTML_NS}}}img")):
         _replace_with_text(image, image.get("alt") or "")
