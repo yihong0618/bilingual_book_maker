@@ -229,6 +229,8 @@ Read the book back before you hand it over. Unzip `<name>_bilingual.epub`
 late section:
 
 - is the translation in the target language, right after its original?
+- does each contents entry read `original / translation` (a heading left
+  untranslated keeps the original alone)?
 - does the table of contents list the real headings, at sensible levels,
   with no author line, figure label or `Page N` placeholder the user did
   not approve?

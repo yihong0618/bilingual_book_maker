@@ -288,10 +288,15 @@ def test_the_landmarks_pointer_to_the_contents_is_not_counted_as_a_chapter(
 # --------------------------------------------------------------------------
 # The translated book
 # --------------------------------------------------------------------------
-def test_a_translated_heading_is_not_a_second_contents_entry(
+def test_a_translated_heading_joins_its_entry_and_is_not_a_second_one(
     tmp_path, pandoc, fake_format
 ):
-    """One entry per source heading; the translation is ordinary prose."""
+    """One entry per source heading, reading `original / translation`.
+
+    The translation is ordinary prose in the body (never a heading of its
+    own), and the contents carry it in the heading's own entry (owner
+    261026: "Original / translation").
+    """
     bundle = Bundle(tmp_path / "bundle").create()
     bundle.source.write_text(SIX_LEVELS, encoding="utf-8")
     bundle.set_stage("import", "completed")
@@ -299,7 +304,7 @@ def test_a_translated_heading_is_not_a_second_contents_entry(
     export_epub(bundle, pandoc=pandoc, title="A Book")
 
     entries = toc_entries(bundle.epub)
-    assert [t for _, t, _ in entries] == [
+    headings = [
         "Book Title",
         "Chapter One",
         "Section 1.1",
@@ -308,9 +313,7 @@ def test_a_translated_heading_is_not_a_second_contents_entry(
         "Grain 1.1.1.1.1",
         "Chapter Two",
     ]
-    # The translations are in the book, and in none of the entries.
-    _, xml = nav_document(bundle.epub)
-    assert "译:" not in xml
+    assert [t for _, t, _ in entries] == [f"{h} / 译:{h}" for h in headings]
     with zipfile.ZipFile(bundle.epub) as archive:
         body = "".join(
             archive.read(name).decode("utf-8")
@@ -539,7 +542,7 @@ def test_heading_shapes_survive_translation_then_navigation(
     translate_bundle(bundle, OPTIONS, pandoc=pandoc)
     export_epub(bundle, pandoc=pandoc)
     entries = toc_entries(bundle.epub)
-    assert [label for _, label, _ in entries] == labels
+    assert [label for _, label, _ in entries] == [f"{l} / 译:{l}" for l in labels]
     assert [href.partition("#")[2] for _, _, href in entries] == anchors
     ast = parse_markdown(pandoc, bundle.bilingual_markdown.read_text())
     divs = [b for b in ast["blocks"] if b["t"] == "Div"]
@@ -563,3 +566,150 @@ def test_source_div_is_refused_before_translation_but_exports_with_outline(
     assert not FakeTranslator.instances
     result = exported(tmp_path, pandoc, source)
     assert [label for _, label, _ in toc_entries(result.epub)] == ["Within", "Outside"]
+
+
+# --------------------------------------------------------------------------
+# Bilingual contents (owner 261026: "Original / translation")
+# --------------------------------------------------------------------------
+BILINGUAL = """# Electrostatics {#electrostatics}
+
+::: {.bbm-translation lang="zh-hans"}
+静电学
+:::
+
+Text.
+
+## Carried Heading {#carried}
+
+Text without a translation of its heading.
+
+## Same {#same}
+
+::: {.bbm-translation lang="zh-hans"}
+Same
+:::
+
+## The Field {#field}
+
+::: {.bbm-translation lang="zh-hans"}
+*电场* 与 $\\mathbf{E}$，见 [前文](#electrostatics)
+:::
+
+## Two Lines {#two}
+
+::: {.bbm-translation lang="zh-hans"}
+第一行
+
+第二行
+:::
+
+Text.
+"""
+
+
+def ncx_labels(epub_path):
+    with zipfile.ZipFile(epub_path) as archive:
+        name = next(n for n in archive.namelist() if n.endswith(".ncx"))
+        root = ElementTree.fromstring(archive.read(name))
+    ncx = "{http://www.daisy.org/z3986/2005/ncx/}"
+    return [
+        " ".join((point.find(f"{ncx}navLabel/{ncx}text").text or "").split())
+        for point in root.iter(f"{ncx}navPoint")
+    ]
+
+
+def test_each_contents_entry_reads_original_and_translation(tmp_path, pandoc):
+    bundle = exported(tmp_path, pandoc, BILINGUAL)
+
+    assert [text for _, text, _ in toc_entries(bundle.epub)] == [
+        "Electrostatics / 静电学",
+        "Carried Heading",
+        "Same",
+        # this reader joins a formula's glyph and its TeX annotation
+        "The Field / 电场 与 𝑬\\mathbf{E}，见 前文",
+        "Two Lines / 第一行 第二行",
+    ]
+    _, xml = nav_document(bundle.epub)
+    entry = xml[xml.index('#field"') : xml.index("</a>", xml.index('#field"'))]
+    # Pandoc's rendering, inline only: emphasis and MathML kept, the link
+    # unwrapped (no link inside a link), no paragraph, no copied id.
+    assert "<em>电场</em>" in entry
+    assert "<math" in entry and "\\mathbf{E}" in entry
+    assert "<a " not in entry.partition(">")[2]
+    assert "<p" not in entry and " id=" not in entry
+    # The NCX is plain text: a formula reads as its TeX. Pandoc opens it
+    # with the title page, which has no heading.
+    assert ncx_labels(bundle.epub) == [
+        "A Book",
+        "Electrostatics / 静电学",
+        "Carried Heading",
+        "Same",
+        "The Field / 电场 与 \\mathbf{E}，见 前文",
+        "Two Lines / 第一行 第二行",
+    ]
+
+
+def test_the_rewrite_touches_only_the_contents_and_declares_mathml(
+    tmp_path, pandoc, monkeypatch
+):
+    import shutil
+
+    from book_maker.pipeline import epub_bilingual_nav
+
+    as_pandoc_wrote_it = tmp_path / "pandoc.epub"
+
+    def keep_a_copy(source, target, *, stage):
+        shutil.copyfile(source, as_pandoc_wrote_it)
+        return epub_bilingual_nav.relabel_navigation(source, target, stage=stage)
+
+    monkeypatch.setattr(epub_export, "relabel_navigation", keep_a_copy)
+    bundle = exported(tmp_path, pandoc, BILINGUAL)
+
+    with (
+        zipfile.ZipFile(as_pandoc_wrote_it) as raw,
+        zipfile.ZipFile(bundle.epub) as written,
+    ):
+        assert written.namelist() == raw.namelist()
+        assert written.namelist()[0] == "mimetype"
+        assert written.getinfo("mimetype").compress_type == zipfile.ZIP_STORED
+        changed = {n for n in raw.namelist() if raw.read(n) != written.read(n)}
+        opf_name = next(n for n in raw.namelist() if n.endswith(".opf"))
+        opf = ElementTree.fromstring(written.read(opf_name))
+    nav_name, _ = nav_document(bundle.epub)
+    assert changed == {nav_name, opf_name, nav_name.rpartition("/")[0] + "/toc.ncx"}
+    nav = next(
+        item
+        for item in opf.iter(f"{OPF}item")
+        if "nav" in (item.get("properties") or "").split()
+    )
+    assert "mathml" in nav.get("properties").split()
+
+
+def test_a_contents_entry_missing_its_translation_is_refused(tmp_path, pandoc):
+    bundle = exported(tmp_path, pandoc, BILINGUAL)
+    report = inspect(
+        bundle.bilingual_markdown.read_text(), root=bundle.root, pandoc=pandoc
+    )
+    name, xml = nav_document(bundle.epub)
+    for broken, why in [
+        (xml.replace(" / 静电学", "", 1), "Electrostatics"),
+        (xml.replace(" / 静电学", " / 第一行 第二行", 1), "Electrostatics"),
+        (xml.replace("Carried Heading", "Carried Heading / 携带", 1), "Carried"),
+    ]:
+        copy = tmp_path / "broken.epub"
+        with (
+            zipfile.ZipFile(bundle.epub) as source,
+            zipfile.ZipFile(copy, "w") as target,
+        ):
+            for info in source.infolist():
+                data = broken.encode() if info.filename == name else source.read(info)
+                target.writestr(info, data)
+        with pytest.raises(PipelineError) as refused:
+            validate_epub(
+                copy,
+                expected_images=report.images,
+                expected_outline=report.outline,
+                bilingual=True,
+            )
+        assert refused.value.detail.startswith(NAV_INVALID)
+        assert why in refused.value.detail

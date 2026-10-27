@@ -13,7 +13,7 @@ python make_book.py --book_name paper.pdf --to-epub --use_context session
 
 ## 它做什么
 
-`--to-epub` 用 [docling](https://github.com/docling-project/docling) 的版面模型和表格模型把 PDF 读成 Markdown，用 Markdown 加载器翻译这份 Markdown，再由 Pandoc 生成可重排的双语 EPUB。每一段后面紧跟它的译文，目录按标题生成。标题层级从页面本身读出：先看编号（`1.`、`1.1`、`I.`、`A.`），再看字号和字重。插图保留为图片，每个行间公式都从页面上裁成图片，放回原来的位置。没有文字层的页面（即扫描件）只有在传入 `--pdf-ocr` 时才交给 OCR 模型读取；扫描件自带的文字层有误时，可以用 `--ocr-replace-layer` 替换掉。如果用 `--img-model` 指定一个视觉模型，它会在写出 Markdown 之前逐页查看，纠正 docling 给各个区域定的角色（比如其实是作者行的标题、被读成脚注的代码清单）。
+`--to-epub` 用 [docling](https://github.com/docling-project/docling) 的版面模型和表格模型把 PDF 读成 Markdown，用 Markdown 加载器翻译这份 Markdown，再由 Pandoc 生成可重排的双语 EPUB。每一段后面紧跟它的译文，目录按标题生成：每个条目是标题加它的译文，例如 `Chapter 1 / 第1章`。标题层级从页面本身读出：先看编号（`1.`、`1.1`、`I.`、`A.`），再看字号和字重。插图保留为图片，每个行间公式都从页面上裁成图片，放回原来的位置。没有文字层的页面（即扫描件）只有在传入 `--pdf-ocr` 时才交给 OCR 模型读取；扫描件自带的文字层有误时，可以用 `--ocr-replace-layer` 替换掉。如果用 `--img-model` 指定一个视觉模型，它会在写出 Markdown 之前逐页查看，纠正 docling 给各个区域定的角色（比如其实是作者行的标题、被读成脚注的代码清单）。
 
 所有文件都放在 PDF 旁边的工作目录 `<name>_book/` 里：`source.md`（提取结果）、`images/`、`book_bilingual.md`（译文）和一份清单。成书会复制到外面，名为 `<name>_bilingual.epub`。重跑同一条命令会复用已有的提取结果和已完成的翻译，所以你可以中途停下，读 `source.md`，改一个标题，再接着跑，不必付两次钱。PDF 是对页面的描述，而不是文档：它只记录字形放在什么位置，对段落和标题一无所知，所以任何提取器都只能把结构猜回来。标题差了一级、表格变成了正文，这是格式本身的局限，在 `source.md` 里花一分钟就能改好。
 
