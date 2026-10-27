@@ -13,7 +13,7 @@ warning, so never pass them.
 |---|---|---|---|
 | `.txt` | `--batch_size 20` | lines are sent in groups; 20 gives the model more context per request and halves the request count. Lower it if the model starts merging or dropping lines | `docs/en/formats/txt.md` |
 | `.srt` | `--accumulated_num 400` | consecutive subtitle blocks share one request up to that many characters (capped at 512) | `docs/en/formats/srt.md` |
-| `.md` | `--prompt prompt_md.json "${CONTEXT[@]}" --batch_size 20` (a bilingual `.md`; for an EPUB, `--to-epub` and `references/pdf-route.md`) | the shipped Markdown prompt keeps the markup; a session keeps names consistent; outside plan mode each request re-reads the history, so a larger `--batch_size` keeps the request count down | `docs/en/formats/md.md` |
+| `.md` | `--prompt prompt_template.json "${CONTEXT[@]}" --batch_size 20` (a bilingual `.md`; for an EPUB, `--to-epub` and `references/pdf-route.md`) | the shipped prompt (`system` and `user`, both naming the target language); the loader keeps the markup itself (code blocks, tables and front matter are never sent, links and inline code are protected); a session keeps names consistent; outside plan mode each request re-reads the history, so a larger `--batch_size` keeps the request count down | `docs/en/formats/md.md` |
 | `.pdf`, as text (only when the user asked for txt) | `--batch_size 20` | the old text route: a bilingual `.txt` with no structure, plus an attempted EPUB | `docs/en/formats/pdf.md#the-text-route-no-to-epub` |
 
 ```bash

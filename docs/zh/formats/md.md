@@ -23,12 +23,12 @@ Markdown 文件按正文块逐块翻译。代码、表格和 front matter 原样
 bbook_maker \
   --book_name my_doc.md \
   --language zh-hans \
-  --prompt prompt_md.json \
+  --prompt prompt_template.json \
   --use_context session \
   --batch_size 20
 ```
 
-仓库里的 `prompt_md.json` 是专为 Markdown 写的提示词：它要求模型保留标记。Markdown 没有计划模式，所以在会话模式下，每个请求都会重读历史。调大 `--batch_size`，就能用更少、更大的请求发送。
+推荐使用仓库里的 `prompt_template.json`：一条 `system` 消息和一条 `user` 消息，都写明目标语言。标记由加载器自己保留：代码块、表格和前置元数据从不发送，链接和行内代码在请求前受到保护。Markdown 没有计划模式，所以在会话模式下，每个请求都会重读历史。调大 `--batch_size`，就能用更少、更大的请求发送。
 
 ## 适用的参数
 

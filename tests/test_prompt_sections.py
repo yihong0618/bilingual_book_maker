@@ -121,12 +121,11 @@ class TestParsingTheSections:
     def test_the_shipped_sample_file_parses(self):
         # one example ships, not one per situation: `prompt_template.json`
         parsed = parse_prompt_arg("prompt_template.json", announce=False)
-        # every section is present, and `style` is shipped empty: an
-        # example must show where a voice goes without imposing one on
-        # whoever copies the file
-        assert set(parsed) == set(PROMPT_SECTIONS)
+        # `system` and `user` only: `style` is accepted but not recommended,
+        # so the example does not show where one goes
+        assert set(parsed) <= set(PROMPT_SECTIONS)
         assert parsed["user"] and parsed["system"]
-        assert parsed["style"] == ""
+        assert not parsed.get("style")
 
 
 class TestTheSectionsReachTheTranslator:
