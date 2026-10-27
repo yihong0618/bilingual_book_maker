@@ -441,6 +441,17 @@ def test_inline_tags_a_reply_broke_do_not_break_the_epub(
     export_epub(bundle, pandoc=pandoc)  # refuses a document that is not XML
 
 
+def test_a_tag_in_a_code_span_is_the_code_s_text(tmp_path, pandoc, fake_format):
+    """`<b>` in backticks pairs with nothing, and the tag cleanup used to
+    empty the code span in the translation."""
+    text = "# Markup\n\nWrite `<b>` to start bold text.\n"
+    bundle = prepared(tmp_path, pandoc, text)
+    translate_bundle(bundle, OPTIONS, pandoc=pandoc)
+    bilingual = bundle.bilingual_markdown.read_text(encoding="utf-8")
+    assert bilingual.count("`<b>`") == 2, bilingual
+    export_epub(bundle, pandoc=pandoc)
+
+
 def test_repeated_headings_get_distinct_identifiers(tmp_path, pandoc, fake_format):
     text = "# Notes\n\nFirst.\n\n# Notes\n\nSecond.\n"
     bundle = prepared(tmp_path, pandoc, text)

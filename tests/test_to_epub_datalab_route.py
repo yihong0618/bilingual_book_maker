@@ -7,6 +7,7 @@ through the import instead. Nothing here starts an engine, a model or
 Pandoc; the stages are stand-ins that record what they were handed.
 """
 
+import json
 from pathlib import Path
 
 import pytest
@@ -65,10 +66,28 @@ def stages(seen):
 
 
 def test_datalab_reaches_the_extract_stage_and_docling_is_never_loaded(
-    pdf, no_docling_pass
+    pdf, no_docling_pass, monkeypatch
 ):
     seen = []
-    # A provider entry would normally resolve docling's image model.
+    # A provider entry would normally resolve docling's image model. Its own
+    # file: an installed package has no shipped example beside it.
+    (pdf.parent / "bbm_providers.json").write_text(
+        json.dumps(
+            {
+                "providers": {
+                    "openai": {
+                        "api_style": "openai",
+                        "base_url": "https://api.openai.com/v1",
+                        "default_models": ["gpt-6-luna"],
+                        "env_key": "OPENAI_API_KEY",
+                        "img_model": "gpt-6-luna",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(pdf.parent)
     to_epub.pdf_to_epub(
         pdf,
         [*TRANSLATION, "--provider", "openai"],

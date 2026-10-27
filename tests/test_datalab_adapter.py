@@ -230,6 +230,31 @@ def test_an_invalid_request_is_fatal(bundle, pdf, pandoc):
     assert not bundle.work_file(EXTRACTION_JOB).exists()
 
 
+def test_a_refusal_in_a_two_hundred_reply_clears_the_marker(bundle, pdf, pandoc):
+    refusal = FakeResponse(payload={"success": False, "error": "too many pages"})
+    with pytest.raises(PipelineError) as refused:
+        extract(bundle, pdf, FakeSession(post=[refusal]), pandoc)
+    assert "too many pages" in refused.value.detail
+    assert not bundle.work_file(SUBMIT_UNKNOWN).exists()
+
+    # Nothing was queued, so the next run submits after the fix.
+    again = FakeSession(post=[accepted()], get=[completed()])
+    extract(bundle, pdf, again, pandoc)
+    assert len(again.post_calls) == 1
+
+
+def test_a_docling_extraction_record_does_not_block_a_switch(bundle, pdf, pandoc):
+    bundle.work.mkdir(parents=True, exist_ok=True)
+    bundle.work_file(EXTRACTION_JOB).write_text(
+        json.dumps({"parser": "docling", "pdf": str(pdf), "device": "cpu"}),
+        encoding="utf-8",
+    )
+    session = FakeSession(post=[accepted()], get=[completed()])
+    extract(bundle, pdf, session, pandoc)
+    assert len(session.post_calls) == 1
+    assert bundle.read_manifest()["extraction"]["provider"] == "datalab"
+
+
 def test_a_terminal_job_failure_is_reported(bundle, pdf, pandoc):
     session = FakeSession(
         post=[accepted()],

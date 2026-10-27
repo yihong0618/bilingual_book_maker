@@ -58,6 +58,15 @@ def test_separators_become_one_based_page_markers():
     assert is_datalab(CUT) and not is_datalab(result.text)
 
 
+def test_a_separator_inside_a_code_fence_is_the_example_s_text():
+    example = f"# Code\n\n```\n{{0}}{SEP}\n```\n"
+    assert not is_datalab(example)
+    book = f"{{0}}{SEP}\n\nProse.\n\n{example}"
+    result = normalize(book)
+    assert result.pages == 1
+    assert f"```\n{{0}}{SEP}\n```" in result.text
+
+
 def test_a_paragraph_cut_by_the_page_is_joined_and_the_footnotes_follow_it():
     text = joined(CUT)
     assert "mission of Pioneer 10. The spatial variation" in text

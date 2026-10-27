@@ -669,6 +669,36 @@ def test_the_harness_hands_the_structure_request_to_the_stage(
     assert seen["structure"] == "request" and made == ["gpt-5.6-luna"]
 
 
+def test_the_harness_resolves_no_image_model_for_datalab(fake_pdf, monkeypatch):
+    """A provider entry's img_model is docling's; `run` with Datalab must
+    not resolve it (and be refused for its endpoint or key)."""
+    import importlib.util
+    from types import SimpleNamespace
+
+    spec = importlib.util.spec_from_file_location(
+        "pdf_to_book",
+        Path(__file__).resolve().parent.parent / "tools" / "pdf_to_book.py",
+    )
+    harness = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(harness)
+    made = []
+    monkeypatch.setattr(
+        docling_parser,
+        "image_request",
+        lambda image, translation: made.append(image) or "request",
+    )
+    trailing = [*TRANSLATION, "--provider", "openai"]
+
+    def options(parser):
+        return SimpleNamespace(input=str(fake_pdf), pdf_parser=parser, img_model=None)
+
+    assert harness.structure_request(options("datalab"), trailing) == {}
+    assert made == []
+    assert harness.structure_request(options("docling"), trailing) == {
+        "structure": "request"
+    }
+
+
 def test_a_page_where_most_items_changed_is_called_out_and_recorded(
     tmp_path, real_pdf, stub_docling, device, capsys
 ):

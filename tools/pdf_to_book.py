@@ -213,6 +213,10 @@ def structure_request(options, trailing):
     """
     from book_maker.pipeline.translate import parse_bbm_options
 
+    # docling's pass only: Datalab and an import never load it, a provider
+    # entry's img_model included (a typed --img-model is refused before).
+    if source_kind(options.input) != "pdf" or options.pdf_parser != PDF_PARSER:
+        return {}
     translation = parse_bbm_options(trailing)
     if not (getattr(options, "img_model", None) or "").strip() and not getattr(
         translation, "provider", None

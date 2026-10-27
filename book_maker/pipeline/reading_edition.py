@@ -80,6 +80,9 @@ FENCE = re.compile(r"`{3,}|~{3,}")
 # The inline HTML a translation may carry; one whose tags do not pair up is
 # not XML, and Pandoc writes raw HTML into the XHTML as it stands.
 INLINE_TAG = re.compile(r"<(/?)(sup|sub|b|i|em|strong|u|small)\b[^>]*?(/?)>", re.I)
+# Kept whole while a translation's tags are judged: a note mark that came
+# back whole from its token, and a code span, whose `<b>` is its text.
+KEPT_WHOLE = re.compile(f"{NOTE_MARK}|(?P<ticks>`+)[^`\n].*?(?P=ticks)", re.I)
 
 # Removed from the translated copy of a paragraph. The image belongs to the
 # source block above it -- one picture, not two -- and a second footnote
@@ -321,14 +324,13 @@ class ReadingEditionMarkdownLoader(MarkdownBookLoader):
         cleaned = TRANSLATION_ONLY_DROP.sub("", translated_text)
         if not FENCE.search(source_text):
             cleaned = FENCE.sub("", cleaned)
-        # A note mark came back whole from its token; the model's own tags
-        # are judged around it.
-        parts = re.split(f"({NOTE_MARK})", cleaned, flags=re.I)
-        marks, prose = parts[1::3], parts[0::3]
+        # The model's own tags are judged around what is kept whole.
+        kept = [match.group(0) for match in KEPT_WHOLE.finditer(cleaned)]
+        prose = KEPT_WHOLE.split(cleaned)[:: KEPT_WHOLE.groups + 1]
         if not _tags_pair_up("".join(prose)):
             prose = [INLINE_TAG.sub("", piece) for piece in prose]
             cleaned = "".join(
-                piece + (marks[i] if i < len(marks) else "")
+                piece + (kept[i] if i < len(kept) else "")
                 for i, piece in enumerate(prose)
             )
         cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)

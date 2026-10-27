@@ -61,8 +61,9 @@ SUBMIT_UNKNOWN = (
     "create request was sent and its outcome is unknown, so it may have been "
     "accepted and billed. Check the batches in the Anthropic console "
     "(https://console.anthropic.com/workspaces/default/batches). If one was "
-    'created, put its id into the file\'s "batches" list; if none was, '
-    'delete the "submitting" entry. Then run again.'
+    'created, add {{"id": "<its id>", "keys": <the "keys" of "submitting">}} '
+    'to the file\'s "batches" list; either way, then set "submitting" to '
+    "null and run again."
 )
 PARALLEL_SET_ASIDE = (
     "--batch-api: --parallel-workers is set aside; the batch answers the "
@@ -251,7 +252,10 @@ class ClaudeBatchQueue:
     def _chunks(self, keys):
         chunk, size = [], 0
         for key in keys:
-            length = len(json.dumps(self.pending[key], ensure_ascii=False)) + 100
+            length = (
+                len(json.dumps(self.pending[key], ensure_ascii=False).encode("utf-8"))
+                + 100
+            )
             if chunk and (
                 len(chunk) >= MAX_REQUESTS_PER_BATCH
                 or size + length > MAX_BYTES_PER_BATCH

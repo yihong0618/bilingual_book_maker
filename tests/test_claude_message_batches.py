@@ -276,6 +276,47 @@ def test_a_create_whose_outcome_is_unknown_is_never_repeated(tmp_path, fake):
     assert again.created == [] and again.live == []
 
 
+def test_the_recovery_the_unknown_message_describes_polls_the_found_batch(
+    tmp_path, fake
+):
+    fake.create_error = APIConnectionError(
+        request=httpx.Request("POST", "https://api.anthropic.com/v1/messages/batches")
+    )
+    loader = make_loader(tmp_path, fake)
+    with pytest.raises(BatchFailed):
+        loader.make_bilingual_book()
+
+    # The console shows the batch was created after all: the steps the
+    # message names, done by hand.
+    found = FakeAnthropic()
+    found.processing_polls = 0
+    found.batches_store["msgbatch_found"] = fake.created[0]
+    path = message_batch_state_path(loader)
+    state = json.loads(path.read_text(encoding="utf-8"))
+    state["batches"].append(
+        {"id": "msgbatch_found", "keys": state["submitting"]["keys"]}
+    )
+    state["submitting"] = None
+    path.write_text(json.dumps(state), encoding="utf-8")
+
+    make_loader(tmp_path, found).make_bilingual_book()
+    assert found.created == [] and found.live == []
+    for paragraph in PARAGRAPHS:
+        assert f"ZH<{paragraph}>" in output(tmp_path)
+
+
+def test_a_batch_is_split_by_its_size_in_bytes(tmp_path, monkeypatch):
+    from book_maker.translator import claude_batch
+
+    queue = ClaudeBatchQueue(tmp_path / "state.json", endpoint="e", model="m")
+    # Thirty characters, ninety bytes each: counted in characters, all
+    # three would fit under this limit; in bytes, two do.
+    queue.pending = {key: {"text": "字" * 30} for key in "abc"}
+    limit = 3 * (len('{"text": ""}') + 30 + 100)
+    monkeypatch.setattr(claude_batch, "MAX_BYTES_PER_BATCH", limit)
+    assert list(queue._chunks(list("abc"))) == [["a", "b"], ["c"]]
+
+
 def test_a_refused_create_is_final_and_leaves_no_marker(tmp_path, fake):
     request = httpx.Request("POST", "https://api.anthropic.com/v1/messages/batches")
     fake.create_error = BadRequestError(

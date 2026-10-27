@@ -77,7 +77,28 @@ class Normalized:
 
 def is_datalab(text):
     """Whether `text` carries Datalab's page separators."""
-    return any(SEPARATOR.match(line) for line in text.splitlines())
+    return any(
+        not fenced and SEPARATOR.match(line)
+        for line, fenced in _fenced(text.splitlines())
+    )
+
+
+def _fenced(lines):
+    """Each line, and whether it sits inside a code fence (the fence lines
+    included): a separator-like line in a code example is the example's."""
+    fence = None
+    for line in lines:
+        match = FENCE.match(line)
+        if fence is None and match:
+            fence = match.group(1)
+            yield line, True
+        elif fence is not None:
+            stripped = line.strip()
+            if stripped.startswith(fence) and set(stripped) <= {fence[0]}:
+                fence = None
+            yield line, True
+        else:
+            yield line, False
 
 
 def normalize(text):
@@ -85,8 +106,8 @@ def normalize(text):
     lines = text.splitlines()
     pages = 0
     out = []
-    for line in lines:
-        match = SEPARATOR.match(line)
+    for line, fenced in _fenced(lines):
+        match = not fenced and SEPARATOR.match(line)
         if match:
             out.append(f"<!-- page {int(match.group(1)) + 1} -->")
             pages += 1

@@ -175,6 +175,10 @@ def _existing_job(bundle, fingerprint, data):
         job = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as err:
         raise PipelineError(f"unreadable extraction job handle: {err}", stage=STAGE)
+    if job.get("parser", PARSER) != PARSER:
+        # docling's record of a local extraction it finished: no job is in
+        # flight, and this run is switching engines.
+        return None
     if not job.get("check_url"):
         raise PipelineError("extraction job handle has no check URL", stage=STAGE)
     same = (
@@ -256,6 +260,8 @@ def _submit(bundle, pdf, fingerprint, session, api_key, api_url, data):
     check_url = (accepted or {}).get("request_check_url")
     if not check_url:
         if accepted and accepted.get("success") is False:
+            # A refusal in so many words: nothing was queued.
+            _clear_unknown(bundle)
             raise PipelineError(
                 f"Datalab refused the conversion: {accepted.get('error') or accepted}",
                 stage=STAGE,
