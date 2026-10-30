@@ -329,6 +329,55 @@ def test_markdown_structure_blocks_are_not_sent_to_translator(tmp_path):
     assert "https://example.com/path" in output
 
 
+def test_a_thematic_break_is_kept_and_never_translated(tmp_path):
+    book = tmp_path / "book.md"
+    book.write_text(
+        "\n".join(
+            [
+                "First paragraph.",
+                "",
+                "---",
+                "",
+                "Second paragraph.",
+                "* * *",
+                "A Setext Title",
+                "---",
+                "",
+                "Last paragraph.",
+            ]
+        )
+    )
+
+    loader = make_loader(book)
+    loader.batch_size = 1
+    loader.make_bilingual_book()
+
+    calls = EchoModel.instances[-1].calls
+    assert calls == [
+        "First paragraph.",
+        "Second paragraph.",
+        "A Setext Title\n---",
+        "Last paragraph.",
+    ]
+    output = (tmp_path / "book_bilingual.md").read_text(encoding="utf-8")
+    assert "<T>---</T>" not in output and "<T>* * *</T>" not in output
+    assert "\n---\n" in output and "\n* * *\n" in output
+
+
+def test_quiet_echoes_no_translated_block(tmp_path, capsys):
+    book = tmp_path / "book.md"
+    book.write_text("First paragraph.\n\nSecond paragraph.\n")
+    loader = make_loader(book)
+    loader.quiet = True
+    loader.make_bilingual_book()
+    captured = capsys.readouterr()
+    assert "First paragraph." not in captured.out
+    assert "batch" not in captured.err, "the progress bar still printed"
+    assert "<T>First paragraph.</T>" in (tmp_path / "book_bilingual.md").read_text(
+        encoding="utf-8"
+    )
+
+
 def test_markdown_uses_translate_list_and_interleaves_per_block(tmp_path):
     book = tmp_path / "book.md"
     book.write_text("# Heading\n\nFirst paragraph.\n\nSecond paragraph.\n")

@@ -8,3 +8,20 @@ function Para(para)
     return para
   end
 end
+
+-- Raw HTML is copied into the XHTML verbatim, so a void element in its
+-- HTML spelling (`<br>`, which the preflight accepts and Datalab writes
+-- inside table cells) leaves the document not well-formed XML. Written
+-- self-closed instead; raw HTML only, so code is never touched.
+local VOID = { br = true, hr = true, wbr = true }
+
+function RawInline(raw)
+  if raw.format ~= "html" then
+    return nil
+  end
+  local name, rest = raw.text:match("^<%s*(%a+)(.-)/?>$")
+  if name and VOID[name:lower()] then
+    raw.text = "<" .. name:lower() .. rest:gsub("%s+$", "") .. " />"
+    return raw
+  end
+end

@@ -8,7 +8,7 @@
 | PDF | `python make_book.py --book_name book.pdf --to-epub --pages 1-2 --test` | [PDF 转双语 EPUB](features/pdf-to-epub.md)、[PDF 推荐设置](features/recommended-pdf.md) |
 | 纯文本文件 | `bbook_maker --book_name book.txt --batch_size 20` | [TXT](formats/txt.md) |
 | 字幕 | `bbook_maker --book_name talk.srt --accumulated_num 400` | [SRT](formats/srt.md) |
-| Markdown 文档 | `bbook_maker --book_name doc.md --prompt prompt_md.json --use_context session` | [Markdown](formats/md.md) |
+| Markdown 文档 | `bbook_maker --book_name doc.md --prompt prompt_template.json --use_context session` | [Markdown](formats/md.md) |
 
 PromptDown 格式的 `.md` 文件是提示词，不是书：它交给 `--prompt`，而 Markdown 格式的书交给 `--book_name`。
 

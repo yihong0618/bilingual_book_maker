@@ -13,7 +13,7 @@ This is also the loader behind [PDF to bilingual EPUB](../features/pdf-to-epub.m
 
 ## What you get
 
-- `<name>_bilingual.md` beside the input: each block followed by its translation. With `--single_translate`, the translation only.
+- `<name>_bilingual.md` beside the input: each block followed by its translation. With `--single_translate`, the translation only. With `--to-epub`, a bilingual EPUB instead, built as for a PDF: [PDF to bilingual EPUB](../features/pdf-to-epub.md).
 - On a session run, `<name>_handoff.md` with the latest handoff report.
 - On Ctrl+C or an error: `<name>_bilingual_temp.txt` and a checkpoint. Rerun with `--resume`.
 
@@ -23,12 +23,12 @@ This is also the loader behind [PDF to bilingual EPUB](../features/pdf-to-epub.m
 bbook_maker \
   --book_name my_doc.md \
   --language zh-hans \
-  --prompt prompt_md.json \
+  --prompt prompt_template.json \
   --use_context session \
   --batch_size 20
 ```
 
-`prompt_md.json` in the repository is a prompt written for Markdown: it asks the model to keep the markup. There is no plan mode for Markdown, so in session mode every request re-reads the history. Raise `--batch_size` to send fewer, larger requests.
+`prompt_template.json` in the repository is the recommended prompt: a `system` and a `user` message, both naming the target language. The loader keeps the markup itself: code blocks, tables and front matter are never sent, and links and inline code are protected before a request. There is no plan mode for Markdown, so in session mode every request re-reads the history. Raise `--batch_size` to send fewer, larger requests.
 
 ## Flags that apply
 
@@ -58,6 +58,8 @@ These work the same on every format.
 | `--test_num N` | How many, with `--test` (default 10). |
 | `--resume` | Continue an interrupted run from its checkpoint. |
 | `--single_translate` | Write the translation only, without the original. |
+| `--batch-api` | Anthropic's Message Batches API at half the price (anthropic format; not with `--use_context`). One run submits every request as one batch, waits for it and writes the book; an interrupted run resumes the same batch. |
+| `--quiet` | No progress bar and no echo of each translated block. |
 
 ### Markdown flags
 

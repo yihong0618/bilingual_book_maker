@@ -21,6 +21,15 @@ The route is the one a reading system takes, not a guess at file names:
 `epub:type="landmarks"` is deliberately not followed. It carries an entry
 *for* the table of contents (`<a href="#toc" epub:type="toc">`), and reading
 it as part of the contents would count a pointer to the nav as a chapter.
+
+The contents are bilingual: an entry whose heading has a translation reads
+`original / translation` (owner 261026). Pandoc names an entry after its
+heading only and has no attribute for a label of its own, so the entries
+are rewritten after it (`epub_bilingual_nav`), from the translation Pandoc
+rendered right after the heading. `heading_translation` is that lookup, and
+the check that follows the rewrite asks the same question: an entry whose
+heading has a distinct translation must carry it, and every other entry
+must read as its heading.
 """
 
 import posixpath
@@ -32,23 +41,39 @@ from .messages import NAV_INVALID
 
 XHTML_NS = "http://www.w3.org/1999/xhtml"
 OPS_NS = "http://www.idpf.org/2007/ops"
+MATHML_NS = "http://www.w3.org/1998/Math/MathML"
 CONTAINER_NS = "urn:oasis:names:tc:opendocument:xmlns:container"
 OPF_NS = "http://www.idpf.org/2007/opf"
 
 CONTAINER = "META-INF/container.xml"
+
+# What the reading edition wraps a translation in (`reading_edition`), and
+# what joins a heading to its translation in the contents.
+TRANSLATION_CLASS = "bbm-translation"
+NAV_SEPARATOR = " / "
+HEADING_TAGS = {f"h{level}" for level in range(1, 7)}
+# Containers whose content a contents label keeps but whose box it cannot:
+# a label is one line inside a link.
+BLOCK_TAGS = HEADING_TAGS | {
+    "address", "article", "aside", "blockquote", "dd", "details", "div", "dl",
+    "dt", "figcaption", "figure", "footer", "header", "li", "main", "ol", "p",
+    "pre", "section", "summary", "table", "tbody", "td", "tfoot", "th",
+    "thead", "tr", "ul",
+}  # fmt: skip
 
 
 def refuse(detail, stage):
     raise PipelineError(NAV_INVALID + detail, stage=stage)
 
 
-def validate_navigation(archive, outline, *, stage):
+def validate_navigation(archive, outline, *, stage, bilingual=False):
     """Check the navigation of an open EPUB. Returns the entries it found.
 
     `outline` is `[(level, text, identifier), ...]` in document order. A
     document with no headings of its own still has to navigate: Pandoc gives
     it one book-level entry, and that entry is required to work like any
-    other.
+    other. `bilingual` checks the contents after `epub_bilingual_nav` has
+    written each heading's translation into its entry.
     """
     package = _package_path(archive, stage)
     nav_path = _nav_path(archive, package, stage)
@@ -56,8 +81,126 @@ def validate_navigation(archive, outline, *, stage):
     if not entries:
         refuse(f"the table of contents in {nav_path} has no entries", stage)
     _resolve_entries(archive, nav_path, entries, stage)
-    _compare_to_outline(entries, outline, nav_path, stage)
+    translations = (
+        [_entry_translation(archive, nav_path, href, stage) for _, _, href in entries]
+        if bilingual
+        else None
+    )
+    _compare_to_outline(entries, outline, nav_path, stage, translations)
     return entries
+
+
+# -- a heading's translation ---------------------------------------------
+def heading_translation(root, fragment):
+    """The translation rendered right after the heading `#fragment` names.
+
+    Pandoc puts a heading's id on the `<section>` it opens, the heading
+    being that section's first element; a heading without a section carries
+    the id itself. The translation is the element immediately after the
+    heading, and only if it is a `bbm-translation` div: one further down
+    belongs to something else. Works on ElementTree and lxml trees alike
+    (lxml keeps comments as children; they are not elements here). Returns
+    the div, or None.
+    """
+    target = None
+    for element in root.iter():
+        if isinstance(element.tag, str) and element.get("id") == fragment:
+            target = element
+            break
+    if target is None:
+        return None
+    heading = target
+    if _local(target.tag) not in HEADING_TAGS:
+        children = _element_children(target)
+        if not children or _local(children[0].tag) not in HEADING_TAGS:
+            return None
+        heading = children[0]
+    for parent in root.iter():
+        if not isinstance(parent.tag, str):
+            continue
+        children = _element_children(parent)
+        for position, child in enumerate(children):
+            if child is not heading:
+                continue
+            following = children[position + 1 : position + 2]
+            if (
+                following
+                and _local(following[0].tag) == "div"
+                and TRANSLATION_CLASS in (following[0].get("class") or "").split()
+            ):
+                return following[0]
+            return None
+    return None
+
+
+def label_runs(division):
+    """A translation div as runs of inline content, one run per block.
+
+    Each run is a list of strings and inline elements, in order; blocks
+    nested in blocks (a quotation's paragraphs, a list's items) are runs of
+    their own. The rewrite builds a label from these runs and the check
+    reads its text from them, so the two cannot disagree.
+    """
+    runs = []
+
+    def walk(block):
+        run = [block.text] if block.text else []
+        for child in block:
+            if isinstance(child.tag, str) and _local(child.tag) in BLOCK_TAGS:
+                if run:
+                    runs.append(run)
+                run = []
+                walk(child)
+            elif isinstance(child.tag, str):
+                run.append(child)
+            if child.tail:
+                run.append(child.tail)
+        if run:
+            runs.append(run)
+
+    walk(division)
+    return [run for run in runs if _normal(_run_text(run))]
+
+
+def translation_text(division):
+    """A translation div as one line of text: its blocks, space-joined."""
+    return _normal(" ".join(_run_text(run) for run in label_runs(division)))
+
+
+def _run_text(run):
+    return "".join(
+        piece if isinstance(piece, str) else _inline_text(piece) for piece in run
+    )
+
+
+def _inline_text(element):
+    # An image in a label is its alt text (`epub_bilingual_nav`).
+    if _local(element.tag) == "img":
+        return element.get("alt") or ""
+    return "".join(_pieces(element))
+
+
+def labelled(original, translation):
+    """Whether `translation` adds anything to the entry `original`."""
+    translation = _normal(translation)
+    return bool(translation) and translation != _normal(original)
+
+
+def _entry_translation(archive, nav_path, href, stage):
+    path, _, fragment = unquote(href).partition("#")
+    if not fragment:
+        return ""
+    target = _normalize(posixpath.join(posixpath.dirname(nav_path), path))
+    division = heading_translation(_parse(archive, target, stage), fragment)
+    return "" if division is None else translation_text(division)
+
+
+def _element_children(element):
+    return [child for child in element if isinstance(child.tag, str)]
+
+
+def _local(tag):
+    return tag.rpartition("}")[2] if isinstance(tag, str) else ""
 
 
 # -- the route to the nav document ---------------------------------------
@@ -187,7 +330,7 @@ def _identifiers(archive, name, stage):
 
 
 # -- the contents are the document's own outline --------------------------
-def _compare_to_outline(entries, outline, nav_path, stage):
+def _compare_to_outline(entries, outline, nav_path, stage, translations=None):
     """The entries, against the headings the same document reported.
 
     A document with no headings has no outline to reproduce; Pandoc gives it
@@ -209,6 +352,12 @@ def _compare_to_outline(entries, outline, nav_path, stage):
     for position, (entry, heading) in enumerate(zip(entries, expected), start=1):
         depth, text, href = entry
         wanted_depth, wanted_text, identifier = heading
+        if translations is not None and labelled(
+            wanted_text, translations[position - 1]
+        ):
+            wanted_text = (
+                _normal(wanted_text) + NAV_SEPARATOR + translations[position - 1]
+            )
         if _normal(text) != _normal(wanted_text):
             refuse(
                 f"entry {position} reads {text!r} where the heading reads "
@@ -249,7 +398,23 @@ def nest(outline):
 
 
 def _text(element):
-    return _normal("".join(element.itertext()))
+    return _normal("".join(_pieces(element)))
+
+
+def _pieces(element):
+    # A formula reads as its TeX, which is what the outline holds for it:
+    # Pandoc's MathML carries the glyphs and the TeX annotation both.
+    if element.tag == f"{{{MATHML_NS}}}math":
+        tex = element.find(
+            f".//{{{MATHML_NS}}}annotation[@encoding='application/x-tex']"
+        )
+        yield "".join(element.itertext()) if tex is None else (tex.text or "")
+        return
+    yield element.text or ""
+    for child in element:
+        if isinstance(child.tag, str):  # an lxml comment is not text
+            yield from _pieces(child)
+        yield child.tail or ""
 
 
 def _normal(text):

@@ -83,6 +83,7 @@ say so before anything is paid for.
 |---|---|---|
 | an `.epub` | `references/epub-plan-mode.md` | `docs/en/formats/epub.md` |
 | a `.pdf` | `references/pdf-route.md` | `docs/en/features/pdf-to-epub.md` |
+| a `.md` Datalab wrote (`{N}------` page separators), or any `.md` the user wants as an EPUB | `references/pdf-route.md` (`--to-epub` on the `.md`) | `docs/en/features/pdf-to-epub.md` |
 | a `.txt`, `.srt` or `.md` | `references/plain-formats.md` | `docs/en/formats/txt.md`, `docs/en/formats/srt.md`, `docs/en/formats/md.md` |
 
 A file with another extension is not a book this tool reads; say so. A

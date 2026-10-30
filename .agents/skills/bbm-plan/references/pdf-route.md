@@ -24,6 +24,51 @@ PDF is a page description with no paragraphs or headings in it, so the
 extractor guesses the structure back, and a reflowable bilingual EPUB with
 a working TOC out of that is already a good result. Say so up front.
 
+## The extractor: docling, unless a Datalab key is already set
+
+**docling (the default, local models) is the recommendation.** Datalab
+(`--pdf-parser datalab`, the hosted Datalab Convert API) is offered **only
+when `DATALAB_API_KEY` is already set**, in `.env` (sourced in
+`references/route-setup.md`) or the shell. Check without printing it:
+`[ -n "$DATALAB_API_KEY" ] && echo set || echo unset`. Unset: do not
+mention Datalab, and never suggest getting a key or signing up.
+
+Set: offer it as one alternative line in the choices block and let the
+user pick:
+
+- the PDF is uploaded to Datalab, a third party; a private document stays
+  on docling;
+- it is paid per page (balanced mode, about 0.3 ¢ a page: a 507-page scanned
+  textbook cost $1.52) and needs no torch, no models, no GPU and no pdf
+  extra; Pandoc is still needed;
+- it reads scans itself and writes **every equation as LaTeX, inline ones
+  too**, which the EPUB shows as MathML, where docling keeps display
+  equations as pictures and leaves inline maths as OCR made it. For a
+  maths or physics book that is the reason to choose it;
+- docling's flags are refused with it, before anything is sent:
+  `--pdf-ocr`, `--ocr-replace-layer`, `--ocr-engine`, `--ocr-lang`,
+  `--device`, `--img-model`, `--no-formula-images`, `--pdf-image-dpi`.
+  `--pages` works; a rerun reuses the conversion, a different `--pages`
+  pays for a new one.
+
+The two-page first look applies unchanged. What to read in `source.md`
+after a Datalab extraction:
+
+- a description of each figure, written by Datalab's model as a paragraph
+  after the image (even with captions off; the run says so). It is kept
+  and translated: delete those paragraphs in `source.md` if the user does
+  not want them;
+- heading levels as Datalab guessed them: a chapter title can arrive at
+  `###`, after the chapter's own contents list, and a section at `#`. Fix
+  them (one `#` per chapter, `##` sections) before the full run;
+- a page the PDF holds twice (a scan made twice) comes through twice;
+- a paragraph a page break cut is joined back when nothing else explains
+  the break (the run counts the joins); running heads are dropped.
+
+A `.md` Datalab already wrote (its `{N}------` page separators show it)
+takes the same route: `--to-epub` on the `.md` imports and normalises it,
+and no engine runs.
+
 **There is no plan step.** The Markdown loader translates every block, so
 `--plan-classify` and the whole plan/classify sequence do not apply, and
 `--classify-model` does nothing here (the run warns). Credentials, route,
@@ -32,13 +77,13 @@ apply unchanged; every Markdown-loader flag works the same here
 (`--glossary`, `--parallel-workers` except with a session, `--test`).
 Code blocks and tables are kept as they are, untranslated, as on a
 Markdown book; the run lists them (`Preserved without translation: code
-blocks (2).`). `--quiet` is not one of those flags: it belongs to the EPUB
-loader and the run warns; the log redirect is what keeps a run out of the
-conversation.
+blocks (2).`). `--quiet` works here as on a Markdown book; keep the log
+redirect too.
 
 ## Before the first command: check the machine
 
-In this order; stop with the install line if one is missing (the run
+With `--pdf-parser datalab` only check 2 (Pandoc) applies. Otherwise, in
+this order; stop with the install line if one is missing (the run
 refuses before the PDF is opened, naming the missing one, so nothing is
 paid):
 
@@ -133,6 +178,8 @@ translation; no `--resume` is needed on this route.
 | `--glossary` | the same file contract as on an EPUB; worth it on a paper with recurring terms |
 | `--img-model gpt-6-luna` | a paper, a textbook, anything with code listings: a vision model corrects docling's region roles (an author line taken for a heading, a listing read as footnotes; 40 of 66 label faults fixed in the study, `docs/en/evaluation/pdf-structure-llm-roles.md`). About 3k prompt tokens a page. `(--provider openai)` already turns it on through the example's `img_model`; `--img-model none` turns it off. Needs an OpenAI-compatible endpoint that reads images; a local route gets it only with `--img-base-url` (and `--img-key`) at a hosted one. Changing it re-extracts |
 | `--no-formula-images` | almost never: it replaces every display equation's picture with a bare placeholder |
+| `--pdf-parser datalab` | only when `DATALAB_API_KEY` is already set, and the user chose it (the section above) |
+| `--batch-api` | the anthropic route (a Claude model): every request goes through Anthropic's Message Batches, at half the price. Refused with `--use_context` in either mode, so leave `CONTEXT` out (pin terms with `--glossary` instead). The run submits once, prints a status line every 30 s (usually minutes, at most 24 h) and then writes the book; a rerun polls the batch it already submitted, never pays twice. Offer it on a long book: a 500-page textbook cost $4.40 on claude-sonnet-5-5. Leave it off the two-page first look: a few requests are not worth the wait |
 
 By document type (the full run; every one starts with the two-page first
 look; the user-facing version is `docs/en/features/recommended-pdf.md`):
@@ -170,7 +217,10 @@ as whatever OCR made of it); a sentence containing `\s`, `[u](y)` or `<k>`
 can be refused before translation as raw TeX, a missing link or raw HTML
 (the message names the block; escape it in `source.md` and rerun); the EPUB
 carries no translation-metadata file and `--no_disclosure` is not honoured
-on this route: the credit line is always added.
+on this route: the credit line is always added. With `--pdf-parser
+datalab` the equation lines change: every equation, inline ones included,
+is decoded to LaTeX and shown as MathML, and Datalab's figure descriptions
+are in the text unless they are deleted from `source.md`.
 
 ## Deliver
 
@@ -179,6 +229,8 @@ Read the book back before you hand it over. Unzip `<name>_bilingual.epub`
 late section:
 
 - is the translation in the target language, right after its original?
+- does each contents entry read `original / translation` (a heading left
+  untranslated keeps the original alone)?
 - does the table of contents list the real headings, at sensible levels,
   with no author line, figure label or `Page N` placeholder the user did
   not approve?
@@ -222,5 +274,12 @@ first look and the read-back showed, and hand over `<name>_bilingual.epub`.
 | `Warning: page N extracted C characters, several times what a printed page holds …` | usually a figure carrying hidden text; remove it from `source.md` or leave the page out with `--pages` |
 | `Unsupported Markdown structure: raw tex … at block N under heading "…". Normalize the source before translation.` | a sentence the EPUB writer cannot carry as text (raw TeX, raw HTML, a link-like `[u](y)`). Escape it in `source.md` (a backslash before `\`, `[` or `<`) and rerun; stopped before translation. Raw TeX a *model* writes into a translation is caught only at export: escape it in `book_bilingual.md` and export as for an echo (Deliver) |
 | `Unsupported Markdown structure: control character U+0000 at line N. …` | `source.md` still holds a control character (an older bundle, or an edit); delete it and rerun. Nothing was translated |
+| `--pdf-parser datalab sends the PDF to Datalab Convert, which needs a key …` | `DATALAB_API_KEY` is not set; run on docling (drop the flag). Nothing was sent |
+| `--pdf-parser datalab does not run docling, and these options only configure docling: …` | drop the named flags; Datalab reads scans and equations itself. Nothing was sent |
+| `--pdf-ocr, --ocr-replace-layer, … apply only to PDF input.` | `--to-epub` on a `.md` with a PDF flag; drop it |
+| `--batch-api sends every request at once, and with --use_context …` | drop `CONTEXT` for a batch run |
+| `--batch-api sends the translation through Anthropic's Message Batches, which the … format does not have` | the route is not anthropic; drop `--batch-api` |
+| `The Message Batch submission recorded in … has no batch id …` | the batch request went out and its outcome is unknown: it may have been accepted and billed. Do **not** rerun or delete the file; the user checks the Anthropic console and the message says what to put in the file |
+| `… records Message Batches made at … with …; this run uses …` | the batch state belongs to another endpoint or model; keep the original settings, or move the file aside to start over |
 | `EPUB navigation is invalid: …` | the headings do not form a usable contents; fix the levels in `source.md` (one `#` title, then `##`, `###`) and rerun |
 | `Error: translate failed: Source or translation settings changed; start a new translation bundle.` | model, language or `source.md` changed after a partial translation; rerun with the original settings, or move the bundle aside |

@@ -67,6 +67,7 @@ from book_maker.translator.gemini_translator import (
     PROMPT_ENV_MAP as GEMINI_PROMPT_ENV_MAP,
 )
 from book_maker.translator.capabilities import ModelUnavailable
+from book_maker.translator.claude_batch import BatchFailed
 from book_maker.utils import LANGUAGES, TO_LANGUAGE_CODE, parse_language_spec
 
 
@@ -420,6 +421,11 @@ def resolve_endpoint(options):
     if not model_names and api_format in DEFAULT_MODELS:
         model_names = [DEFAULT_MODELS[api_format]]
     return model_names, api_format, provider_env_keys
+
+
+# What `--to-epub` takes: a PDF, read by docling or Datalab, or Markdown --
+# Datalab's own output included -- imported as it is.
+TO_EPUB_BOOK_TYPES = ("pdf", "md")
 
 
 def get_book_type(book_name):
@@ -1189,13 +1195,13 @@ COMPAT_RULES = (
     CompatRule(
         "A13",
         "stop",
-        lambda f: f.options.to_epub and f.book_type != "pdf",
+        lambda f: f.options.to_epub and f.book_type not in TO_EPUB_BOOK_TYPES,
         lambda f: (
-            f"--to-epub is the PDF route: it reads a PDF's text layer, translates "
-            f"the Markdown it recovers and builds the EPUB from that. A "
-            f"{f.book_type} book has no PDF to read, and the flag changes "
-            f"which route the run takes rather than being ignored. Drop "
-            f"--to-epub."
+            f"--to-epub is the PDF route: it reads a PDF (or takes Markdown "
+            f"such as Datalab's), translates the Markdown and builds the EPUB "
+            f"from that. A {f.book_type} book is neither, and the flag "
+            f"changes which route the run takes rather than being ignored. "
+            f"Drop --to-epub."
         ),
     ),
     CompatRule(
@@ -1222,6 +1228,64 @@ COMPAT_RULES = (
         and f.options.to_epub
         and not f.options.pdf_ocr,
         lambda f: OCR_REPLACE_NEEDS_OCR,
+    ),
+    # `--batch-api` (Anthropic Message Batches, `claude_batch`): the replay
+    # answers a request from the batch by its body, so it must not depend
+    # on another reply, and only the Markdown loader walks the book twice.
+    CompatRule(
+        "A17",
+        "stop",
+        lambda f: getattr(f.options, "batch_api", False)
+        and f.translate_model is not None
+        and not getattr(f.translate_model, "SUPPORTS_MESSAGE_BATCHES", False),
+        lambda f: (
+            f"--batch-api sends the translation through Anthropic's Message "
+            f"Batches, which the {f.api_format} format does not have. Use "
+            f"--api_format anthropic (a Claude model), or drop --batch-api."
+        ),
+    ),
+    CompatRule(
+        "A18",
+        "stop",
+        lambda f: getattr(f.options, "batch_api", False)
+        and f.options.context_mode in ("window", "session"),
+        lambda f: (
+            "--batch-api sends every request at once, and with --use_context "
+            "each request carries the replies before it, which do not exist "
+            "yet. Drop one of them."
+        ),
+    ),
+    CompatRule(
+        "A19",
+        "stop",
+        lambda f: getattr(f.options, "batch_api", False)
+        and f.book_type not in ("epub", "md"),
+        lambda f: (
+            f"--batch-api runs on EPUB and Markdown books and the --to-epub "
+            f"route only; the {f.book_type} loader sends its requests one at a "
+            f"time. Drop --batch-api."
+        ),
+    ),
+    CompatRule(
+        "A21",
+        "stop",
+        lambda f: getattr(f.options, "batch_api", False)
+        and bool(f.options.retranslate),
+        lambda f: (
+            "--retranslate redoes a stretch of a finished bilingual book one "
+            "request at a time; --batch-api has nothing to collect there. "
+            "Drop --batch-api."
+        ),
+    ),
+    CompatRule(
+        "A20",
+        "stop",
+        lambda f: getattr(f.options, "batch_api", False)
+        and (f.options.batch_flag or f.options.batch_use_flag),
+        lambda f: (
+            "--batch-api is Anthropic's Message Batches in one run; --batch / "
+            "--batch-use are the OpenAI Batch API in two. Use one of them."
+        ),
     ),
     CompatRule(
         "A10",
@@ -1472,10 +1536,12 @@ COMPAT_RULES = (
     CompatRule(
         "C11",
         "warn",
-        lambda f: f.options.quiet and f.book_type != "epub",
+        lambda f: f.options.quiet
+        and f.book_type not in ("epub", "md")
+        and not f.options.to_epub,
         lambda f: (
-            f"--quiet is implemented by the epub loader only; a "
-            f"{f.book_type} run prints its progress as usual."
+            f"--quiet is implemented by the epub and Markdown loaders and "
+            f"--to-epub only; a {f.book_type} run prints its progress as usual."
         ),
     ),
     CompatRule(
@@ -1668,6 +1734,17 @@ COMPAT_RULES = (
             f"--pdf-image-dpi {f.options.pdf_image_dpi} sets how sharp a PDF's "
             f"figures are drawn, and it only runs on the --to-epub route; this "
             f"run reads it and does nothing with it."
+        ),
+    ),
+    CompatRule(
+        "C38",
+        "warn",
+        lambda f: (getattr(f.options, "pdf_parser", None) or "docling") != "docling"
+        and not f.options.to_epub,
+        lambda f: (
+            f"--pdf-parser {f.options.pdf_parser} chooses the engine that reads "
+            f"a PDF on the --to-epub route; this run reads it and does nothing "
+            f"with it."
         ),
     ),
     CompatRule(
@@ -2514,10 +2591,25 @@ off. Minimum 1.
         "--to-epub",
         dest="to_epub",
         action="store_true",
-        help="PDF only: extract the PDF's text layer to Markdown, translate "
-        "it, and write an EPUB with navigation next to the PDF "
-        "(<name>_bilingual.epub); figures stay pictures; the working bundle "
-        "stays in <name>_book/ for editing and resume.",
+        help="PDF or Markdown: extract the PDF to Markdown (--pdf-parser "
+        "picks the engine; a .md file, Datalab's included, is taken as it "
+        "is), translate it, and write an EPUB with navigation next to the "
+        "input (<name>_bilingual.epub); figures stay pictures; the working "
+        "bundle stays in <name>_book/ for editing and resume.",
+    )
+    parser.add_argument(
+        "--pdf-parser",
+        dest="pdf_parser",
+        default="docling",
+        choices=("docling", "datalab"),
+        help="PDF only, with --to-epub: the engine that reads the PDF. "
+        "docling (default) runs local models; datalab sends the PDF to the "
+        "hosted Datalab Convert API (needs DATALAB_API_KEY, billed per "
+        "page), which reads scanned pages, equations (as LaTeX, shown as "
+        "MathML in the EPUB) and figures itself, so the docling options "
+        "(--pdf-ocr, --ocr-*, --device, --img-model, --no-formula-images) "
+        "do not apply. A Markdown file Datalab already wrote can be passed "
+        "to --to-epub directly.",
     )
     parser.add_argument(
         "--pdf-ocr",
@@ -2785,6 +2877,19 @@ off. Minimum 1.
         help="Use pre-generated batch translations to create files. Run with --batch first before using this option",
     )
     parser.add_argument(
+        "--batch-api",
+        dest="batch_api",
+        action="store_true",
+        help="anthropic format, EPUB and Markdown books and --to-epub: send the "
+        "translation through Anthropic's Message Batches API at half the "
+        "price. One run collects every request, submits them as a batch, "
+        "waits for it (usually minutes, at most 24 hours) and writes the "
+        "book; an interrupted run resumes the same batch. Requests the "
+        "batch did not answer usably, and the repair of a misaligned reply, "
+        "are sent live. Not with --use_context; --parallel-workers is set "
+        "aside.",
+    )
+    parser.add_argument(
         "--interval",
         type=float,
         default=0.01,
@@ -2845,7 +2950,7 @@ off. Minimum 1.
         action="store_true",
         help="suppress progress bars and per-paragraph translation echoes "
         "(for log files and non-interactive runs; reports and errors still "
-        "print). Currently epub only.",
+        "print). EPUB and Markdown books, and --to-epub.",
     )
     # Which spelling of the glossary flag was typed, so a warning can name it.
     # Set by `GlossaryPath`; this is the value when neither was.
@@ -2917,8 +3022,35 @@ def retire_pdf_aliases(options):
     return notices
 
 
+def message_batch_state_path(loader):
+    """`<resume state>.claude-batch.json`, beside the loader's resume file.
+
+    On the `--to-epub` route that is the bundle's `.work/`, so the batch
+    lives and resumes with the rest of the bundle's translation state.
+    """
+    state = Path(loader.bin_path)
+    return state.with_name(f"{state.stem}.claude-batch.json")
+
+
+def attach_message_batches(loader):
+    """`--batch-api`: route the loader's translator through a batch queue."""
+    from book_maker.translator.claude_batch import BatchFailed, ClaudeBatchQueue
+
+    translator = loader.translate_model
+    path = message_batch_state_path(loader)
+    try:
+        queue = ClaudeBatchQueue(
+            path, endpoint=translator.api_url, model=translator.model
+        )
+    except BatchFailed as err:
+        print(f"[bold red]Error: {escape(str(err))}[/bold red]")
+        raise SystemExit(1)
+    translator.attach_batch_queue(queue)
+    print(f"--batch-api: Message Batches for {translator.model}, state in {path}")
+
+
 def run_to_epub(options, argv):
-    """`--to-epub` on a PDF: the bundle pipeline instead of the PDF loader.
+    """`--to-epub` on a PDF or Markdown: the bundle pipeline instead of a loader.
 
     Imported here, not at the top of the module: the pipeline pulls in
     Pandoc handling and, one stage further, the PDF parser, and a run that
@@ -2953,6 +3085,7 @@ def run_to_epub(options, argv):
             img_key=options.img_key,
             quiet=options.quiet,
             figure_policy=FigurePolicy("dpi", options.pdf_image_dpi),
+            pdf_parser=options.pdf_parser,
         )
     except PipelineError as err:
         detail = (
@@ -3020,7 +3153,7 @@ def main(argv=None, *, markdown_loader_class=None):
     for notice in retire_pdf_aliases(options):
         print(f"[yellow]deprecated:[/yellow] {escape(notice)}")
 
-    if options.to_epub and get_book_type(options.book_name) == "pdf":
+    if options.to_epub and get_book_type(options.book_name) in TO_EPUB_BOOK_TYPES:
         # The PDF reading edition, which is a different route rather than a
         # different setting: the PDF is extracted to Markdown and it is that
         # Markdown this same CLI then translates, with the route's own flags
@@ -3621,6 +3754,8 @@ def main(argv=None, *, markdown_loader_class=None):
         e.batch_flag = options.batch_flag
     if options.batch_use_flag:
         e.batch_use_flag = options.batch_use_flag
+    if options.batch_api:
+        attach_message_batches(e)
 
     # A fixed engine (google, deepl ...) has no model to ask; a run on one
     # classifies only through a classifier at an address of its own, and
@@ -3703,6 +3838,11 @@ def main(argv=None, *, markdown_loader_class=None):
         # most likely to see — print them like every other plan failure,
         # not as a traceback.
         print(f"[bold red]{escape(redact(err))}[/bold red]")
+        raise SystemExit(1)
+    except BatchFailed as err:
+        # The Message Batch could not be submitted or read; the state file
+        # keeps whatever was sent, and the message says what to do.
+        print(f"[bold red]Error: {escape(redact(err))}[/bold red]")
         raise SystemExit(1)
 
 

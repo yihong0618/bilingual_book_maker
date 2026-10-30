@@ -544,7 +544,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
   extra PDF; `all` attempts both top-bottom and side-by-side layouts. The bilingual TXT and
   EPUB outputs are unaffected.
 
-- `--to-epub`, `--pdf-ocr`, `--ocr-lang`, `--ocr-engine`, `--ocr-replace-layer`, `--pages`, `--device`, `--pdf-image-dpi` (PDF only):
+- `--to-epub`, `--pdf-parser`, `--pdf-ocr`, `--ocr-lang`, `--ocr-engine`, `--ocr-replace-layer`, `--pages`, `--device`, `--pdf-image-dpi` (PDF only):
 
   Turn a PDF into a bilingual EPUB with a table of contents. See [PDF to bilingual EPUB](#pdf-to-bilingual-epub).
 
@@ -552,6 +552,13 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   Translate EPUB text sentence by sentence instead of translating each paragraph as one
   unit. It is incompatible with EPUB plan mode.
+
+- `--batch-api`:
+
+  Send the translation through Anthropic's Message Batches API at half the price
+  (anthropic format; EPUB and Markdown books and `--to-epub`; not with `--use_context`).
+  One run collects every request, submits one batch, waits for it and writes the book; an
+  interrupted run resumes the same batch. `--parallel-workers` is set aside.
 
 - `--batch` / `--batch-use`:
 
@@ -562,7 +569,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
 - `--quiet`:
 
-  Suppress EPUB progress bars and per-paragraph source/translation echoes while retaining
+  Suppress EPUB and Markdown progress bars and per-paragraph source/translation echoes while retaining
   reports and errors. Recommended for log files and non-interactive agent runs.
 
 - `--retranslate "$translated_filepath" "file_name_in_epub" "start_str" "end_str"`:
@@ -765,6 +772,14 @@ python3 make_book.py --book_name paper.pdf --to-epub --key ${key} --use_context 
 
 ```shell
 python3 make_book.py --book_name scan.pdf --to-epub --pdf-ocr --ocr-lang iso:zh --key ${key}
+```
+
+#### Datalab instead of the local models
+
+If you already have a [Datalab](https://www.datalab.to) key, `--pdf-parser datalab` sends the PDF to the hosted Datalab Convert API instead of running docling's models (set `DATALAB_API_KEY`; billed per page). It reads scanned pages, equations (as LaTeX, shown as MathML in the EPUB) and figures itself, so the OCR, device and formula options do not apply. A Markdown file Datalab already wrote can be passed to `--to-epub` directly.
+
+```shell
+python3 make_book.py --book_name scan.pdf --to-epub --pdf-parser datalab --pages 1-2 --api_format anthropic --model claude-sonnet-5-5 --key ${key} --batch-api
 ```
 
 #### Pages, figures and formulas

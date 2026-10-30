@@ -103,8 +103,15 @@ SIDECAR_FIELDS = (
 # the pixels only, never a word the model is asked, and a change redraws
 # the figures without translating again (packet Q, owner 260925).
 ROUTE_FIELDS = ("figure_policy", "pdf_image_dpi")
+# How the requests are sent, never what they ask: `--batch-api` answers
+# each from a Message Batch with the reply the same request gets live, so a
+# bundle translated one way resumes the other (261026).
+EXECUTION_FIELDS = ("batch_api",)
 IGNORED_FIELDS = (
-    ("book_name", "resume", "glossary_flag") + SIDECAR_FIELDS + ROUTE_FIELDS
+    ("book_name", "resume", "glossary_flag")
+    + SIDECAR_FIELDS
+    + ROUTE_FIELDS
+    + EXECUTION_FIELDS
 )
 
 

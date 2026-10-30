@@ -13,12 +13,11 @@
 
         # prompt_template.json
         {
-            "system": "You are a professional book translator. Translate the given paragraphs into {language} and be accurate, faithful, and fluent. Return translated {language} text only.",
-            "user": "Translate the following into {language}. Text:{crlf}{crlf}{text}",
-            "style": ""
+            "system": "You are a professional book translator. Translate given paragraphs into {language} and be accurate, faithful, and fluent. Return translated {language} paragraphs only.",
+            "user": "Translate the following paragraphs into {language}. Text:{crlf}{crlf}{text}"
         }
 
-- 第三个键 `style` 是关于怎么写的常驻指令。它在窗口开始时说一次——在 API 路线上随系统消息发出，在 codex 上随线程指令发出——而不是每个请求都重复。随仓库提供的 [`prompt_template.json`](https://github.com/yihong0618/bilingual_book_maker/blob/main/prompt_template.json) 带有全部三个键，`style` 留空：写进你自己想要的文风，或者就让它空着。
+- 第三个键 `style` 是关于怎么写的常驻指令。它在窗口开始时说一次——在 API 路线上随系统消息发出，在 codex 上随线程指令发出——而不是每个请求都重复。这个键可以用，但目前不推荐：随仓库提供的 [`prompt_template.json`](https://github.com/yihong0618/bilingual_book_maker/blob/main/prompt_template.json) 只带 `system` 和 `user`。
 
 - `--prompt` 适用于每一条大模型路线，srt 书也不例外：在那里，它的各个部分逐一叠加在字幕加载器自己的提示词之上；替换 `user` 模板，就意味着你得自己说明块编号和时间轴必须原样返回。
 

@@ -13,7 +13,7 @@ Markdown 文件按正文块逐块翻译。代码、表格和 front matter 原样
 
 ## 你会得到什么
 
-- 输入文件旁边的 `<name>_bilingual.md`：每一块后面紧跟它的译文。使用 `--single_translate` 时只有译文。
+- 输入文件旁边的 `<name>_bilingual.md`：每一块后面紧跟它的译文。使用 `--single_translate` 时只有译文。使用 `--to-epub` 时改为生成双语 EPUB，做法与 PDF 相同：[PDF 转双语 EPUB](../features/pdf-to-epub.md)。
 - 会话模式的运行还会生成 `<name>_handoff.md`，里面是最新的交接报告。
 - 按 Ctrl+C 或出错时：`<name>_bilingual_temp.txt` 和一个检查点。用 `--resume` 重跑。
 
@@ -23,12 +23,12 @@ Markdown 文件按正文块逐块翻译。代码、表格和 front matter 原样
 bbook_maker \
   --book_name my_doc.md \
   --language zh-hans \
-  --prompt prompt_md.json \
+  --prompt prompt_template.json \
   --use_context session \
   --batch_size 20
 ```
 
-仓库里的 `prompt_md.json` 是专为 Markdown 写的提示词：它要求模型保留标记。Markdown 没有计划模式，所以在会话模式下，每个请求都会重读历史。调大 `--batch_size`，就能用更少、更大的请求发送。
+推荐使用仓库里的 `prompt_template.json`：一条 `system` 消息和一条 `user` 消息，都写明目标语言。标记由加载器自己保留：代码块、表格和前置元数据从不发送，链接和行内代码在请求前受到保护。Markdown 没有计划模式，所以在会话模式下，每个请求都会重读历史。调大 `--batch_size`，就能用更少、更大的请求发送。
 
 ## 适用的参数
 
@@ -58,6 +58,8 @@ bbook_maker \
 | `--test_num N` | 配合 `--test`：翻译多少段（默认 10）。 |
 | `--resume` | 从检查点继续一次中断的运行。 |
 | `--single_translate` | 只写出译文，不带原文。 |
+| `--batch-api` | 通过 Anthropic 的 Message Batches API 翻译，价格减半（anthropic 格式；不能与 `--use_context` 同用）。一次运行把所有请求作为一个批次提交，等它完成后写出书；中断的运行会接着等同一个批次。 |
+| `--quiet` | 不显示进度条，也不回显每个译好的块。 |
 
 ### Markdown 参数
 

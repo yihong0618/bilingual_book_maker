@@ -99,7 +99,9 @@ class TestRouting:
             img_key,
             quiet,
             figure_policy,
+            pdf_parser,
         ):
+            assert pdf_parser == "docling"
             seen.update(
                 ocr_replace_layer=ocr_replace_layer,
                 ocr_engine=ocr_engine,
@@ -196,6 +198,7 @@ class TestRouting:
             "img_base_url": None,
             "img_key": None,
             "figure_policy": FIGURE_POLICY_DEFAULT,
+            "pdf_parser": "docling",
             "quiet": True,
         }
 
@@ -233,6 +236,7 @@ class TestRouting:
             "img_base_url": None,
             "img_key": None,
             "figure_policy": FIGURE_POLICY_DEFAULT,
+            "pdf_parser": "docling",
             "quiet": False,
         }
 
@@ -265,6 +269,7 @@ class TestRouting:
             "img_base_url": None,
             "img_key": None,
             "figure_policy": FIGURE_POLICY_DEFAULT,
+            "pdf_parser": "docling",
             "quiet": False,
         }
 
@@ -287,6 +292,7 @@ class TestRouting:
             "img_base_url": None,
             "img_key": None,
             "figure_policy": FIGURE_POLICY_DEFAULT,
+            "pdf_parser": "docling",
             "quiet": False,
         }
 
@@ -323,6 +329,7 @@ class TestRouting:
             "img_base_url": None,
             "img_key": None,
             "figure_policy": FIGURE_POLICY_DEFAULT,
+            "pdf_parser": "docling",
             "quiet": False,
             **expected,
         }

@@ -15,6 +15,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 from .bundle import sha256_file
+from .epub_bilingual_nav import relabel_navigation
 from .epub_nav import validate_navigation
 from .errors import PipelineError
 from .messages import BILINGUAL_EPUB_SAVED
@@ -135,17 +136,29 @@ def export_epub(bundle, *, pandoc=None, title=None, language=None, author=None):
             "pandoc could not read a resource:\n" + "\n".join(warnings), stage=STAGE
         )
 
+    # Pandoc's book is checked as Pandoc wrote it, then its contents are
+    # made bilingual and the result checked again, translations included.
+    labelled = bundle.work_file("book_bilingual.epub.nav.part")
     try:
         validate_epub(
             target, expected_images=report.images, expected_outline=report.outline
         )
+        relabel_navigation(target, labelled, stage=STAGE)
+        validate_epub(
+            labelled,
+            expected_images=report.images,
+            expected_outline=report.outline,
+            bilingual=True,
+        )
     except PipelineError:
-        # The book that is already there stays; only the candidate goes.
-        target.unlink(missing_ok=True)
+        # The book that is already there stays; only the candidates go.
+        labelled.unlink(missing_ok=True)
         raise
+    finally:
+        target.unlink(missing_ok=True)
 
     # Only now does the previous, valid book go away.
-    os.replace(target, bundle.epub)
+    os.replace(labelled, bundle.epub)
 
     bundle.add_limitations(report.preserved_lines())
     bundle.update_manifest(
@@ -166,7 +179,7 @@ def export_epub(bundle, *, pandoc=None, title=None, language=None, author=None):
     return bundle.epub
 
 
-def validate_epub(path, *, expected_images=(), expected_outline=None):
+def validate_epub(path, *, expected_images=(), expected_outline=None, bilingual=False):
     """Refuse anything that is not a readable, navigable EPUB3 container.
 
     Cheap structural checks only -- a real EPUBCheck run and a reader pass
@@ -179,6 +192,9 @@ def validate_epub(path, *, expected_images=(), expected_outline=None):
     was converted. It is optional only so that the container checks can be
     exercised on a package with no Markdown behind it; the export path
     always supplies it, and `None` still requires a working nav.
+    `bilingual` checks the contents after `relabel_navigation`: an entry
+    whose heading has a distinct translation must read `original /
+    translation`.
     """
     if not path.is_file() or path.stat().st_size == 0:
         raise PipelineError(f"pandoc wrote no EPUB at {path}", stage=STAGE)
@@ -210,7 +226,9 @@ def validate_epub(path, *, expected_images=(), expected_outline=None):
             if not any(n.lower().endswith(".opf") for n in names):
                 raise PipelineError("EPUB has no package document", stage=STAGE)
             _check_images(archive, documents, expected_images)
-            validate_navigation(archive, expected_outline or [], stage=STAGE)
+            validate_navigation(
+                archive, expected_outline or [], stage=STAGE, bilingual=bilingual
+            )
     except zipfile.BadZipFile as err:
         raise PipelineError(f"pandoc produced an unreadable EPUB: {err}", stage=STAGE)
     return path

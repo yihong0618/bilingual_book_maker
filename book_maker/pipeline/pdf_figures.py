@@ -487,7 +487,8 @@ def render_figures(bundle, pdf_path, policy=FIGURE_POLICY_DEFAULT):
     the EPUB is built. Returns the manifest's `figures` block, or None when
     the bundle has no extraction to draw from.
 
-    - No completed PDF extraction (a Markdown import, a stub stage): nothing.
+    - No completed PDF extraction (a Markdown import, a stub stage), or one
+      Datalab made (its figures are its own pictures): nothing.
     - source.md names no drawn figure and there is no `figures.json`: a
       bundle made before this step. It is left exactly as it is, and
       `FIGURES_LEGACY` is said once if it names docling's pictures.
@@ -507,6 +508,10 @@ def render_figures(bundle, pdf_path, policy=FIGURE_POLICY_DEFAULT):
     manifest = bundle.read_manifest()
     extract = ((manifest.get("stages") or {}).get("extract") or {}).get("status")
     if extract != "completed":
+        return None
+    if (manifest.get("extraction") or {}).get("provider") == "datalab":
+        # Datalab returns its figures as pictures of its own; there is no
+        # docling record to draw from.
         return None
     text = bundle.source.read_text(encoding="utf-8") if bundle.source.is_file() else ""
     text = shown_markdown(text)

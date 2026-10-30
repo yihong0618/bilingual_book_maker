@@ -39,6 +39,7 @@ from book_maker.pipeline.preflight import find_pandoc  # noqa: E402
 from book_maker.pipeline.stages import (  # noqa: E402
     MARKDOWN_SUFFIXES,
     PDF_PARSER,
+    PDF_PARSERS,
     PDF_SUFFIXES,
     already_prepared,
     check_pdf_options,
@@ -120,6 +121,13 @@ def _add_pdf_options(parser):
     on and nothing to page through -- so typing one there is refused rather
     than ignored.
     """
+    parser.add_argument(
+        "--pdf-parser",
+        dest="pdf_parser",
+        default=PDF_PARSER,
+        choices=PDF_PARSERS,
+        help=messages.HELP_PDF_PARSER,
+    )
     parser.add_argument("--pdf-ocr", action="store_true", help=messages.HELP_PDF_OCR)
     parser.add_argument(
         "--ocr-replace-layer",
@@ -205,6 +213,10 @@ def structure_request(options, trailing):
     """
     from book_maker.pipeline.translate import parse_bbm_options
 
+    # docling's pass only: Datalab and an import never load it, a provider
+    # entry's img_model included (a typed --img-model is refused before).
+    if source_kind(options.input) != "pdf" or options.pdf_parser != PDF_PARSER:
+        return {}
     translation = parse_bbm_options(trailing)
     if not (getattr(options, "img_model", None) or "").strip() and not getattr(
         translation, "provider", None
@@ -285,6 +297,7 @@ def main(argv=None):
                 formula_images=options.formula_images,
                 ocr_replace_layer=options.ocr_replace_layer,
                 ocr_engine=options.ocr_engine,
+                parser=options.pdf_parser,
                 **structure,
             )
             render_figures(bundle, options.input, options.figure_policy)
@@ -325,6 +338,7 @@ def main(argv=None):
                 formula_images=options.formula_images,
                 ocr_replace_layer=options.ocr_replace_layer,
                 ocr_engine=options.ocr_engine,
+                parser=options.pdf_parser,
                 **structure,
             )
             render_figures(bundle, options.input, options.figure_policy)

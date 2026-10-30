@@ -18,13 +18,18 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from .bundle import contained_path, sha256_file, sha256_text
+from .datalab_markdown import is_datalab, normalize
 from .errors import PipelineError
 from .messages import (
+    DATALAB_FIGURE_DESCRIPTIONS,
     SOURCE_BASELINE_UNKNOWN,
     SOURCE_EDITED,
     SOURCE_REASON_IMPORT,
+    SELECTION_HEADING_ADDED,
     STAGE_COMPLETE,
+    TITLE_HEADING_ADDED,
 )
+from .pdf_common import PAGE_MARKER, heading_for_top
 from .preflight import inspect, parse_markdown
 
 STAGE = "import"
@@ -83,6 +88,11 @@ def import_markdown(
     An edited `source.md` already in the bundle is refused before anything
     is written (`guard_source_replacement`); `reason` names why this run
     would replace it.
+
+    Markdown carrying Datalab's page separators -- from the Datalab engine
+    or a file Datalab wrote earlier -- is rewritten into the forms the
+    pipeline carries (`datalab_markdown`) before its images are relocated,
+    here and nowhere else, so `source.raw.md` stays Datalab's own bytes.
     """
     source_file = Path(input_path)
     if not source_file.is_file():
@@ -96,7 +106,10 @@ def import_markdown(
     bundle.set_stage(stage, "running")
 
     try:
-        rewritten, copied = _relocate_assets(raw, source_file.parent, bundle)
+        working, notes = _normalized(raw, origin or source_file)
+        for line in notes:
+            print(line)
+        rewritten, copied = _relocate_assets(working, source_file.parent, bundle)
         bundle.raw_source.write_text(raw, encoding="utf-8")
         bundle.source.write_text(rewritten, encoding="utf-8")
         # The baseline goes on record as soon as the file is written, not
@@ -128,14 +141,43 @@ def import_markdown(
             "author": meta.get("author"),
             "assets": bundle.asset_fingerprints(),
             "assets_copied": copied,
+            "normalized": "datalab" if notes else None,
         }
     )
+    bundle.add_limitations(notes[1:])
     bundle.add_limitations(report.preserved_lines())
     bundle.set_stage(stage, "completed", images=len(set(report.images)))
     for line in report.preserved_lines():
         print(line)
     print(STAGE_COMPLETE.format(stage=stage))
     return report
+
+
+def _normalized(raw, origin):
+    """`(text to import, lines to print)`: Datalab's forms rewritten.
+
+    The lines are the rewrite's summary, then what the operator should read
+    in source.md before paying for a translation (also recorded as
+    limitations). Anything without Datalab's page separators is returned
+    as it was, with no lines.
+    """
+    if not is_datalab(raw):
+        return raw, []
+    result = normalize(raw)
+    text = result.text
+    lines = result.lines()
+    first = PAGE_MARKER.search(text)
+    first_page = int(first.group(1)) if first else None
+    headed = heading_for_top(text, first_page, Path(origin).stem)
+    if headed is not None:
+        text, heading = headed
+        lines.append(
+            SELECTION_HEADING_ADDED.format(page=first_page)
+            if first_page and first_page >= 2
+            else TITLE_HEADING_ADDED.format(title=heading)
+        )
+    lines.append(DATALAB_FIGURE_DESCRIPTIONS)
+    return text, lines
 
 
 def _relocate_assets(text, source_dir, bundle):

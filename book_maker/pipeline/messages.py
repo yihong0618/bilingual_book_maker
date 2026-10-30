@@ -62,6 +62,16 @@ SOURCE_REASON_IMPORT = "import requested again"
 # record (the last one failed or never completed, or `extract_pdf` was
 # called directly). Flagged to the lead in the unit A report.
 SOURCE_REASON_EXTRACT = "extraction requested again"
+DATALAB_KEY_MISSING = (
+    "--pdf-parser datalab sends the PDF to Datalab Convert, which needs a key: "
+    "set DATALAB_API_KEY (https://www.datalab.to/app/keys)."
+)
+PDF_PARSER_DOCLING_ONLY = (
+    "--pdf-parser datalab does not run docling, and these options only "
+    "configure docling: {flags}. Datalab reads every page (scanned ones "
+    "too), its equations and its figures itself. Drop them, or use "
+    "--pdf-parser docling."
+)
 SUBMISSION_UNKNOWN = (
     "Extraction submission outcome is unknown; do not resubmit until the "
     "provider job is checked."
@@ -94,7 +104,8 @@ PANDOC_TOO_OLD = (
 NAV_INVALID = "EPUB navigation is invalid: "
 PDF_OPTIONS_INERT = (
     "--pdf-ocr, --ocr-replace-layer, --ocr-engine, --device, --ocr-lang, "
-    "--pages and --img-model apply only to PDF input."
+    "--pages, --img-model, --no-formula-images and --pdf-image-dpi apply only "
+    "to PDF input."
 )
 DEVICE_SELECTED = "PDF extraction device: {device}."
 DEVICE_CPU_FALLBACK = "PDF extraction device: cpu (no supported accelerator detected)."
@@ -253,6 +264,15 @@ TITLE_HEADING_ADDED = (
     '"{title}" was added above its text; the table of contents needs one '
     "there. Rename it in source.md before translating if you like."
 )
+# Datalab writes a description of each figure as body text after the image,
+# with captions disabled too, unmarked and different run to run (probe
+# 261026); it cannot be told from prose, so it is kept and translated.
+DATALAB_FIGURE_DESCRIPTIONS = (
+    "Datalab writes a model's description of each figure as a paragraph "
+    "after the image, and figure labels as short lines; they are kept and "
+    "translated. Delete them in source.md before translating if you do not "
+    "want them in the book."
+)
 PAGES_SPAN_CONVERTED = (
     "The page selection is not one run of pages, so pages {span} were read "
     "and the ones outside the selection dropped afterwards; a single range "
@@ -404,7 +424,7 @@ PANDOC_ON_PATH = (
     "Pandoc is required for --to-epub. Install it and make sure pandoc is on PATH."
 )
 TO_EPUB_BUNDLE = "Working bundle: {path}"
-TO_EPUB_COPY = "Bilingual EPUB saved beside the PDF: {path}"
+TO_EPUB_COPY = "Bilingual EPUB saved beside the source file: {path}"
 TRANSLATION_REUSED = (
     "Translation reused: {path} (same source and settings; delete it to "
     "translate again)."
@@ -414,6 +434,11 @@ TRANSLATION_REUSED = (
 DESCRIPTION = "Create bilingual Markdown and a reflowable EPUB from PDF or Markdown."
 HELP_IMPORT = "Import Markdown and its local images."
 HELP_EXTRACT = "Extract Markdown and images from a PDF with docling."
+HELP_PDF_PARSER = (
+    "the engine that reads a PDF: docling (local models, the default) or "
+    "datalab (the hosted Datalab Convert API; needs DATALAB_API_KEY, billed "
+    "per page; the docling options do not apply)"
+)
 HELP_PDF_OCR = (
     "Read pages that carry no text layer with the OCR models; such pages are "
     "refused without it. Off by default: a born-digital PDF is already "

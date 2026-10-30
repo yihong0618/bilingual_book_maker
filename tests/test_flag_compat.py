@@ -114,6 +114,47 @@ def tripped(f, rules=COMPAT_RULES):
 class TestStops:
     """Refusals: exit 1 before a book is parsed or a request is made."""
 
+    # `--batch-api` (261026): Anthropic Message Batches under the Markdown
+    # loader; refused where a request depends on another reply, where the
+    # loader does not walk the book twice, and on a format without it.
+    def test_batch_api_needs_the_anthropic_format(self):
+        f = facts(["--batch-api"], book_type="md", api_format="openai")
+        assert "A17" in tripped(f)
+        f = facts(["--batch-api"], book_type="md", api_format="anthropic")
+        assert "A17" not in tripped(f)
+
+    def test_batch_api_refuses_context(self):
+        for flag in (["--use_context"], ["--use_context", "session"]):
+            f = facts(["--batch-api", *flag], book_type="md", api_format="anthropic")
+            assert "A18" in tripped(f)
+
+    def test_batch_api_runs_on_epub_and_markdown_only(self):
+        for book_type in ("txt", "srt"):
+            f = facts(["--batch-api"], book_type=book_type, api_format="anthropic")
+            assert "A19" in tripped(f)
+        for book_type in ("epub", "md"):
+            f = facts(["--batch-api"], book_type=book_type, api_format="anthropic")
+            assert "A19" not in tripped(f)
+
+    def test_batch_api_has_nothing_to_collect_in_a_retranslation(self):
+        f = facts(
+            ["--batch-api", "--retranslate", "out.epub", "a.xhtml", "start", ""],
+            book_type="epub",
+            api_format="anthropic",
+        )
+        assert "A21" in tripped(f)
+        assert "A21" not in tripped(
+            facts(["--batch-api"], book_type="epub", api_format="anthropic")
+        )
+
+    def test_batch_api_and_the_openai_batch_flags_exclude_each_other(self):
+        f = facts(["--batch-api", "--batch"], book_type="md", api_format="anthropic")
+        assert "A20" in tripped(f)
+
+    def test_batch_api_on_a_plain_md_run_trips_nothing(self):
+        f = facts(["--batch-api"], book_type="md", api_format="anthropic")
+        assert not {"A17", "A18", "A19", "A20"} & set(tripped(f))
+
     def test_batch_is_broken_on_epub(self, tmp_path):
         # A1: queueing lives on a path the epub loader never takes, so the
         # book is translated live at full price and then an empty batch job
@@ -698,7 +739,7 @@ WARN_FIXTURES = [
         "C11",
         ["--quiet"],
         {"book_type": "txt"},
-        "--quiet is implemented by the epub loader only",
+        "--quiet is implemented by the epub and Markdown loaders",
     ),
     (
         "C12",
@@ -839,6 +880,15 @@ WARN_FIXTURES = [
         "--pdf-image-dpi 300 sets how sharp a PDF's figures are drawn, and it "
         "only runs on the --to-epub route; this run reads it and does nothing "
         "with it.",
+    ),
+    (
+        # C38: --pdf-parser picks the engine the --to-epub route reads a PDF
+        # with (Datalab restored as the hosted engine, 261026)
+        "C38",
+        ["--pdf-parser", "datalab"],
+        {},
+        "--pdf-parser datalab chooses the engine that reads a PDF on the "
+        "--to-epub route; this run reads it and does nothing with it.",
     ),
     (
         # C34: --ocr-replace-layer re-reads pages on the PDF route, which

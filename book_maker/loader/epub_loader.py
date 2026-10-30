@@ -11,7 +11,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from copy import copy
+from copy import copy, deepcopy
 from hashlib import sha256
 from pathlib import Path
 import traceback
@@ -27,6 +27,7 @@ from tqdm import tqdm
 
 from book_maker import translation_metadata as tmeta
 from book_maker.redaction import redact
+from book_maker.translator.claude_batch import PARALLEL_SET_ASIDE
 from book_maker.session_context import handoff_path
 from book_maker.utils import (
     language_code,
@@ -273,6 +274,11 @@ class EPUBBookLoader(BaseBookLoader):
 
     CHECKPOINT_VERSION = 3
     CHECKPOINT_ORDER = "document"
+
+    # The `--batch-api` collection copy (`_collect_message_batch`): its
+    # translations are stand-ins, so it writes no progress, recovery book
+    # or book, and announces none.
+    _dry_run = False
 
     def __init__(
         self,
@@ -918,9 +924,15 @@ class EPUBBookLoader(BaseBookLoader):
         obfuscation is put back on the bytes afterwards. `_stamp_disclosure`
         is idempotent, so a book written twice is credited once.
         """
+        if self._dry_run:
+            return
         self._stamp_disclosure(book)
         epub.write_epub(path, book, {})
         self._reobfuscate_written(path)
+
+    def announce_saved_book(self, path):
+        if not self._dry_run:
+            super().announce_saved_book(path)
 
     def _reobfuscate_written(self, path):
         """Put back the obfuscation the source shipped, on the file just written.
@@ -1411,6 +1423,9 @@ class EPUBBookLoader(BaseBookLoader):
             f"--translate-tags {self.plan_fallback_tags} selection "
             f"instead[/bold yellow]"
         )
+        self._give_up_plan()
+
+    def _give_up_plan(self):
         self.plan_mode = False
         self.translate_tags = self.plan_fallback_tags
         self._plan_fingerprint = None
@@ -3825,6 +3840,65 @@ class EPUBBookLoader(BaseBookLoader):
                         raise Exception("Batch translation timed out after 5 minutes")
 
     def make_bilingual_book(self):
+        queue = getattr(self.translate_model, "batch_queue", None)
+        if queue is not None:
+            if self.enable_parallel:
+                # Workers share one translator, which swaps its prompt per
+                # grouped request; a worker building a request mid-swap
+                # would send a body the batch never saw, live.
+                print(PARALLEL_SET_ASIDE)
+                self.set_parallel_workers(1)
+            if queue.mode == queue.COLLECT:
+                if not self._collect_message_batch(queue):
+                    return
+        self._make_bilingual_book()
+
+    def _collect_message_batch(self, queue):
+        """`--batch-api`: walk the book once to record every request, batch them.
+
+        The walk is made by a copy of this loader, so nothing it does to the
+        book, the progress or the plan's soups reaches the real pass: the
+        translator answers each request with its own source (`stand_in`),
+        and the copy writes no progress, recovery book or book
+        (`_dry_run`). What it shares on purpose is the translator (and so
+        the queue) and the classifier, whose verdicts reach the real pass
+        through the saved plan file. Returns False when the walk stopped on
+        a fatal error and nothing should be submitted.
+        """
+        memo = {id(self._progress_lock): self._progress_lock}
+        for shared in (self.translate_model, self.classify_translator):
+            if shared is not None:
+                memo[id(shared)] = shared
+        twin = deepcopy(self, memo)
+        twin._dry_run = True
+        twin.quiet = True
+        print("--batch-api: collecting the book's requests (nothing is sent yet)")
+        previous = queue.stand_in
+        queue.stand_in = True
+        try:
+            twin._make_bilingual_book()
+        finally:
+            queue.stand_in = previous
+        # An automatic plan the walk gave up (a classification that failed,
+        # a conflict) is given up here too, without asking again: a plan
+        # that succeeded now would send requests the batch never saw. A
+        # plan the walk built is reused from its saved file.
+        if self.plan_mode and not twin.plan_mode:
+            self._give_up_plan()
+        del twin
+        if self.translate_model._fatal_error_detected:
+            return False
+        print(f"--batch-api: {len(queue.pending)} new request(s) for this book")
+        self.translate_model.run_batch()
+        good, bad = queue.summary()
+        if bad:
+            print(
+                f"[yellow]--batch-api: {bad} request(s) came back without a "
+                f"usable translation; they are sent live now[/yellow]"
+            )
+        return True
+
+    def _make_bilingual_book(self):
         # Before the plan is built and before anything is translated: a
         # checkpoint written into another language (or under another prompt,
         # or by another model) is not this run's to continue.
@@ -4139,6 +4213,8 @@ class EPUBBookLoader(BaseBookLoader):
             raise Exception("can not load resume file")
 
     def _save_temp_book(self):
+        if self._dry_run:
+            return
         name, _ = os.path.splitext(self.epub_name)
         temp_path = f"{name}_bilingual_temp.epub"
         origin_book_temp = epub.read_epub(self.epub_name)
@@ -4212,6 +4288,8 @@ class EPUBBookLoader(BaseBookLoader):
             raise
 
     def _save_progress(self):
+        if self._dry_run:
+            return
         completed_job_ids = self._planned_job_ids[: len(self.p_to_save)]
         if len(completed_job_ids) != len(self.p_to_save):
             raise ValueError(

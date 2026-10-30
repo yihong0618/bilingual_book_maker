@@ -463,13 +463,19 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   为 PDF 输入选择额外生成的双语 PDF 版式。默认 `none` 不额外生成 PDF；
   `all` 会同时尝试上下对照和左右对照。双语 TXT 和 EPUB 输出不受该参数影响。
 
-- `--to-epub`、`--pdf-ocr`、`--ocr-lang`、`--ocr-engine`、`--ocr-replace-layer`、`--pages`、`--device`、`--pdf-image-dpi`（仅限 PDF）：
+- `--to-epub`、`--pdf-parser`、`--pdf-ocr`、`--ocr-lang`、`--ocr-engine`、`--ocr-replace-layer`、`--pages`、`--device`、`--pdf-image-dpi`（仅限 PDF）：
 
   把 PDF 变成带目录的双语 EPUB，见 [PDF 转双语 EPUB](#pdf-转-双语-epub)。
 
 - `--sentence_mode`:
 
   将 EPUB 的每个段落拆成句子逐句翻译，而不是整段翻译。与 EPUB 计划模式不兼容。
+
+- `--batch-api`：
+
+  通过 Anthropic 的 Message Batches API 翻译，价格减半（anthropic 格式；EPUB 书、Markdown 书和
+  `--to-epub`；不能与 `--use_context` 同用）。一次运行收集全部请求、提交一个批次、等待它完成并写出书；
+  中断后重跑会继续同一个批次。`--parallel-workers` 会被搁置。
 
 - `--batch` / `--batch-use`:
 
@@ -484,7 +490,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--quiet`:
 
-  关闭 EPUB 进度条和逐段原文/译文输出，但保留报告与错误。适合日志文件和 Agent
+  关闭 EPUB 与 Markdown 进度条和逐段原文/译文输出，但保留报告与错误。适合日志文件和 Agent
   非交互运行。
 
 - `--retranslate "$translated_filepath" "file_name_in_epub" "start_str" "end_str"`:
@@ -666,6 +672,14 @@ python3 make_book.py --book_name paper.pdf --to-epub --key ${key} --use_context 
 
 ```shell
 python3 make_book.py --book_name scan.pdf --to-epub --pdf-ocr --ocr-lang iso:zh --key ${key}
+```
+
+#### 用 Datalab 代替本地模型
+
+如果你已经有 [Datalab](https://www.datalab.to) 的密钥，`--pdf-parser datalab` 会把 PDF 交给托管的 Datalab Convert API，而不在本机运行 docling 的模型（需要设置 `DATALAB_API_KEY`，按页计费）。它自己识别扫描页、公式（LaTeX，在 EPUB 中显示为 MathML）和插图，所以 OCR、设备和公式相关的参数不适用。Datalab 已经生成的 Markdown 文件也可以直接交给 `--to-epub`。
+
+```shell
+python3 make_book.py --book_name scan.pdf --to-epub --pdf-parser datalab --pages 1-2 --api_format anthropic --model claude-sonnet-5-5 --key ${key} --batch-api
 ```
 
 #### 页码、插图和公式

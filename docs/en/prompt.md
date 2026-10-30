@@ -13,12 +13,11 @@ To tweak the prompt, use the `--prompt` parameter. The placeholders the `user` t
 
         # prompt_template.json
         {
-            "system": "You are a professional book translator. Translate the given paragraphs into {language} and be accurate, faithful, and fluent. Return translated {language} text only.",
-            "user": "Translate the following into {language}. Text:{crlf}{crlf}{text}",
-            "style": ""
+            "system": "You are a professional book translator. Translate given paragraphs into {language} and be accurate, faithful, and fluent. Return translated {language} paragraphs only.",
+            "user": "Translate the following paragraphs into {language}. Text:{crlf}{crlf}{text}"
         }
 
-- A third key, `style`, is a standing instruction about how to write. It is said once where a window starts — with the system message on the API routes, with the thread instructions on codex — not repeated on every request. The shipped [`prompt_template.json`](https://github.com/yihong0618/bilingual_book_maker/blob/main/prompt_template.json) carries all three keys with `style` left empty: write your own voice in, or leave it blank.
+- A third key, `style`, is a standing instruction about how to write. It is said once where a window starts — with the system message on the API routes, with the thread instructions on codex — not repeated on every request. It is accepted but not recommended for now: the shipped [`prompt_template.json`](https://github.com/yihong0618/bilingual_book_maker/blob/main/prompt_template.json) carries only `system` and `user`.
 
 - `--prompt` reaches every LLM route, srt books included: there its sections sit on top of the subtitle loader's own prompt, section by section, and replacing the `user` template means saying yourself that the block number and timeline must come back unchanged.
 
