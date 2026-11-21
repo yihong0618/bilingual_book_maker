@@ -2643,6 +2643,11 @@ class EPUBBookLoader(BaseBookLoader):
         ):
             return
 
+        if isinstance(p, NavigableString):
+            return self.helper.insert_trans(
+                p, translated_text, translation_style, single_translate
+            )
+
         # Check if paragraph has excluded content tags
         exclude_tags_list = self._exclude_tags_tuple()
         has_code_tags = any(p.find(tag) for tag in exclude_tags_list)
@@ -2755,7 +2760,10 @@ class EPUBBookLoader(BaseBookLoader):
         if self.resume and index < p_to_save_len:
             # When resuming, keep original text in p, only restore translation
             # p.string should remain as original text from source EPUB
-            new_p.string = self.p_to_save[index]
+            if isinstance(p, NavigableString):
+                new_p = self.p_to_save[index]
+            else:
+                new_p.string = self.p_to_save[index]
         else:
             t_text = ""
             if self.batch_flag:
@@ -3608,15 +3616,9 @@ class EPUBBookLoader(BaseBookLoader):
                         t_text = "" if t_text is None else t_text
                         self._record_translation_result(index, t_text)
 
-                    if isinstance(p, NavigableString):
-                        translated_node = NavigableString(t_text)
-                        p.insert_after(translated_node)
-                        if self.single_translate:
-                            p.extract()
-                    else:
-                        self._insert_trans_preserving_tags(
-                            p, t_text, self.translation_style, self.single_translate
-                        )
+                    self._insert_trans_preserving_tags(
+                        p, t_text, self.translation_style, self.single_translate
+                    )
 
             if soup:
                 chapter_result["processed_content"] = soup.encode(encoding="utf-8")
@@ -4262,11 +4264,6 @@ class EPUBBookLoader(BaseBookLoader):
                                 self.translation_style,
                                 self.single_translate,
                             )
-                        elif isinstance(job.node, NavigableString):
-                            translated_node = NavigableString(translated_text)
-                            job.node.insert_after(translated_node)
-                            if self.single_translate:
-                                job.node.extract()
                         else:
                             self._insert_trans_preserving_tags(
                                 job.node,

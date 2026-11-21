@@ -9,7 +9,7 @@ import logging
 import uuid
 from copy import copy
 
-from bs4.element import Tag
+from bs4.element import NavigableString, Tag
 from ebooklib import epub
 from lxml import etree
 from tenacity import retry, retry_if_exception, wait_exponential
@@ -99,6 +99,9 @@ def _say_retrying(retry_state):
 # <figcaption>, and an EPUB 3 navigation document takes one heading before
 # its <ol> and nothing but <a>/<span> inside an <li>.
 SINGLETON_TAGS = frozenset(["figcaption", "caption", "legend", "summary"])
+
+# These XHTML elements accept character data, not a styling span.
+TEXT_ONLY_TAGS = frozenset(["title", "textarea", "option", "script", "style", "rp"])
 
 # Void elements: HTML5 spells them without a closing tag.
 VOID_TAGS = frozenset(
@@ -450,23 +453,41 @@ class EPUBBookLoaderHelper:
             and p.string.replace(" ", "").strip() == text.replace(" ", "").strip()
         ):
             return
-        if not single_translate and has_restricted_content_model(p):
+        if (
+            not single_translate
+            and isinstance(p, Tag)
+            and has_restricted_content_model(p)
+        ):
             # single-translate extracts the original, so it never creates
             # the second sibling this rule exists to prevent
             return append_inline_translation(p, text, translation_style, self.language)
-        new_p = copy(p)
-        new_p.string = text
-        if translation_style != "":
-            new_p["style"] = translation_style
-        if not single_translate:
-            # The copy would otherwise carry the original's id and every id
-            # inside it, so the document ends up with two elements answering
-            # to the same anchor: epubcheck rejects it (RSC-005), and an
-            # internal link may land on the translation instead of the text
-            # it points at. When the original is extracted there is no
-            # duplicate, so single-translate keeps its ids.
-            strip_duplicate_ids(new_p)
-        restamp_language(new_p, self.language)
+        if isinstance(p, NavigableString):
+            # Text nodes are immutable. A span also gives the translated
+            # rendering somewhere to carry style/language, except in a
+            # text-only parent where that markup would be invalid.
+            in_embedded_xml = (
+                p.find_parent(
+                    lambda tag: tag.name.rsplit(":", 1)[-1] in {"svg", "math"}
+                )
+                is not None
+            )
+            if p.parent.name.rsplit(":", 1)[-1] in TEXT_ONLY_TAGS or in_embedded_xml:
+                new_p = NavigableString(text)
+            else:
+                # html.parser retains prefixes as text rather than namespace
+                # bindings; a prefixed parent need not have a default xmlns.
+                new_p = make_tag("span", xmlns=epub.NAMESPACES["XHTML"])
+                stamp_translation(new_p, p.parent, self.language)
+        else:
+            new_p = copy(p)
+        if isinstance(new_p, Tag):
+            new_p.string = text
+            if translation_style != "":
+                new_p["style"] = translation_style
+            if not single_translate:
+                # Only bilingual copies duplicate the source's anchors.
+                strip_duplicate_ids(new_p)
+            restamp_language(new_p, self.language)
         p.insert_after(new_p)
         if single_translate:
             p.extract()
