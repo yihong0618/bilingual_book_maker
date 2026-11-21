@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import logging
 import uuid
 from copy import copy
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 from bs4.element import Tag
 from ebooklib import epub
@@ -134,12 +135,15 @@ class PackageInfo:
       embedded font comes out readable.
 
     `opf_dir` is where the package document lives, the coordinate system
-    every manifest href is relative to.
+    every manifest href is relative to. `ncx_path` is the manifest href
+    selected by the source spine's `toc` attribute; its directory is the
+    coordinate system of the links EbookLib reads from that NCX.
     """
 
     prefixes: dict
     unique_identifier: str | None
     opf_dir: str
+    ncx_path: str | None = None
 
 
 EMPTY_PACKAGE = PackageInfo(prefixes={}, unique_identifier=None, opf_dir="")
@@ -156,8 +160,14 @@ def read_package(epub_path):
     try:
         with zipfile.ZipFile(epub_path) as archive:
             container = etree.fromstring(archive.read(CONTAINER_PATH))
-            rootfile = container.find(f".//{CONTAINER_NS}rootfile")
-            full_path = rootfile.get("full-path") if rootfile is not None else None
+            # Match EbookLib's media-type filter and last-match selection.
+            # A multi-rendition container may name several packages; reading
+            # a different one would mix its identity and NCX paths into the
+            # book that EbookLib actually loaded.
+            full_path = None
+            for rootfile in container.findall(f".//{CONTAINER_NS}rootfile"):
+                if rootfile.get("media-type") == "application/oebps-package+xml":
+                    full_path = rootfile.get("full-path")
             if not full_path:
                 return EMPTY_PACKAGE
             package = etree.fromstring(archive.read(full_path))
@@ -181,10 +191,22 @@ def read_package(epub_path):
             unique_identifier = (element.text or "").strip()
             break
 
+    spine = package.find(f"{OPF_NS}spine")
+    toc_id = spine.get("toc") if spine is not None else None
+    ncx_path = next(
+        (
+            item.get("href")
+            for item in package.findall(f"{OPF_NS}manifest/{OPF_NS}item")
+            if toc_id and item.get("id") == toc_id
+        ),
+        None,
+    )
+
     return PackageInfo(
         prefixes=prefixes,
         unique_identifier=unique_identifier or None,
         opf_dir=posixpath.dirname(full_path),
+        ncx_path=ncx_path,
     )
 
 
@@ -248,6 +270,46 @@ def rebase_ncx_srcs(ncx_bytes, ncx_path):
         if path and "://" not in path and not path.startswith("/"):
             el.set("src", posixpath.relpath(path, base) + sep + frag)
     return etree.tostring(tree, xml_declaration=True, encoding="utf-8")
+
+
+def _decode_uri_dot_segments(path):
+    """Recognize escaped . and .. without decoding reserved URL characters."""
+    segments = path.split("/")
+    for index, segment in enumerate(segments):
+        decoded = unquote(segment)
+        if decoded in {".", ".."}:
+            segments[index] = decoded
+    return "/".join(segments)
+
+
+def resolve_ncx_toc(toc, ncx_path):
+    """Copy an imported NCX TOC into OPF-relative coordinates.
+
+    EbookLib keeps NCX links relative to the NCX file, while its writers
+    expect them relative to the package. Leave source objects unchanged;
+    the generated XHTML nav and regenerated NCX then use the same targets.
+    """
+    if isinstance(toc, (list, tuple)):
+        return type(toc)(resolve_ncx_toc(child, ncx_path) for child in toc)
+    if isinstance(toc, (epub.Link, epub.Section)):
+        copied = copy(toc)
+        if copied.href:
+            target = urlsplit(copied.href)
+            if not (target.scheme or target.netloc or target.path.startswith("/")):
+                # urljoin with a relative base discards leading ../. NCX
+                # links can legitimately leave the package directory.
+                base = _decode_uri_dot_segments(urlsplit(ncx_path).path)
+                target_path = _decode_uri_dot_segments(target.path)
+                path = (
+                    posixpath.normpath(
+                        posixpath.join(posixpath.dirname(base), target_path)
+                    )
+                    if target_path
+                    else posixpath.normpath(base)
+                )
+                copied.href = urlunsplit(target._replace(path=path))
+        return copied
+    return toc
 
 
 def backfill_toc_hrefs(toc):

@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import pickle
+import posixpath
 import re
 import shlex
 import string
@@ -16,6 +17,7 @@ from hashlib import sha256
 from pathlib import Path
 import traceback
 from threading import Lock
+from unicodedata import normalize
 
 from bs4 import BeautifulSoup as bs
 from bs4 import Tag
@@ -49,12 +51,15 @@ from .helper import (
     make_tag,
     not_trans,
     package_prefixes,
+    read_package,
     rebase_ncx_srcs,
+    resolve_ncx_toc,
     shorter_result_link,
     strip_duplicate_ids,
     translate_list_or_singles,
 )
 from .disclosure import (
+    allocate_names,
     credit_name,
     entry_is_our_colophon,
     is_calibre_metadata,
@@ -67,6 +72,8 @@ from .disclosure import (
     stamp_disclosure,
     strip_prior_credit,
     tool_contributor_ids,
+    taken_file_names,
+    taken_ids,
 )
 from .font_obfuscation import deobfuscate_fonts, reobfuscate_written_epub
 from .rights import DRM_MESSAGE, check_epub
@@ -750,7 +757,49 @@ class EPUBBookLoader(BaseBookLoader):
             if not (isinstance(entry, tuple) and not entry[0])
             and not entry_is_our_colophon(book, entry)
         ]
-        new_book.toc = backfill_toc_hrefs(self._fix_toc_uids(book.toc))
+        source_has_nav = any(
+            isinstance(item, epub.EpubNav) for item in book.get_items()
+        )
+        toc = book.toc
+        if not source_has_nav:
+            ncx_path = read_package(getattr(self, "epub_name", None)).ncx_path
+            if ncx_path:
+                toc = resolve_ncx_toc(toc, ncx_path)
+        new_book.toc = backfill_toc_hrefs(self._fix_toc_uids(toc))
+
+        # EbookLib writes an EPUB 3 package even for an EPUB 2 source.
+        # Its legacy NCX is not the navigation document EPUB 3 requires.
+        # Imported navigation is carried by the item loop; generate one
+        # only when the source has none.
+        if not source_has_nav:
+            used_ids = taken_ids(new_book) | {
+                item.get_id() for item in book.get_items()
+            }
+            # Resolve paths from the output package directory before the
+            # EPUB ZIP case-folding rule, then compare package-relative
+            # names. Even ../EPUB/nav.xhtml aliases this package's nav.
+            package_dir = normalize("NFC", new_book.FOLDER_NAME.casefold())
+            used_names = {
+                posixpath.relpath(
+                    normalize(
+                        "NFC",
+                        posixpath.normpath(
+                            posixpath.join(package_dir, name)
+                        ).casefold(),
+                    ),
+                    package_dir,
+                )
+                for name in taken_file_names(book) | taken_file_names(new_book)
+            }
+            # Candidates live at the package root. A source subdirectory
+            # must not become a file of the same name when extracted.
+            used_names.update({name.split("/", 1)[0] for name in used_names})
+            nav_id, nav_name = allocate_names(
+                new_book, "nav", ".xhtml", "nav", ids=used_ids, files=used_names
+            )
+            new_book.add_item(
+                epub.EpubNav(uid=nav_id, file_name=nav_name, title=new_book.title)
+            )
 
         # The disclosure itself is *not* added here. It names the model the
         # run used, and with --model_list that is not settled until the last
