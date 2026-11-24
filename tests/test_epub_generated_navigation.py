@@ -161,6 +161,46 @@ def test_source_navigation_is_kept_and_not_rebased(tmp_path, monkeypatch):
     assert ncx.find("content")["src"] == "../Text/chapter.xhtml#one"
 
 
+def test_ncx_is_resolved_against_the_book_being_rebuilt(tmp_path, monkeypatch):
+    # --retranslate rebuilds a previous output, whose NCX need not sit where
+    # the source's does: the TOC read from it is resolved against its own NCX.
+    (tmp_path / "source").mkdir()
+    (tmp_path / "output").mkdir()
+    loader, _ = _write_ncx_fixture(
+        tmp_path / "source", monkeypatch, "Text/chapter.xhtml", "Navigation/toc.ncx"
+    )
+    _write_ncx_fixture(
+        tmp_path / "output", monkeypatch, "Text/chapter.xhtml", "toc.ncx"
+    )
+    rebuilt = tmp_path / "output" / "book.epub"
+
+    new_book = loader._make_new_book(epub.read_epub(str(rebuilt)), str(rebuilt))
+
+    assert new_book.toc[0].href == "Text/chapter.xhtml#one"
+
+
+def test_a_dot_slash_package_path_is_read_like_ebooklib_reads_it(tmp_path, monkeypatch):
+    loader, output = _write_ncx_fixture(
+        tmp_path, monkeypatch, "Text/chapter.xhtml", "Navigation/toc.ncx"
+    )
+    source = tmp_path / "book.epub"
+    with zipfile.ZipFile(source) as archive:
+        container = archive.read("META-INF/container.xml").decode()
+    _replace_epub_member(
+        source,
+        "META-INF/container.xml",
+        container.replace('full-path="EPUB/', 'full-path="./EPUB/'),
+    )
+    loader, output = _make_loader(tmp_path, monkeypatch, [])
+    loader.disclose = False
+
+    loader.make_bilingual_book()
+
+    with zipfile.ZipFile(output) as archive:
+        nav = BeautifulSoup(archive.read("EPUB/nav.xhtml"), "xml")
+    assert nav.find("a")["href"] == "Text/chapter.xhtml#one"
+
+
 def test_generated_navigation_edge_cases_pass_epubcheck(
     tmp_path, monkeypatch, epubcheck
 ):

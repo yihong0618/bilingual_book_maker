@@ -170,6 +170,9 @@ def read_package(epub_path):
                     full_path = rootfile.get("full-path")
             if not full_path:
                 return EMPTY_PACKAGE
+            # EbookLib normalises the path ("./OPS/content.opf") before
+            # opening it; the zip member is named without the "./".
+            full_path = posixpath.normpath(full_path)
             package = etree.fromstring(archive.read(full_path))
     except Exception:
         return EMPTY_PACKAGE

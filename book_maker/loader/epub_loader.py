@@ -529,7 +529,9 @@ class EPUBBookLoader(BaseBookLoader):
             or all(char in string.punctuation for char in text)
         )
 
-    def _make_new_book(self, book):
+    def _make_new_book(self, book, book_path=None):
+        """`book_path` is the file `book` was read from, when that is not
+        the source (--retranslate rebuilds a previous output)."""
         new_book = epub.EpubBook()
         # The one place every route passes through with the *source* in
         # hand, and the only moment a previous run's credit line can be
@@ -761,7 +763,9 @@ class EPUBBookLoader(BaseBookLoader):
         )
         toc = book.toc
         if not source_has_nav:
-            ncx_path = read_package(getattr(self, "epub_name", None)).ncx_path
+            ncx_path = read_package(
+                book_path or getattr(self, "epub_name", None)
+            ).ncx_path
             if ncx_path:
                 toc = resolve_ncx_toc(toc, ncx_path)
         new_book.toc = backfill_toc_hrefs(self._fix_toc_uids(toc))
@@ -3079,7 +3083,7 @@ class EPUBBookLoader(BaseBookLoader):
             ].file_name
             print(f"auto find fixname: {fixname}")
 
-        new_book = self._make_new_book(complete_book)
+        new_book = self._make_new_book(complete_book, complete_book_name)
 
         complete_item = self.get_item(complete_book, fixname)
         if complete_item is None:
