@@ -9,6 +9,7 @@ import pytest
 from bs4 import BeautifulSoup
 from ebooklib import epub
 from lxml import etree
+from tqdm import tqdm
 from book_maker.loader.helper import EPUBBookLoaderHelper
 from test_epub_loader_correctness import (
     RecordingModel,
@@ -384,8 +385,6 @@ def test_real_chapters_resume_without_resending_bare_text(tmp_path, monkeypatch)
 def test_bare_text_collector_skips_claimed_excluded_and_code_strings(
     tmp_path, monkeypatch
 ):
-    # retranslate's collector has no plan to test it through; it calls the
-    # same helper as the plan.
     loader, _ = _make_loader(tmp_path, monkeypatch, [("one.xhtml", ["Source"])])
 
     def bare_strings(markup, exclude="sup,code"):
@@ -408,8 +407,30 @@ def test_bare_text_collector_skips_claimed_excluded_and_code_strings(
     ) == ["Loose"]
     # MathML symbols stay as they are; <mtext> prose is still translated
     assert bare_strings(
-        "<math><mi>speed</mi><mo>×</mo><mn>2</mn><mtext>per hour</mtext></math>"
+        "<math><semantics><mrow><mi>speed</mi><mo>×</mo><mn>2</mn>"
+        "<mtext>per hour</mtext></mrow>"
+        '<annotation encoding="application/x-tex">2v \\text{ per hour}</annotation>'
+        "</semantics></math>"
     ) == ["per hour"]
+
+
+def test_unplanned_chapter_collects_the_same_bare_text(tmp_path, monkeypatch):
+    # retranslate reaches process_item without a plan, the second collector
+    loader, _ = _make_loader(tmp_path, monkeypatch, [("one.xhtml", ["Source"])])
+    loader.allow_navigable_strings = True
+    item = loader.origin_book.get_item_with_href("one.xhtml")
+    item.content = REAL_CHAPTER.encode()
+    monkeypatch.setattr(loader, "_save_progress", lambda: None)
+
+    loader.process_item(item, 0, 0, tqdm(disable=True), epub.EpubBook(), ["p"])
+
+    assert loader.translate_model.calls == [
+        "Paragraph bold text",
+        "Doc title",
+        "Loose body text",
+        "Loose div text",
+        "漢",
+    ]
 
 
 def test_real_epub_with_bare_text_adds_no_duplicate_requests(tmp_path, monkeypatch):

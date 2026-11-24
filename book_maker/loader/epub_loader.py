@@ -107,11 +107,23 @@ from .classify import (
 )
 
 # Strings under these elements are never bare text to translate: code,
-# templates, ruby readings and MathML identifiers, operators and numbers.
+# templates, ruby readings, MathML identifiers, operators and numbers, and
+# MathML annotations (the TeX or other source of an equation).
 # `title`, `textarea`, `option` and MathML `mtext` are not here; their text
 # is prose and stays collected.
 NON_CONTENT_STRING_PARENTS = frozenset(
-    ["script", "style", "template", "rt", "rp", "mi", "mo", "mn"]
+    [
+        "script",
+        "style",
+        "template",
+        "rt",
+        "rp",
+        "mi",
+        "mo",
+        "mn",
+        "annotation",
+        "annotation-xml",
+    ]
 )
 
 # Every key-bearing CLI flag, and the environment variable it falls back to
