@@ -360,10 +360,11 @@ def strip_duplicate_ids(element):
     the passage it cites.
     """
     if isinstance(element, Tag):
-        element.attrs.pop("id", None)
-        for descendant in element.descendants:
-            if isinstance(descendant, Tag):
-                descendant.attrs.pop("id", None)
+        for node in [element, *element.find_all(True)]:
+            node.attrs.pop("id", None)
+            node.attrs.pop("xml:id", None)
+            if node.name.rsplit(":", 1)[-1] == "a":
+                node.attrs.pop("name", None)
     return element
 
 
