@@ -107,9 +107,12 @@ from .classify import (
 )
 
 # Strings under these elements are never bare text to translate: code,
-# templates and ruby readings. `title`, `textarea` and `option` are not here;
-# their text is visible and stays collected.
-NON_CONTENT_STRING_PARENTS = frozenset(["script", "style", "template", "rt", "rp"])
+# templates, ruby readings and MathML identifiers, operators and numbers.
+# `title`, `textarea`, `option` and MathML `mtext` are not here; their text
+# is prose and stays collected.
+NON_CONTENT_STRING_PARENTS = frozenset(
+    ["script", "style", "template", "rt", "rp", "mi", "mo", "mn"]
+)
 
 # Every key-bearing CLI flag, and the environment variable it falls back to
 # when it is absent. The rerun line printed at a plan handoff is rebuilt from
@@ -3166,19 +3169,28 @@ class EPUBBookLoader(BaseBookLoader):
         tags is translated with its tag already. Only plain strings outside
         the candidate tags, excluded tags and non-content elements are kept.
         A prefixed document's `<h:style>` holds a plain string, so the
-        ancestor check compares local names.
+        ancestor check compares local names, and an excluded tag given with
+        its prefix (`h:pre`) matches its full name.
         """
         claimed = {id(tag) for tag in candidate_tags}
-        skipped = NON_CONTENT_STRING_PARENTS.union(self._exclude_tags_tuple())
+        excluded = set(self._exclude_tags_tuple())
+        skipped = NON_CONTENT_STRING_PARENTS.union(excluded)
+
+        def outside_skipped(node):
+            for parent in node.parents:
+                name = parent.name or ""
+                if (
+                    id(parent) in claimed
+                    or name in excluded
+                    or name.rsplit(":", 1)[-1] in skipped
+                ):
+                    return False
+            return True
+
         return [
             node
             for node in soup.find_all(string=True)
-            if type(node) is NavigableString
-            and not any(
-                id(parent) in claimed
-                or (parent.name or "").rsplit(":", 1)[-1] in skipped
-                for parent in node.parents
-            )
+            if type(node) is NavigableString and outside_skipped(node)
         ]
 
     def _translation_source_text(self, node):

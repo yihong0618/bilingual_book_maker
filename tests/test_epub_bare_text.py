@@ -11,7 +11,7 @@ from ebooklib import epub
 from lxml import etree
 from book_maker.loader.helper import EPUBBookLoaderHelper
 from test_epub_loader_correctness import (
-    InterruptingModel,
+    RecordingModel,
     _make_loader,
     _replace_epub_member,
     _write_epub_with_custom_nav,
@@ -358,12 +358,22 @@ def test_real_chapters_translate_only_their_bare_text(tmp_path, monkeypatch, wor
     _assert_real_chapters_translated(output, loader.translate_model.calls)
 
 
+class InterruptAfterBareTextModel(RecordingModel):
+    def translate(self, text):
+        if len(self.calls) == 2:
+            raise KeyboardInterrupt
+        return super().translate(text)
+
+
 def test_real_chapters_resume_without_resending_bare_text(tmp_path, monkeypatch):
-    loader, _ = _real_chapter_loader(tmp_path, monkeypatch, model=InterruptingModel)
+    loader, _ = _real_chapter_loader(
+        tmp_path, monkeypatch, model=InterruptAfterBareTextModel
+    )
     with pytest.raises(SystemExit):
         loader.make_bilingual_book()
     first = list(loader.translate_model.calls)
-    assert len(first) == 1
+    # the checkpoint holds the paragraph and one bare string
+    assert first == ["Paragraph bold text", "Doc title"]
 
     resumed, output = _real_chapter_loader(tmp_path, monkeypatch, resume=True)
     resumed.make_bilingual_book()
@@ -377,18 +387,29 @@ def test_bare_text_collector_skips_claimed_excluded_and_code_strings(
     # retranslate's collector has no plan to test it through; it calls the
     # same helper as the plan.
     loader, _ = _make_loader(tmp_path, monkeypatch, [("one.xhtml", ["Source"])])
-    for markup in (REAL_CHAPTER, PREFIXED_CHAPTER):
+
+    def bare_strings(markup, exclude="sup,code"):
+        loader.exclude_translate_tags = exclude
         soup = BeautifulSoup(markup, "html.parser")
-        paragraphs = soup.find_all("p")
+        nodes = loader._bare_text_nodes(soup, soup.find_all("p"))
+        return [str(node).strip() for node in nodes if str(node).strip()]
 
-        strings = [
-            str(node).strip()
-            for node in loader._bare_text_nodes(soup, paragraphs)
-            if str(node).strip()
-        ]
-
-        assert set(strings) <= set(REAL_CHAPTER_TEXTS)
-        assert "Paragraph " not in strings
+    assert bare_strings(REAL_CHAPTER) == [
+        "Doc title",
+        "Loose body text",
+        "Loose div text",
+        "漢",
+    ]
+    assert bare_strings(PREFIXED_CHAPTER) == ["Prefixed loose text"]
+    assert bare_strings(
+        '<h:body xmlns:h="http://www.w3.org/1999/xhtml">Loose'
+        "<h:pre>kept as is</h:pre></h:body>",
+        exclude="h:pre",
+    ) == ["Loose"]
+    # MathML symbols stay as they are; <mtext> prose is still translated
+    assert bare_strings(
+        "<math><mi>speed</mi><mo>×</mo><mn>2</mn><mtext>per hour</mtext></math>"
+    ) == ["per hour"]
 
 
 def test_real_epub_with_bare_text_adds_no_duplicate_requests(tmp_path, monkeypatch):
@@ -404,10 +425,12 @@ def test_real_epub_with_bare_text_adds_no_duplicate_requests(tmp_path, monkeypat
         assert output.exists()
         runs[flag] = loader.translate_model.calls
 
-    # bare text adds the headings, verse and titles outside <p>, and never
-    # sends a paragraph's text a second time as loose strings
-    assert set(runs[False]) <= set(runs[True])
-    assert sum(map(len, runs[True])) < 1.1 * sum(map(len, runs[False]))
+    # bare text keeps every paragraph request, adds the headings, verse and
+    # titles outside <p>, and never sends a paragraph's text a second time
     paragraph_texts = Counter(runs[False])
-    extra = Counter(runs[True]) - paragraph_texts
+    with_bare_text = Counter(runs[True])
+    assert with_bare_text >= paragraph_texts
+    extra = with_bare_text - paragraph_texts
+    assert "Beasts of England, beasts of Ireland," in extra
     assert not set(extra) & set(paragraph_texts)
+    assert sum(map(len, runs[True])) < 1.1 * sum(map(len, runs[False]))
