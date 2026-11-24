@@ -92,7 +92,10 @@ def _require_corpus():
     if not BOOKS:
         pytest.fail(
             f"the acceptance corpus is missing: expected 45 EPUBs in {CORPUS}. "
-            f"Download the IDPF epub3-samples 20230704 release into it."
+            f"Download the IDPF epub3-samples 20230704 release into it "
+            f"(gh release download 20230704 -R IDPF/epub3-samples -p '*.epub' "
+            f"-D epub-sample) and check it against "
+            f"tests/epub3-samples-20230704.sha256; CI's epub-corpus job does both."
         )
 
 
