@@ -17,6 +17,7 @@ from hashlib import sha256
 from pathlib import Path
 import traceback
 from threading import Lock
+from urllib.parse import quote
 
 from bs4 import BeautifulSoup as bs
 from bs4 import Tag
@@ -51,6 +52,7 @@ from .helper import (
     not_trans,
     package_prefixes,
     read_package,
+    reading_start,
     rebase_ncx_srcs,
     resolve_ncx_toc,
     shorter_result_link,
@@ -762,12 +764,25 @@ class EPUBBookLoader(BaseBookLoader):
             isinstance(item, epub.EpubNav) for item in book.get_items()
         )
         toc = book.toc
+        # EbookLib reads an NCX with an empty <navMap/> as one Link with no
+        # target, not as an empty list.
+        if isinstance(toc, epub.Link):
+            toc = [toc] if toc.href else []
         if not source_has_nav:
             ncx_path = read_package(
                 book_path or getattr(self, "epub_name", None)
             ).ncx_path
             if ncx_path:
                 toc = resolve_ncx_toc(toc, ncx_path)
+            # The navigation generated below and the NCX are both written
+            # from this list, and neither may be empty (epubcheck rejects
+            # both). With nothing to carry, the book's title points at the
+            # start of the reading order.
+            # file_name is the decoded archive name; a link is a URI.
+            start = None if toc else reading_start(book, new_book.spine)
+            if start is not None:
+                href = quote(start.file_name)
+                toc = [epub.Link(href, new_book.title or start.file_name)]
         new_book.toc = backfill_toc_hrefs(self._fix_toc_uids(toc))
 
         # EbookLib writes an EPUB 3 package even for an EPUB 2 source.

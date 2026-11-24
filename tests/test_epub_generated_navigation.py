@@ -3,11 +3,12 @@
 from io import BytesIO
 from pathlib import PurePosixPath
 import posixpath
+import re
 import zipfile
 import pytest
 from bs4 import BeautifulSoup
 from ebooklib import epub
-from book_maker.loader.helper import rebase_ncx_srcs, resolve_ncx_toc
+from book_maker.loader.helper import reading_start, rebase_ncx_srcs, resolve_ncx_toc
 from test_epubcheck import PRISTINE_LOAD_SPINE, _assert_valid, epubcheck
 from test_epub_loader_correctness import _make_loader, _replace_epub_member
 
@@ -278,3 +279,135 @@ def test_generated_navigation_uses_the_package_selected_by_the_reader(
     with zipfile.ZipFile(output) as archive:
         nav = BeautifulSoup(archive.read("EPUB/nav.xhtml"), "xml")
     assert nav.find("a")["href"] == "B/chapter.xhtml#one"
+
+
+def _empty_toc_source(
+    tmp_path,
+    monkeypatch,
+    ncx_name=None,
+    with_nav=False,
+    chapter_name="Text/chapter.xhtml",
+):
+    """A source with an empty table of contents and the reading start second.
+
+    The first manifest document is a non-linear cover. With an NCX, EbookLib
+    writes the empty TOC as `<navMap/>`, which it reads back as one Link with
+    no target; with neither an NCX nor a nav it reads an empty list.
+    """
+    monkeypatch.setattr(epub.EpubReader, "_load_spine", PRISTINE_LOAD_SPINE)
+    source = tmp_path / "book.epub"
+    book = epub.EpubBook()
+    book.set_identifier("empty-toc-fixture")
+    book.set_title("Empty contents")
+    book.set_language("en")
+    documents = []
+    # Non-linear content must be reachable (OPF-096), so the chapter links
+    # to the cover.
+    for name, text, body in [
+        ("Text/cover.xhtml", "Cover", "Cover."),
+        (chapter_name, "Text", 'Text. <a href="cover.xhtml">Cover</a>'),
+    ]:
+        document = epub.EpubHtml(title=text, file_name=name, lang="en")
+        document.content = (
+            '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>'
+            f"{text}</title></head><body><p>{body}</p></body></html>"
+        )
+        book.add_item(document)
+        documents.append(document)
+    if ncx_name:
+        book.add_item(epub.EpubNcx(file_name=ncx_name))
+    if with_nav:
+        book.add_item(epub.EpubNav())
+    book.toc = []
+    book.spine = [(documents[0], "no"), documents[1]]
+    epub.write_epub(str(source), book)
+    if not ncx_name:
+        # EbookLib writes <spine toc="ncx"> whatever the book holds; without
+        # an NCX that reference dangles and the read goes through recovery.
+        with zipfile.ZipFile(source) as archive:
+            package = archive.read("EPUB/content.opf").decode()
+        _replace_epub_member(
+            source, "EPUB/content.opf", re.sub(r' toc="[^"]*"', "", package, count=1)
+        )
+    loader, output = _make_loader(tmp_path, monkeypatch, [])
+    loader.disclose = False
+    loader.quiet = True
+    return loader, output
+
+
+def _navigation_targets(output, ncx_name):
+    with zipfile.ZipFile(output) as archive:
+        nav = BeautifulSoup(archive.read("EPUB/nav.xhtml"), "xml")
+        ncx = BeautifulSoup(archive.read("EPUB/" + ncx_name), "xml")
+    links = [(a["href"], a.get_text()) for a in nav.find_all("a")]
+    points = [
+        (point.find("content")["src"], point.find("text").get_text())
+        for point in ncx.find_all("navPoint")
+    ]
+    return links, points
+
+
+@pytest.mark.parametrize(
+    "chapter_name,href",
+    [
+        ("Text/chapter.xhtml", "Text/chapter.xhtml"),
+        ("Text/My chapter#1.xhtml", "Text/My%20chapter%231.xhtml"),
+    ],
+)
+def test_an_empty_navmap_gets_one_entry_at_the_reading_start(
+    tmp_path, monkeypatch, chapter_name, href
+):
+    loader, output = _empty_toc_source(
+        tmp_path, monkeypatch, "Navigation/toc.ncx", chapter_name=chapter_name
+    )
+    assert isinstance(loader.origin_book.toc, epub.Link)
+
+    loader.make_bilingual_book()
+
+    links, points = _navigation_targets(output, "Navigation/toc.ncx")
+    assert links == [(href, "Empty contents")]
+    assert points == [("../" + href, "Empty contents")]
+
+
+def test_a_book_without_ncx_or_nav_gets_one_entry(tmp_path, monkeypatch):
+    loader, output = _empty_toc_source(tmp_path, monkeypatch)
+    assert loader.origin_book.toc == []
+    assert epub.EpubReader._load_spine is PRISTINE_LOAD_SPINE  # no read recovery
+
+    loader.make_bilingual_book()
+
+    with zipfile.ZipFile(output) as archive:
+        nav = BeautifulSoup(archive.read("EPUB/nav.xhtml"), "xml")
+    assert [a["href"] for a in nav.find_all("a")] == ["Text/chapter.xhtml"]
+
+
+def test_an_empty_imported_nav_is_not_given_an_entry(tmp_path, monkeypatch):
+    loader, output = _empty_toc_source(tmp_path, monkeypatch, "toc.ncx", with_nav=True)
+
+    loader.make_bilingual_book()
+
+    links, points = _navigation_targets(output, "toc.ncx")
+    assert links == [] and points == []
+
+
+def test_reading_start_skips_what_the_writer_marks_non_linear():
+    book = epub.EpubBook()
+    cover = epub.EpubHtml(uid="cover", file_name="cover.xhtml")
+    cover.is_linear = False
+    chapter = epub.EpubHtml(uid="chapter", file_name="chapter.xhtml")
+    style = epub.EpubItem(uid="style", file_name="style.css", media_type="text/css")
+    for item in (cover, chapter, style):
+        book.add_item(item)
+
+    assert reading_start(book, [cover, chapter]) is chapter
+    assert reading_start(book, [("cover", "yes"), ("chapter", "yes")]) is chapter
+    assert reading_start(book, [("missing", "yes"), style, ("chapter", "no")]) is None
+
+
+@pytest.mark.parametrize("ncx_name", ["Navigation/toc.ncx", None])
+def test_an_empty_table_of_contents_passes_epubcheck(
+    tmp_path, monkeypatch, epubcheck, ncx_name
+):
+    loader, output = _empty_toc_source(tmp_path, monkeypatch, ncx_name)
+    loader.make_bilingual_book()
+    _assert_valid(epubcheck, output, "an empty table of contents")
