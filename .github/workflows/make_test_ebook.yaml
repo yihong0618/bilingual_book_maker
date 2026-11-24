@@ -99,6 +99,75 @@ jobs:
               echo "::error::a docling contract test was skipped where docling is installed"; exit 1
             fi
 
+  # The acceptance gate: every one of the 45 IDPF epub3-samples books
+  # (release 20230704) must partition, classify and round-trip into a book
+  # epubcheck accepts (tests/test_corpus_epub_samples.py, marker `corpus`).
+  # The books are not in the repository: they are fetched from that GitHub
+  # release, checked against tests/epub3-samples-20230704.sha256 and cached.
+  # The tests themselves are offline (no model, no key). epubcheck 5.3.0 is
+  # the version the gate's pins were measured with; with it present the
+  # default suite's epubcheck tests run here too, which the testing job skips.
+  epub-corpus:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      OPENAI_API_KEY: ''
+      BBM_CAIYUN_API_KEY: ''
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: install the base requirements
+        run: pip install -r requirements.txt pytest
+
+      - name: cache the corpus and epubcheck
+        id: corpus-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            epub-sample
+            tools/epubcheck-5.3.0
+          key: epub-corpus-${{ hashFiles('tests/epub3-samples-20230704.sha256') }}-epubcheck-5.3.0
+
+      - name: fetch the corpus and epubcheck
+        if: steps.corpus-cache.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          retry() { n=0; until "$@"; do n=$((n+1)); [ "$n" -ge 3 ] && return 1; echo "attempt $n failed; retrying in $((n*20))s"; sleep $((n*20)); done; }
+          retry gh release download 20230704 -R IDPF/epub3-samples -p '*.epub' -D epub-sample --clobber
+          retry curl -sSfL -o "$RUNNER_TEMP/epubcheck.zip" https://github.com/w3c/epubcheck/releases/download/v5.3.0/epubcheck-5.3.0.zip
+          echo "6c07e68584b2e2ce2f89fe06e1246dfead3eb36b46b340e7d93524f29dcff6c5  $RUNNER_TEMP/epubcheck.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/epubcheck.zip" -d tools
+
+      # On a cache hit too: the cache is keyed by the manifest, not by what
+      # the files hold.
+      - name: verify the corpus and epubcheck
+        run: |
+          (cd epub-sample && sha256sum --strict -c ../tests/epub3-samples-20230704.sha256 --quiet)
+          test "$(ls epub-sample | wc -l)" -eq 45
+          test -f tools/epubcheck-5.3.0/epubcheck.jar
+
+      - name: the corpus gate (45 books)
+        run: python -m pytest -q -p no:cacheprovider -m corpus --durations=10 tests/test_corpus_epub_samples.py
+
+      # A skip of an epubcheck test here means the checker was not found,
+      # which is the one thing this job exists to provide.
+      - name: the default suite, with epubcheck
+        run: |
+            set -o pipefail
+            python -m pytest -q -p no:cacheprovider -rs --durations=10 | tee suite.log
+            if grep -q 'epubcheck was not found' suite.log; then
+              echo "::error::an epubcheck test was skipped where epubcheck is installed"; exit 1
+            fi
+
   testing:
     runs-on: ubuntu-latest
     steps:
