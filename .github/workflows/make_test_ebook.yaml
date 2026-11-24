@@ -131,14 +131,16 @@ jobs:
             pip install -r requirements.txt
             pip install pytest
 
+      # The epubcheck release zip is cached, not the unpacked folder: the
+      # zip is what the pinned digest describes.
       - name: cache the corpus and epubcheck
         id: corpus-cache
         uses: actions/cache@v6
         with:
           path: |
             epub-sample
-            tools/epubcheck-5.3.0
-          key: epub-corpus-${{ hashFiles('tests/epub3-samples-20230704.sha256') }}-epubcheck-5.3.0
+            tools/epubcheck-5.3.0.zip
+          key: epub-corpus-${{ hashFiles('tests/epub3-samples-20230704.sha256') }}-epubcheck-5.3.0-zip
 
       - name: fetch the corpus and epubcheck
         if: steps.corpus-cache.outputs.cache-hit != 'true'
@@ -147,16 +149,19 @@ jobs:
         run: |
           retry() { n=0; until "$@"; do n=$((n+1)); [ "$n" -ge 3 ] && return 1; echo "attempt $n failed; retrying in $((n*20))s"; sleep $((n*20)); done; }
           retry gh release download 20230704 -R IDPF/epub3-samples -p '*.epub' -D epub-sample --clobber
-          retry curl -sSfL -o "$RUNNER_TEMP/epubcheck.zip" https://github.com/w3c/epubcheck/releases/download/v5.3.0/epubcheck-5.3.0.zip
-          echo "6c07e68584b2e2ce2f89fe06e1246dfead3eb36b46b340e7d93524f29dcff6c5  $RUNNER_TEMP/epubcheck.zip" | sha256sum -c -
-          unzip -q "$RUNNER_TEMP/epubcheck.zip" -d tools
+          mkdir -p tools
+          retry curl -sSfL -o tools/epubcheck-5.3.0.zip https://github.com/w3c/epubcheck/releases/download/v5.3.0/epubcheck-5.3.0.zip
 
       # On a cache hit too: the cache is keyed by the manifest, not by what
-      # the files hold.
+      # the files hold. epubcheck is unpacked from the verified zip on every
+      # run, into a folder removed first.
       - name: verify the corpus and epubcheck
         run: |
           (cd epub-sample && sha256sum --strict -c ../tests/epub3-samples-20230704.sha256 --quiet)
           test "$(ls epub-sample | wc -l)" -eq 45
+          echo "6c07e68584b2e2ce2f89fe06e1246dfead3eb36b46b340e7d93524f29dcff6c5  tools/epubcheck-5.3.0.zip" | sha256sum --strict -c -
+          rm -rf tools/epubcheck-5.3.0
+          unzip -q tools/epubcheck-5.3.0.zip -d tools
           test -f tools/epubcheck-5.3.0/epubcheck.jar
 
       - name: the corpus gate (45 books)
