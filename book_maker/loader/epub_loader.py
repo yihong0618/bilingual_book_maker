@@ -106,9 +106,10 @@ from .classify import (
     mode_policy,
 )
 
-# Strings under these elements are never bare text to translate: code,
-# templates, ruby readings, MathML identifiers, operators and numbers, and
-# MathML annotations (the TeX or other source of an equation).
+# Strings under these elements are never bare text to translate: script
+# and style code, templates, ruby readings, MathML identifiers, operators
+# and numbers, and MathML annotations (the TeX or other source of an
+# equation).
 # `title`, `textarea`, `option` and MathML `mtext` are not here; their text
 # is prose and stays collected.
 NON_CONTENT_STRING_PARENTS = frozenset(
