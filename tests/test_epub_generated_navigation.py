@@ -1,18 +1,23 @@
 """Generate missing EPUB navigation while preserving targets and resources."""
 
-from copy import copy
 from io import BytesIO
 from pathlib import PurePosixPath
 import posixpath
-import unicodedata
 import zipfile
-from urllib.parse import unquote
 import pytest
 from bs4 import BeautifulSoup
 from ebooklib import epub
 from book_maker.loader.helper import rebase_ncx_srcs, resolve_ncx_toc
 from test_epubcheck import PRISTINE_LOAD_SPINE, _assert_valid, epubcheck
 from test_epub_loader_correctness import _make_loader, _replace_epub_member
+
+
+def _nav_items(package):
+    return [
+        item
+        for item in package.find_all("item")
+        if "nav" in (item.get("properties") or "").split()
+    ]
 
 
 @pytest.mark.parametrize("chapter_name", ["one.xhtml", "nav.xhtml"])
@@ -32,11 +37,7 @@ def test_missing_navigation_is_generated_without_overwriting_content(
             name for name in archive.namelist() if name.endswith(".opf")
         )
         package = BeautifulSoup(archive.read(package_name), "xml")
-        nav_items = [
-            item
-            for item in package.find_all("item")
-            if "nav" in (item.get("properties") or "").split()
-        ]
+        nav_items = _nav_items(package)
         assert len(nav_items) == 1
         nav_name = str(PurePosixPath(package_name).parent / nav_items[0]["href"])
         navigation = BeautifulSoup(archive.read(nav_name), "xml")
@@ -47,23 +48,9 @@ def test_missing_navigation_is_generated_without_overwriting_content(
     assert navigation.find("nav").find("a")["href"] == chapter_name
 
 
-def _canonicalize_epub_members(source, renames=None):
-    replacement = source.with_suffix(".canonical.epub")
-    with (
-        zipfile.ZipFile(source) as original,
-        zipfile.ZipFile(replacement, "w") as canonical,
-    ):
-        for info in original.infolist():
-            content = original.read(info.filename)
-            updated = copy(info)
-            updated.filename = posixpath.normpath(
-                (renames or {}).get(info.filename, info.filename)
-            )
-            canonical.writestr(updated, content)
-    replacement.replace(source)
-
-
-def _write_ncx_fixture(tmp_path, monkeypatch, chapter_name, ncx_name, title_id=None):
+def _write_ncx_fixture(
+    tmp_path, monkeypatch, chapter_name, ncx_name, title_id=None, with_nav=False
+):
     monkeypatch.setattr(epub.EpubReader, "_load_spine", PRISTINE_LOAD_SPINE)
     source = tmp_path / "book.epub"
     book = epub.EpubBook()
@@ -81,6 +68,8 @@ def _write_ncx_fixture(tmp_path, monkeypatch, chapter_name, ncx_name, title_id=N
     )
     book.add_item(chapter)
     book.add_item(epub.EpubNcx(file_name=ncx_name))
+    if with_nav:
+        book.add_item(epub.EpubNav())
     book.toc = [epub.Link(chapter_name + "#one", "Chapter", "chapter-link")]
     book.spine = [chapter]
     epub.write_epub(str(source), book)
@@ -90,10 +79,7 @@ def _write_ncx_fixture(tmp_path, monkeypatch, chapter_name, ncx_name, title_id=N
     # have installed its process-wide rebasing writer hook.
     raw = epub.EpubWriter(str(source), book)._get_ncx()
     _replace_epub_member(
-        source, "EPUB/" + ncx_name, rebase_ncx_srcs(raw, unquote(ncx_name)).decode()
-    )
-    _canonicalize_epub_members(
-        source, {"EPUB/" + ncx_name: "EPUB/" + unquote(ncx_name)}
+        source, "EPUB/" + ncx_name, rebase_ncx_srcs(raw, ncx_name).decode()
     )
     loader, output = _make_loader(tmp_path, monkeypatch, [])
     loader.disclose = False
@@ -107,8 +93,6 @@ def _write_ncx_fixture(tmp_path, monkeypatch, chapter_name, ncx_name, title_id=N
         ("chapter.xhtml", "nav"),
         ("Nav.xhtml", None),
         ("NAV-2.XHTML", "nav"),
-        ("nav.xhtml/chapter.xhtml", None),
-        ("NAV.XHTML/chapter.xhtml", None),
     ],
 )
 def test_generated_navigation_reserves_metadata_ids_and_case_equivalent_names(
@@ -120,69 +104,20 @@ def test_generated_navigation_reserves_metadata_ids_and_case_equivalent_names(
     loader.make_bilingual_book()
 
     with zipfile.ZipFile(output) as archive:
-        names = [unicodedata.normalize("NFC", n.casefold()) for n in archive.namelist()]
-        assert len(names) == len(set(names))
-        for name in names:
-            assert not any(other.startswith(name + "/") for other in names)
+        names = [name.casefold() for name in archive.namelist()]
         package = BeautifulSoup(archive.read("EPUB/content.opf"), "xml")
+    assert len(names) == len(set(names))
+    assert len(_nav_items(package)) == 1
     ids = [element["id"] for element in package.find_all(attrs={"id": True})]
     assert len(ids) == len(set(ids))
 
 
 @pytest.mark.parametrize(
-    "chapter_href",
-    [
-        "./nav.xhtml/chapter.xhtml",
-        "Text/../NAV.XHTML/chapter.xhtml",
-        "../EPUB/nav.xhtml/chapter.xhtml",
-        "../epub/nav.xhtml/chapter.xhtml",
-    ],
-)
-def test_generated_navigation_reserves_resolved_source_paths(
-    tmp_path, monkeypatch, chapter_href
-):
-    chapter_name = (
-        posixpath.basename(posixpath.dirname(chapter_href)) + "/chapter.xhtml"
-    )
-    loader, output = _write_ncx_fixture(tmp_path, monkeypatch, chapter_name, "toc.ncx")
-    source = tmp_path / "book.epub"
-    with zipfile.ZipFile(source) as archive:
-        package = archive.read("EPUB/content.opf").decode()
-        ncx = archive.read("EPUB/toc.ncx").decode()
-    _replace_epub_member(
-        source, "EPUB/content.opf", package.replace(chapter_name, chapter_href)
-    )
-    _replace_epub_member(
-        source, "EPUB/toc.ncx", ncx.replace(chapter_name, chapter_href)
-    )
-    target_member = posixpath.normpath("EPUB/" + chapter_href)
-    if target_member != "EPUB/" + chapter_name:
-        _canonicalize_epub_members(source, {"EPUB/" + chapter_name: target_member})
-    # Only the manifest uses the alternate spelling. The source ZIP member
-    # stays canonical, as a reading system resolves the manifest href.
-    loader, output = _make_loader(tmp_path, monkeypatch, [])
-    loader.disclose = False
-    loader.make_bilingual_book()
-
-    with zipfile.ZipFile(output) as archive:
-        names = [
-            unicodedata.normalize("NFC", posixpath.normpath(name).casefold())
-            for name in archive.namelist()
-        ]
-    assert target_member.casefold() in names
-    assert len(names) == len(set(names))
-    for name in names:
-        assert not any(other.startswith(name + "/") for other in names)
-
-
-@pytest.mark.parametrize(
     "ncx_name,chapter_name",
     [
+        ("toc.ncx", "Text/chapter.xhtml"),
         ("Text/toc.ncx", "Text/chapter.xhtml"),
         ("Navigation/toc.ncx", "Text/chapter.xhtml"),
-        ("toc.ncx", "../Text/chapter.xhtml"),
-        ("Navigation/toc.ncx", "../Text/chapter.xhtml"),
-        ("Navigation/%2e%2e/toc.ncx", "../EPUB/chapter.xhtml"),
     ],
 )
 def test_generated_navigation_resolves_the_selected_ncx_directory(
@@ -195,12 +130,35 @@ def test_generated_navigation_resolves_the_selected_ncx_directory(
 
     with zipfile.ZipFile(output) as archive:
         nav = BeautifulSoup(archive.read("EPUB/nav.xhtml"), "xml")
-        ncx = BeautifulSoup(archive.read("EPUB/" + unquote(ncx_name)), "xml")
+        ncx = BeautifulSoup(archive.read("EPUB/" + ncx_name), "xml")
     assert nav.find("a")["href"] == chapter_name + "#one"
     assert ncx.find("content")["src"] == (
-        posixpath.relpath(chapter_name, posixpath.dirname(unquote(ncx_name))) + "#one"
+        posixpath.relpath(chapter_name, posixpath.dirname(ncx_name)) + "#one"
     )
     assert loader.origin_book.toc[0].href == original_href
+
+
+def test_source_navigation_is_kept_and_not_rebased(tmp_path, monkeypatch):
+    # With a nav in the source, EbookLib reads the TOC from it, already
+    # package-relative: nothing is generated and nothing is resolved twice.
+    loader, output = _write_ncx_fixture(
+        tmp_path,
+        monkeypatch,
+        "Text/chapter.xhtml",
+        "Navigation/toc.ncx",
+        with_nav=True,
+    )
+
+    loader.make_bilingual_book()
+
+    with zipfile.ZipFile(output) as archive:
+        package = BeautifulSoup(archive.read("EPUB/content.opf"), "xml")
+        nav_items = _nav_items(package)
+        assert len(nav_items) == 1
+        nav = BeautifulSoup(archive.read("EPUB/" + nav_items[0]["href"]), "xml")
+        ncx = BeautifulSoup(archive.read("EPUB/Navigation/toc.ncx"), "xml")
+    assert nav.find("a")["href"] == "Text/chapter.xhtml#one"
+    assert ncx.find("content")["src"] == "../Text/chapter.xhtml#one"
 
 
 def test_generated_navigation_edge_cases_pass_epubcheck(
@@ -228,20 +186,7 @@ def test_generated_navigation_edge_cases_pass_epubcheck(
         ),
         ("Navigation/toc.ncx", "//example.org/a#one", "//example.org/a#one"),
         ("Navigation/toc.ncx", "/a.xhtml#one", "/a.xhtml#one"),
-        (
-            "Navigation/%2e%2e/toc.ncx",
-            "../EPUB/chapter.xhtml#one",
-            "../EPUB/chapter.xhtml#one",
-        ),
-        ("Navigation/%2e/toc.ncx", "../a.xhtml", "a.xhtml"),
-        ("Navigation/%2E./toc.ncx", "../EPUB/a.xhtml", "../EPUB/a.xhtml"),
-        ("Navigation/toc.ncx", "%2e%2e/../Text/a.xhtml#one", "../Text/a.xhtml#one"),
-        (
-            "Nav%23Box/toc.ncx",
-            "part%2Ftwo.xhtml?u=a%23b#one",
-            "Nav%23Box/part%2Ftwo.xhtml?u=a%23b#one",
-        ),
-        ("Navigation/toc.ncx", "%252e%252e/a.xhtml", "Navigation/%252e%252e/a.xhtml"),
+        ("My%20Book/toc.ncx", "ch%201.xhtml#one", "My%20Book/ch%201.xhtml#one"),
     ],
 )
 def test_ncx_resolution_preserves_parent_paths_and_url_parts(ncx_name, href, expected):

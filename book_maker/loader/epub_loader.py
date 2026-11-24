@@ -17,7 +17,6 @@ from hashlib import sha256
 from pathlib import Path
 import traceback
 from threading import Lock
-from unicodedata import normalize
 
 from bs4 import BeautifulSoup as bs
 from bs4 import Tag
@@ -770,30 +769,15 @@ class EPUBBookLoader(BaseBookLoader):
         # EbookLib writes an EPUB 3 package even for an EPUB 2 source.
         # Its legacy NCX is not the navigation document EPUB 3 requires.
         # Imported navigation is carried by the item loop; generate one
-        # only when the source has none.
+        # only when the source has none. The source items are not in
+        # new_book yet, so their ids and names are reserved here; names
+        # compare case-blind, as on the file systems a book is unpacked to.
         if not source_has_nav:
-            used_ids = taken_ids(new_book) | {
-                item.get_id() for item in book.get_items()
-            }
-            # Resolve paths from the output package directory before the
-            # EPUB ZIP case-folding rule, then compare package-relative
-            # names. Even ../EPUB/nav.xhtml aliases this package's nav.
-            package_dir = normalize("NFC", new_book.FOLDER_NAME.casefold())
+            used_ids = taken_ids(book) | taken_ids(new_book)
             used_names = {
-                posixpath.relpath(
-                    normalize(
-                        "NFC",
-                        posixpath.normpath(
-                            posixpath.join(package_dir, name)
-                        ).casefold(),
-                    ),
-                    package_dir,
-                )
+                posixpath.normpath(name).casefold()
                 for name in taken_file_names(book) | taken_file_names(new_book)
             }
-            # Candidates live at the package root. A source subdirectory
-            # must not become a file of the same name when extracted.
-            used_names.update({name.split("/", 1)[0] for name in used_names})
             nav_id, nav_name = allocate_names(
                 new_book, "nav", ".xhtml", "nav", ids=used_ids, files=used_names
             )

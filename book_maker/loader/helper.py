@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import logging
 import uuid
 from copy import copy
-from urllib.parse import unquote, urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from bs4.element import Tag
 from ebooklib import epub
@@ -272,16 +272,6 @@ def rebase_ncx_srcs(ncx_bytes, ncx_path):
     return etree.tostring(tree, xml_declaration=True, encoding="utf-8")
 
 
-def _decode_uri_dot_segments(path):
-    """Recognize escaped . and .. without decoding reserved URL characters."""
-    segments = path.split("/")
-    for index, segment in enumerate(segments):
-        decoded = unquote(segment)
-        if decoded in {".", ".."}:
-            segments[index] = decoded
-    return "/".join(segments)
-
-
 def resolve_ncx_toc(toc, ncx_path):
     """Copy an imported NCX TOC into OPF-relative coordinates.
 
@@ -296,15 +286,14 @@ def resolve_ncx_toc(toc, ncx_path):
         if copied.href:
             target = urlsplit(copied.href)
             if not (target.scheme or target.netloc or target.path.startswith("/")):
-                # urljoin with a relative base discards leading ../. NCX
-                # links can legitimately leave the package directory.
-                base = _decode_uri_dot_segments(urlsplit(ncx_path).path)
-                target_path = _decode_uri_dot_segments(target.path)
+                # posixpath, not urljoin: urljoin with a relative base drops
+                # a leading ../, and an NCX link may leave the NCX's folder.
+                base = urlsplit(ncx_path).path
                 path = (
                     posixpath.normpath(
-                        posixpath.join(posixpath.dirname(base), target_path)
+                        posixpath.join(posixpath.dirname(base), target.path)
                     )
-                    if target_path
+                    if target.path
                     else posixpath.normpath(base)
                 )
                 copied.href = urlunsplit(target._replace(path=path))
