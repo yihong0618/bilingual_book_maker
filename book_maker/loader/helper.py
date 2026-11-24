@@ -345,9 +345,10 @@ def reading_start(book, spine):
     """
     for entry in spine:
         ref, linear = entry if isinstance(entry, tuple) else (entry, "yes")
-        if linear == "no":
-            continue
         item = book.get_item_with_id(ref) if isinstance(ref, str) else ref
+        # EbookLib writes linear="no" for either flag.
+        if linear == "no" or not getattr(item, "is_linear", True):
+            continue
         if getattr(item, "media_type", None) == "application/xhtml+xml":
             return item
     return None
