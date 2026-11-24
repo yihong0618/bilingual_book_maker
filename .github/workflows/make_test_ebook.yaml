@@ -124,8 +124,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      # Two commands: requirements.txt is hash-pinned, and pip refuses an
+      # unpinned name on the same command line.
       - name: install the base requirements
-        run: pip install -r requirements.txt pytest
+        run: |
+            pip install -r requirements.txt
+            pip install pytest
 
       - name: cache the corpus and epubcheck
         id: corpus-cache
