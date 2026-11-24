@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import pickle
+import posixpath
 import re
 import shlex
 import string
@@ -49,12 +50,15 @@ from .helper import (
     make_tag,
     not_trans,
     package_prefixes,
+    read_package,
     rebase_ncx_srcs,
+    resolve_ncx_toc,
     shorter_result_link,
     strip_duplicate_ids,
     translate_list_or_singles,
 )
 from .disclosure import (
+    allocate_names,
     credit_name,
     entry_is_our_colophon,
     is_calibre_metadata,
@@ -67,6 +71,8 @@ from .disclosure import (
     stamp_disclosure,
     strip_prior_credit,
     tool_contributor_ids,
+    taken_file_names,
+    taken_ids,
 )
 from .font_obfuscation import deobfuscate_fonts, reobfuscate_written_epub
 from .rights import DRM_MESSAGE, check_epub
@@ -523,7 +529,9 @@ class EPUBBookLoader(BaseBookLoader):
             or all(char in string.punctuation for char in text)
         )
 
-    def _make_new_book(self, book):
+    def _make_new_book(self, book, book_path=None):
+        """`book_path` is the file `book` was read from, when that is not
+        the source (--retranslate rebuilds a previous output)."""
         new_book = epub.EpubBook()
         # The one place every route passes through with the *source* in
         # hand, and the only moment a previous run's credit line can be
@@ -750,7 +758,36 @@ class EPUBBookLoader(BaseBookLoader):
             if not (isinstance(entry, tuple) and not entry[0])
             and not entry_is_our_colophon(book, entry)
         ]
-        new_book.toc = backfill_toc_hrefs(self._fix_toc_uids(book.toc))
+        source_has_nav = any(
+            isinstance(item, epub.EpubNav) for item in book.get_items()
+        )
+        toc = book.toc
+        if not source_has_nav:
+            ncx_path = read_package(
+                book_path or getattr(self, "epub_name", None)
+            ).ncx_path
+            if ncx_path:
+                toc = resolve_ncx_toc(toc, ncx_path)
+        new_book.toc = backfill_toc_hrefs(self._fix_toc_uids(toc))
+
+        # EbookLib writes an EPUB 3 package even for an EPUB 2 source.
+        # Its legacy NCX is not the navigation document EPUB 3 requires.
+        # Imported navigation is carried by the item loop; generate one
+        # only when the source has none. The source items are not in
+        # new_book yet, so their ids and names are reserved here; names
+        # compare case-blind, as on the file systems a book is unpacked to.
+        if not source_has_nav:
+            used_ids = taken_ids(book) | taken_ids(new_book)
+            used_names = {
+                posixpath.normpath(name).casefold()
+                for name in taken_file_names(book) | taken_file_names(new_book)
+            }
+            nav_id, nav_name = allocate_names(
+                new_book, "nav", ".xhtml", "nav", ids=used_ids, files=used_names
+            )
+            new_book.add_item(
+                epub.EpubNav(uid=nav_id, file_name=nav_name, title=new_book.title)
+            )
 
         # The disclosure itself is *not* added here. It names the model the
         # run used, and with --model_list that is not settled until the last
@@ -3046,7 +3083,7 @@ class EPUBBookLoader(BaseBookLoader):
             ].file_name
             print(f"auto find fixname: {fixname}")
 
-        new_book = self._make_new_book(complete_book)
+        new_book = self._make_new_book(complete_book, complete_book_name)
 
         complete_item = self.get_item(complete_book, fixname)
         if complete_item is None:
