@@ -1,6 +1,9 @@
 """Bare-text translation preserves EPUB markup across execution paths."""
 
+from collections import Counter
 from copy import copy
+from pathlib import Path
+import shutil
 import zipfile
 import pytest
 from bs4 import BeautifulSoup
@@ -8,6 +11,7 @@ from ebooklib import epub
 from lxml import etree
 from book_maker.loader.helper import EPUBBookLoaderHelper
 from test_epub_loader_correctness import (
+    InterruptingModel,
     _make_loader,
     _replace_epub_member,
     _write_epub_with_custom_nav,
@@ -264,3 +268,146 @@ def test_worker_bare_text_wrapper_keeps_the_xhtml_namespace(
     assert translation is not None
     assert translation.text == "<T>Source</T>"
     assert all(etree.QName(element).namespace == namespace for element in root.iter())
+
+
+# A chapter shaped like a real XHTML file: every one starts with an XML
+# declaration, and `find_all(string=True)` returns it, the DOCTYPE, the
+# comment and the <style>/<script> code as NavigableString subclasses.
+REAL_CHAPTER = (
+    '<?xml version="1.0" encoding="utf-8"?>\n'
+    "<!DOCTYPE html>\n"
+    '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Doc title</title>'
+    "<!-- source comment --><style>p { color: red; }</style>"
+    "<script>var x = 1;</script></head>"
+    "<body>Loose body text<p>Paragraph <b>bold</b> text</p>"
+    "<div>Loose div text<code>raw code</code></div>"
+    "<ruby>漢<rt>kan</rt></ruby></body></html>"
+)
+# Under html.parser a prefixed document's <h:style> holds a plain string.
+PREFIXED_CHAPTER = (
+    '<?xml version="1.0" encoding="utf-8"?>\n'
+    '<h:html xmlns:h="http://www.w3.org/1999/xhtml"><h:head><h:title/>'
+    "<h:style>h|p { color: red; }</h:style><h:script>var y = 2;</h:script>"
+    "</h:head><h:body>Prefixed loose text</h:body></h:html>"
+)
+REAL_CHAPTER_TEXTS = [
+    "Doc title",
+    "Loose body text",
+    "Paragraph bold text",
+    "Loose div text",
+    "漢",
+    "Prefixed loose text",
+]
+XML_DECLARATION = '<?xml version="1.0" encoding="utf-8"?>'
+UNTOUCHED = {
+    "one.xhtml": [
+        XML_DECLARATION,
+        "<!DOCTYPE html>",
+        "<!-- source comment -->",
+        "<style>p { color: red; }</style>",
+        "<script>var x = 1;</script>",
+        "<code>raw code</code>",
+        "<rt>kan</rt>",
+    ],
+    "two.xhtml": [
+        XML_DECLARATION,
+        "<h:style>h|p { color: red; }</h:style>",
+        "<h:script>var y = 2;</h:script>",
+    ],
+}
+
+
+def _real_chapter_loader(tmp_path, monkeypatch, **kwargs):
+    chapters = [("one.xhtml", ["Source"]), ("two.xhtml", ["Source"])]
+    loader, output = _make_loader(tmp_path, monkeypatch, chapters, **kwargs)
+    source = tmp_path / "book.epub"
+    _replace_epub_member(source, "EPUB/one.xhtml", REAL_CHAPTER)
+    _replace_epub_member(source, "EPUB/two.xhtml", PREFIXED_CHAPTER)
+    # the loader read the book before the members were replaced
+    loader, output = _make_loader(tmp_path, monkeypatch, chapters, **kwargs)
+    loader.allow_navigable_strings = True
+    loader.disclose = False
+    return loader, output
+
+
+def _assert_real_chapters_translated(output, calls):
+    assert sorted(calls) == sorted(REAL_CHAPTER_TEXTS)
+    sent = "\n".join(calls)
+    for fragment in ("xml version", "DOCTYPE", "comment", "color", "var ", "kan"):
+        assert fragment not in sent
+    with zipfile.ZipFile(output) as archive:
+        documents = {
+            name: archive.read(f"EPUB/{name}").decode("utf-8") for name in UNTOUCHED
+        }
+    for name, fragments in UNTOUCHED.items():
+        for fragment in fragments:
+            assert documents[name].count(fragment) == 1, (name, fragment)
+    translated = "".join(documents.values())
+    for text in REAL_CHAPTER_TEXTS:
+        assert translated.count(f"&lt;T&gt;{text}&lt;/T&gt;") == 1, text
+
+
+@pytest.mark.parametrize("workers", [1, 2])
+def test_real_chapters_translate_only_their_bare_text(tmp_path, monkeypatch, workers):
+    loader, output = _real_chapter_loader(
+        tmp_path, monkeypatch, parallel_workers=workers
+    )
+
+    loader.make_bilingual_book()
+
+    _assert_real_chapters_translated(output, loader.translate_model.calls)
+
+
+def test_real_chapters_resume_without_resending_bare_text(tmp_path, monkeypatch):
+    loader, _ = _real_chapter_loader(tmp_path, monkeypatch, model=InterruptingModel)
+    with pytest.raises(SystemExit):
+        loader.make_bilingual_book()
+    first = list(loader.translate_model.calls)
+    assert len(first) == 1
+
+    resumed, output = _real_chapter_loader(tmp_path, monkeypatch, resume=True)
+    resumed.make_bilingual_book()
+
+    _assert_real_chapters_translated(output, first + resumed.translate_model.calls)
+
+
+def test_bare_text_collector_skips_claimed_excluded_and_code_strings(
+    tmp_path, monkeypatch
+):
+    # retranslate's collector has no plan to test it through; it calls the
+    # same helper as the plan.
+    loader, _ = _make_loader(tmp_path, monkeypatch, [("one.xhtml", ["Source"])])
+    for markup in (REAL_CHAPTER, PREFIXED_CHAPTER):
+        soup = BeautifulSoup(markup, "html.parser")
+        paragraphs = soup.find_all("p")
+
+        strings = [
+            str(node).strip()
+            for node in loader._bare_text_nodes(soup, paragraphs)
+            if str(node).strip()
+        ]
+
+        assert set(strings) <= set(REAL_CHAPTER_TEXTS)
+        assert "Paragraph " not in strings
+
+
+def test_real_epub_with_bare_text_adds_no_duplicate_requests(tmp_path, monkeypatch):
+    book = Path(__file__).resolve().parent.parent / "test_books" / "animal_farm.epub"
+    runs = {}
+    for flag in (False, True):
+        run_dir = tmp_path / str(flag)
+        run_dir.mkdir()
+        shutil.copy(book, run_dir / "book.epub")
+        loader, output = _make_loader(run_dir, monkeypatch, [])
+        loader.allow_navigable_strings = flag
+        loader.make_bilingual_book()
+        assert output.exists()
+        runs[flag] = loader.translate_model.calls
+
+    # bare text adds the headings, verse and titles outside <p>, and never
+    # sends a paragraph's text a second time as loose strings
+    assert set(runs[False]) <= set(runs[True])
+    assert sum(map(len, runs[True])) < 1.1 * sum(map(len, runs[False]))
+    paragraph_texts = Counter(runs[False])
+    extra = Counter(runs[True]) - paragraph_texts
+    assert not set(extra) & set(paragraph_texts)
