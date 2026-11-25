@@ -383,7 +383,7 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
   - 你也可以用环境以下环境变量来配置 `system` 和 `user` 角色 prompt：`BBM_CHATGPTAPI_USER_MSG_TEMPLATE` 和 `BBM_CHATGPTAPI_SYS_MSG`。
   该参数可以是提示模板字符串，也可以是模板 `.txt` 文件的路径。
 
-  - 示例 JSON 文件可以在 [./prompt_template.json](./prompt_template.json) 找到。
+  - 示例 JSON 文件可以在 [./prompt_template.json](./prompt_template.json) 找到。不传 `--prompt` 时，openai 格式、Claude 和 Gemini 路线默认发送的就是这个文件里的 `system` 和 `user`。
 
 - `--batch_size`
 
