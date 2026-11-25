@@ -285,7 +285,10 @@ jobs:
         run: docker run --rm --entrypoint pandoc "$IMAGE" --version | sed -n 1p
 
       # A two-page PDF written by the tests' own helper (standard library
-      # only), translated over the free Google route on the CPU.
+      # only), translated on the CPU by the suite's fixed stand-in translator
+      # (tests/ci_fake_make_book.py, with tests/ mounted read-only; the code
+      # that runs is the image's own book_maker). No translation service
+      # decides this result: the free Google route used to time out here.
       - name: --to-epub
         if: matrix.target != 'core'
         run: |
@@ -308,11 +311,14 @@ jobs:
           EOF
           docker run --rm \
             -v "$book":/book \
+            -v "$PWD/tests":/app/tests:ro \
             -v bbm-models:/root/.cache \
+            --entrypoint python \
             "$IMAGE" \
+            tests/ci_fake_make_book.py \
             --book_name /book/two.pdf \
             --to-epub \
-            --api_format google \
+            --api_format faketest \
             --language zh-hans \
             --test \
             --test_num 2 \
@@ -326,5 +332,6 @@ jobs:
           with zipfile.ZipFile(sys.argv[1]) as epub:
               pages = [epub.read(n).decode() for n in epub.namelist() if n.endswith(".xhtml")]
           assert any('class="bbm-translation"' in page for page in pages), "no translation in the EPUB"
+          assert any("译:" in page for page in pages), "the stand-in translated nothing"
           print("translation blocks:", sum(page.count('class="bbm-translation"') for page in pages))
           EOF
