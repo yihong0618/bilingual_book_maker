@@ -68,7 +68,9 @@ def test_typing_a_sidecar_flag_does_not_change_the_identity():
 
 def test_the_identity_holds_only_what_differs_from_the_defaults():
     names = _names(option_identity(parse_bbm_options(COMMAND)))
-    assert names == {"model", "language", "test"}
+    # plus the one entry written whatever was typed: the version of the
+    # defaults the run translates under (`IDENTITY_VERSION`)
+    assert names == {"model", "language", "test", "identity_version"}
 
 
 def test_a_default_typed_out_is_the_same_run():

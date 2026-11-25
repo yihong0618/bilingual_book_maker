@@ -248,4 +248,4 @@ def test_an_unknown_provider_is_refused_as_the_run_would(configs):
 def test_without_a_provider_nothing_is_resolved(configs):
     options = parse_bbm_options(["--model", "gpt-5.6-luna", "--language", "ja"])
     names = {name for name, _ in option_identity(options)}
-    assert names == {"model", "language"}
+    assert names == {"model", "language", "identity_version"}

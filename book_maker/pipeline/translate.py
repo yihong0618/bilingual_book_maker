@@ -46,6 +46,17 @@ STAGE = "translate"
 # older formatter is not resumed into a newer one.
 FORMATTER_VERSION = 2
 
+# Bumped when a default the run translates under changes -- what the model
+# is asked, not how the book is laid out. `option_identity` writes down only
+# what was typed, so a changed default is invisible to it, and a bundle
+# translated under the old one would be reused as finished, or resumed into
+# a book that is half one default and half the other. One entry, written
+# unconditionally, moves every identity when this does.
+#   1 (261125): the LLM routes' built-in prompt became `prompt_template.json`'s
+#               system + user pair (`book_maker.translator.base_translator.
+#               BUILTIN_PROMPT`); before it, the identities had no entry.
+IDENTITY_VERSION = 1
+
 # Owned by the harness: the book is the bundle's, the resume decision is
 # made from the bundle's state, and the deliverable is bilingual.
 FORBIDDEN_OPTIONS = {
@@ -248,6 +259,8 @@ def option_identity(options):
         # it fills in belongs to the identity, as a digest (an address or a
         # key variable does not belong in the manifest).
         identity.append(("provider_config", provider_endpoint_digest(options)))
+    # Not a parsed field, so the default filter above never sees it.
+    identity.append(("identity_version", IDENTITY_VERSION))
     return identity
 
 
