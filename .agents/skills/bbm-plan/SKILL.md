@@ -9,8 +9,9 @@ This file is the router. Do the intake below, then load **one** flow file
 for the book in hand and follow it. The other flow files stay unread.
 
 Repo: the repository this skill ships in (`make_book.py` at its root). Run
-every command from the repo root. The user documentation is the MkDocs site
-in `docs/en/` of this checkout; the flow files point at the page to read for
+every command from the repo root. The user documentation is the MkDocs
+source under `docs/en/` of this checkout (published as the project's GitHub
+Wiki); the flow files point at the page to read for
 anything they do not spell out. `python make_book.py --help` is the
 authority on every flag, and `docs/en/cmd.md` lists them all in one place.
 

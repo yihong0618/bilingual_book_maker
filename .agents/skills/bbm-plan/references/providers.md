@@ -71,7 +71,10 @@ for the probe:
   `groq`, `xai`, `litellm`; `claude` in older files). Any other
   OpenAI-compatible host is `openai` with its address in `base_url`.
 - `default_models` becomes `--model` when it holds one id and
-  `--model_list` when it holds several. `env_key` is read for the key ahead
+  `--model_list` when it holds several. Several ids mean rotation, which is
+  incompatible with the session context `references/route-setup.md`
+  recommends: `--model_list` + `--use_context session` is a hard stop (A7),
+  so name one model or drop session. `env_key` is read for the key ahead
   of `BBM_API_KEY` and the format's own variables. **Explicit flags win**,
   so `--provider nvidia --model <id>` keeps the user's model.
 - A key is bound to its address: the entry's `env_key` is not sent when an

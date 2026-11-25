@@ -561,7 +561,7 @@ class EPUBBookLoaderHelper:
     #
     # Loud on purpose: an hours-long tolerance that says nothing looks
     # exactly like a hang. (This comment is the in-tree record of the
-    # ruling — worktrees do not carry the repo's CLAUDE.md.)
+    # ruling — worktrees do not carry the repo's AGENTS.md.)
     @retry(
         retry=retry_if_exception(_is_retryable),
         wait=wait_exponential(multiplier=1, min=1, max=RETRY_WAIT_CAP),

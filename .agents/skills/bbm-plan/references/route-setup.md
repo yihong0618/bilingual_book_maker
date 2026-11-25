@@ -37,7 +37,10 @@ That prints every provider entry and whether its key is set, the
 conventional key variables (the last three are classifier keys, used only
 when the user names Jev: `references/epub-plan-mode.md`, "A classifier the
 user names"), and whether the codex CLI is signed in
-(`Logged in using ChatGPT`). The user wants the codex route and it is
+(`Logged in using ChatGPT`). A name present in both provider files is listed
+twice here; the project `bbm_providers.json` wins over
+`~/.bbm/providers.json` (`references/providers.md`), so read that line. The
+user wants the codex route and it is
 signed in: skip steps 2 and 3, go to step 4. Then ask **one** question that covers the
 route, the model and the prompt file together; the user answers once:
 
@@ -130,10 +133,13 @@ curl -sS "$ROOT/v1/models" -H "Authorization: Bearer $KEY" |
   python3 -c 'import json,sys; d=json.load(sys.stdin)["data"]; print([m["id"] for m in d])'
 ```
 
-If `$MODEL` is absent, stop and show the near matches: a typo'd id and an
-unsupported path both return 404 later, and only this tells them apart. A
-non-OpenAI-shaped endpoint has no such listing: skip to question 2 and let
-the probe judge the id.
+A `$MODEL` absent from the listing is **only a hint**, never a stop: gateways
+routinely serve a model they do not list. Show the near matches, then run
+question 2's chat probe — a reply is the answer, and a run does the same
+(`references/providers.md`). Come back to this listing only when the probe
+fails: a typo'd id and an unsupported path both return 404 there, and only
+the listing tells them apart. A non-OpenAI-shaped endpoint has no such
+listing: skip to question 2 and let the probe judge the id.
 
 **2. Does it answer in that shape?** Use the recipes in
 `references/providers.md` **verbatim**, token-cap rule included, for the
@@ -180,6 +186,15 @@ allowance instead of API credits. Step 3 does not apply.
 | anthropic (`api_style: anthropic`) | `(--provider NAME)` | `(--use_context session)` | the same history, and this route keeps it |
 | gemini, qwen | `(--provider NAME)` | `(--use_context)` | neither keeps a re-sendable session history, so `--use_context session` is refused; window mode is what they have |
 | codex | `(--api_format codex)` | `()` | the thread is the context; a context flag has nothing to add (`--use_context` is accepted and does nothing) |
+
+**One entry, one model, for session mode.** A provider entry whose
+`default_models` holds several ids becomes `--model_list`
+(`references/providers.md`), and `--model_list` is refused with
+`--use_context session` (compat stop A7: one growing history across models
+rotating per request, and prompt caching is per model). Pin one with
+`--model <id>`, or drop to bare `--use_context`; the run stops before paying
+when both are present. The session default above assumes a single-model
+route.
 
 ```bash
 set -a; source .env; set +a
