@@ -21,6 +21,7 @@ import json
 import pytest
 
 from book_maker import provider_loader
+from book_maker.cli import PROMPT_ENV_VARS
 from book_maker.pipeline.errors import PipelineError
 from book_maker.pipeline.translate import option_identity, parse_bbm_options
 
@@ -245,7 +246,10 @@ def test_an_unknown_provider_is_refused_as_the_run_would(configs):
         _identity()
 
 
-def test_without_a_provider_nothing_is_resolved(configs):
+def test_without_a_provider_nothing_is_resolved(configs, monkeypatch):
+    # an exported prompt variable is written down too; none is set here
+    for name in PROMPT_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
     options = parse_bbm_options(["--model", "gpt-5.6-luna", "--language", "ja"])
     names = {name for name, _ in option_identity(options)}
     assert names == {"model", "language", "identity_version"}

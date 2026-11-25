@@ -26,6 +26,7 @@ import json
 import pickle
 import re
 import sys
+from hashlib import sha256
 from itertools import cycle
 from pathlib import Path
 from types import SimpleNamespace
@@ -34,7 +35,7 @@ from unittest.mock import patch
 import pytest
 from ebooklib import epub
 
-from book_maker.cli import parse_prompt_arg
+from book_maker.cli import PROMPT_ENV_VARS, parse_prompt_arg
 from book_maker.loader.epub_loader import EPUBBookLoader
 from book_maker.loader.plan import (
     SESSION_BUDGET_FLOOR,
@@ -985,6 +986,110 @@ class TestThePdfBundleIdentity:
             translate_bundle(bundle, self.OPTIONS, pandoc=bundle.pandoc)
         self._record_the_pre_version_fingerprint(bundle, monkeypatch)
 
+        FakeTranslator.fail_after = None
+        with pytest.raises(PipelineError) as refused:
+            translate_bundle(bundle, self.OPTIONS, pandoc=bundle.pandoc)
+        assert refused.value.detail == SETTINGS_CHANGED
+
+    # ------------------------------------------- the prompt variables (review 1)
+    #
+    # An exported empty system variable sends no system message, an unset one
+    # the built-in one, and the namespace the identity is built from sees
+    # neither. Each set variable is written down by name and a hash of its
+    # value; an unset one not at all.
+
+    # What `option_identity` returned at 3e8a9cb, before the variables went
+    # in, with none of them set.
+    BEFORE_THE_VARIABLES = {
+        (): [["identity_version", 1]],
+        ("--model", "gpt-5.6-luna", "--language", "ja"): [
+            ["language", "ja"],
+            ["model", "gpt-5.6-luna"],
+            ["identity_version", 1],
+        ],
+        ("--prompt", "prompt_template.json"): [
+            [
+                "prompt_arg",
+                "file:d3f2986093e2f353c50a59721dcc3b09c76cb1f910e6ad93ad873c548dcba736",
+            ],
+            ["identity_version", 1],
+        ],
+    }
+
+    def test_the_identity_watches_every_prompt_variable_the_routes_read(self):
+        assert set(PROMPT_VARIABLES) == set(PROMPT_ENV_VARS)
+
+    def test_with_no_prompt_variable_set_the_identity_is_unchanged(self, monkeypatch):
+        from book_maker.pipeline.translate import option_identity, parse_bbm_options
+
+        monkeypatch.chdir(REPO)
+        for command, before in self.BEFORE_THE_VARIABLES.items():
+            identity = option_identity(parse_bbm_options(list(command)))
+            assert json.loads(json.dumps(identity)) == before, command
+
+    @pytest.mark.parametrize("name", sorted(PROMPT_VARIABLES))
+    def test_unset_empty_and_set_are_three_identities(self, name, monkeypatch):
+        from book_maker.pipeline.translate import (
+            IDENTITY_VERSION,
+            option_identity,
+            parse_bbm_options,
+        )
+
+        options = parse_bbm_options(["--language", "ja"])
+        identities = []
+        for value in (None, "", "Answer as a ship's purser."):
+            if value is None:
+                monkeypatch.delenv(name, raising=False)
+            else:
+                monkeypatch.setenv(name, value)
+            identity = option_identity(options)
+            assert identity[-1] == ("identity_version", IDENTITY_VERSION)
+            identities.append(identity)
+        assert len({json.dumps(i) for i in identities}) == 3
+        assert [e for e in identities[1] if e[0].startswith("env:")] == [
+            (f"env:{name}", f"sha256:{sha256(b'').hexdigest()}")
+        ]
+
+    def test_a_variable_value_is_never_written_in_clear(self, monkeypatch):
+        from book_maker.pipeline.translate import option_identity, parse_bbm_options
+
+        values = {name: f"Speak like {name.lower()} would." for name in PROMPT_ENV_VARS}
+        for name, value in values.items():
+            monkeypatch.setenv(name, value)
+        written = json.dumps(option_identity(parse_bbm_options([])))
+        for name, value in values.items():
+            assert value not in written
+            assert f"sha256:{sha256(value.encode()).hexdigest()}" in written
+
+    def test_a_bundle_finished_under_an_empty_system_variable_is_translated_again(
+        self, bundle, monkeypatch
+    ):
+        from book_maker.pipeline.translate import translate_bundle
+
+        monkeypatch.setenv("BBM_CHATGPTAPI_SYS_MSG", "")
+        translate_bundle(bundle, self.OPTIONS, pandoc=bundle.pandoc)
+
+        monkeypatch.delenv("BBM_CHATGPTAPI_SYS_MSG")
+        FakeTranslator.instances = []
+        translate_bundle(bundle, self.OPTIONS, pandoc=bundle.pandoc)
+        assert [
+            t for i in FakeTranslator.instances for t in i.translated
+        ], "a bundle translated with no system message was reused under the built-in one"
+
+    def test_a_bundle_interrupted_under_a_system_variable_is_refused_when_it_is_empty(
+        self, bundle, monkeypatch
+    ):
+        from book_maker.pipeline.errors import PipelineError
+        from book_maker.pipeline.messages import SETTINGS_CHANGED
+        from book_maker.pipeline.translate import translate_bundle
+
+        monkeypatch.setenv("OPENAI_API_SYS_MSG", "Answer as a ship's purser.")
+        FakeTranslator.fail_after = 2
+        with pytest.raises(PipelineError):
+            translate_bundle(bundle, self.OPTIONS, pandoc=bundle.pandoc)
+        assert "purser" not in bundle.manifest_path.read_text(encoding="utf-8")
+
+        monkeypatch.setenv("OPENAI_API_SYS_MSG", "")
         FakeTranslator.fail_after = None
         with pytest.raises(PipelineError) as refused:
             translate_bundle(bundle, self.OPTIONS, pandoc=bundle.pandoc)
