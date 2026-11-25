@@ -11,7 +11,6 @@ more; the loader's `_translate_texts_aligned` ladder halves the chunk, which
 costs about twice the batch instead of N singles on top of it.
 """
 
-import re
 from types import SimpleNamespace
 
 import pytest
@@ -27,10 +26,10 @@ STANZA = ["Tyger Tyger", "burning bright", "In the forests", "of the night"]
 
 
 def _claude_payload(request):
-    """The source text inside the prompt template's triple backticks."""
+    """The source text: what follows the built-in template's `Text:` line."""
     content = request["messages"][-1]["content"]
-    match = re.search(r"```(.*)```", content, re.DOTALL)
-    return match.group(1) if match else content
+    _, found, text = content.partition("Text:\n\n")
+    return text if found else content
 
 
 def _claude(replies=(), **kwargs):

@@ -54,8 +54,11 @@ def message(text, stop_reason="end_turn", tokens=(10, 5)):
 
 
 def translate_content(content):
-    """What a perfect model answers: every segment, marked, in order."""
-    body = re.search(r"```(.*)```", content, re.DOTALL).group(1)
+    """What a perfect model answers: every segment, marked, in order.
+
+    The source is what follows the built-in template's `Text:` line.
+    """
+    body = content.split("Text:\n\n", 1)[1]
     return BATCH_DELIMITER.join(
         f"ZH<{part.strip()}>" for part in body.split(BATCH_DELIMITER)
     )

@@ -16,7 +16,7 @@ from tenacity import (
     RetryCallState,
 )
 
-from .base_translator import Base, BatchMismatch
+from .base_translator import BUILTIN_PROMPT, Base, BatchMismatch, resolve_prompt
 from ..structured import RungRejected, extract_json_object, unwrap_schema_echo
 
 
@@ -131,7 +131,9 @@ class Gemini(Base):
     Google gemini translator
     """
 
-    DEFAULT_PROMPT = "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text"
+    # The built-in user template; its system message is `BUILTIN_PROMPT`'s
+    # too, sent under the conditions `resolve_prompt` sets out.
+    DEFAULT_PROMPT = BUILTIN_PROMPT["user"]
 
     # Configuration constants
     DEFAULT_INTERVAL = 3
@@ -172,15 +174,10 @@ class Gemini(Base):
         # generativelanguage.googleapis.com regardless.
         self.api_base = api_base
         self.context_flag = context_flag
-        self.prompt = (
-            prompt_template
-            or environ.get(PROMPT_ENV_MAP["user"])
-            or self.DEFAULT_PROMPT
-        )
-        self.prompt_sys_msg = (
-            prompt_sys_msg
-            or environ.get(PROMPT_ENV_MAP["system"])
-            or None  # Allow None, but not empty string
+        self.prompt, self.prompt_sys_msg, _ = resolve_prompt(
+            (prompt_template, environ.get(PROMPT_ENV_MAP["user"])),
+            (prompt_sys_msg, environ.get(PROMPT_ENV_MAP["system"])),
+            no_system=None,  # Allow None, but not empty string
         )
         # `--prompt`'s style section. It used to fall into **kwargs and be
         # discarded here, so a style this route was given was never sent.

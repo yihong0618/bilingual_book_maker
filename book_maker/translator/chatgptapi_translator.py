@@ -35,11 +35,13 @@ from tenacity import (
 )
 
 from .base_translator import (
+    BUILTIN_PROMPT,
     AsyncTranslationUnsupported,
     Base,
     BatchMismatch,
     TranslationContext,
     TranslationResult,
+    resolve_prompt,
 )
 from . import reasoning
 from .capabilities import (
@@ -412,7 +414,9 @@ class ClassifierSession:
 
 
 class ChatGPTAPI(Base):
-    DEFAULT_PROMPT = "Please help me to translate,`{text}` to {language}, please return only translated content not include the origin text"
+    # The built-in user template; its system message is `BUILTIN_PROMPT`'s
+    # too, sent under the conditions `resolve_prompt` sets out.
+    DEFAULT_PROMPT = BUILTIN_PROMPT["user"]
 
     # Subclasses that do not route through `self.openai_client` must opt out:
     # probing them would send the capability request to the wrong endpoint.
@@ -501,21 +505,20 @@ class ChatGPTAPI(Base):
         )
         self.api_base = api_base
 
-        self.prompt_template = (
-            prompt_template
-            or environ.get(PROMPT_ENV_MAP["user"])
-            or self.DEFAULT_PROMPT
-        )
-        # `--prompt` first. `$OPENAI_API_SYS_MSG` used to be read into a
-        # second attribute that outranked it at send time, so a command
-        # asking for a system message translated a whole book under an
-        # exported variable instead. It is a deprecated fallback now, and the
-        # CLI says so when both are present.
-        self.prompt_sys_msg = (
-            prompt_sys_msg
-            or environ.get("OPENAI_API_SYS_MSG")  # deprecated; prefer BBM_*
-            or environ.get(PROMPT_ENV_MAP["system"])
-            or ""
+        # `--prompt` first, then the environment, then the built-in pair
+        # (`resolve_prompt` says when its system message is sent).
+        # `$OPENAI_API_SYS_MSG` used to be read into a second attribute that
+        # outranked `--prompt` at send time, so a command asking for a system
+        # message translated a whole book under an exported variable instead.
+        # It is a deprecated fallback now, and the CLI says so when both are
+        # present.
+        self.prompt_template, self.prompt_sys_msg, _ = resolve_prompt(
+            (prompt_template, environ.get(PROMPT_ENV_MAP["user"])),
+            (
+                prompt_sys_msg,
+                environ.get("OPENAI_API_SYS_MSG"),  # deprecated; prefer BBM_*
+                environ.get(PROMPT_ENV_MAP["system"]),
+            ),
         )
         self.temperature = temperature
         self.model_list = None

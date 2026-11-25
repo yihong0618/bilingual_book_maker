@@ -20,7 +20,7 @@ import pytest
 from book_maker.glossary import Glossary
 from book_maker.session_context import HandoffReport, handoff_prompt
 from book_maker.structured import JSON_ONLY_INSTRUCTION
-from book_maker.translator.base_translator import Base
+from book_maker.translator.base_translator import BUILTIN_PROMPT, Base
 from book_maker.translator.chatgptapi_translator import ChatGPTAPI
 from book_maker.translator.codex_translator import BASE_INSTRUCTIONS
 
@@ -185,10 +185,19 @@ EXPECTED = {
         "fields: 'id', and 'simplified_chinese_translation'. Return the 2 "
         "translations, each written in simplified chinese.",
     ),
+    # The built-in pair: `prompt_template.json`'s two sections (owner 261125),
+    # sent by the openai family, Gemini and Claude when the operator supplies
+    # no prompt. The system message goes out only when neither section was
+    # supplied (`resolve_prompt`).
     "default translation prompt": (
         ChatGPTAPI.DEFAULT_PROMPT,
-        "Please help me to translate,`{text}` to {language}, please return "
-        "only translated content not include the origin text",
+        "Translate the following paragraphs into {language}. Text:{crlf}{crlf}{text}",
+    ),
+    "default system message": (
+        BUILTIN_PROMPT["system"],
+        "You are a professional book translator. Translate given paragraphs "
+        "into {language} and be accurate, faithful, and fluent. Return "
+        "translated {language} paragraphs only.",
     ),
     # `--prompt`'s style section, as it joins the standing instructions. No
     # endpoint has a slot for it, and it is not a per-request thing to say, so

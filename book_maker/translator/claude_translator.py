@@ -10,7 +10,7 @@ from anthropic import (
     UnprocessableEntityError,
 )
 
-from .base_translator import Base
+from .base_translator import BUILTIN_PROMPT, Base, resolve_prompt
 from .reasoning import ANTHROPIC_NO_THINKING
 from ..config import config
 from ..session_context import (
@@ -116,15 +116,17 @@ _OUTER_FENCE = re.compile(
 def _strip_outer_fence(text, source=None):
     """Unwrap a translation the model handed back inside a code fence.
 
-    This route's DEFAULT_PROMPT delimits the source with triple backticks
-    ("...the text within triple backticks..."), and models mirror the
-    delimiter back around their answer. Nothing downstream removes it, so the
-    fences were written into the book: `<p>```动物庄园```</p>` on every
+    This route's built-in prompt used to delimit the source with triple
+    backticks ("...the text within triple backticks..."), and models mirrored
+    the delimiter back around their answer. Nothing downstream removes it, so
+    the fences were written into the book: `<p>```动物庄园```</p>` on every
     paragraph of a default anthropic run (seen live 260905, plain and
-    `--use_context session` alike).
+    `--use_context session` alike). The built-in prompt has fenced nothing
+    since 261125 (`BUILTIN_PROMPT`); the unwrap still runs under it, so a
+    reply that comes back fenced anyway is still read as what is inside.
 
-    The prompt is upstream's contract and users write `--prompt` text against
-    it, so the fix is here, on the reply. Only a *symmetric outer* wrap is
+    The fix is here, on the reply, and only under the built-in prompt: a
+    custom `--prompt` owns its reply format. Only a *symmetric outer* wrap is
     removed:
 
     * no wrap, or an opening fence with no closing one, and the text comes
@@ -161,10 +163,9 @@ def _reply_text(message):
 
 
 class Claude(Base):
-    DEFAULT_PROMPT = (
-        "Help me translate the text within triple backticks into {language} "
-        "and provide only the translated result.\n```{text}```"
-    )
+    # The built-in user template; its system message is `BUILTIN_PROMPT`'s
+    # too, sent under the conditions `resolve_prompt` sets out.
+    DEFAULT_PROMPT = BUILTIN_PROMPT["user"]
 
     SUPPORTS_SESSION_CONTEXT = True
     SUPPORTS_PARALLEL_CONTEXT = True
@@ -213,12 +214,12 @@ class Claude(Base):
         self.client = Anthropic(base_url=base_url, api_key=next(self.keys), timeout=20)
         self.model = "claude-haiku-4-5-20251001"  # default it for now
         self.language = language
-        self.prompt_template = prompt_template or self.DEFAULT_PROMPT
-        # Construction-time intent, because prompt_template itself is
-        # temporarily swapped for the joined prompt on the batch path — a
-        # stock-prompt batch must still unwrap its mirrored fence.
-        self._uses_stock_prompt = not prompt_template
-        self.prompt_sys_msg = prompt_sys_msg or ""
+        # `_uses_stock_prompt` is construction-time intent, because
+        # prompt_template itself is temporarily swapped for the joined prompt
+        # on the batch path — a stock-prompt batch must still unwrap a fence.
+        self.prompt_template, self.prompt_sys_msg, self._uses_stock_prompt = (
+            resolve_prompt((prompt_template,), (prompt_sys_msg,))
+        )
         self.temperature = temperature
         self.context_flag = context_flag
         self.context_list = []
@@ -633,9 +634,9 @@ class Claude(Base):
         # text, or a reply split across two text blocks ("```" + "译文```")
         # keeps its wrapper. Everything downstream — the batch splitter, the
         # session history, the book — then sees the same unwrapped string.
-        # Stock prompt only: the mirrored wrapper is DEFAULT_PROMPT's own
-        # fencing instruction coming back, so a custom `--prompt` owns its
-        # reply format — one asking for fenced Markdown must receive it.
+        # Stock prompt only (`_strip_outer_fence` has the history): a custom
+        # `--prompt` owns its reply format — one asking for fenced Markdown
+        # must receive it.
         t_text = _reply_text(r)
         if self._uses_stock_prompt:
             t_text = _strip_outer_fence(t_text, source=text)

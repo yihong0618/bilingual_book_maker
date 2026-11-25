@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-from book_maker.translator.base_translator import BATCH_DELIMITER
+from book_maker.translator.base_translator import BATCH_DELIMITER, BUILTIN_PROMPT
 from book_maker.translator.capabilities import (
     PROBE_EXPECTED,
     PROBE_KEY,
@@ -416,25 +416,36 @@ def _prompt(tmp_path, **sections):
 # --------------------------------------------------------------- the default
 
 
+# The built-in pair, as a default run fills it in (`prompt_template.json`,
+# owner 261125).
+DEFAULT_USER_OPENING = f"Translate the following paragraphs into {LANGUAGE}. Text:\n\n"
+DEFAULT_SYSTEM = BUILTIN_PROMPT["system"].format(language=LANGUAGE)
+
+
+@pytest.mark.parametrize("flags", [LEGACY, PLAN], ids=["legacy", "plan"])
 class TestTheDefaultPrompt:
-    def test_the_default_prompt_arrives_filled_in(self, shared_capture):
-        sent = shared_capture(*LEGACY).user_messages()
+    def test_the_default_prompt_arrives_filled_in(self, shared_capture, flags):
+        sent = shared_capture(*flags).user_messages()
         assert sent, "the run made no translation request"
         for text in sent:
             # the default template, with the language substituted
-            assert "please return only translated content" in text
-            assert LANGUAGE in text
+            assert DEFAULT_USER_OPENING in text
             assert "{text}" not in text
             assert "{language}" not in text
             assert "{crlf}" not in text
 
-    def test_a_default_run_has_no_style_and_no_custom_system(self, shared_capture):
-        run = shared_capture(*LEGACY)
+    def test_a_default_run_sends_the_builtin_system_message_and_no_style(
+        self, shared_capture, flags
+    ):
+        run = shared_capture(*flags)
         for text in run.user_messages():
             assert ChatGPTAPI.STYLE_HEADING not in text
+            assert DEFAULT_SYSTEM not in text
         # `$OPENAI_API_SYS_MSG` is unset and no --prompt was given, so the
-        # system message carries nothing of the operator's.
-        assert all(text == "" for text in run.system_messages())
+        # system message is the built-in one, filled in, and nothing else.
+        systems = run.system_messages()
+        assert systems
+        assert all(text == DEFAULT_SYSTEM for text in systems)
 
 
 # ------------------------------------------------- the sections, in each mode
@@ -459,8 +470,11 @@ class TestEachSectionReachesTheRequest:
         assert sent
         for text in sent:
             assert "Render this into" in text
-            assert "please return only translated content" not in text
+            assert DEFAULT_USER_OPENING not in text
             assert "{text}" not in text
+        # a user template alone travels with no system message, as it always
+        # has: the built-in one is for a run that supplied neither
+        assert all(text == "" for text in endpoint.system_messages())
 
     def test_a_system_section_rides_as_the_system_message(
         self, endpoint, tmp_path, mode
@@ -617,6 +631,12 @@ class TestTheDelimiterRung:
             "translations" in text and BATCH_DELIMITER.strip() in text
             for text in prose_endpoint.user_messages()
         ), "no delimiter batch was sent; this class tested nothing"
+        # a default run: the batch contract is added to the built-in system
+        # message, which arrives once, not replaced by it
+        systems = prose_endpoint.system_messages()
+        assert systems
+        assert all(text.count(DEFAULT_SYSTEM) == 1 for text in systems)
+        assert any("segments separated by" in text for text in systems)
 
     def test_the_system_section_survives_the_batch_system_message(
         self, prose_endpoint, tmp_path
