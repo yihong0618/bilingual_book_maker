@@ -6,10 +6,6 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
-  
-env:
-  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-  BBM_CAIYUN_API_KEY: ${{ secrets.BBM_CAIYUN_API_KEY }}
 
 jobs:
   typos-check:
@@ -198,43 +194,60 @@ jobs:
             pip install .
 
       # The default selection is hermetic — no network, no keys, no fixtures
-      # beyond test_books/ — so it runs on every PR, including forks, which
-      # receive none of the secrets the provider steps below depend on. It
-      # runs first because it is the fast, deterministic signal: ~40s, versus
-      # the live translation calls below. The live-provider suite deselects
-      # itself by marker (see pyproject.toml).
+      # beyond test_books/ — so it runs on every PR, including forks. No step
+      # of this job calls a translation service: the live smokes are the
+      # manual live-smokes job below. The live-provider suite deselects itself
+      # by marker (see pyproject.toml).
       - name: Run the test suite
         run: |
             pip install pytest
             pytest -q
 
-      # Live smokes against the free Google endpoint, manual-only: it
-      # rate-limits and times out from CI runner IPs even behind retries,
-      # and everything these exercise (epub CLI, txt loader, batch_size)
-      # is covered hermetically by the suite above. They test Google's
-      # servers, not this code, so they gate nothing — run them from the
-      # Actions tab when a live check is actually wanted.
+  # Live smokes, manual-only: they translate through real services (the free
+  # Google endpoint, and Caiyun and OpenAI with the repository's secrets),
+  # whose rate limits, timeouts and replies are theirs, not this code's. They
+  # are their own job and run only from the Actions tab, so no push or pull
+  # request result depends on a live service and their failure fails no other
+  # job. What they exercise is covered offline by the suite above (the CLI
+  # through a stand-in translator, tests/test_caiyun_offline.py for caiyun).
+  live-smokes:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      BBM_CAIYUN_API_KEY: ${{ secrets.BBM_CAIYUN_API_KEY }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: install python 3.10
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+          cache: 'pip' # caching pip dependencies
+      - name: install python requirements
+        run: pip install -r requirements.txt
+
+      - name: Test install
+        run: |
+            pip install .
+
       - name: make normal ebook test using google translate and cli
-        if: github.event_name == 'workflow_dispatch'
         run: |
             retry() { n=0; until "$@"; do n=$((n+1)); [ "$n" -ge 3 ] && return 1; echo "attempt $n failed; retrying in $((n*30))s"; sleep $((n*30)); done; }
             retry bbook_maker --book_name "test_books/Liber_Esther.epub" --test --test_num 10 --api_format google --translate-tags div,p
             retry bbook_maker --book_name "test_books/Liber_Esther.epub" --test --test_num 20 --api_format google
 
       - name: make txt book test using google translate
-        if: github.event_name == 'workflow_dispatch'
         run: |
           retry() { n=0; until "$@"; do n=$((n+1)); [ "$n" -ge 3 ] && return 1; echo "attempt $n failed; retrying in $((n*30))s"; sleep $((n*30)); done; }
           retry python3 make_book.py --book_name "test_books/the_little_prince.txt" --test --test_num 20 --api_format google
 
       - name: make txt book test with batch_size
-        if: github.event_name == 'workflow_dispatch'
         run: |
           retry() { n=0; until "$@"; do n=$((n+1)); [ "$n" -ge 3 ] && return 1; echo "attempt $n failed; retrying in $((n*30))s"; sleep $((n*30)); done; }
           retry python3 make_book.py --book_name "test_books/the_little_prince.txt" --test --batch_size 30 --test_num 20 --api_format google
-  
+
       - name: make caiyun translator test
-        if: env.BBM_CAIYUN_API_KEY != null
+        if: env.BBM_CAIYUN_API_KEY != ''
         run: |
           python3 make_book.py --book_name "test_books/the_little_prince.txt" --test --batch_size 30 --test_num 100 --api_format caiyun
 
@@ -245,7 +258,7 @@ jobs:
             python3 make_book.py --book_name "test_books/animal_farm.epub" --test --test_num 5 --language ja --model gpt-4o-mini --prompt prompt_template_sample.txt
             python3 make_book.py --book_name "test_books/animal_farm.epub" --test --test_num 5 --language ja --model gpt-4o-mini --prompt prompt_template.json
             python3 make_book.py --book_name test_books/Lex_Fridman_episode_322.srt --test --test_num 20 --model gpt-4o-mini
-            
+
       - name: Rename and Upload ePub
         if: env.OPENAI_API_KEY != null
         uses: actions/upload-artifact@v6
