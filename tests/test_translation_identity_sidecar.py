@@ -14,6 +14,7 @@ typed.
 
 import argparse
 
+from book_maker.cli import PROMPT_ENV_VARS
 from book_maker.pipeline.translate import (
     SIDECAR_FIELDS,
     option_identity,
@@ -66,9 +67,14 @@ def test_typing_a_sidecar_flag_does_not_change_the_identity():
     assert option_identity(plain) == option_identity(typed)
 
 
-def test_the_identity_holds_only_what_differs_from_the_defaults():
+def test_the_identity_holds_only_what_differs_from_the_defaults(monkeypatch):
+    # an exported prompt variable is written down too; none is set here
+    for name in PROMPT_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
     names = _names(option_identity(parse_bbm_options(COMMAND)))
-    assert names == {"model", "language", "test"}
+    # plus the one entry written whatever was typed: the version of the
+    # defaults the run translates under (`IDENTITY_VERSION`)
+    assert names == {"model", "language", "test", "identity_version"}
 
 
 def test_a_default_typed_out_is_the_same_run():

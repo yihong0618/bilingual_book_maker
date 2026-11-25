@@ -1,5 +1,7 @@
 # Tweak the prompt
 
+Without `--prompt`, the `openai` format (`groq`, `xai`, `litellm` and `--model orcarouter` included), `anthropic` and `gemini` send a built-in prompt: the `system` and `user` of [`prompt_template.json`](https://github.com/yihong0618/bilingual_book_maker/blob/main/prompt_template.json), word for word. `codex` sends the bare text in its own thread, `qwen` and the translation services take no prompt, and srt books use the subtitle loader's own prompt. A `user` template given without a system message (by `--prompt` or `BBM_CHATGPTAPI_USER_MSG_TEMPLATE`) is sent with no system message; a system message given without a `user` template (`BBM_CHATGPTAPI_SYS_MSG`) is sent with the built-in `user` template.
+
 To tweak the prompt, use the `--prompt` parameter. The placeholders the `user` template may use are `{text}` (required), `{language}` and `{crlf}` (a newline, for the shapes that cannot carry one). Anything else in braces is refused before the run starts; write `{{` and `}}` for a literal brace. It supports a few ways to configure the prompt:
 
 - If you don't need to set the `system` role content, you can simply set it up like this: `--prompt "Translate {text} to {language}."` or `--prompt prompt_template_sample.txt`
@@ -9,7 +11,7 @@ To tweak the prompt, use the `--prompt` parameter. The placeholders the `user` t
         {text}
         
 
-- If you need to set the `system` role content, you can use the following format: `--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'` or `--prompt prompt_template.json`
+- If you need to set the `system` role content, you can use the following format: `--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'` or a JSON file. To write one, copy `prompt_template.json`, the built-in prompt shown below, edit it and pass the copy: `--prompt my_prompt.json`
 
         # prompt_template.json
         {
@@ -48,8 +50,8 @@ You can also set the `user` and `system` role prompt by setting environment vari
 ## Examples
 ```sh
 python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template_sample.txt
-# or
-python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template.json
+# or, your edited copy of prompt_template.json
+python3 make_book.py --book_name test_books/animal_farm.epub --prompt my_prompt.json
 # or
 python3 make_book.py --book_name test_books/animal_farm.epub --prompt "Please translate \`{text}\` to {language}"
 ```

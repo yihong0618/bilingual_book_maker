@@ -40,7 +40,7 @@ Then start the agent in the checkout and describe the job. In Claude Code the sk
 ## What the agent does
 
 1. **Asks what you have.** The route (a key, a local model, a ChatGPT plan), the target language, a prompt file if you keep one, and anything you want changed from the defaults. Bilingual output is assumed: every original paragraph followed by its translation. Say "just the Chinese" if you want the translation alone.
-2. **Probes the endpoint** with a request costing less than a cent, before anything is paid for.
+2. **Probes the endpoint** with a request costing less than a cent, before anything is paid for. (The codex route has no endpoint, so nothing is probed there.)
 3. **States the command**, one line per flag with the reason, the checkpoint you will see, and whose allowance it spends. Then it waits for your approval.
 4. **Follows the flow for the file.**
     - An EPUB goes through [plan mode](features/plan-mode.md): the tool partitions the book, the agent itself decides what a running head, a page number or a footnote marker is against the real samples, and shows you the plan before the full run.

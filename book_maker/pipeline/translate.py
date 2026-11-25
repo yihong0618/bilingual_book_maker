@@ -23,6 +23,7 @@ import contextlib
 import hashlib
 import io
 import json
+import os
 import re
 import shlex
 from pathlib import Path
@@ -45,6 +46,19 @@ STAGE = "translate"
 # Bumped when the rendered layout changes, so a bundle translated by an
 # older formatter is not resumed into a newer one.
 FORMATTER_VERSION = 2
+
+# Bumped when a default the run translates under changes -- what the model
+# is asked, not how the book is laid out. `option_identity` writes down only
+# what was typed, so a changed default is invisible to it, and a bundle
+# translated under the old one would be reused as finished, or resumed into
+# a book that is half one default and half the other. One entry, written
+# unconditionally, moves every identity when this does.
+#   1 (261125): the LLM routes' built-in prompt became `prompt_template.json`'s
+#               system + user pair (`book_maker.translator.base_translator.
+#               BUILTIN_PROMPT`); before it, the identities had no entry.
+#               The prompt variables' entries (`prompt_variable_identity`)
+#               came in with the same unreleased change, under this number.
+IDENTITY_VERSION = 1
 
 # Owned by the harness: the book is the bundle's, the resume decision is
 # made from the bundle's state, and the deliverable is bilingual.
@@ -248,7 +262,42 @@ def option_identity(options):
         # it fills in belongs to the identity, as a digest (an address or a
         # key variable does not belong in the manifest).
         identity.append(("provider_config", provider_endpoint_digest(options)))
+    identity.extend(prompt_variable_identity())
+    # Not a parsed field, so the default filter above never sees it.
+    identity.append(("identity_version", IDENTITY_VERSION))
     return identity
+
+
+def prompt_variable_identity(environ=None):
+    """`(env:NAME, sha256:...)` for each prompt variable that is set.
+
+    A prompt reaches the run from the environment as well as from
+    `--prompt`, and the namespace the identity is built from never sees
+    the environment. Since the built-in prompt gained a system message, an
+    empty variable is not an unset one either: an exported empty
+    `$BBM_CHATGPTAPI_SYS_MSG` sends no system message, an unset one leaves
+    the built-in one in place (`base_translator.resolve_prompt`). Without
+    these entries a bundle translated under one would be reused, or resumed,
+    under the other.
+
+    Sparse like the rest of the identity: an unset variable writes nothing,
+    so a run with none set keeps the identity it had. A set one writes its
+    name and a hash of its value -- the empty string hashes too -- and never
+    the value: a prompt is the operator's text, not the manifest's.
+
+    The variables are the CLI's own list (`cli.PROMPT_ENV_VARS`), not a
+    second one. They are read only by the openai family and Gemini, and are
+    written down whatever the route: on another route a set variable costs a
+    translation the run did not need, never reuses one it should not.
+    """
+    from book_maker.cli import PROMPT_ENV_VARS
+
+    environ = os.environ if environ is None else environ
+    return [
+        (f"env:{name}", f"sha256:{sha256_text(environ[name])}")
+        for name in sorted(set(PROMPT_ENV_VARS))
+        if name in environ
+    ]
 
 
 # The formats whose translator is handed `--api_base`: every LLM format

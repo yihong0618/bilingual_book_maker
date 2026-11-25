@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 
 from rich import print
 from rich.markup import escape
@@ -51,6 +52,67 @@ INLINE_MARKUP_RE = re.compile(
 # handed text and nothing else. `--prompt` has nowhere to go on these, and the
 # CLI says so at run start rather than accepting the flag in silence.
 NO_PROMPT_SECTIONS = {"user": "none", "system": "none", "style": "none"}
+
+# The prompt the LLM routes that build one -- the openai family, Gemini and
+# Claude -- send when the operator supplies none: the repository's
+# `prompt_template.json`, word for word (owner 261125). Spelled out here
+# rather than read from that file, because an installed package has no
+# repository root to read it from; `tests/test_default_prompt.py` holds the
+# two equal. Read-only, because every route shares this one object.
+#
+# The routes that write a prompt of their own never read it: codex (its
+# thread instructions already say what a bare turn is for), the
+# translation-only models, the fixed MT engines, and the subtitle loader,
+# whose own pair keeps each block's number and timeline intact.
+BUILTIN_PROMPT = MappingProxyType(
+    {
+        "system": (
+            "You are a professional book translator. Translate given "
+            "paragraphs into {language} and be accurate, faithful, and fluent. "
+            "Return translated {language} paragraphs only."
+        ),
+        "user": (
+            "Translate the following paragraphs into {language}. "
+            "Text:{crlf}{crlf}{text}"
+        ),
+    }
+)
+
+
+def resolve_prompt(user_sources, system_sources, no_system=""):
+    """The prompt a route sends: `(user template, system message, stock)`.
+
+    `user_sources` and `system_sources` are the places this route takes each
+    section from, in precedence order (`--prompt` first, then the
+    environment): the value given, or None where nothing was.
+
+    The user template is the first non-empty source -- the `or` chain every
+    route has always had -- and otherwise `BUILTIN_PROMPT`'s. `stock` says
+    which: True when the built-in template is in use, which is all any
+    "default prompt" branch means by it.
+
+    The built-in system message is sent only when the operator supplied
+    neither section. A custom user template has always travelled with an
+    empty system message (`prompt_md.json`'s three-step XML, a
+    `$BBM_CHATGPTAPI_USER_MSG_TEMPLATE`) and was written against that, so it
+    still does; a system message given on its own still gets the built-in
+    user template beneath it. Decided by where each section came from, never
+    by what it says: a supplied template that happens to read like the
+    built-in one is still the operator's.
+
+    A system message counts as supplied when any source holds one at all, so
+    an explicitly empty one stays empty (`no_system`, the route's spelling of
+    "none") rather than turning into the built-in.
+    """
+    custom_user = next((u for u in user_sources if u), None)
+    stock = custom_user is None
+    if any(s is not None for s in system_sources):
+        system = next((s for s in system_sources if s), no_system)
+    elif stock:
+        system = BUILTIN_PROMPT["system"]
+    else:
+        system = no_system
+    return custom_user or BUILTIN_PROMPT["user"], system, stock
 
 
 class BatchMismatch(Exception):

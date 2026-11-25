@@ -12,6 +12,7 @@ name: `pytest -p no:cacheprovider -m pdf_route_ci tests/test_ci_pdf_route_smoke.
 """
 
 import importlib.util
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -32,6 +33,7 @@ from book_maker.pipeline.bundle import Bundle  # noqa: E402
 pytestmark = pytest.mark.pdf_route_ci
 
 HARNESS = Path(__file__).resolve().parent.parent / "tools" / "pdf_to_book.py"
+RUNNER = Path(__file__).resolve().parent / "ci_fake_make_book.py"
 
 PAGES = (
     "The first page of a typed PDF, with a full sentence of prose on it.",
@@ -98,3 +100,50 @@ def test_two_page_pdf_extracts_translates_and_exports(tmp_path, monkeypatch):
         assert '<div class="bbm-translation"' in between, between
         # Adjacent: no other source paragraph sits between the pair.
         assert all(other not in between for other in PAGES)
+
+
+def test_the_docker_smoke_runner_makes_a_bilingual_epub(tmp_path):
+    """docker.yaml's image smoke, run here on the host.
+
+    The same runner and arguments, in a fresh interpreter: the main command
+    line's --to-epub route, translated by the stand-in the runner registers.
+    The image smoke adds only the mount of tests/.
+    """
+    pytest.importorskip("docling")
+    pytest.importorskip("pypdfium2")
+    pandoc_or_skip()
+
+    pdf = write_pdf(tmp_path / "two.pdf", pages=PAGES)
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(RUNNER),
+            "--book_name",
+            str(pdf),
+            "--to-epub",
+            "--api_format",
+            "faketest",
+            "--language",
+            "zh-hans",
+            "--test",
+            "--test_num",
+            "2",
+            "--device",
+            "cpu",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert run.returncode == 0, run.stdout + run.stderr
+
+    epub = tmp_path / "two_bilingual.epub"
+    assert epub.is_file(), run.stdout
+    with zipfile.ZipFile(epub) as archive:
+        body = "".join(
+            archive.read(name).decode("utf-8")
+            for name in archive.namelist()
+            if name.endswith(".xhtml")
+        )
+    assert 'class="bbm-translation"' in body
+    assert "first page" in body
+    assert "译:" in body

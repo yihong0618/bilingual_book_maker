@@ -678,14 +678,16 @@ class TestRequestExtras:
 
 
 class TestOuterFenceStripping:
-    """The route's own prompt teaches the model to fence its reply.
+    """A reply the model wrapped in a fence is unwrapped under the stock prompt.
 
-    DEFAULT_PROMPT hands the source "within triple backticks", and models
-    mirror the delimiter back around the translation. Nothing removed it, so a
-    default anthropic run wrote the fences into the book — every paragraph
-    arriving as `<p class="calibre_">```动物庄园```</p>` (seen live 260905,
-    plain and `--use_context session` alike). The prompt is upstream's
-    contract, so the repair is on the reply; only a symmetric outer wrap goes.
+    The route's built-in prompt used to hand the source "within triple
+    backticks", and models mirrored the delimiter back around the
+    translation. Nothing removed it, so a default anthropic run wrote the
+    fences into the book — every paragraph arriving as
+    `<p class="calibre_">```动物庄园```</p>` (seen live 260905, plain and
+    `--use_context session` alike). The built-in prompt has fenced nothing
+    since 261125; the repair stays on the reply, under it, and only a
+    symmetric outer wrap goes.
     """
 
     def test_a_fenced_reply_is_unwrapped(self):
@@ -705,9 +707,8 @@ class TestOuterFenceStripping:
         )
 
     def test_a_custom_prompt_keeps_its_fenced_reply(self):
-        # The mirrored wrapper is DEFAULT_PROMPT's own fencing instruction
-        # coming back; a --prompt that asks for fenced Markdown owns its
-        # reply format and must receive it verbatim.
+        # The unwrap is the built-in prompt's; a --prompt that asks for
+        # fenced Markdown owns its reply format and must receive it verbatim.
         t = _translator(
             ["```md\n译文\n```"],
             context_flag=False,

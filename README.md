@@ -441,7 +441,7 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   - You can also set the `user` and `system` role prompt by setting environment variables: `BBM_CHATGPTAPI_USER_MSG_TEMPLATE` and `BBM_CHATGPTAPI_SYS_MSG`.
 
-  - An example JSON file can be found at [./prompt_template.json](./prompt_template.json).
+  - An example JSON file can be found at [./prompt_template.json](./prompt_template.json). Without `--prompt`, the openai-format, Claude and Gemini routes send this file's `system` and `user` text as their default prompt.
 
 - `--batch_size`:
 

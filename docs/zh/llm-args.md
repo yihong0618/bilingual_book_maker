@@ -163,10 +163,12 @@ bbook_maker \
 
 裸字符串或 `.txt` 文件就是 `user` 模板。运行时会打印用了哪些部分、各自来自哪里。格式见[提示词文件](prompt.md)。
 
+不传 `--prompt` 时，`openai` 格式（包括 `groq`、`xai`、`litellm` 和 `--model orcarouter`）、`anthropic` 和 `gemini` 会发送内置提示词，即 `prompt_template.json` 里的 `system` 和 `user`；复制这个文件，就可以开始写你自己的提示词：
+
 ```bash
 bbook_maker \
   --book_name my_book.epub \
-  --prompt prompt_template.json \
+  --prompt my_prompt.json \
   --use_context session
 ```
 

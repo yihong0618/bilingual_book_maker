@@ -58,7 +58,7 @@
 | `--test` | 只翻译一小段预览样本。 |
 | `--test_num N` | 测试的单元数；默认 `10`。 |
 | `--resume` | 从加载器保存的检查点继续。EPUB 检查点会记录本次运行的语言、提示词和模型；不一致时拒绝续跑（旧检查点只警告一次，然后继续）。与 `--parallel-workers` 以及大于 1 的 `--accumulated_num` 同用会被拒绝，因为那两种情况从不写检查点。 |
-| `--prompt VALUE_OR_FILE` | 提示词配置：`user`（必须包含 `{text}`）、`system` 和 `style`。`style` 是常驻指令，只在窗口开始时说一次（API 路线上放在 system 消息里，codex 上放在线程指令里），从不在每个请求里重复；用户写的 style 会替换交接报告里模型自己的文风说明。某个部分在某条路线上没有原生位置时（`codex` 格式上的 `system`），会附加到 user 消息里，而不是被丢弃；带 `--prompt` 的运行会打印它采用了哪些部分、放在哪里。示例：`prompt_template.json`（随附的 `style` 为空）。 |
+| `--prompt VALUE_OR_FILE` | 提示词配置：`user`（必须包含 `{text}`）、`system` 和 `style`。`style` 是常驻指令，只在窗口开始时说一次（API 路线上放在 system 消息里，codex 上放在线程指令里），从不在每个请求里重复；用户写的 style 会替换交接报告里模型自己的文风说明。某个部分在某条路线上没有原生位置时（`codex` 格式上的 `system`），会附加到 user 消息里，而不是被丢弃；带 `--prompt` 的运行会打印它采用了哪些部分、放在哪里。不传时，`openai` 格式（包括 `groq`、`xai`、`litellm` 和 `--model orcarouter`）、`anthropic` 和 `gemini` 会发送内置提示词，即 `prompt_template.json` 里的 `system` 和 `user`；这个文件就是可供复制的示例。 |
 | `--temperature FLOAT` | 采样温度，仅用于接受该参数的格式；默认 `1.0`。anthropic 格式总会发送它。openai 格式在它等于 API 默认值时，以及模型拒绝显式设置时（gpt-5.x、o 系列），不发送它，由 API 默认值生效。codex 格式没有这项设置，会忽略它。 |
 | `--use_context [window\|session]` | 把前面的段落作为上下文发送。不带值或 `window`：重发最近几对原文与译文（一贯的行为）。`session`：一份只追加的历史，按端点的提示缓存价重读。 |
 | `--context_paragraph_limit N` | 仅窗口模式：上下文历史的上限。解析器默认值 `0` 表示采用翻译器的默认值（ChatGPT 为 3 段），而不是没有历史。 |

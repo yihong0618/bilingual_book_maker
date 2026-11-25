@@ -47,11 +47,13 @@ the same command is the paid full run of the whole book: it does not stop
 to show the plan again (a field test spent 14 units on the ChatGPT plan
 this way). After step 3 the base command is a paid run however it is
 dressed: `--quiet` and a log redirect keep it out of the conversation, they
-do not stop it. To look at the plan again without paying, read
-`<book>_plan.json` itself, or run the base command with `--plan-dry-run`,
-which prints a fresh report, keeps your edited plan file and never
-translates. Run the base command again only as the smoke (step 4) or the
-full run (step 5).
+do not stop it. To see your decisions again without paying, read
+`<book>_plan.json` itself. (`--plan-dry-run` is **not** a way to re-read
+them: it rebuilds the partition from the book, so its report shows every row
+as still undecided and never reflects your edits. It leaves an existing plan
+file untouched (with no plan file yet it writes a fresh, all-null one) and it
+never translates. See "Never pass in plan mode" below.) Run the base command
+again only as the smoke (step 4) or the full run (step 5).
 
 **Offline on every route.** Nothing is asked of the endpoint until the
 first paid request, so a wrong model id or a dead gateway surfaces there,

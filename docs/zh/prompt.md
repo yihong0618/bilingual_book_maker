@@ -1,5 +1,7 @@
 # 调整提示词
 
+不传 `--prompt` 时，`openai` 格式（包括 `groq`、`xai`、`litellm` 和 `--model orcarouter`）、`anthropic` 和 `gemini` 会发送内置提示词：[`prompt_template.json`](https://github.com/yihong0618/bilingual_book_maker/blob/main/prompt_template.json) 里的 `system` 和 `user`，一字不差。`codex` 在自己的线程里只发送原文，`qwen` 和各个翻译服务不用提示词，srt 书使用字幕加载器自己的提示词。只给 `user` 模板、不给系统消息时（通过 `--prompt` 或 `BBM_CHATGPTAPI_USER_MSG_TEMPLATE`），请求里没有系统消息；只给系统消息、不给 `user` 模板时（`BBM_CHATGPTAPI_SYS_MSG`），它会和内置的 `user` 模板一起发送。
+
 要调整提示词，请使用 `--prompt` 参数。`user` 模板可用的占位符有 `{text}`（必填）、`{language}` 和 `{crlf}`（换行符，供无法携带换行的形式使用）。花括号里的其他任何内容都会在运行开始前被拒绝；要写字面的花括号，请用 `{{` 和 `}}`。配置提示词有以下几种方式：
 
 - 如果不需要设置 `system` 角色的内容，可以简单地这样写：`--prompt "Translate {text} to {language}."` 或 `--prompt prompt_template_sample.txt`
@@ -9,7 +11,7 @@
         {text}
         
 
-- 如果需要设置 `system` 角色的内容，可以使用以下格式：`--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'` 或 `--prompt prompt_template.json`
+- 如果需要设置 `system` 角色的内容，可以使用以下格式：`--prompt '{"user":"Translate {text} to {language}", "system": "You are a professional translator."}'` 或一个 JSON 文件。要写这样的文件，就复制下面这个 `prompt_template.json`（即内置提示词），修改后传入副本：`--prompt my_prompt.json`
 
         # prompt_template.json
         {
@@ -46,8 +48,8 @@
 ## 示例
 ```sh
 python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template_sample.txt
-# or
-python3 make_book.py --book_name test_books/animal_farm.epub --prompt prompt_template.json
+# or, your edited copy of prompt_template.json
+python3 make_book.py --book_name test_books/animal_farm.epub --prompt my_prompt.json
 # or
 python3 make_book.py --book_name test_books/animal_farm.epub --prompt "Please translate \`{text}\` to {language}"
 ```
