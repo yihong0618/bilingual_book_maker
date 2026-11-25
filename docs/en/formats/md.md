@@ -23,12 +23,11 @@ This is also the loader behind [PDF to bilingual EPUB](../features/pdf-to-epub.m
 bbook_maker \
   --book_name my_doc.md \
   --language zh-hans \
-  --prompt prompt_template.json \
   --use_context session \
   --batch_size 20
 ```
 
-`prompt_template.json` in the repository is the recommended prompt: a `system` and a `user` message, both naming the target language. The loader keeps the markup itself: code blocks, tables and front matter are never sent, and links and inline code are protected before a request. There is no plan mode for Markdown, so in session mode every request re-reads the history. Raise `--batch_size` to send fewer, larger requests.
+The built-in prompt (the text of `prompt_template.json`) is the recommended one: a `system` and a `user` message, both naming the target language. The loader keeps the markup itself: code blocks, tables and front matter are never sent, and links and inline code are protected before a request. There is no plan mode for Markdown, so in session mode every request re-reads the history. Raise `--batch_size` to send fewer, larger requests.
 
 ## Flags that apply
 

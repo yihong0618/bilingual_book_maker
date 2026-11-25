@@ -163,10 +163,12 @@ The fields, the shipped entries, which key is sent where, and Jev and Jev-compat
 
 A bare string or a `.txt` file is the `user` template. The run prints which sections it used and where. The format is on [Prompt files](prompt.md).
 
+Without `--prompt`, the `openai` format (`groq`, `xai`, `litellm` and `--model orcarouter` included), `anthropic` and `gemini` send a built-in prompt, the `system` and `user` of `prompt_template.json`; copy that file to start your own:
+
 ```bash
 bbook_maker \
   --book_name my_book.epub \
-  --prompt prompt_template.json \
+  --prompt my_prompt.json \
   --use_context session
 ```
 
