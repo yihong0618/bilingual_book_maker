@@ -15,6 +15,7 @@ from openai import (
     APITimeoutError,
     AsyncOpenAI,
     BadRequestError,
+    ContentFilterFinishReasonError,
     InternalServerError,
     LengthFinishReasonError,
     OpenAI,
@@ -1366,6 +1367,14 @@ class ChatGPTAPI(Base):
     def _plain_translation(self, text):
         completion = self.create_chat_completion(text)
         self._note_usage(completion)
+        if getattr(completion.choices[0], "finish_reason", None) == "length":
+            # No JSON to break here, so the text is still used; but it may
+            # end mid-sentence, and the operator should know which paragraph.
+            shown = " ".join(text.split())[:40]
+            print(
+                f"[yellow]ℹ the translation of {escape(repr(shown))} hit the "
+                f"output token limit and may be cut off[/yellow]"
+            )
         content = completion.choices[0].message.content
         return content.encode("utf8").decode() if content else ""
 
@@ -1875,6 +1884,19 @@ class ChatGPTAPI(Base):
             raise StructuredOutputUnsupported(str(e)) from e
         except (ValidationError, json.JSONDecodeError) as e:
             raise StructuredOutputUnsupported(str(e)) from e
+        except (LengthFinishReasonError, ContentFilterFinishReasonError) as e:
+            # The reply arrived and was cut off, by the token limit or the
+            # content filter. Re-sending the same group buys the same cut,
+            # each time at the full output price; a smaller group is what
+            # can fit, so this is the ladder's business, not tenacity's.
+            # The truncated request was still billed, so it still counts.
+            self._note_usage(getattr(e, "completion", None))
+            cut_by = (
+                "the output token limit"
+                if isinstance(e, LengthFinishReasonError)
+                else "the content filter"
+            )
+            raise BatchMismatch(f"the reply was cut off by {cut_by}") from e
 
         self._note_usage(completion)
 
