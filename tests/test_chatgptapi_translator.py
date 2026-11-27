@@ -12,13 +12,14 @@ from openai import (
     APITimeoutError,
     AuthenticationError,
     BadRequestError,
+    ContentFilterFinishReasonError,
     LengthFinishReasonError,
     NotFoundError,
     RateLimitError,
 )
 
 from book_maker.structured import StructuredJSONFailed
-from book_maker.translator.base_translator import BatchMismatch
+from book_maker.translator.base_translator import BatchMismatch, UsageMeter
 from book_maker.translator.capabilities import (
     ROUTE_PROBE_PROMPT,
     CapabilityLedger,
@@ -583,6 +584,86 @@ def test_batch_path_demotes_without_burning_retries():
 
     assert parse.call_count == 2  # one attempt each, not 3 tenacity attempts
     assert translator.capabilities.verdicts["test-model"] is False
+
+
+def _truncated_batch():
+    """What `parse` raises when a grouped reply runs into the output limit.
+
+    The SDK attaches the billed completion; the usage on it is what the
+    truncated request cost.
+    """
+    return LengthFinishReasonError(
+        completion=SimpleNamespace(
+            usage=SimpleNamespace(
+                prompt_tokens=900, completion_tokens=4096, prompt_tokens_details=None
+            ),
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content='{"items":[{"id":0,"tr'),
+                    finish_reason="length",
+                )
+            ],
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "error",
+    [_truncated_batch, ContentFilterFinishReasonError],
+    ids=["length", "filter"],
+)
+def test_cut_off_batch_raises_for_the_loader_to_divide_without_retrying(error):
+    """A grouped reply cut off by the token limit (or the content filter)
+    is a reply that did not answer the request, not a transport failure.
+    Re-sending the same request buys the same cut-off answer at the full
+    output price, so it goes to the loader's ladder after one attempt."""
+    parse = Mock(side_effect=error())
+    translator = _translator(parse=parse)
+    translator.usage = UsageMeter()
+    translator.capabilities.verdicts["test-model"] = "strict"
+    translator.translate = Mock(side_effect=lambda text, _=True: f"t:{text}")
+
+    with pytest.raises(BatchMismatch):
+        translator._do_structured_batch_translate(["a", "b"])
+
+    assert parse.call_count == 1
+    assert translator.translate.call_count == 0
+    # A cut-off answer says nothing about schema support.
+    assert translator.capabilities.verdicts["test-model"] == "strict"
+    if error is _truncated_batch:
+        # the truncated request was billed, so it is metered
+        assert translator.usage.completion == 4096
+
+
+def test_cut_off_batch_is_halved_by_the_loader_ladder():
+    """End to end through the plan-mode ladder: the batch of four is cut
+    off once, and the two halves it is divided into are answered."""
+    from book_maker.loader.epub_loader import EPUBBookLoader
+
+    def parse(**request):
+        if request["response_format"] is batch_translation_model(LANGUAGE, 4):
+            raise _truncated_batch()
+        return _parsed_completion(parsed=_batch(["一", "二"]))
+
+    parse = Mock(side_effect=parse)
+    translator = _translator(parse=parse)
+    translator._fatal_error_detected = False
+    translator.capabilities.verdicts["test-model"] = "strict"
+    loader = EPUBBookLoader.__new__(EPUBBookLoader)
+    loader.translate_model = translator
+
+    assert loader._translate_texts_aligned(["a", "b", "c", "d"]) == [
+        "一",
+        "二",
+        "一",
+        "二",
+    ]
+    # one cut-off request of four, then the two halves; no retries
+    assert [c.kwargs["response_format"] for c in parse.call_args_list] == [
+        batch_translation_model(LANGUAGE, 4),
+        batch_translation_model(LANGUAGE, 2),
+        batch_translation_model(LANGUAGE, 2),
+    ]
 
 
 def test_batch_length_mismatch_raises_for_the_loader_to_divide():
