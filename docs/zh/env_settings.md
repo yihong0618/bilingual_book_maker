@@ -30,7 +30,7 @@ export BBM_API_KEY=${your_api_key}
 
 ## 提供方自己的变量
 
-`--provider NAME` 从工作目录下的 `bbm_providers.json` 读取端点，没有则读 `~/.bbm/providers.json`。条目里有 `env_key` 时，会先查它指定的变量，再查 `BBM_API_KEY` 和上面的备用变量——它指明的是正在调用的端点，所以它自己的 key 才是对的。只有在运行仍然调用那个端点时才会查它：`--api_base` 指向别处，或者在没有写 `base_url` 的条目上用 `--api_format` 覆盖格式，都会把请求移到另一台主机，条目的 key 不会发到那里。运行会说明这一点；如果你本意是继续用它，请传 `--key`。文件里只有地址和变量名，从不存放密钥。见[端点、模型与语言](./model_lang.md#命名端点-provider)。`--model orcarouter` 以同样方式读取 `BBM_ORCAROUTER_API_KEY`。
+`--provider NAME` 从工作目录下的 `bbm_providers.json` 读取端点，没有则读 `~/.bbm/providers.json`。条目里有 `env_key` 时，会先查它指定的变量，再查 `BBM_API_KEY` 和上面的备用变量——它指明的是正在调用的端点，所以它自己的 key 才是对的。只有在运行仍然调用那个端点时才会查它：`--api_base` 指向别处，或者在没有写 `base_url` 的条目上用 `--api_format` 覆盖格式，都会把请求移到另一台主机，条目的 key 不会发到那里。运行会说明这一点；如果你本意是继续用它，请传 `--key`。文件里只有地址和变量名，从不存放密钥。见[端点、模型与语言](./model_lang.md#命名端点-provider)。`--model orcarouter` 以同样方式读取 `BBM_ORCAROUTER_API_KEY`。`--model apiroute` 读取 `BBM_APIROUTE_API_KEY`，也可使用 `APIROUTE_API_KEY`。
 
 ## 分类器变量
 

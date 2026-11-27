@@ -76,7 +76,7 @@
 | `--batch-use` | 使用之前提交的批量任务。在 EPUB 上会被拒绝，与 `--batch` 相同。 |
 | `--batch-api` | anthropic 格式，EPUB 书、Markdown 书和 `--to-epub`：通过 Anthropic 的 Message Batches API 翻译，价格减半。一次运行收集全部请求、提交一个批次（状态文件在续跑文件旁边，`--to-epub` 时在书包的 `.work/` 里）、等待它完成并写出书；中断后重跑会继续轮询同一个批次，而不会重新提交。批次没有给出可用译文的请求，以及对未对齐回复的修复，会实时发送。`--parallel-workers` 会被搁置。与 `--use_context`、`--batch`/`--batch-use`、`--retranslate`、其他格式和其他书籍类型同用会被拒绝。 |
 | `--no-thinking` | 让模型回答前不要先推理。在 OpenAI 形态的路线上，请求字段根据端点自己的拒绝来协商，并按端点和模型缓存；如果每种写法都被拒绝，运行会警告一次，然后不带该字段继续。在 `anthropic` 上是 `thinking: {"type": "disabled"}`。在 `codex` 上会被拒绝（子进程没有请求体）；在自行构建请求的路线上会被警告为不起作用。`--extra_body` 中设置的字段优先。 |
-| `--extra_body JSON` | 附加到每个请求体上的字段，适用于构建请求体的路线（`openai`、`groq`、`xai`、`litellm`、`--model orcarouter`、`anthropic`）；其他路线会忽略它并说明。它也会进入能力探测和 JSON 各级请求，所以端点是按本次运行实际发出的请求来评定的。它合并在具名参数之上，所以这里的字段优先于对应的参数。 |
+| `--extra_body JSON` | 附加到每个请求体上的字段，适用于构建请求体的路线（`openai`、`groq`、`xai`、`litellm`、`--model orcarouter`、`--model apiroute`、`anthropic`）；其他路线会忽略它并说明。它也会进入能力探测和 JSON 各级请求，所以端点是按本次运行实际发出的请求来评定的。它合并在具名参数之上，所以这里的字段优先于对应的参数。 |
 | `--extra_headers JSON` | 附加到每个请求上的 HTTP 头，适用路线同上。它设在客户端上，所以能力探测、模型检查和模型列表都会带上它们。值必须是字符串。 |
 | `--quiet` | 不显示 EPUB/Markdown 进度条和段落回显，报告和错误照常显示。 |
 | `--proxy URL` | 为本次运行设置 HTTP/HTTPS 代理环境变量。 |
@@ -95,6 +95,7 @@
 | `--api_format groq` \| `xai` \| `litellm` | Groq、xAI 和 LiteLLM 代理（`http://localhost:4000`）上的 OpenAI 形态。每种都自带地址，所以格式加一个 key 就是完整的路线。必须写 `--model`：这些模型目录更新很快，所以不预设任何模型。 |
 | `--model codex` | 使用 ChatGPT 套餐的 Codex CLI 侧车，等同于 `--api_format codex`。它运行 `gpt-6-luna`；`--api_format codex --model <id>` 可以指定其他模型（侧车还提供 `gpt-5.6-luna`、`gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.5`、`gpt-5.2`）。 |
 | `--model orcarouter` | OrcaRouter 网关及其智能路由模型 `orcarouter/auto`。不需要 `--api_base`；如果你传了，以你的为准。key 来自 `BBM_ORCAROUTER_API_KEY`。它不是旧别名：不会改写任何东西。 |
+| `--model apiroute` | API Route 网关及其默认模型 `claude-3-7-sonnet-20250219`。不需要 `--api_base`；如果你传了，以你的为准。key 来自 `BBM_APIROUTE_API_KEY`。 |
 | `--model_list IDS` | 轮换使用的多个模型 id，逗号分隔。单个模型应该写在 `--model` 里；在两个参数里都写模型会报错。与 `--use_context session` 同用会被拒绝：轮换会让每个请求都成为全价的缓存未命中，还会在一段对话里混用多个模型。 |
 | `--source_lang LANG` | 源语言。明确指定时，它会作为依据写进每条大模型路线的提示词，在 `qwen`/`customapi` 上还会写进请求本身；默认 `auto`。 |
 | `--interval SECONDS` | 请求之间的间隔，默认 `0.01`。只有 `gemini` 路线用它控制节奏。 |
