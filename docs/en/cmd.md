@@ -16,7 +16,8 @@ sections after it provide additional notes for selected workflows.
 | `--single_translate` | Output translation only instead of bilingual text. |
 | `--no_disclosure` | Do not mark the epub as an AI translation: leaves out the one-line credit ("Translated by \<model\>, \<year\>.") below the book intro. Turns off `--translation-metadata` too. |
 | `--translation-metadata` | Write a small `bbm_translation_metadata.json` into the book: the model, the date, and the sha256 of a `--glossary` file (whose text is embedded alongside; terms a run learned by itself are not). Nothing else — no command line, endpoint, languages or paths, and no package metas: what could have shaped the translation is recorded, who ran it is not. Format conversions keep manifest files, so the record survives them. Plan-mode and session runs write it by themselves; this flag adds it to a plain tag-mode run. `--no_disclosure` turns it off too. |
-| `--translate-tags TAGS` | Comma-separated EPUB tags; default `p`, ignored in plan mode. |
+| `--translate-tags TAGS` | Comma-separated EPUB selectors — a tag (`p`) or a tag with a class (`div.Para`); default `p`, ignored in plan mode. A paragraph whose direct text holds nested translatable tags is split so both are translated once each. |
+| `--scan` | Scan the EPUB for text the `--translate-tags` selection misses, report it by selector, and pick additions in a terminal checkbox. Translates nothing; needs no model or key. |
 | `--exclude-translate-tags TAGS` | EPUB ancestor tags to exclude; default `sup,code`; `""` clears it. |
 | `--allow_navigable_strings` | Include otherwise untagged EPUB strings; redundant in plan mode. |
 | `--only_filelist FILES` | Include only these comma-separated internal EPUB files. |

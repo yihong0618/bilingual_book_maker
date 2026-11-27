@@ -288,6 +288,75 @@ class EPUBBookLoader(BaseBookLoader):
     # or book, and announces none.
     _dry_run = False
 
+    # What `--scan` stays quiet about: structural and media tags, inline tags
+    # that only make sense inside a sentence, and containers whose text is the
+    # sum of their children rather than a paragraph of its own.
+    _SCAN_EXCLUDE_TAGS = frozenset(
+        {
+            "html",
+            "head",
+            "body",
+            "script",
+            "style",
+            "meta",
+            "link",
+            "title",
+            "nav",
+            "svg",
+            "math",
+            "img",
+            "br",
+            "hr",
+            "table",
+            "thead",
+            "tbody",
+            "tr",
+            "td",
+            "th",
+            "col",
+            "colgroup",
+            "em",
+            "strong",
+            "b",
+            "i",
+            "u",
+            "span",
+            "a",
+            "sub",
+            "sup",
+            "code",
+            "kbd",
+            "var",
+            "samp",
+            "abbr",
+            "cite",
+            "q",
+            "small",
+            "mark",
+            "del",
+            "ins",
+            "dfn",
+            "ruby",
+            "rt",
+            "rp",
+            "bdo",
+            "wbr",
+            "section",
+            "article",
+            "aside",
+            "header",
+            "footer",
+            "main",
+            "figure",
+            "figcaption",
+            "ol",
+            "ul",
+            "dl",
+            "dd",
+            "dt",
+        }
+    )
+
     def __init__(
         self,
         epub_name,
@@ -1026,13 +1095,19 @@ class EPUBBookLoader(BaseBookLoader):
         return fixed_toc
 
     def _extract_paragraph(self, p):
+        # for issue #280
+        if type(p) is NavigableString:
+            return p
         # Exclude content within specified tags from translation (e.g., code, pre)
         for p_exclude in self._exclude_tags_tuple():
-            # for issue #280
-            if type(p) is NavigableString:
-                continue
             for pt in p.find_all(p_exclude):
                 pt.extract()
+        # For div-type paragraphs (e.g. div.Para), nested divs are embedded
+        # blocks — equations, media objects — whose text is not the paragraph's
+        # own prose; translating their contents only adds noise.
+        if p.name == "div":
+            for nested_div in p.find_all("div"):
+                nested_div.extract()
         return p
 
     def _is_content_only_excluded_tags(self, p):
@@ -1053,6 +1128,296 @@ class EPUBBookLoader(BaseBookLoader):
         # If nothing meaningful remains, paragraph contains only excluded tags
         remaining_text = temp_p.get_text().strip()
         return not remaining_text or self._is_special_text(remaining_text)
+
+    # ------------------------------------------------ tag selection + scan
+
+    def _parse_translate_tags(self):
+        """Parse translate_tags into a CSS selector string.
+
+        Sets:
+            self._css_selector: CSS selector string for soup.select(),
+            e.g. "p, div.Para".
+
+        A plain tag name is a valid selector, so `--translate-tags p` keeps
+        working; `tag.class` selects on the class, which is what a book that
+        marks semantic paragraphs as `<div class="Para">` needs.
+        """
+        specs = [s.strip() for s in self.translate_tags.split(",") if s.strip()]
+        self._css_selector = ", ".join(specs)
+
+    @staticmethod
+    def _normalize_filelist(filelist):
+        """Normalize a comma separated file list into a set of stripped names.
+
+        Keeps "--exclude_filelist 'a.xhtml, b.xhtml'" working even when the
+        user leaves a space after the comma.
+        """
+        return {name.strip() for name in (filelist or "").split(",") if name.strip()}
+
+    def _file_selection(self, file_name):
+        """`(translate, drop)` for one document, from the two file lists."""
+        only_files = self._normalize_filelist(self.only_filelist)
+        exclude_files = self._normalize_filelist(self.exclude_filelist)
+        if only_files:
+            return file_name in only_files, False
+        return file_name not in exclude_files, file_name in exclude_files
+
+    def _find_translatable_paragraphs(self, soup):
+        """Find all translatable paragraphs and handle nested structures.
+
+        Uses self._css_selector (set by _parse_translate_tags) to find
+        paragraphs. For a paragraph that contains nested translatable children
+        (Type B), the outer direct text is extracted into a new
+        `<p class="_bbm_extracted">` node inserted into the DOM, so the outer
+        wrapper's own prose is translated without duplicating the nested text.
+
+        Returns:
+            list: Paragraphs in DOM order, ready for translation.
+        """
+        p_list = soup.select(self._css_selector)
+
+        # Check for Type B: paragraphs with nested translatable children
+        extra_nodes = []
+        for p in list(p_list):  # iterate copy since we may modify DOM
+            if not self.has_nest_child(p, self._css_selector):
+                continue
+            # Extract direct text that is NOT inside nested translatable children
+            nested_matches = [m for m in p.select(self._css_selector) if m is not p]
+            nested_set = set(id(m) for m in nested_matches)
+            # Also include ancestors of nested matches (containers like blockquote)
+            nested_and_ancestors = set(nested_set)
+            for m in nested_matches:
+                for parent in m.parents:
+                    if parent is p:
+                        break
+                    nested_and_ancestors.add(id(parent))
+
+            direct_parts = []
+            to_move = []
+            first_nested = None
+            for child in p.children:
+                if isinstance(child, NavigableString):
+                    if str(child).strip():
+                        direct_parts.append(str(child))
+                        to_move.append(child)
+                elif isinstance(child, Tag):
+                    if id(child) in nested_and_ancestors:
+                        if first_nested is None:
+                            first_nested = child
+                    else:
+                        # Inline tags like <em>, <span> - part of outer text
+                        direct_parts.append(str(child))
+                        to_move.append(child)
+
+            direct_text = "".join(direct_parts).strip()
+            if not direct_text or self._is_special_text(direct_text):
+                continue
+
+            # Move the parsed fragment's children into the new <p> instead of
+            # nesting a whole document node, which would break `.string`.
+            new_p = soup.new_tag("p", attrs={"class": "_bbm_extracted"})
+            for node in list(bs(direct_text, "html.parser").contents):
+                new_p.append(node)
+            # The outer paragraph gives this text up: the extracted node is its
+            # only copy, so bilingual output holds the sentence once.
+            for child in to_move:
+                child.extract()
+            if first_nested is not None:
+                first_nested.insert_before(new_p)
+            else:
+                p.insert(0, new_p)
+            extra_nodes.append(new_p)
+
+        if extra_nodes:
+            # Re-select to include newly inserted nodes, maintaining DOM order
+            p_list = soup.select(self._css_selector)
+
+        return p_list
+
+    def scan_untranslated_tags(self):
+        """Scan EPUB for potentially untranslated text content.
+
+        Finds all tags containing substantial text that are not covered by
+        the current --translate-tags selector. Groups results by CSS selector
+        format (tag.class) and prints a report.
+
+        Returns:
+            str: comma separated selector list to add, empty when nothing is
+            missing or the user picks nothing.
+        """
+        self._parse_translate_tags()
+        all_items = list(self.origin_book.get_items())
+
+        # Collect stats: {selector_str: {"count": int, "example": str}}
+        stats = {}
+        exclude_files = self._normalize_filelist(self.exclude_filelist)
+        only_files = self._normalize_filelist(self.only_filelist)
+
+        for item in all_items:
+            if item.get_type() != ITEM_DOCUMENT:
+                continue
+            if item.file_name in exclude_files:
+                continue
+            if only_files and item.file_name not in only_files:
+                continue
+
+            soup = bs(item.content, "html.parser")
+
+            # Find already-covered paragraphs
+            covered = soup.select(self._css_selector) if self._css_selector else []
+            covered_texts = [p.get_text() for p in covered]
+            covered_set = set(id(p) for p in covered)
+
+            # Build set of all descendants of covered paragraphs (to exclude
+            # children: their text is already translated with the parent)
+            covered_descendants = set()
+            for p in covered:
+                for desc in p.descendants:
+                    covered_descendants.add(id(desc))
+
+            # Ancestors of covered paragraphs are containers (`div.story`
+            # around a chapter's <p>) or Type B wrappers whose own text the
+            # extraction already handles; reporting them would suggest a
+            # selector that swallows the whole chapter.
+            covered_ancestors = set()
+            for p in covered:
+                for anc in p.parents:
+                    covered_ancestors.add(id(anc))
+
+            for tag in soup.find_all(True):
+                if tag.name in self._SCAN_EXCLUDE_TAGS:
+                    continue
+                if id(tag) in covered_set:
+                    continue
+                if id(tag) in covered_descendants:
+                    continue
+                if id(tag) in covered_ancestors:
+                    # A plain container (`div.story` around a chapter's <p>)
+                    # has no prose of its own and is skipped. A Type B wrapper
+                    # does: its direct text sits outside the covered paragraphs
+                    # and no selector translates it unless the wrapper itself
+                    # is selected, so it is worth reporting.
+                    own_text = "".join(
+                        str(node)
+                        for node in tag.descendants
+                        if not isinstance(node, Tag)
+                        and id(node) not in covered_descendants
+                    ).strip()
+                    if len(own_text) < 20:
+                        continue
+                    text = own_text
+
+                text = tag.get_text().strip()
+                if len(text) < 20:
+                    continue
+                if self._is_special_text(text):
+                    continue
+
+                # Skip if this tag's text already lives inside a covered
+                # paragraph (a wrapper around translated prose)
+                if any(text in covered_text for covered_text in covered_texts):
+                    continue
+
+                classes = tag.get("class", [])
+                selector_key = f"{tag.name}.{classes[0]}" if classes else tag.name
+
+                if selector_key not in stats:
+                    stats[selector_key] = {"count": 0, "example": text[:80]}
+                stats[selector_key]["count"] += 1
+
+        if not stats:
+            print("No potentially untranslated content detected.")
+            return ""
+
+        sorted_items = sorted(stats.items(), key=lambda x: -x[1]["count"])
+        current_tags = self.translate_tags
+
+        choices = [
+            (
+                selector,
+                f"{selector:25s}  {info['count']:4d} paragraphs  "
+                f'"{info["example"][:45]}..."',
+            )
+            for selector, info in sorted_items
+        ]
+
+        selected = self._interactive_checkbox(
+            title="Potentially untranslated content detected. "
+            f'Current --translate-tags: "{current_tags}"',
+            choices=choices,
+        )
+
+        if not selected:
+            print("No tags selected.")
+            return ""
+
+        combined = ",".join([current_tags] + selected)
+        print()
+        print("Selected tags:")
+        for sel in selected:
+            print(f"  + {sel} ({stats[sel]['count']} paragraphs)")
+        print()
+        print(f'Combined --translate-tags: "{combined}"')
+        print()
+        print("Command to use:")
+        print(f'  --translate-tags "{combined}"')
+        print()
+        return combined
+
+    @staticmethod
+    def _interactive_checkbox(title, choices):
+        """Terminal checkbox widget using InquirerPy.
+
+        Args:
+            title: Header text displayed as the prompt message.
+            choices: List of (value, label) tuples.
+
+        Returns:
+            List of selected values, or empty list if cancelled.
+        """
+        if not choices:
+            return []
+
+        def print_choices(reason):
+            """Report without a checkbox: pipes, CI, or no InquirerPy."""
+            print(title)
+            for value, label in choices:
+                print(f"  {value:22s} {label}")
+            print(reason)
+            return []
+
+        # A checkbox needs a terminal to draw in. Pipes, CI and some Windows
+        # consoles (IDE terminals, git-bash ptys) have none, and prompt_toolkit
+        # raises NoConsoleScreenBufferError there — print the report instead so
+        # --scan still says what it found.
+        if not sys.stdin.isatty() or not sys.stdout.isatty():
+            return print_choices(
+                "(not a terminal: nothing selected, use the list above)"
+            )
+
+        try:
+            from InquirerPy import inquirer
+            from InquirerPy.base.control import Choice
+        except ImportError:
+            # Imported here, not at module scope: --scan has to report in a
+            # terminal that never installed the interactive dependency.
+            return print_choices(
+                "(InquirerPy is not installed: pip install InquirerPy, "
+                "or use the list above)"
+            )
+
+        inq_choices = [Choice(value=value, name=label) for value, label in choices]
+
+        try:
+            selected = inquirer.checkbox(
+                message=title,
+                choices=inq_choices,
+                instruction="(Space: toggle, Tab: toggle all, Enter: confirm)",
+            ).execute()
+        except (KeyboardInterrupt, EOFError):
+            return []
+
+        return selected if selected else []
 
     # ------------------------------------------------------------ plan mode
 
@@ -3113,8 +3478,14 @@ class EPUBBookLoader(BaseBookLoader):
         soup_complete = bs(content_complete, "html.parser")
         soup_ori = bs(content_ori, "html.parser")
 
-        p_list_complete = soup_complete.findAll(trans_taglist)
-        p_list_ori = soup_ori.findAll(trans_taglist)
+        self._parse_translate_tags()
+        # Both books are read with the plain selector on purpose: this method
+        # copies whole paragraphs back from the original book, so running
+        # _find_translatable_paragraphs() here would inject extra
+        # _bbm_extracted nodes into the original DOM and duplicate the outer
+        # paragraph text once it is moved over.
+        p_list_complete = soup_complete.select(self._css_selector)
+        p_list_ori = soup_ori.select(self._css_selector)
 
         target = None
         tagl = []
@@ -3183,17 +3554,16 @@ class EPUBBookLoader(BaseBookLoader):
         # end of that run and the file it produced.
         self.announce_saved_book(f"{name_fix}")
 
-    def has_nest_child(self, element, trans_taglist):
-        if isinstance(element, Tag):
-            for child in element.children:
-                if child.name in trans_taglist:
-                    return True
-                if self.has_nest_child(child, trans_taglist):
-                    return True
-        return False
+    def has_nest_child(self, element, css_selector):
+        """Check if element has any descendant matching the CSS selector."""
+        if not isinstance(element, Tag) or not css_selector:
+            return False
+        # select_one() stops at the first match instead of building the whole
+        # descendant list, which matters for large chapters.
+        return element.select_one(css_selector) is not None
 
-    def filter_nest_list(self, p_list, trans_taglist):
-        return [p for p in p_list if not self.has_nest_child(p, trans_taglist)]
+    def filter_nest_list(self, p_list, css_selector):
+        return [p for p in p_list if not self.has_nest_child(p, css_selector)]
 
     def _translation_source_text(self, node):
         if isinstance(node, NavigableString):
@@ -3280,6 +3650,7 @@ class EPUBBookLoader(BaseBookLoader):
         limits, document order, node order and batch identity therefore no
         longer depend on which worker happens to run first.
         """
+        self._parse_translate_tags()
         plans = []
         global_index = 0
         # asked once per run, not once per document: the answer is a
@@ -3301,15 +3672,7 @@ class EPUBBookLoader(BaseBookLoader):
             # the NCX pointing at a file that is not in the package
             # (epubcheck RSC-007) — a broken book, from a flag that only ever
             # claimed to narrow the work.
-            if self.only_filelist and item.file_name not in self.only_filelist.split(
-                ","
-            ):
-                should_translate = False
-            elif (
-                not self.only_filelist
-                and item.file_name in self.exclude_filelist.split(",")
-            ):
-                should_translate = False
+            should_translate, _ = self._file_selection(item.file_name)
 
             nodes = []
             source_texts = []
@@ -3333,9 +3696,9 @@ class EPUBBookLoader(BaseBookLoader):
             else:
                 soup = bs(item.content, "html.parser")
                 if should_translate:
-                    candidate_nodes = soup.find_all(trans_taglist)
+                    candidate_nodes = self._find_translatable_paragraphs(soup)
                     candidate_nodes = self.filter_nest_list(
-                        candidate_nodes, trans_taglist
+                        candidate_nodes, self._css_selector
                     )
                     if self.allow_navigable_strings:
                         candidate_nodes.extend(soup.find_all(string=True))
@@ -3398,16 +3761,10 @@ class EPUBBookLoader(BaseBookLoader):
         chapter_plan=None,
     ):
         if chapter_plan is None:
-            if (
-                self.only_filelist != ""
-                and item.file_name not in self.only_filelist.split(",")
-            ):
-                return index
-            elif (
-                self.only_filelist == ""
-                and item.file_name in self.exclude_filelist.split(",")
-            ):
-                new_book.add_item(item)
+            should_translate, drop = self._file_selection(item.file_name)
+            if not should_translate:
+                if drop:
+                    new_book.add_item(item)
                 return index
 
         if not os.path.exists("log"):
@@ -3427,10 +3784,11 @@ class EPUBBookLoader(BaseBookLoader):
             return index
 
         if chapter_plan is None:
+            self._parse_translate_tags()
             content = item.content
             soup = bs(content, "html.parser")
-            p_list = soup.findAll(trans_taglist)
-            p_list = self.filter_nest_list(p_list, trans_taglist)
+            p_list = self._find_translatable_paragraphs(soup)
+            p_list = self.filter_nest_list(p_list, self._css_selector)
         else:
             soup = chapter_plan.soup
             p_list = [job.node for job in chapter_plan.jobs]

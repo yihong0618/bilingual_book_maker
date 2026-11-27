@@ -328,7 +328,19 @@ codex "你好，请使用bbm-plan帮我将这本书：test_books/animal_farm.epu
 
 - `--translate-tags`
 
-  指定需要翻译的标签，使用逗号分隔多个标签。epub 由 html 文件组成，默认情况下，只翻译 `<p>` 中的内容。例如: `--translate-tags h1,h2,h3,p,div`
+  指定需要翻译的标签，使用逗号分隔多个标签。epub 由 html 文件组成，默认情况下，只翻译 `<p>` 中的内容。每项都会按 CSS 选择器解析，因此 `tag.class` 可用：对把段落写成 `<div class="Para">` 的书，`div.Para` 会被翻译，而普通 `div` 不会。例如: `--translate-tags h1,h2,h3,p,div` 或 `--translate-tags p,div.Para`
+
+  段落自身的文本里若嵌着可翻译标签（`<div class="Para">引言 <blockquote><p>引文</p></blockquote></div>`），外层文本会被单独抽出翻译，外层正文与内层段落各翻译一次，互不重复。
+
+- `--scan`
+
+  扫描 EPUB 中当前 `--translate-tags` 未覆盖的正文，按选择器（`tag` 或 `tag.class`）汇总并打印报告，再在终端复选框中挑选需要的项。不执行翻译，也不需要模型或 API key。
+
+  ```shell
+  python3 make_book.py --book_name my_book.epub --scan
+  # 再用它给出的组合执行翻译
+  python3 make_book.py --book_name my_book.epub --key ${key} --translate-tags "p,div.Para"
+  ```
 
 - `--plan-classify`
   **计划模式（仅 epub）**：使用进行翻译的模型，或 codex / claude code，对 epub 标签进行分类。

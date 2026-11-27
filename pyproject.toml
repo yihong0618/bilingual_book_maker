@@ -35,6 +35,7 @@ dependencies = [
     "tiktoken",
     "tqdm",
     "PyMuPDF",
+    "InquirerPy",
 ]
 
 [project.optional-dependencies]

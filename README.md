@@ -364,7 +364,25 @@ codex "Hi, please use bbm-plan to translate this book: test_books/animal_farm.ep
 
   epub is made of html files. By default, we only translate contents in `<p>`.
   Use `--translate-tags` to specify tags need for translation. Use comma to separate multiple tags.
-  For example: `--translate-tags h1,h2,h3,p,div`
+  Each entry is a CSS selector, so `tag.class` works for books that mark paragraphs as
+  `<div class="Para">` — that `div` is translated, while a plain `div` is not.
+  For example: `--translate-tags h1,h2,h3,p,div` or `--translate-tags p,div.Para`
+
+  A paragraph whose direct text holds nested translatable tags (`<div class="Para">intro
+  <blockquote><p>quoted</p></blockquote></div>`) has that outer text extracted and translated
+  on its own, so the wrapper's prose and the nested paragraph are both translated, once each.
+
+- `--scan`:
+
+  Scan an EPUB for text that the current `--translate-tags` selection misses, print a report
+  grouped by selector (`tag` or `tag.class`), and let you pick the candidates in a terminal
+  checkbox. Nothing is translated and no model or API key is needed.
+
+  ```shell
+  python3 make_book.py --book_name my_book.epub --scan
+  # then run the translation with the combination it prints
+  python3 make_book.py --book_name my_book.epub --key ${key} --translate-tags "p,div.Para"
+  ```
 
 - `--plan-classify` (epub only):
 

@@ -2387,7 +2387,9 @@ def build_parser():
         # even `--translate-tags p`. Normalized to "p" after parsing.
         default=None,
         help="which tags to translate, example --translate-tags p,blockquote "
-        "(default: p). Ignored in plan mode — see --plan-classify",
+        "or --translate-tags p,div.Para (tag.class is matched as a CSS "
+        "selector). Use --scan to discover candidates. (default: p). "
+        "Ignored in plan mode — see --plan-classify",
     )
     parser.add_argument(
         "--plan-dry-run",
@@ -2502,6 +2504,15 @@ def build_parser():
         action="store_true",
         default=False,
         help="allow NavigableStrings to be translated",
+    )
+    parser.add_argument(
+        "--scan",
+        dest="scan",
+        action="store_true",
+        default=False,
+        help="Scan the EPUB for potentially untranslated text content and print a "
+        "report, then interactively build a --translate-tags value from it. "
+        "Does not perform translation.",
     )
     parser.add_argument(
         "--prompt",
@@ -3290,6 +3301,23 @@ def main(argv=None, *, markdown_loader_class=None):
     if PROXY != "":
         os.environ["http_proxy"] = PROXY
         os.environ["https_proxy"] = PROXY
+
+    # --scan mode: only needs the EPUB file, no translation model or API key
+    if options.scan:
+        book_type = os.path.splitext(options.book_name)[1].lower().lstrip(".")
+        if book_type != "epub":
+            print("Error: --scan is only supported for EPUB files.")
+            exit(1)
+        from book_maker.loader.epub_loader import EPUBBookLoader
+        from ebooklib import epub
+
+        loader = object.__new__(EPUBBookLoader)
+        loader.origin_book = epub.read_epub(options.book_name)
+        loader.translate_tags = options.translate_tags or "p"
+        loader.exclude_filelist = options.exclude_filelist or ""
+        loader.only_filelist = options.only_filelist or ""
+        loader.scan_untranslated_tags()
+        exit(0)
 
     model_names, api_format, endpoint_env_keys = resolve_endpoint(options)
     route = ROUTE_DICT.get(model_names[0]) if len(model_names) == 1 else None
