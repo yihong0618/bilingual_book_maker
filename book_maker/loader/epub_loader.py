@@ -114,6 +114,27 @@ from .classify import (
     mode_policy,
 )
 
+# Strings under these elements are never bare text to translate: script
+# and style code, templates, ruby readings, MathML identifiers, operators
+# and numbers, and MathML annotations (the TeX or other source of an
+# equation).
+# `title`, `textarea`, `option` and MathML `mtext` are not here; their text
+# is prose and stays collected.
+NON_CONTENT_STRING_PARENTS = frozenset(
+    [
+        "script",
+        "style",
+        "template",
+        "rt",
+        "rp",
+        "mi",
+        "mo",
+        "mn",
+        "annotation",
+        "annotation-xml",
+    ]
+)
+
 # Every key-bearing CLI flag, and the environment variable it falls back to
 # when it is absent. The rerun line printed at a plan handoff is rebuilt from
 # argv, so a key typed on the command line would otherwise be echoed to the
@@ -1029,7 +1050,7 @@ class EPUBBookLoader(BaseBookLoader):
         # Exclude content within specified tags from translation (e.g., code, pre)
         for p_exclude in self._exclude_tags_tuple():
             # for issue #280
-            if type(p) is NavigableString:
+            if isinstance(p, NavigableString):
                 continue
             for pt in p.find_all(p_exclude):
                 pt.extract()
@@ -1040,7 +1061,7 @@ class EPUBBookLoader(BaseBookLoader):
 
         Returns True if the paragraph should be kept but not translated.
         """
-        if type(p) is NavigableString:
+        if isinstance(p, NavigableString):
             return False
 
         # Check if paragraph contains only excluded content tags
@@ -2695,6 +2716,11 @@ class EPUBBookLoader(BaseBookLoader):
         ):
             return
 
+        if isinstance(p, NavigableString):
+            return self.helper.insert_trans(
+                p, translated_text, translation_style, single_translate
+            )
+
         # Check if paragraph has excluded content tags
         exclude_tags_list = self._exclude_tags_tuple()
         has_code_tags = any(p.find(tag) for tag in exclude_tags_list)
@@ -2807,7 +2833,10 @@ class EPUBBookLoader(BaseBookLoader):
         if self.resume and index < p_to_save_len:
             # When resuming, keep original text in p, only restore translation
             # p.string should remain as original text from source EPUB
-            new_p.string = self.p_to_save[index]
+            if isinstance(p, NavigableString):
+                new_p = self.p_to_save[index]
+            else:
+                new_p.string = self.p_to_save[index]
         else:
             t_text = ""
             if self.batch_flag:
@@ -2820,14 +2849,14 @@ class EPUBBookLoader(BaseBookLoader):
                 raise RuntimeError(
                     "`t_text` is None: your translation model is not working as expected. Please check your translation model configuration."
                 )
-            if type(p) is NavigableString:
+            if isinstance(p, NavigableString):
                 new_p = t_text
                 self.p_to_save.append(new_p)
             else:
                 new_p.string = t_text
                 self.p_to_save.append(new_p.text)
 
-        if type(p) is NavigableString:
+        if isinstance(p, NavigableString):
             self.helper.insert_trans(
                 p, new_p, self.translation_style, self.single_translate
             )
@@ -2965,7 +2994,7 @@ class EPUBBookLoader(BaseBookLoader):
             # Exclude content tags (code, pre, etc.) from translation
             for p_exclude in self._exclude_tags_tuple():
                 # for issue #280
-                if type(p) is NavigableString:
+                if isinstance(p, NavigableString):
                     continue
                 for pt in temp_p.find_all(p_exclude):
                     pt.extract()
@@ -3195,6 +3224,40 @@ class EPUBBookLoader(BaseBookLoader):
     def filter_nest_list(self, p_list, trans_taglist):
         return [p for p in p_list if not self.has_nest_child(p, trans_taglist)]
 
+    def _bare_text_nodes(self, soup, candidate_tags):
+        """The bare text nodes `--allow_navigable_strings` adds to the tags.
+
+        `find_all(string=True)` returns every string in the document, and
+        most of them are not bare text: the XML declaration, the DOCTYPE,
+        comments and CDATA are NavigableString subclasses that the rest of
+        the loader would treat as tags, and the text inside the candidate
+        tags is translated with its tag already. Only plain strings outside
+        the candidate tags, excluded tags and non-content elements are kept.
+        A prefixed document's `<h:style>` holds a plain string, so the
+        ancestor check compares local names, and an excluded tag given with
+        its prefix (`h:pre`) matches its full name.
+        """
+        claimed = {id(tag) for tag in candidate_tags}
+        excluded = set(self._exclude_tags_tuple())
+        skipped = NON_CONTENT_STRING_PARENTS.union(excluded)
+
+        def outside_skipped(node):
+            for parent in node.parents:
+                name = parent.name or ""
+                if (
+                    id(parent) in claimed
+                    or name in excluded
+                    or name.rsplit(":", 1)[-1] in skipped
+                ):
+                    return False
+            return True
+
+        return [
+            node
+            for node in soup.find_all(string=True)
+            if type(node) is NavigableString and outside_skipped(node)
+        ]
+
     def _translation_source_text(self, node):
         if isinstance(node, NavigableString):
             return str(node)
@@ -3338,7 +3401,9 @@ class EPUBBookLoader(BaseBookLoader):
                         candidate_nodes, trans_taglist
                     )
                     if self.allow_navigable_strings:
-                        candidate_nodes.extend(soup.find_all(string=True))
+                        candidate_nodes.extend(
+                            self._bare_text_nodes(soup, candidate_nodes)
+                        )
 
                     for node in candidate_nodes:
                         if self.is_test and global_index >= self.test_num:
@@ -3434,6 +3499,7 @@ class EPUBBookLoader(BaseBookLoader):
         else:
             soup = chapter_plan.soup
             p_list = [job.node for job in chapter_plan.jobs]
+        candidate_tags = list(p_list)
 
         if self.retranslate:
             new_p_list = []
@@ -3452,7 +3518,7 @@ class EPUBBookLoader(BaseBookLoader):
                     break
 
         if chapter_plan is None and self.allow_navigable_strings:
-            p_list.extend(soup.findAll(text=True))
+            p_list.extend(self._bare_text_nodes(soup, candidate_tags))
 
         send_num = self.accumulated_num
         if send_num > 1:
@@ -3660,15 +3726,9 @@ class EPUBBookLoader(BaseBookLoader):
                         t_text = "" if t_text is None else t_text
                         self._record_translation_result(index, t_text)
 
-                    if isinstance(p, NavigableString):
-                        translated_node = NavigableString(t_text)
-                        p.insert_after(translated_node)
-                        if self.single_translate:
-                            p.extract()
-                    else:
-                        self._insert_trans_preserving_tags(
-                            p, t_text, self.translation_style, self.single_translate
-                        )
+                    self._insert_trans_preserving_tags(
+                        p, t_text, self.translation_style, self.single_translate
+                    )
 
             if soup:
                 chapter_result["processed_content"] = soup.encode(encoding="utf-8")
@@ -4314,11 +4374,6 @@ class EPUBBookLoader(BaseBookLoader):
                                 self.translation_style,
                                 self.single_translate,
                             )
-                        elif isinstance(job.node, NavigableString):
-                            translated_node = NavigableString(translated_text)
-                            job.node.insert_after(translated_node)
-                            if self.single_translate:
-                                job.node.extract()
                         else:
                             self._insert_trans_preserving_tags(
                                 job.node,
