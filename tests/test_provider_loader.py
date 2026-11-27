@@ -399,6 +399,20 @@ class TestShippedExample:
         for name, entry in config["providers"].items():
             validate_provider(name, entry)
 
+    def test_the_shipped_cheaperinference_entry_is_openai_compatible(
+        self, configs, monkeypatch
+    ):
+        # configs keeps a local or global bbm_providers.json out of the way
+        shipped = Path(__file__).resolve().parent.parent / "bbm_providers.example.json"
+        monkeypatch.setattr(provider_loader, "EXAMPLE_CONFIG_PATH", shipped)
+
+        route = resolve_provider("cheaperinference")
+
+        assert route.api_format == "openai"
+        assert route.api_base == "https://api.cheaperinference.com/v1"
+        assert route.models == ["gpt-5.4-mini"]
+        assert route.env_key == "CHEAPER_INFERENCE_API_KEY"
+
 
 class TestEndpointFields:
     """`img_*` / `classify_*` (packet F, 260923): an entry may name the
