@@ -484,6 +484,25 @@ def test_truncation_retranslates_plainly_instead_of_ending_the_run():
     assert translator.capabilities.verdicts["test-model"] == "strict"
 
 
+def test_plain_answer_cut_off_by_the_token_limit_is_flagged(capsys):
+    """The plain path has no JSON to break, so a cut-off answer is still
+    used, but not silently: the operator is told which paragraph."""
+    create = Mock(return_value=_completion("半句", finish_reason="length"))
+    translator = _translator(create=create)
+
+    assert translator._plain_translation("A long paragraph\nthat ran out") == "半句"
+    out = capsys.readouterr().out
+    assert "token limit" in out
+    assert "A long paragraph that ran out" in out
+
+
+def test_plain_answer_that_finished_is_not_flagged(capsys):
+    translator = _translator(create=Mock(return_value=_completion("完整")))
+
+    assert translator._plain_translation("hello") == "完整"
+    assert "token limit" not in capsys.readouterr().out
+
+
 def test_refusal_raises_its_own_exception():
     """A refusal is its own answer — neither a capability verdict nor a
     transport error, so it gets an exception the caller can act on."""

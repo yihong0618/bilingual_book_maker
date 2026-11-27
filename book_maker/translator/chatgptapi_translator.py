@@ -1367,6 +1367,14 @@ class ChatGPTAPI(Base):
     def _plain_translation(self, text):
         completion = self.create_chat_completion(text)
         self._note_usage(completion)
+        if getattr(completion.choices[0], "finish_reason", None) == "length":
+            # No JSON to break here, so the text is still used; but it may
+            # end mid-sentence, and the operator should know which paragraph.
+            shown = " ".join(text.split())[:40]
+            print(
+                f"[yellow]ℹ the translation of {escape(repr(shown))} hit the "
+                f"output token limit and may be cut off[/yellow]"
+            )
         content = completion.choices[0].message.content
         return content.encode("utf8").decode() if content else ""
 
