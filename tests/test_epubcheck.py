@@ -212,6 +212,27 @@ def _translate(path, glossary_path=None, **kwargs):
     return path.with_name(f"{path.stem}_bilingual.epub")
 
 
+def test_table_columns_fixture_and_translation_are_valid(epubcheck, tmp_path):
+    source = tmp_path / "tables.epub"
+    shutil.copyfile(REPO / "test_books/table_columns/table-columns.epub", source)
+    assert not _findings(epubcheck, source)
+    loader = EPUBBookLoader(
+        str(source),
+        StandInModel,
+        key="",
+        resume=False,
+        language="zh-hans",
+        disclose=False,
+    )
+    loader.plan_mode = True
+    loader.plan_classify = "all"
+    loader.translate_tags = "auto"
+    loader.only_filelist = "content.xhtml"
+    loader.quiet = True
+    loader.make_bilingual_book()
+    assert not _findings(epubcheck, tmp_path / "tables_bilingual.epub")
+
+
 @pytest.fixture
 def tdm_book(tmp_path):
     """Rights metadata under a prefix the source declares."""

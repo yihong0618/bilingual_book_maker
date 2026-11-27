@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+  <head>
+    <title>Table Columns: An Original Test Fixture</title>
+    <style type="text/css">
+      table { border-collapse: collapse; margin: 1em 0; }
+      th, td { border: 1px solid #777; padding: 0.4em; }
+      caption { text-align: left; font-weight: bold; }
+    </style>
+  </head>
+  <body>
+    <h1 id="title">Table columns</h1>
+    <p>This original example compares imaginary reading rooms.</p>
+    <table id="simple">
+      <caption>Reading room hours</caption>
+      <thead>
+        <tr>
+          <th id="room" scope="col"><span id="room-label">Room name</span></th>
+          <th id="morning" scope="col">Morning hours</th>
+          <th id="evening" scope="col">Evening hours</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td headers="room">The cedar room opens early.</td>
+          <td headers="morning">Readers may enter after sunrise.</td>
+          <td headers="evening"><p>The room closes before sunset.</p></td>
+        </tr>
+        <tr>
+          <td headers="room">The maple room stays quiet.</td>
+          <td headers="morning">No booking is required.</td>
+          <td headers="evening">A librarian remains on duty.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>The next table groups two days under one heading.</p>
+    <table id="spanning">
+      <caption>Weekend reading groups</caption>
+      <thead>
+        <tr>
+          <th id="group" scope="col" rowspan="2"><span id="group-label">Reading group</span></th>
+          <th id="days" scope="colgroup" colspan="2">Meeting days</th>
+        </tr>
+        <tr>
+          <th id="saturday" scope="col">Saturday</th>
+          <th id="sunday" scope="col">Sunday</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th id="poetry" scope="rowgroup" rowspan="2">Poetry readers</th>
+          <td headers="poetry saturday">The first group reads aloud.</td>
+          <td headers="poetry sunday">The first group discusses a poem.</td>
+        </tr>
+        <tr>
+          <td headers="poetry saturday">The second group meets later.</td>
+          <td headers="poetry sunday">The second group shares notes.</td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr><td colspan="3">All meetings are free.</td></tr>
+      </tfoot>
+    </table>
+    <p>Both tables have three logical columns.</p>
+  </body>
+</html>
